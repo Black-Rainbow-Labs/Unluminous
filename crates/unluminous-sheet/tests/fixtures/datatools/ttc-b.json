@@ -1,0 +1,429 @@
+[
+ {
+  "name": "ttc-old-data-right",
+  "sheets": {
+   "Sheet1": {
+    "A1": "a,b,c",
+    "A2": "d,e",
+    "C2": "old",
+    "D2": "older"
+   }
+  },
+  "op": {
+   "kind": "text-to-columns",
+   "range": "A1:A2",
+   "comma": true
+  }
+ },
+ {
+  "name": "ttc-fixed-leading-trailing",
+  "sheets": {
+   "Sheet1": {
+    "A1": "  ab  cd  ",
+    "A2": "xx yy zz"
+   }
+  },
+  "op": {
+   "kind": "text-to-columns",
+   "range": "A1:A2",
+   "type": "fixed",
+   "fieldInfo": [
+    [
+     0,
+     1
+    ],
+    [
+     4,
+     1
+    ],
+    [
+     8,
+     1
+    ]
+   ]
+  }
+ },
+ {
+  "name": "ttc-fixed-breaks-unsorted",
+  "sheets": {
+   "Sheet1": {
+    "A1": "abcdefghij"
+   }
+  },
+  "op": {
+   "kind": "text-to-columns",
+   "range": "A1:A1",
+   "type": "fixed",
+   "fieldInfo": [
+    [
+     0,
+     1
+    ],
+    [
+     6,
+     1
+    ],
+    [
+     3,
+     1
+    ]
+   ]
+  }
+ },
+ {
+  "name": "ttc-fixed-text-and-date",
+  "sheets": {
+   "Sheet1": {
+    "A1": "007 3/4/2024",
+    "A2": "008 5/6/2024"
+   }
+  },
+  "dumpFormat": true,
+  "op": {
+   "kind": "text-to-columns",
+   "range": "A1:A2",
+   "type": "fixed",
+   "fieldInfo": [
+    [
+     0,
+     2
+    ],
+    [
+     4,
+     3
+    ]
+   ]
+  }
+ },
+ {
+  "name": "ttc-numbers-with-spaces",
+  "sheets": {
+   "Sheet1": {
+    "A1": " 5 , 6 ,x"
+   }
+  },
+  "op": {
+   "kind": "text-to-columns",
+   "range": "A1:A1",
+   "comma": true
+  }
+ },
+ {
+  "name": "ttc-date-source-cell",
+  "sheets": {
+   "Sheet1": {
+    "A1": 45293
+   }
+  },
+  "formats": [
+   {
+    "range": "A1",
+    "numfmt": "m/d/yyyy"
+   }
+  ],
+  "op": {
+   "kind": "text-to-columns",
+   "range": "A1:A1",
+   "other": true,
+   "otherChar": "/"
+  }
+ },
+ {
+  "name": "ttc-source-percent",
+  "sheets": {
+   "Sheet1": {
+    "A1": 0.5
+   }
+  },
+  "formats": [
+   {
+    "range": "A1",
+    "numfmt": "0%"
+   }
+  ],
+  "op": {
+   "kind": "text-to-columns",
+   "range": "A1:A1",
+   "comma": true
+  }
+ },
+ {
+  "name": "ttc-empty-source-cells",
+  "sheets": {
+   "Sheet1": {
+    "A1": "a,b",
+    "A3": "c,d"
+   }
+  },
+  "op": {
+   "kind": "text-to-columns",
+   "range": "A1:A3",
+   "comma": true
+  }
+ },
+ {
+  "name": "ttc-column-offset-source",
+  "sheets": {
+   "Sheet1": {
+    "C1": "a,b,c",
+    "C2": "1,2,3"
+   }
+  },
+  "op": {
+   "kind": "text-to-columns",
+   "range": "C1:C2",
+   "comma": true
+  }
+ },
+ {
+  "name": "ttc-qualifier-with-delimiter-after",
+  "sheets": {
+   "Sheet1": {
+    "A1": "\"a,b\"x,c"
+   }
+  },
+  "op": {
+   "kind": "text-to-columns",
+   "range": "A1:A1",
+   "comma": true,
+   "qualifier": "double"
+  }
+ },
+ {
+  "name": "ttc-qualifier-unclosed",
+  "sheets": {
+   "Sheet1": {
+    "A1": "\"a,b,c"
+   }
+  },
+  "op": {
+   "kind": "text-to-columns",
+   "range": "A1:A1",
+   "comma": true,
+   "qualifier": "double"
+  }
+ },
+ {
+  "name": "ttc-qualifier-empty-field",
+  "sheets": {
+   "Sheet1": {
+    "A1": "\"\",a,\"b\""
+   }
+  },
+  "op": {
+   "kind": "text-to-columns",
+   "range": "A1:A1",
+   "comma": true,
+   "qualifier": "double"
+  }
+ },
+ {
+  "name": "ttc-tab-and-space",
+  "sheets": {
+   "Sheet1": {
+    "A1": "a b\tc  d"
+   }
+  },
+  "op": {
+   "kind": "text-to-columns",
+   "range": "A1:A1",
+   "tab": true,
+   "space": true
+  }
+ },
+ {
+  "name": "ttc-tab-and-space-consecutive",
+  "sheets": {
+   "Sheet1": {
+    "A1": "a b\tc  d"
+   }
+  },
+  "op": {
+   "kind": "text-to-columns",
+   "range": "A1:A1",
+   "tab": true,
+   "space": true,
+   "consecutive": true
+  }
+ },
+ {
+  "name": "ttc-leading-delimiter",
+  "sheets": {
+   "Sheet1": {
+    "A1": ",a,b"
+   }
+  },
+  "op": {
+   "kind": "text-to-columns",
+   "range": "A1:A1",
+   "comma": true
+  }
+ },
+ {
+  "name": "ttc-leading-delimiter-consecutive",
+  "sheets": {
+   "Sheet1": {
+    "A1": ",,a,b"
+   }
+  },
+  "op": {
+   "kind": "text-to-columns",
+   "range": "A1:A1",
+   "comma": true,
+   "consecutive": true
+  }
+ },
+ {
+  "name": "ttc-trailing-delimiters-consecutive",
+  "sheets": {
+   "Sheet1": {
+    "A1": "a,b,,,"
+   }
+  },
+  "op": {
+   "kind": "text-to-columns",
+   "range": "A1:A1",
+   "comma": true,
+   "consecutive": true
+  }
+ },
+ {
+  "name": "ttc-all-formats-per-column",
+  "sheets": {
+   "Sheet1": {
+    "A1": "1/2/2024,1/2/2024,1/2/2024,1/2/2024,1/2/2024,1/2/2024,007,x"
+   }
+  },
+  "dumpFormat": true,
+  "op": {
+   "kind": "text-to-columns",
+   "range": "A1:A1",
+   "comma": true,
+   "fieldInfo": [
+    [
+     1,
+     3
+    ],
+    [
+     2,
+     4
+    ],
+    [
+     3,
+     5
+    ],
+    [
+     4,
+     6
+    ],
+    [
+     5,
+     7
+    ],
+    [
+     6,
+     8
+    ],
+    [
+     7,
+     2
+    ],
+    [
+     8,
+     1
+    ]
+   ]
+  }
+ },
+ {
+  "name": "ttc-date-dash-and-dot",
+  "sheets": {
+   "Sheet1": {
+    "A1": "1-2-2024,1.2.2024,2024.01.02,Jan 2 2024"
+   }
+  },
+  "dumpFormat": true,
+  "op": {
+   "kind": "text-to-columns",
+   "range": "A1:A1",
+   "comma": true,
+   "fieldInfo": [
+    [
+     1,
+     3
+    ],
+    [
+     2,
+     4
+    ],
+    [
+     3,
+     5
+    ],
+    [
+     4,
+     3
+    ]
+   ]
+  }
+ },
+ {
+  "name": "ttc-text-format-keeps-leading-space",
+  "sheets": {
+   "Sheet1": {
+    "A1": " 5, 6"
+   }
+  },
+  "dumpFormat": true,
+  "op": {
+   "kind": "text-to-columns",
+   "range": "A1:A1",
+   "comma": true,
+   "fieldInfo": [
+    [
+     1,
+     2
+    ],
+    [
+     2,
+     2
+    ]
+   ]
+  }
+ },
+ {
+  "name": "ttc-two-columns-selected",
+  "sheets": {
+   "Sheet1": {
+    "A1": "a,b",
+    "B1": "c,d"
+   }
+  },
+  "op": {
+   "kind": "text-to-columns",
+   "range": "A1:B1",
+   "comma": true
+  }
+ },
+ {
+  "name": "ttc-merged",
+  "sheets": {
+   "Sheet1": {
+    "A1": "a,b",
+    "A2": "c,d"
+   }
+  },
+  "setup": [
+   {
+    "kind": "format",
+    "range": "A1:B1",
+    "merge": true
+   }
+  ],
+  "op": {
+   "kind": "text-to-columns",
+   "range": "A1:A2",
+   "comma": true
+  }
+ }
+]

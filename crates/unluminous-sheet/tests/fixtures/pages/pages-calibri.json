@@ -1,0 +1,3854 @@
+{
+  "printer": "Microsoft Print to PDF on Ne00:",
+  "font": "Calibri",
+  "size": 11,
+  "workbook": "pages-calibri.xlsx",
+  "sheets": [
+    {
+      "sheet": "paper-letter-p",
+      "failure": "",
+      "pages": 15,
+      "hbreaks": [
+        {
+          "row": 48,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 95,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 4,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "paper-letter-l",
+      "failure": "",
+      "pages": 16,
+      "hbreaks": [
+        {
+          "row": 35,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 69,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 103,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 14,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 27,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 40,
+          "manual": false
+        }
+      ],
+      "hcount": 3,
+      "vcount": 3,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 2,
+      "zoom": "100"
+    },
+    {
+      "sheet": "paper-legal-p",
+      "failure": "",
+      "pages": 15,
+      "hbreaks": [
+        {
+          "row": 62,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 123,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 4,
+      "attempts": 1,
+      "paper": 5,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "paper-legal-l",
+      "failure": "",
+      "pages": 12,
+      "hbreaks": [
+        {
+          "row": 35,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 69,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 103,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 18,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 35,
+          "manual": false
+        }
+      ],
+      "hcount": 3,
+      "vcount": 2,
+      "attempts": 1,
+      "paper": 5,
+      "orientation": 2,
+      "zoom": "100"
+    },
+    {
+      "sheet": "paper-a4-p",
+      "failure": "",
+      "pages": 15,
+      "hbreaks": [
+        {
+          "row": 51,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 101,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 4,
+      "attempts": 1,
+      "paper": 9,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "paper-a4-l",
+      "failure": "",
+      "pages": 12,
+      "hbreaks": [
+        {
+          "row": 34,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 67,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 100,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 15,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 29,
+          "manual": false
+        }
+      ],
+      "hcount": 3,
+      "vcount": 2,
+      "attempts": 1,
+      "paper": 9,
+      "orientation": 2,
+      "zoom": "100"
+    },
+    {
+      "sheet": "paper-a3-p",
+      "failure": "",
+      "pages": 6,
+      "hbreaks": [
+        {
+          "row": 75,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 15,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 29,
+          "manual": false
+        }
+      ],
+      "hcount": 1,
+      "vcount": 2,
+      "attempts": 1,
+      "paper": 8,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "paper-a3-l",
+      "failure": "",
+      "pages": 6,
+      "hbreaks": [
+        {
+          "row": 51,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 101,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 22,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 1,
+      "attempts": 1,
+      "paper": 8,
+      "orientation": 2,
+      "zoom": "100"
+    },
+    {
+      "sheet": "paper-tabloid-p",
+      "failure": "",
+      "pages": 8,
+      "hbreaks": [
+        {
+          "row": 77,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 14,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 27,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 40,
+          "manual": false
+        }
+      ],
+      "hcount": 1,
+      "vcount": 3,
+      "attempts": 1,
+      "paper": 3,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "paper-tabloid-l",
+      "failure": "",
+      "pages": 6,
+      "hbreaks": [
+        {
+          "row": 48,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 95,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 22,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 1,
+      "attempts": 1,
+      "paper": 3,
+      "orientation": 2,
+      "zoom": "100"
+    },
+    {
+      "sheet": "paper-a5-p",
+      "failure": "",
+      "pages": 28,
+      "hbreaks": [
+        {
+          "row": 34,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 67,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 100,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 7,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 13,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 25,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 31,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 3,
+      "vcount": 6,
+      "attempts": 1,
+      "paper": 11,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "paper-a5-l",
+      "failure": "",
+      "pages": 35,
+      "hbreaks": [
+        {
+          "row": 22,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 43,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 64,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 85,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 106,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 127,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 6,
+      "vcount": 4,
+      "attempts": 1,
+      "paper": 11,
+      "orientation": 2,
+      "zoom": "100"
+    },
+    {
+      "sheet": "paper-executive-p",
+      "failure": "",
+      "pages": 15,
+      "hbreaks": [
+        {
+          "row": 45,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 89,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 9,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 17,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 25,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 33,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 41,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 5,
+      "attempts": 1,
+      "paper": 7,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "paper-executive-l",
+      "failure": "",
+      "pages": 20,
+      "hbreaks": [
+        {
+          "row": 29,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 57,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 85,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 113,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 13,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 25,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 4,
+      "vcount": 3,
+      "attempts": 1,
+      "paper": 7,
+      "orientation": 2,
+      "zoom": "100"
+    },
+    {
+      "sheet": "paper-b4-p",
+      "failure": "",
+      "pages": 12,
+      "hbreaks": [
+        {
+          "row": 64,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 127,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 13,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 25,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 3,
+      "attempts": 1,
+      "paper": 12,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "paper-b4-l",
+      "failure": "",
+      "pages": 12,
+      "hbreaks": [
+        {
+          "row": 43,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 85,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 127,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 3,
+      "vcount": 2,
+      "attempts": 1,
+      "paper": 12,
+      "orientation": 2,
+      "zoom": "100"
+    },
+    {
+      "sheet": "margins-narrow",
+      "failure": "",
+      "pages": 12,
+      "hbreaks": [
+        {
+          "row": 53,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 105,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 12,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 23,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 34,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 3,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "margins-wide",
+      "failure": "",
+      "pages": 24,
+      "hbreaks": [
+        {
+          "row": 43,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 85,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 127,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 8,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 15,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 22,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 29,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 36,
+          "manual": false
+        }
+      ],
+      "hcount": 3,
+      "vcount": 5,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "margins-asym",
+      "failure": "",
+      "pages": 12,
+      "hbreaks": [
+        {
+          "row": 45,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 89,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 11,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 21,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 31,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 41,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 4,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "margins-zero",
+      "failure": "",
+      "pages": 12,
+      "hbreaks": [
+        {
+          "row": 55,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 109,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 12,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 23,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 34,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 3,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "scale-10",
+      "failure": "",
+      "pages": 1,
+      "hbreaks": [],
+      "vbreaks": [],
+      "hcount": 0,
+      "vcount": 0,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "10"
+    },
+    {
+      "sheet": "scale-25",
+      "failure": "",
+      "pages": 2,
+      "hbreaks": [],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 40,
+          "manual": false
+        }
+      ],
+      "hcount": 0,
+      "vcount": 1,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "25"
+    },
+    {
+      "sheet": "scale-50",
+      "failure": "",
+      "pages": 6,
+      "hbreaks": [
+        {
+          "row": 94,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 20,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 39,
+          "manual": false
+        }
+      ],
+      "hcount": 1,
+      "vcount": 2,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "50"
+    },
+    {
+      "sheet": "scale-75",
+      "failure": "",
+      "pages": 12,
+      "hbreaks": [
+        {
+          "row": 63,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 125,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 14,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 27,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 40,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 3,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "75"
+    },
+    {
+      "sheet": "scale-100",
+      "failure": "",
+      "pages": 15,
+      "hbreaks": [
+        {
+          "row": 48,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 95,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 4,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "scale-125",
+      "failure": "",
+      "pages": 24,
+      "hbreaks": [
+        {
+          "row": 38,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 75,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 112,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 8,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 15,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 22,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 29,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 36,
+          "manual": false
+        }
+      ],
+      "hcount": 3,
+      "vcount": 5,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "125"
+    },
+    {
+      "sheet": "scale-150",
+      "failure": "",
+      "pages": 35,
+      "hbreaks": [
+        {
+          "row": 32,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 63,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 94,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 125,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 7,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 13,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 25,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 31,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 4,
+      "vcount": 6,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "150"
+    },
+    {
+      "sheet": "scale-200",
+      "failure": "",
+      "pages": 60,
+      "hbreaks": [
+        {
+          "row": 24,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 47,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 70,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 93,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 116,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 5,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 9,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 13,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 17,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 21,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 25,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 29,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 33,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 41,
+          "manual": false
+        }
+      ],
+      "hcount": 5,
+      "vcount": 10,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "200"
+    },
+    {
+      "sheet": "scale-400",
+      "failure": "",
+      "pages": 240,
+      "hbreaks": [
+        {
+          "row": 12,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 23,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 34,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 45,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 56,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 67,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 78,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 89,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 100,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 111,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 122,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 3,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 5,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 7,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 9,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 11,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 13,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 15,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 17,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 21,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 23,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 25,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 27,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 29,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 31,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 33,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 35,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 39,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 41,
+          "manual": false
+        }
+      ],
+      "hcount": 11,
+      "vcount": 20,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "400"
+    },
+    {
+      "sheet": "fit-1x1",
+      "failure": "",
+      "pages": 1,
+      "hbreaks": [],
+      "vbreaks": [],
+      "hcount": 0,
+      "vcount": 0,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "False"
+    },
+    {
+      "sheet": "fit-1x2",
+      "failure": "",
+      "pages": 1,
+      "hbreaks": [],
+      "vbreaks": [],
+      "hcount": 0,
+      "vcount": 0,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "False"
+    },
+    {
+      "sheet": "fit-2x1",
+      "failure": "",
+      "pages": 2,
+      "hbreaks": [],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 29,
+          "manual": false
+        }
+      ],
+      "hcount": 0,
+      "vcount": 1,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "False"
+    },
+    {
+      "sheet": "fit-2x3",
+      "failure": "",
+      "pages": 4,
+      "hbreaks": [
+        {
+          "row": 99,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 21,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 41,
+          "manual": false
+        }
+      ],
+      "hcount": 1,
+      "vcount": 2,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "False"
+    },
+    {
+      "sheet": "fit-3x2",
+      "failure": "",
+      "pages": 6,
+      "hbreaks": [
+        {
+          "row": 67,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 15,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 29,
+          "manual": false
+        }
+      ],
+      "hcount": 1,
+      "vcount": 2,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "False"
+    },
+    {
+      "sheet": "fit-1x0",
+      "failure": "",
+      "pages": 1,
+      "hbreaks": [],
+      "vbreaks": [],
+      "hcount": 0,
+      "vcount": 0,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "False"
+    },
+    {
+      "sheet": "fit-0x1",
+      "failure": "",
+      "pages": 2,
+      "hbreaks": [],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 29,
+          "manual": false
+        }
+      ],
+      "hcount": 0,
+      "vcount": 1,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "False"
+    },
+    {
+      "sheet": "fit-2x0",
+      "failure": "",
+      "pages": 4,
+      "hbreaks": [
+        {
+          "row": 99,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 21,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 41,
+          "manual": false
+        }
+      ],
+      "hcount": 1,
+      "vcount": 2,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "False"
+    },
+    {
+      "sheet": "fit-0x2",
+      "failure": "",
+      "pages": 8,
+      "hbreaks": [
+        {
+          "row": 66,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 131,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 14,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 27,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 40,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 3,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "False"
+    },
+    {
+      "sheet": "fit-4x4",
+      "failure": "",
+      "pages": 12,
+      "hbreaks": [
+        {
+          "row": 51,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 101,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 11,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 21,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 31,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 41,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 4,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "False"
+    },
+    {
+      "sheet": "fit-3x3",
+      "failure": "",
+      "pages": 6,
+      "hbreaks": [
+        {
+          "row": 67,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 15,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 29,
+          "manual": false
+        }
+      ],
+      "hcount": 1,
+      "vcount": 2,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "False"
+    },
+    {
+      "sheet": "fit-1x1-landscape",
+      "failure": "",
+      "pages": 1,
+      "hbreaks": [],
+      "vbreaks": [],
+      "hcount": 0,
+      "vcount": 0,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 2,
+      "zoom": "False"
+    },
+    {
+      "sheet": "fit-1x0-a4",
+      "failure": "",
+      "pages": 1,
+      "hbreaks": [],
+      "vbreaks": [],
+      "hcount": 0,
+      "vcount": 0,
+      "attempts": 1,
+      "paper": 9,
+      "orientation": 1,
+      "zoom": "False"
+    },
+    {
+      "sheet": "fit-small-data",
+      "failure": "",
+      "pages": 1,
+      "hbreaks": [],
+      "vbreaks": [],
+      "hcount": 0,
+      "vcount": 0,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "False"
+    },
+    {
+      "sheet": "titles-rows",
+      "failure": "",
+      "pages": 15,
+      "hbreaks": [
+        {
+          "row": 48,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 93,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 4,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "titles-rows-tall",
+      "failure": "",
+      "pages": 20,
+      "hbreaks": [
+        {
+          "row": 48,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 83,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 118,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 3,
+      "vcount": 4,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "titles-rows-mid",
+      "failure": "",
+      "pages": 15,
+      "hbreaks": [
+        {
+          "row": 48,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 92,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 4,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "titles-cols",
+      "failure": "",
+      "pages": 18,
+      "hbreaks": [
+        {
+          "row": 48,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 95,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 17,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 24,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 31,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 38,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 5,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "titles-cols-wide",
+      "failure": "",
+      "pages": 18,
+      "hbreaks": [
+        {
+          "row": 48,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 95,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 9,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 16,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 23,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 30,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 5,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "titles-both",
+      "failure": "",
+      "pages": 18,
+      "hbreaks": [
+        {
+          "row": 48,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 93,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 17,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 24,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 31,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 38,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 5,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "titles-both-landscape",
+      "failure": "",
+      "pages": 20,
+      "hbreaks": [
+        {
+          "row": 35,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 66,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 97,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 128,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 14,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 24,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 34,
+          "manual": false
+        }
+      ],
+      "hcount": 4,
+      "vcount": 3,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 2,
+      "zoom": "100"
+    },
+    {
+      "sheet": "titles-fit-2x3",
+      "failure": "",
+      "pages": 4,
+      "hbreaks": [
+        {
+          "row": 99,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 21,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 41,
+          "manual": false
+        }
+      ],
+      "hcount": 1,
+      "vcount": 2,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "False"
+    },
+    {
+      "sheet": "break-row-30",
+      "failure": "",
+      "pages": 20,
+      "hbreaks": [
+        {
+          "row": 31,
+          "col": 1,
+          "manual": true
+        },
+        {
+          "row": 78,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 125,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 3,
+      "vcount": 4,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "break-col-10",
+      "failure": "",
+      "pages": 18,
+      "hbreaks": [
+        {
+          "row": 48,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 95,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 11,
+          "manual": true
+        },
+        {
+          "row": 1,
+          "col": 20,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 29,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 38,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 5,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "break-both",
+      "failure": "",
+      "pages": 20,
+      "hbreaks": [
+        {
+          "row": 21,
+          "col": 1,
+          "manual": true
+        },
+        {
+          "row": 68,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 115,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 7,
+          "manual": true
+        },
+        {
+          "row": 1,
+          "col": 16,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 25,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 34,
+          "manual": false
+        }
+      ],
+      "hcount": 3,
+      "vcount": 4,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "break-many",
+      "failure": "",
+      "pages": 36,
+      "hbreaks": [
+        {
+          "row": 11,
+          "col": 1,
+          "manual": true
+        },
+        {
+          "row": 25,
+          "col": 1,
+          "manual": true
+        },
+        {
+          "row": 60,
+          "col": 1,
+          "manual": true
+        },
+        {
+          "row": 61,
+          "col": 1,
+          "manual": true
+        },
+        {
+          "row": 90,
+          "col": 1,
+          "manual": true
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 4,
+          "manual": true
+        },
+        {
+          "row": 1,
+          "col": 9,
+          "manual": true
+        },
+        {
+          "row": 1,
+          "col": 18,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 27,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 36,
+          "manual": false
+        }
+      ],
+      "hcount": 5,
+      "vcount": 5,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "break-near-auto",
+      "failure": "",
+      "pages": 25,
+      "hbreaks": [
+        {
+          "row": 48,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 50,
+          "col": 1,
+          "manual": true
+        },
+        {
+          "row": 53,
+          "col": 1,
+          "manual": true
+        },
+        {
+          "row": 100,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 4,
+      "vcount": 4,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "break-after-auto",
+      "failure": "",
+      "pages": 20,
+      "hbreaks": [
+        {
+          "row": 48,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 95,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 100,
+          "col": 1,
+          "manual": true
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 3,
+      "vcount": 4,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "break-with-titles",
+      "failure": "",
+      "pages": 20,
+      "hbreaks": [
+        {
+          "row": 20,
+          "col": 1,
+          "manual": true
+        },
+        {
+          "row": 65,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 110,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 3,
+      "vcount": 4,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "break-fit",
+      "failure": "",
+      "pages": 4,
+      "hbreaks": [
+        {
+          "row": 20,
+          "col": 1,
+          "manual": true
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 21,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 41,
+          "manual": false
+        }
+      ],
+      "hcount": 1,
+      "vcount": 2,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "False"
+    },
+    {
+      "sheet": "break-scale",
+      "failure": "",
+      "pages": 9,
+      "hbreaks": [
+        {
+          "row": 45,
+          "col": 1,
+          "manual": true
+        },
+        {
+          "row": 122,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 17,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 33,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 2,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "60"
+    },
+    {
+      "sheet": "hidden-rows",
+      "failure": "",
+      "pages": 10,
+      "hbreaks": [
+        {
+          "row": 89,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 1,
+      "vcount": 4,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "hidden-cols",
+      "failure": "",
+      "pages": 12,
+      "hbreaks": [
+        {
+          "row": 48,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 95,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 18,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 27,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 36,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 3,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "hidden-both",
+      "failure": "",
+      "pages": 8,
+      "hbreaks": [
+        {
+          "row": 104,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 22,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 31,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 40,
+          "manual": false
+        }
+      ],
+      "hcount": 1,
+      "vcount": 3,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "hidden-first",
+      "failure": "",
+      "pages": 15,
+      "hbreaks": [
+        {
+          "row": 51,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 98,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 11,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 20,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 29,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 38,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 4,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "area-single",
+      "failure": "",
+      "pages": 4,
+      "hbreaks": [
+        {
+          "row": 48,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        }
+      ],
+      "hcount": 1,
+      "vcount": 1,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "area-offset",
+      "failure": "",
+      "pages": 4,
+      "hbreaks": [
+        {
+          "row": 57,
+          "col": 3,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 10,
+          "col": 12,
+          "manual": false
+        }
+      ],
+      "hcount": 1,
+      "vcount": 1,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "area-multiple",
+      "failure": "",
+      "pages": 2,
+      "hbreaks": [],
+      "vbreaks": [],
+      "hcount": 0,
+      "vcount": 0,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "area-with-titles",
+      "failure": "",
+      "pages": 12,
+      "hbreaks": [
+        {
+          "row": 48,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 94,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 18,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 26,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 3,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "area-beyond-data",
+      "failure": "",
+      "pages": 2,
+      "hbreaks": [
+        {
+          "row": 48,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 95,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 142,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        }
+      ],
+      "hcount": 3,
+      "vcount": 3,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "size-widths",
+      "failure": "",
+      "pages": 24,
+      "hbreaks": [
+        {
+          "row": 48,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 95,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 6,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 12,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 16,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 21,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 26,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 31,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 36,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 8,
+      "attempts": 4,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "size-heights",
+      "failure": "",
+      "pages": 25,
+      "hbreaks": [
+        {
+          "row": 28,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 56,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 81,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 4,
+      "vcount": 4,
+      "attempts": 4,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "size-wide-cols",
+      "failure": "",
+      "pages": 36,
+      "hbreaks": [
+        {
+          "row": 48,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 95,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 3,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 5,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 7,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 9,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 11,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 13,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 15,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 17,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 21,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 23,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 11,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "size-tall-rows",
+      "failure": "",
+      "pages": 12,
+      "hbreaks": [
+        {
+          "row": 18,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 35,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 52,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        }
+      ],
+      "hcount": 3,
+      "vcount": 2,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "rowheight-10",
+      "failure": "",
+      "pages": 4,
+      "hbreaks": [
+        {
+          "row": 72,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        }
+      ],
+      "hcount": 1,
+      "vcount": 1,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "rowheight-12.5",
+      "failure": "",
+      "pages": 6,
+      "hbreaks": [
+        {
+          "row": 57,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 113,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 1,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "rowheight-13",
+      "failure": "",
+      "pages": 6,
+      "hbreaks": [
+        {
+          "row": 55,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 109,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 1,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "rowheight-14",
+      "failure": "",
+      "pages": 6,
+      "hbreaks": [
+        {
+          "row": 51,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 101,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 1,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "rowheight-16",
+      "failure": "",
+      "pages": 6,
+      "hbreaks": [
+        {
+          "row": 45,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 89,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 1,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "rowheight-17",
+      "failure": "",
+      "pages": 8,
+      "hbreaks": [
+        {
+          "row": 42,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 83,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 124,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        }
+      ],
+      "hcount": 3,
+      "vcount": 1,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "rowheight-19",
+      "failure": "",
+      "pages": 8,
+      "hbreaks": [
+        {
+          "row": 38,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 75,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 112,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        }
+      ],
+      "hcount": 3,
+      "vcount": 1,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "rowheight-20",
+      "failure": "",
+      "pages": 8,
+      "hbreaks": [
+        {
+          "row": 36,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 71,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 106,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        }
+      ],
+      "hcount": 3,
+      "vcount": 1,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "rowheight-25",
+      "failure": "",
+      "pages": 10,
+      "hbreaks": [
+        {
+          "row": 29,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 57,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 85,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        }
+      ],
+      "hcount": 4,
+      "vcount": 1,
+      "attempts": 4,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "rowheight-40",
+      "failure": "",
+      "pages": 16,
+      "hbreaks": [
+        {
+          "row": 18,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 35,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 52,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        }
+      ],
+      "hcount": 7,
+      "vcount": 1,
+      "attempts": 4,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "size-tiny",
+      "failure": "",
+      "pages": 4,
+      "hbreaks": [
+        {
+          "row": 119,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 40,
+          "manual": false
+        }
+      ],
+      "hcount": 1,
+      "vcount": 1,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "headings",
+      "failure": "",
+      "pages": 15,
+      "hbreaks": [
+        {
+          "row": 47,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 93,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 4,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "gridlines",
+      "failure": "",
+      "pages": 15,
+      "hbreaks": [
+        {
+          "row": 48,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 95,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 4,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "headings-gridlines",
+      "failure": "",
+      "pages": 15,
+      "hbreaks": [
+        {
+          "row": 47,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 93,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 4,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "centered",
+      "failure": "",
+      "pages": 15,
+      "hbreaks": [
+        {
+          "row": 48,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 95,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 4,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "header-footer",
+      "failure": "",
+      "pages": 15,
+      "hbreaks": [
+        {
+          "row": 48,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 95,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 4,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "tall-data",
+      "failure": "",
+      "pages": 12,
+      "hbreaks": [
+        {
+          "row": 48,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 95,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 142,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [],
+      "hcount": 11,
+      "vcount": 0,
+      "attempts": 4,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "wide-data",
+      "failure": "",
+      "pages": 25,
+      "hbreaks": [],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 46,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 55,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 64,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 73,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 82,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 91,
+          "manual": false
+        }
+      ],
+      "hcount": 0,
+      "vcount": 24,
+      "attempts": 4,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "small-data",
+      "failure": "",
+      "pages": 2,
+      "hbreaks": [],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        }
+      ],
+      "hcount": 0,
+      "vcount": 1,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "one-cell",
+      "failure": "",
+      "pages": 1,
+      "hbreaks": [],
+      "vbreaks": [],
+      "hcount": 0,
+      "vcount": 0,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "order-over",
+      "failure": "",
+      "pages": 15,
+      "hbreaks": [
+        {
+          "row": 48,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 95,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 4,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "first-page-number",
+      "failure": "",
+      "pages": 15,
+      "hbreaks": [
+        {
+          "row": 48,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 95,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 4,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    }
+  ]
+}

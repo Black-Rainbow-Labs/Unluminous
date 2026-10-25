@@ -1,0 +1,11 @@
+add a sheet	Unable to get the Add property of the Sheets class
+rename a sheet	0x800A03EC
+delete a sheet	Unable to get the Delete property of the Worksheet class
+move a sheet	Unable to get the Move property of the Worksheet class
+copy a sheet	Workbook is protected and cannot be changed.
+hide a sheet	Unable to set the Visible property of the Worksheet class
+change a tab colour	0x800A03EC
+edit a cell	ok
+unprotect with the wrong password	The password you supplied is not correct. Verify that the CAPS LOCK key is off and be sure to use the correct capitalization.
+unprotect with the password	ok
+add a sheet once unprotected	ok

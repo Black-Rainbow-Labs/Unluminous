@@ -1,0 +1,2455 @@
+{
+  "printer": "Microsoft Print to PDF on Ne00:",
+  "fonts": [
+    {
+      "font": "Calibri",
+      "size": 9,
+      "pixels_of_10_chars": 65.0,
+      "pixels_of_1_char": 11.0,
+      "default_column_pixels": 56.0,
+      "row_height": 12.0,
+      "default_rows_then_tiny_rows_first_break": 329,
+      "columns_per_page": {
+        "1": {
+          "pixels": 11.0,
+          "per_page": 60
+        },
+        "3": {
+          "pixels": 23.0,
+          "per_page": 29
+        },
+        "8.43": {
+          "pixels": 56.0,
+          "per_page": 11
+        },
+        "12": {
+          "pixels": 77.0,
+          "per_page": 8
+        },
+        "20": {
+          "pixels": 125.0,
+          "per_page": 5
+        },
+        "40": {
+          "pixels": 245.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Calibri",
+      "size": 10,
+      "pixels_of_10_chars": 75.0,
+      "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
+      "row_height": 12.75,
+      "default_rows_then_tiny_rows_first_break": 263,
+      "columns_per_page": {
+        "1": {
+          "pixels": 12.0,
+          "per_page": 59
+        },
+        "3": {
+          "pixels": 26.0,
+          "per_page": 27
+        },
+        "8.43": {
+          "pixels": 64.0,
+          "per_page": 11
+        },
+        "12": {
+          "pixels": 89.0,
+          "per_page": 7
+        },
+        "20": {
+          "pixels": 145.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 285.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Calibri",
+      "size": 11,
+      "pixels_of_10_chars": 75.0,
+      "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
+      "row_height": 15.0,
+      "default_rows_then_tiny_rows_first_break": 183,
+      "columns_per_page": {
+        "1": {
+          "pixels": 12.0,
+          "per_page": 52
+        },
+        "3": {
+          "pixels": 26.0,
+          "per_page": 24
+        },
+        "8.43": {
+          "pixels": 64.0,
+          "per_page": 9
+        },
+        "12": {
+          "pixels": 89.0,
+          "per_page": 7
+        },
+        "20": {
+          "pixels": 145.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 285.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Calibri",
+      "size": 12,
+      "pixels_of_10_chars": 85.0,
+      "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
+      "row_height": 15.75,
+      "default_rows_then_tiny_rows_first_break": 123,
+      "columns_per_page": {
+        "1": {
+          "pixels": 13.0,
+          "per_page": 51
+        },
+        "3": {
+          "pixels": 29.0,
+          "per_page": 22
+        },
+        "8.43": {
+          "pixels": 72.0,
+          "per_page": 9
+        },
+        "12": {
+          "pixels": 101.0,
+          "per_page": 6
+        },
+        "20": {
+          "pixels": 165.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 325.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Calibri",
+      "size": 14,
+      "pixels_of_10_chars": 107.0,
+      "pixels_of_1_char": 17.0,
+      "default_column_pixels": 88.0,
+      "row_height": 18.75,
+      "default_rows_then_tiny_rows_first_break": 38,
+      "columns_per_page": {
+        "1": {
+          "pixels": 17.0,
+          "per_page": 42
+        },
+        "3": {
+          "pixels": 37.0,
+          "per_page": 19
+        },
+        "8.43": {
+          "pixels": 91.0,
+          "per_page": 7
+        },
+        "12": {
+          "pixels": 127.0,
+          "per_page": 5
+        },
+        "20": {
+          "pixels": 207.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 407.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Arial",
+      "size": 9,
+      "pixels_of_10_chars": 75.0,
+      "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
+      "row_height": 12.0,
+      "default_rows_then_tiny_rows_first_break": 435,
+      "columns_per_page": {
+        "1": {
+          "pixels": 12.0,
+          "per_page": 59
+        },
+        "3": {
+          "pixels": 26.0,
+          "per_page": 27
+        },
+        "8.43": {
+          "pixels": 64.0,
+          "per_page": 11
+        },
+        "12": {
+          "pixels": 89.0,
+          "per_page": 7
+        },
+        "20": {
+          "pixels": 145.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 285.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Arial",
+      "size": 10,
+      "pixels_of_10_chars": 75.0,
+      "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
+      "row_height": 12.75,
+      "default_rows_then_tiny_rows_first_break": 303,
+      "columns_per_page": {
+        "1": {
+          "pixels": 12.0,
+          "per_page": 53
+        },
+        "3": {
+          "pixels": 26.0,
+          "per_page": 24
+        },
+        "8.43": {
+          "pixels": 64.0,
+          "per_page": 10
+        },
+        "12": {
+          "pixels": 89.0,
+          "per_page": 7
+        },
+        "20": {
+          "pixels": 145.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 285.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Arial",
+      "size": 11,
+      "pixels_of_10_chars": 85.0,
+      "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
+      "row_height": 14.25,
+      "default_rows_then_tiny_rows_first_break": 229,
+      "columns_per_page": {
+        "1": {
+          "pixels": 13.0,
+          "per_page": 51
+        },
+        "3": {
+          "pixels": 29.0,
+          "per_page": 22
+        },
+        "8.43": {
+          "pixels": 72.0,
+          "per_page": 9
+        },
+        "12": {
+          "pixels": 101.0,
+          "per_page": 6
+        },
+        "20": {
+          "pixels": 165.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 325.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Arial",
+      "size": 12,
+      "pixels_of_10_chars": 97.0,
+      "pixels_of_1_char": 16.0,
+      "default_column_pixels": 80.0,
+      "row_height": 15.0,
+      "default_rows_then_tiny_rows_first_break": 169,
+      "columns_per_page": {
+        "1": {
+          "pixels": 16.0,
+          "per_page": 42
+        },
+        "3": {
+          "pixels": 34.0,
+          "per_page": 20
+        },
+        "8.43": {
+          "pixels": 83.0,
+          "per_page": 8
+        },
+        "12": {
+          "pixels": 115.0,
+          "per_page": 5
+        },
+        "20": {
+          "pixels": 187.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 367.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Arial",
+      "size": 14,
+      "pixels_of_10_chars": 117.0,
+      "pixels_of_1_char": 18.0,
+      "default_column_pixels": 96.0,
+      "row_height": 18.0,
+      "default_rows_then_tiny_rows_first_break": 40,
+      "columns_per_page": {
+        "1": {
+          "pixels": 18.0,
+          "per_page": 40
+        },
+        "3": {
+          "pixels": 40.0,
+          "per_page": 18
+        },
+        "8.43": {
+          "pixels": 100.0,
+          "per_page": 7
+        },
+        "12": {
+          "pixels": 139.0,
+          "per_page": 5
+        },
+        "20": {
+          "pixels": 227.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 447.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Times New Roman",
+      "size": 9,
+      "pixels_of_10_chars": 65.0,
+      "pixels_of_1_char": 11.0,
+      "default_column_pixels": 56.0,
+      "row_height": 12.0,
+      "default_rows_then_tiny_rows_first_break": 349,
+      "columns_per_page": {
+        "1": {
+          "pixels": 11.0,
+          "per_page": 60
+        },
+        "3": {
+          "pixels": 23.0,
+          "per_page": 29
+        },
+        "8.43": {
+          "pixels": 56.0,
+          "per_page": 11
+        },
+        "12": {
+          "pixels": 77.0,
+          "per_page": 8
+        },
+        "20": {
+          "pixels": 125.0,
+          "per_page": 5
+        },
+        "40": {
+          "pixels": 245.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Times New Roman",
+      "size": 10,
+      "pixels_of_10_chars": 65.0,
+      "pixels_of_1_char": 11.0,
+      "default_column_pixels": 56.0,
+      "row_height": 12.75,
+      "default_rows_then_tiny_rows_first_break": 283,
+      "columns_per_page": {
+        "1": {
+          "pixels": 11.0,
+          "per_page": 55
+        },
+        "3": {
+          "pixels": 23.0,
+          "per_page": 26
+        },
+        "8.43": {
+          "pixels": 56.0,
+          "per_page": 10
+        },
+        "12": {
+          "pixels": 77.0,
+          "per_page": 7
+        },
+        "20": {
+          "pixels": 125.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 245.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Times New Roman",
+      "size": 11,
+      "pixels_of_10_chars": 75.0,
+      "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
+      "row_height": 15.0,
+      "default_rows_then_tiny_rows_first_break": 251,
+      "columns_per_page": {
+        "1": {
+          "pixels": 12.0,
+          "per_page": 53
+        },
+        "3": {
+          "pixels": 26.0,
+          "per_page": 24
+        },
+        "8.43": {
+          "pixels": 64.0,
+          "per_page": 10
+        },
+        "12": {
+          "pixels": 89.0,
+          "per_page": 7
+        },
+        "20": {
+          "pixels": 145.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 285.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Times New Roman",
+      "size": 12,
+      "pixels_of_10_chars": 85.0,
+      "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
+      "row_height": 15.75,
+      "default_rows_then_tiny_rows_first_break": 149,
+      "columns_per_page": {
+        "1": {
+          "pixels": 13.0,
+          "per_page": 52
+        },
+        "3": {
+          "pixels": 29.0,
+          "per_page": 23
+        },
+        "8.43": {
+          "pixels": 72.0,
+          "per_page": 9
+        },
+        "12": {
+          "pixels": 101.0,
+          "per_page": 6
+        },
+        "20": {
+          "pixels": 165.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 325.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Times New Roman",
+      "size": 14,
+      "pixels_of_10_chars": 97.0,
+      "pixels_of_1_char": 16.0,
+      "default_column_pixels": 80.0,
+      "row_height": 18.75,
+      "default_rows_then_tiny_rows_first_break": 40,
+      "columns_per_page": {
+        "1": {
+          "pixels": 16.0,
+          "per_page": 40
+        },
+        "3": {
+          "pixels": 34.0,
+          "per_page": 19
+        },
+        "8.43": {
+          "pixels": 83.0,
+          "per_page": 7
+        },
+        "12": {
+          "pixels": 115.0,
+          "per_page": 5
+        },
+        "20": {
+          "pixels": 187.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 367.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Aptos Narrow",
+      "size": 9,
+      "pixels_of_10_chars": 75.0,
+      "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
+      "row_height": 12.0,
+      "default_rows_then_tiny_rows_first_break": 435,
+      "columns_per_page": {
+        "1": {
+          "pixels": 12.0,
+          "per_page": 59
+        },
+        "3": {
+          "pixels": 26.0,
+          "per_page": 27
+        },
+        "8.43": {
+          "pixels": 64.0,
+          "per_page": 11
+        },
+        "12": {
+          "pixels": 89.0,
+          "per_page": 7
+        },
+        "20": {
+          "pixels": 145.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 285.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Aptos Narrow",
+      "size": 10,
+      "pixels_of_10_chars": 75.0,
+      "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
+      "row_height": 12.75,
+      "default_rows_then_tiny_rows_first_break": 303,
+      "columns_per_page": {
+        "1": {
+          "pixels": 12.0,
+          "per_page": 53
+        },
+        "3": {
+          "pixels": 26.0,
+          "per_page": 24
+        },
+        "8.43": {
+          "pixels": 64.0,
+          "per_page": 10
+        },
+        "12": {
+          "pixels": 89.0,
+          "per_page": 7
+        },
+        "20": {
+          "pixels": 145.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 285.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Aptos Narrow",
+      "size": 11,
+      "pixels_of_10_chars": 85.0,
+      "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
+      "row_height": 14.25,
+      "default_rows_then_tiny_rows_first_break": 229,
+      "columns_per_page": {
+        "1": {
+          "pixels": 13.0,
+          "per_page": 51
+        },
+        "3": {
+          "pixels": 29.0,
+          "per_page": 22
+        },
+        "8.43": {
+          "pixels": 72.0,
+          "per_page": 9
+        },
+        "12": {
+          "pixels": 101.0,
+          "per_page": 6
+        },
+        "20": {
+          "pixels": 165.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 325.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Aptos Narrow",
+      "size": 12,
+      "pixels_of_10_chars": 97.0,
+      "pixels_of_1_char": 16.0,
+      "default_column_pixels": 80.0,
+      "row_height": 15.0,
+      "default_rows_then_tiny_rows_first_break": 169,
+      "columns_per_page": {
+        "1": {
+          "pixels": 16.0,
+          "per_page": 42
+        },
+        "3": {
+          "pixels": 34.0,
+          "per_page": 20
+        },
+        "8.43": {
+          "pixels": 83.0,
+          "per_page": 8
+        },
+        "12": {
+          "pixels": 115.0,
+          "per_page": 5
+        },
+        "20": {
+          "pixels": 187.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 367.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Aptos Narrow",
+      "size": 14,
+      "pixels_of_10_chars": 117.0,
+      "pixels_of_1_char": 18.0,
+      "default_column_pixels": 96.0,
+      "row_height": 18.0,
+      "default_rows_then_tiny_rows_first_break": 40,
+      "columns_per_page": {
+        "1": {
+          "pixels": 18.0,
+          "per_page": 40
+        },
+        "3": {
+          "pixels": 40.0,
+          "per_page": 18
+        },
+        "8.43": {
+          "pixels": 100.0,
+          "per_page": 7
+        },
+        "12": {
+          "pixels": 139.0,
+          "per_page": 5
+        },
+        "20": {
+          "pixels": 227.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 447.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Aptos",
+      "size": 9,
+      "pixels_of_10_chars": 65.0,
+      "pixels_of_1_char": 11.0,
+      "default_column_pixels": 56.0,
+      "row_height": 12.0,
+      "default_rows_then_tiny_rows_first_break": 283,
+      "columns_per_page": {
+        "1": {
+          "pixels": 11.0,
+          "per_page": 58
+        },
+        "3": {
+          "pixels": 23.0,
+          "per_page": 27
+        },
+        "8.43": {
+          "pixels": 56.0,
+          "per_page": 11
+        },
+        "12": {
+          "pixels": 77.0,
+          "per_page": 8
+        },
+        "20": {
+          "pixels": 125.0,
+          "per_page": 5
+        },
+        "40": {
+          "pixels": 245.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Aptos",
+      "size": 10,
+      "pixels_of_10_chars": 75.0,
+      "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
+      "row_height": 13.5,
+      "default_rows_then_tiny_rows_first_break": 216,
+      "columns_per_page": {
+        "1": {
+          "pixels": 12.0,
+          "per_page": 56
+        },
+        "3": {
+          "pixels": 26.0,
+          "per_page": 26
+        },
+        "8.43": {
+          "pixels": 64.0,
+          "per_page": 10
+        },
+        "12": {
+          "pixels": 89.0,
+          "per_page": 7
+        },
+        "20": {
+          "pixels": 145.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 285.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Aptos",
+      "size": 11,
+      "pixels_of_10_chars": 85.0,
+      "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
+      "row_height": 15.0,
+      "default_rows_then_tiny_rows_first_break": 143,
+      "columns_per_page": {
+        "1": {
+          "pixels": 13.0,
+          "per_page": 53
+        },
+        "3": {
+          "pixels": 29.0,
+          "per_page": 23
+        },
+        "8.43": {
+          "pixels": 72.0,
+          "per_page": 9
+        },
+        "12": {
+          "pixels": 101.0,
+          "per_page": 6
+        },
+        "20": {
+          "pixels": 165.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 325.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Aptos",
+      "size": 12,
+      "pixels_of_10_chars": 97.0,
+      "pixels_of_1_char": 16.0,
+      "default_column_pixels": 80.0,
+      "row_height": 15.75,
+      "default_rows_then_tiny_rows_first_break": 76,
+      "columns_per_page": {
+        "1": {
+          "pixels": 16.0,
+          "per_page": 45
+        },
+        "3": {
+          "pixels": 34.0,
+          "per_page": 21
+        },
+        "8.43": {
+          "pixels": 83.0,
+          "per_page": 8
+        },
+        "12": {
+          "pixels": 115.0,
+          "per_page": 6
+        },
+        "20": {
+          "pixels": 187.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 367.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Aptos",
+      "size": 14,
+      "pixels_of_10_chars": 107.0,
+      "pixels_of_1_char": 17.0,
+      "default_column_pixels": 88.0,
+      "row_height": 18.75,
+      "default_rows_then_tiny_rows_first_break": 36,
+      "columns_per_page": {
+        "1": {
+          "pixels": 17.0,
+          "per_page": 40
+        },
+        "3": {
+          "pixels": 37.0,
+          "per_page": 18
+        },
+        "8.43": {
+          "pixels": 91.0,
+          "per_page": 7
+        },
+        "12": {
+          "pixels": 127.0,
+          "per_page": 5
+        },
+        "20": {
+          "pixels": 207.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 407.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Segoe UI",
+      "size": 9,
+      "pixels_of_10_chars": 65.0,
+      "pixels_of_1_char": 11.0,
+      "default_column_pixels": 56.0,
+      "row_height": 12.0,
+      "default_rows_then_tiny_rows_first_break": 202,
+      "columns_per_page": {
+        "1": {
+          "pixels": 11.0,
+          "per_page": 58
+        },
+        "3": {
+          "pixels": 23.0,
+          "per_page": 27
+        },
+        "8.43": {
+          "pixels": 56.0,
+          "per_page": 11
+        },
+        "12": {
+          "pixels": 77.0,
+          "per_page": 8
+        },
+        "20": {
+          "pixels": 125.0,
+          "per_page": 5
+        },
+        "40": {
+          "pixels": 245.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Segoe UI",
+      "size": 10,
+      "pixels_of_10_chars": 75.0,
+      "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
+      "row_height": 14.25,
+      "default_rows_then_tiny_rows_first_break": 163,
+      "columns_per_page": {
+        "1": {
+          "pixels": 12.0,
+          "per_page": 55
+        },
+        "3": {
+          "pixels": 26.0,
+          "per_page": 25
+        },
+        "8.43": {
+          "pixels": 64.0,
+          "per_page": 10
+        },
+        "12": {
+          "pixels": 89.0,
+          "per_page": 7
+        },
+        "20": {
+          "pixels": 145.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 285.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Segoe UI",
+      "size": 11,
+      "pixels_of_10_chars": 85.0,
+      "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
+      "row_height": 16.5,
+      "default_rows_then_tiny_rows_first_break": 69,
+      "columns_per_page": {
+        "1": {
+          "pixels": 13.0,
+          "per_page": 52
+        },
+        "3": {
+          "pixels": 29.0,
+          "per_page": 23
+        },
+        "8.43": {
+          "pixels": 72.0,
+          "per_page": 9
+        },
+        "12": {
+          "pixels": 101.0,
+          "per_page": 6
+        },
+        "20": {
+          "pixels": 165.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 325.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Segoe UI",
+      "size": 12,
+      "pixels_of_10_chars": 97.0,
+      "pixels_of_1_char": 16.0,
+      "default_column_pixels": 80.0,
+      "row_height": 17.25,
+      "default_rows_then_tiny_rows_first_break": 39,
+      "columns_per_page": {
+        "1": {
+          "pixels": 16.0,
+          "per_page": 44
+        },
+        "3": {
+          "pixels": 34.0,
+          "per_page": 20
+        },
+        "8.43": {
+          "pixels": 83.0,
+          "per_page": 8
+        },
+        "12": {
+          "pixels": 115.0,
+          "per_page": 6
+        },
+        "20": {
+          "pixels": 187.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 367.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Segoe UI",
+      "size": 14,
+      "pixels_of_10_chars": 107.0,
+      "pixels_of_1_char": 17.0,
+      "default_column_pixels": 88.0,
+      "row_height": 20.25,
+      "default_rows_then_tiny_rows_first_break": 34,
+      "columns_per_page": {
+        "1": {
+          "pixels": 17.0,
+          "per_page": 39
+        },
+        "3": {
+          "pixels": 37.0,
+          "per_page": 18
+        },
+        "8.43": {
+          "pixels": 91.0,
+          "per_page": 7
+        },
+        "12": {
+          "pixels": 127.0,
+          "per_page": 5
+        },
+        "20": {
+          "pixels": 207.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 407.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Verdana",
+      "size": 9,
+      "pixels_of_10_chars": 85.0,
+      "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
+      "row_height": 11.25,
+      "default_rows_then_tiny_rows_first_break": 323,
+      "columns_per_page": {
+        "1": {
+          "pixels": 13.0,
+          "per_page": 54
+        },
+        "3": {
+          "pixels": 29.0,
+          "per_page": 24
+        },
+        "8.43": {
+          "pixels": 72.0,
+          "per_page": 9
+        },
+        "12": {
+          "pixels": 101.0,
+          "per_page": 7
+        },
+        "20": {
+          "pixels": 165.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 325.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Verdana",
+      "size": 10,
+      "pixels_of_10_chars": 85.0,
+      "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
+      "row_height": 12.75,
+      "default_rows_then_tiny_rows_first_break": 269,
+      "columns_per_page": {
+        "1": {
+          "pixels": 13.0,
+          "per_page": 49
+        },
+        "3": {
+          "pixels": 29.0,
+          "per_page": 22
+        },
+        "8.43": {
+          "pixels": 72.0,
+          "per_page": 8
+        },
+        "12": {
+          "pixels": 101.0,
+          "per_page": 6
+        },
+        "20": {
+          "pixels": 165.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 325.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Verdana",
+      "size": 11,
+      "pixels_of_10_chars": 107.0,
+      "pixels_of_1_char": 17.0,
+      "default_column_pixels": 88.0,
+      "row_height": 14.25,
+      "default_rows_then_tiny_rows_first_break": 176,
+      "columns_per_page": {
+        "1": {
+          "pixels": 17.0,
+          "per_page": 42
+        },
+        "3": {
+          "pixels": 37.0,
+          "per_page": 19
+        },
+        "8.43": {
+          "pixels": 91.0,
+          "per_page": 8
+        },
+        "12": {
+          "pixels": 127.0,
+          "per_page": 5
+        },
+        "20": {
+          "pixels": 207.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 407.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Verdana",
+      "size": 12,
+      "pixels_of_10_chars": 107.0,
+      "pixels_of_1_char": 17.0,
+      "default_column_pixels": 88.0,
+      "row_height": 15.0,
+      "default_rows_then_tiny_rows_first_break": 129,
+      "columns_per_page": {
+        "1": {
+          "pixels": 17.0,
+          "per_page": 39
+        },
+        "3": {
+          "pixels": 37.0,
+          "per_page": 17
+        },
+        "8.43": {
+          "pixels": 91.0,
+          "per_page": 7
+        },
+        "12": {
+          "pixels": 127.0,
+          "per_page": 5
+        },
+        "20": {
+          "pixels": 207.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 407.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Verdana",
+      "size": 14,
+      "pixels_of_10_chars": 127.0,
+      "pixels_of_1_char": 19.0,
+      "default_column_pixels": 104.0,
+      "row_height": 18.0,
+      "default_rows_then_tiny_rows_first_break": 38,
+      "columns_per_page": {
+        "1": {
+          "pixels": 19.0,
+          "per_page": 36
+        },
+        "3": {
+          "pixels": 43.0,
+          "per_page": 16
+        },
+        "8.43": {
+          "pixels": 108.0,
+          "per_page": 6
+        },
+        "12": {
+          "pixels": 151.0,
+          "per_page": 4
+        },
+        "20": {
+          "pixels": 247.0,
+          "per_page": 2
+        },
+        "40": {
+          "pixels": 487.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Tahoma",
+      "size": 9,
+      "pixels_of_10_chars": 75.0,
+      "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
+      "row_height": 11.25,
+      "default_rows_then_tiny_rows_first_break": 336,
+      "columns_per_page": {
+        "1": {
+          "pixels": 12.0,
+          "per_page": 60
+        },
+        "3": {
+          "pixels": 26.0,
+          "per_page": 27
+        },
+        "8.43": {
+          "pixels": 64.0,
+          "per_page": 11
+        },
+        "12": {
+          "pixels": 89.0,
+          "per_page": 8
+        },
+        "20": {
+          "pixels": 145.0,
+          "per_page": 5
+        },
+        "40": {
+          "pixels": 285.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Tahoma",
+      "size": 10,
+      "pixels_of_10_chars": 75.0,
+      "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
+      "row_height": 12.75,
+      "default_rows_then_tiny_rows_first_break": 269,
+      "columns_per_page": {
+        "1": {
+          "pixels": 12.0,
+          "per_page": 55
+        },
+        "3": {
+          "pixels": 26.0,
+          "per_page": 25
+        },
+        "8.43": {
+          "pixels": 64.0,
+          "per_page": 10
+        },
+        "12": {
+          "pixels": 89.0,
+          "per_page": 7
+        },
+        "20": {
+          "pixels": 145.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 285.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Tahoma",
+      "size": 11,
+      "pixels_of_10_chars": 85.0,
+      "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
+      "row_height": 14.25,
+      "default_rows_then_tiny_rows_first_break": 196,
+      "columns_per_page": {
+        "1": {
+          "pixels": 13.0,
+          "per_page": 52
+        },
+        "3": {
+          "pixels": 29.0,
+          "per_page": 23
+        },
+        "8.43": {
+          "pixels": 72.0,
+          "per_page": 9
+        },
+        "12": {
+          "pixels": 101.0,
+          "per_page": 6
+        },
+        "20": {
+          "pixels": 165.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 325.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Tahoma",
+      "size": 12,
+      "pixels_of_10_chars": 97.0,
+      "pixels_of_1_char": 16.0,
+      "default_column_pixels": 80.0,
+      "row_height": 15.0,
+      "default_rows_then_tiny_rows_first_break": 129,
+      "columns_per_page": {
+        "1": {
+          "pixels": 16.0,
+          "per_page": 43
+        },
+        "3": {
+          "pixels": 34.0,
+          "per_page": 20
+        },
+        "8.43": {
+          "pixels": 83.0,
+          "per_page": 8
+        },
+        "12": {
+          "pixels": 115.0,
+          "per_page": 6
+        },
+        "20": {
+          "pixels": 187.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 367.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Tahoma",
+      "size": 14,
+      "pixels_of_10_chars": 107.0,
+      "pixels_of_1_char": 17.0,
+      "default_column_pixels": 88.0,
+      "row_height": 18.0,
+      "default_rows_then_tiny_rows_first_break": 39,
+      "columns_per_page": {
+        "1": {
+          "pixels": 17.0,
+          "per_page": 39
+        },
+        "3": {
+          "pixels": 37.0,
+          "per_page": 17
+        },
+        "8.43": {
+          "pixels": 91.0,
+          "per_page": 7
+        },
+        "12": {
+          "pixels": 127.0,
+          "per_page": 5
+        },
+        "20": {
+          "pixels": 207.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 407.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Consolas",
+      "size": 9,
+      "pixels_of_10_chars": 75.0,
+      "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
+      "row_height": 12.0,
+      "default_rows_then_tiny_rows_first_break": 349,
+      "columns_per_page": {
+        "1": {
+          "pixels": 12.0,
+          "per_page": 60
+        },
+        "3": {
+          "pixels": 26.0,
+          "per_page": 27
+        },
+        "8.43": {
+          "pixels": 64.0,
+          "per_page": 11
+        },
+        "12": {
+          "pixels": 89.0,
+          "per_page": 8
+        },
+        "20": {
+          "pixels": 145.0,
+          "per_page": 5
+        },
+        "40": {
+          "pixels": 285.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Consolas",
+      "size": 10,
+      "pixels_of_10_chars": 75.0,
+      "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
+      "row_height": 12.75,
+      "default_rows_then_tiny_rows_first_break": 289,
+      "columns_per_page": {
+        "1": {
+          "pixels": 12.0,
+          "per_page": 53
+        },
+        "3": {
+          "pixels": 26.0,
+          "per_page": 24
+        },
+        "8.43": {
+          "pixels": 64.0,
+          "per_page": 10
+        },
+        "12": {
+          "pixels": 89.0,
+          "per_page": 7
+        },
+        "20": {
+          "pixels": 145.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 285.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Consolas",
+      "size": 11,
+      "pixels_of_10_chars": 85.0,
+      "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
+      "row_height": 15.0,
+      "default_rows_then_tiny_rows_first_break": 251,
+      "columns_per_page": {
+        "1": {
+          "pixels": 13.0,
+          "per_page": 51
+        },
+        "3": {
+          "pixels": 29.0,
+          "per_page": 22
+        },
+        "8.43": {
+          "pixels": 72.0,
+          "per_page": 9
+        },
+        "12": {
+          "pixels": 101.0,
+          "per_page": 6
+        },
+        "20": {
+          "pixels": 165.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 325.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Consolas",
+      "size": 12,
+      "pixels_of_10_chars": 97.0,
+      "pixels_of_1_char": 16.0,
+      "default_column_pixels": 80.0,
+      "row_height": 15.75,
+      "default_rows_then_tiny_rows_first_break": 156,
+      "columns_per_page": {
+        "1": {
+          "pixels": 16.0,
+          "per_page": 43
+        },
+        "3": {
+          "pixels": 34.0,
+          "per_page": 20
+        },
+        "8.43": {
+          "pixels": 83.0,
+          "per_page": 8
+        },
+        "12": {
+          "pixels": 115.0,
+          "per_page": 6
+        },
+        "20": {
+          "pixels": 187.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 367.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Consolas",
+      "size": 14,
+      "pixels_of_10_chars": 107.0,
+      "pixels_of_1_char": 17.0,
+      "default_column_pixels": 88.0,
+      "row_height": 18.75,
+      "default_rows_then_tiny_rows_first_break": 40,
+      "columns_per_page": {
+        "1": {
+          "pixels": 17.0,
+          "per_page": 39
+        },
+        "3": {
+          "pixels": 37.0,
+          "per_page": 17
+        },
+        "8.43": {
+          "pixels": 91.0,
+          "per_page": 7
+        },
+        "12": {
+          "pixels": 127.0,
+          "per_page": 5
+        },
+        "20": {
+          "pixels": 207.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 407.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Courier New",
+      "size": 9,
+      "pixels_of_10_chars": 75.0,
+      "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
+      "row_height": 12.0,
+      "default_rows_then_tiny_rows_first_break": 475,
+      "columns_per_page": {
+        "1": {
+          "pixels": 12.0,
+          "per_page": 55
+        },
+        "3": {
+          "pixels": 26.0,
+          "per_page": 25
+        },
+        "8.43": {
+          "pixels": 64.0,
+          "per_page": 10
+        },
+        "12": {
+          "pixels": 89.0,
+          "per_page": 7
+        },
+        "20": {
+          "pixels": 145.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 285.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Courier New",
+      "size": 10,
+      "pixels_of_10_chars": 85.0,
+      "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
+      "row_height": 13.5,
+      "default_rows_then_tiny_rows_first_break": 411,
+      "columns_per_page": {
+        "1": {
+          "pixels": 13.0,
+          "per_page": 52
+        },
+        "3": {
+          "pixels": 29.0,
+          "per_page": 23
+        },
+        "8.43": {
+          "pixels": 72.0,
+          "per_page": 9
+        },
+        "12": {
+          "pixels": 101.0,
+          "per_page": 6
+        },
+        "20": {
+          "pixels": 165.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 325.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Courier New",
+      "size": 11,
+      "pixels_of_10_chars": 97.0,
+      "pixels_of_1_char": 16.0,
+      "default_column_pixels": 80.0,
+      "row_height": 15.0,
+      "default_rows_then_tiny_rows_first_break": 323,
+      "columns_per_page": {
+        "1": {
+          "pixels": 16.0,
+          "per_page": 43
+        },
+        "3": {
+          "pixels": 34.0,
+          "per_page": 20
+        },
+        "8.43": {
+          "pixels": 83.0,
+          "per_page": 8
+        },
+        "12": {
+          "pixels": 115.0,
+          "per_page": 6
+        },
+        "20": {
+          "pixels": 187.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 367.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Courier New",
+      "size": 12,
+      "pixels_of_10_chars": 107.0,
+      "pixels_of_1_char": 17.0,
+      "default_column_pixels": 88.0,
+      "row_height": 15.75,
+      "default_rows_then_tiny_rows_first_break": 259,
+      "columns_per_page": {
+        "1": {
+          "pixels": 17.0,
+          "per_page": 41
+        },
+        "3": {
+          "pixels": 37.0,
+          "per_page": 19
+        },
+        "8.43": {
+          "pixels": 91.0,
+          "per_page": 7
+        },
+        "12": {
+          "pixels": 127.0,
+          "per_page": 5
+        },
+        "20": {
+          "pixels": 207.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 407.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Courier New",
+      "size": 14,
+      "pixels_of_10_chars": 117.0,
+      "pixels_of_1_char": 18.0,
+      "default_column_pixels": 96.0,
+      "row_height": 18.75,
+      "default_rows_then_tiny_rows_first_break": 115,
+      "columns_per_page": {
+        "1": {
+          "pixels": 18.0,
+          "per_page": 36
+        },
+        "3": {
+          "pixels": 40.0,
+          "per_page": 16
+        },
+        "8.43": {
+          "pixels": 100.0,
+          "per_page": 6
+        },
+        "12": {
+          "pixels": 139.0,
+          "per_page": 4
+        },
+        "20": {
+          "pixels": 227.0,
+          "per_page": 2
+        },
+        "40": {
+          "pixels": 447.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Cambria",
+      "size": 9,
+      "pixels_of_10_chars": 75.0,
+      "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
+      "row_height": 12.0,
+      "default_rows_then_tiny_rows_first_break": 349,
+      "columns_per_page": {
+        "1": {
+          "pixels": 12.0,
+          "per_page": 59
+        },
+        "3": {
+          "pixels": 26.0,
+          "per_page": 27
+        },
+        "8.43": {
+          "pixels": 64.0,
+          "per_page": 11
+        },
+        "12": {
+          "pixels": 89.0,
+          "per_page": 7
+        },
+        "20": {
+          "pixels": 145.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 285.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Cambria",
+      "size": 10,
+      "pixels_of_10_chars": 75.0,
+      "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
+      "row_height": 12.75,
+      "default_rows_then_tiny_rows_first_break": 289,
+      "columns_per_page": {
+        "1": {
+          "pixels": 12.0,
+          "per_page": 53
+        },
+        "3": {
+          "pixels": 26.0,
+          "per_page": 24
+        },
+        "8.43": {
+          "pixels": 64.0,
+          "per_page": 10
+        },
+        "12": {
+          "pixels": 89.0,
+          "per_page": 7
+        },
+        "20": {
+          "pixels": 145.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 285.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Cambria",
+      "size": 11,
+      "pixels_of_10_chars": 85.0,
+      "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
+      "row_height": 14.25,
+      "default_rows_then_tiny_rows_first_break": 223,
+      "columns_per_page": {
+        "1": {
+          "pixels": 13.0,
+          "per_page": 51
+        },
+        "3": {
+          "pixels": 29.0,
+          "per_page": 22
+        },
+        "8.43": {
+          "pixels": 72.0,
+          "per_page": 9
+        },
+        "12": {
+          "pixels": 101.0,
+          "per_page": 6
+        },
+        "20": {
+          "pixels": 165.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 325.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Cambria",
+      "size": 12,
+      "pixels_of_10_chars": 97.0,
+      "pixels_of_1_char": 16.0,
+      "default_column_pixels": 80.0,
+      "row_height": 15.75,
+      "default_rows_then_tiny_rows_first_break": 156,
+      "columns_per_page": {
+        "1": {
+          "pixels": 16.0,
+          "per_page": 43
+        },
+        "3": {
+          "pixels": 34.0,
+          "per_page": 20
+        },
+        "8.43": {
+          "pixels": 83.0,
+          "per_page": 8
+        },
+        "12": {
+          "pixels": 115.0,
+          "per_page": 6
+        },
+        "20": {
+          "pixels": 187.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 367.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Cambria",
+      "size": 14,
+      "pixels_of_10_chars": 117.0,
+      "pixels_of_1_char": 18.0,
+      "default_column_pixels": 96.0,
+      "row_height": 18.0,
+      "default_rows_then_tiny_rows_first_break": 40,
+      "columns_per_page": {
+        "1": {
+          "pixels": 18.0,
+          "per_page": 40
+        },
+        "3": {
+          "pixels": 40.0,
+          "per_page": 18
+        },
+        "8.43": {
+          "pixels": 100.0,
+          "per_page": 7
+        },
+        "12": {
+          "pixels": 139.0,
+          "per_page": 5
+        },
+        "20": {
+          "pixels": 227.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 447.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Georgia",
+      "size": 9,
+      "pixels_of_10_chars": 85.0,
+      "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
+      "row_height": 12.0,
+      "default_rows_then_tiny_rows_first_break": 363,
+      "columns_per_page": {
+        "1": {
+          "pixels": 13.0,
+          "per_page": 56
+        },
+        "3": {
+          "pixels": 29.0,
+          "per_page": 25
+        },
+        "8.43": {
+          "pixels": 72.0,
+          "per_page": 10
+        },
+        "12": {
+          "pixels": 101.0,
+          "per_page": 7
+        },
+        "20": {
+          "pixels": 165.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 325.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Georgia",
+      "size": 10,
+      "pixels_of_10_chars": 97.0,
+      "pixels_of_1_char": 16.0,
+      "default_column_pixels": 80.0,
+      "row_height": 12.75,
+      "default_rows_then_tiny_rows_first_break": 296,
+      "columns_per_page": {
+        "1": {
+          "pixels": 16.0,
+          "per_page": 46
+        },
+        "3": {
+          "pixels": 34.0,
+          "per_page": 22
+        },
+        "8.43": {
+          "pixels": 83.0,
+          "per_page": 9
+        },
+        "12": {
+          "pixels": 115.0,
+          "per_page": 6
+        },
+        "20": {
+          "pixels": 187.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 367.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Georgia",
+      "size": 11,
+      "pixels_of_10_chars": 97.0,
+      "pixels_of_1_char": 16.0,
+      "default_column_pixels": 80.0,
+      "row_height": 14.25,
+      "default_rows_then_tiny_rows_first_break": 236,
+      "columns_per_page": {
+        "1": {
+          "pixels": 16.0,
+          "per_page": 42
+        },
+        "3": {
+          "pixels": 34.0,
+          "per_page": 20
+        },
+        "8.43": {
+          "pixels": 83.0,
+          "per_page": 8
+        },
+        "12": {
+          "pixels": 115.0,
+          "per_page": 5
+        },
+        "20": {
+          "pixels": 187.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 367.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Georgia",
+      "size": 12,
+      "pixels_of_10_chars": 107.0,
+      "pixels_of_1_char": 17.0,
+      "default_column_pixels": 88.0,
+      "row_height": 15.0,
+      "default_rows_then_tiny_rows_first_break": 176,
+      "columns_per_page": {
+        "1": {
+          "pixels": 17.0,
+          "per_page": 40
+        },
+        "3": {
+          "pixels": 37.0,
+          "per_page": 18
+        },
+        "8.43": {
+          "pixels": 91.0,
+          "per_page": 7
+        },
+        "12": {
+          "pixels": 127.0,
+          "per_page": 5
+        },
+        "20": {
+          "pixels": 207.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 407.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Georgia",
+      "size": 14,
+      "pixels_of_10_chars": 127.0,
+      "pixels_of_1_char": 19.0,
+      "default_column_pixels": 104.0,
+      "row_height": 18.0,
+      "default_rows_then_tiny_rows_first_break": 49,
+      "columns_per_page": {
+        "1": {
+          "pixels": 19.0,
+          "per_page": 37
+        },
+        "3": {
+          "pixels": 43.0,
+          "per_page": 16
+        },
+        "8.43": {
+          "pixels": 108.0,
+          "per_page": 6
+        },
+        "12": {
+          "pixels": 151.0,
+          "per_page": 4
+        },
+        "20": {
+          "pixels": 247.0,
+          "per_page": 2
+        },
+        "40": {
+          "pixels": 487.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Trebuchet MS",
+      "size": 9,
+      "pixels_of_10_chars": 65.0,
+      "pixels_of_1_char": 11.0,
+      "default_column_pixels": 56.0,
+      "row_height": 15.0,
+      "default_rows_then_tiny_rows_first_break": 355,
+      "columns_per_page": {
+        "1": {
+          "pixels": 11.0,
+          "per_page": 59
+        },
+        "3": {
+          "pixels": 23.0,
+          "per_page": 28
+        },
+        "8.43": {
+          "pixels": 56.0,
+          "per_page": 11
+        },
+        "12": {
+          "pixels": 77.0,
+          "per_page": 8
+        },
+        "20": {
+          "pixels": 125.0,
+          "per_page": 5
+        },
+        "40": {
+          "pixels": 245.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Trebuchet MS",
+      "size": 10,
+      "pixels_of_10_chars": 75.0,
+      "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
+      "row_height": 15.0,
+      "default_rows_then_tiny_rows_first_break": 275,
+      "columns_per_page": {
+        "1": {
+          "pixels": 12.0,
+          "per_page": 56
+        },
+        "3": {
+          "pixels": 26.0,
+          "per_page": 26
+        },
+        "8.43": {
+          "pixels": 64.0,
+          "per_page": 10
+        },
+        "12": {
+          "pixels": 89.0,
+          "per_page": 7
+        },
+        "20": {
+          "pixels": 145.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 285.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Trebuchet MS",
+      "size": 11,
+      "pixels_of_10_chars": 85.0,
+      "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
+      "row_height": 16.5,
+      "default_rows_then_tiny_rows_first_break": 187,
+      "columns_per_page": {
+        "1": {
+          "pixels": 13.0,
+          "per_page": 54
+        },
+        "3": {
+          "pixels": 29.0,
+          "per_page": 24
+        },
+        "8.43": {
+          "pixels": 72.0,
+          "per_page": 9
+        },
+        "12": {
+          "pixels": 101.0,
+          "per_page": 7
+        },
+        "20": {
+          "pixels": 165.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 325.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Trebuchet MS",
+      "size": 12,
+      "pixels_of_10_chars": 85.0,
+      "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
+      "row_height": 18.0,
+      "default_rows_then_tiny_rows_first_break": 115,
+      "columns_per_page": {
+        "1": {
+          "pixels": 13.0,
+          "per_page": 50
+        },
+        "3": {
+          "pixels": 29.0,
+          "per_page": 22
+        },
+        "8.43": {
+          "pixels": 72.0,
+          "per_page": 9
+        },
+        "12": {
+          "pixels": 101.0,
+          "per_page": 6
+        },
+        "20": {
+          "pixels": 165.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 325.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Trebuchet MS",
+      "size": 14,
+      "pixels_of_10_chars": 107.0,
+      "pixels_of_1_char": 17.0,
+      "default_column_pixels": 88.0,
+      "row_height": 18.75,
+      "default_rows_then_tiny_rows_first_break": 37,
+      "columns_per_page": {
+        "1": {
+          "pixels": 17.0,
+          "per_page": 40
+        },
+        "3": {
+          "pixels": 37.0,
+          "per_page": 18
+        },
+        "8.43": {
+          "pixels": 91.0,
+          "per_page": 7
+        },
+        "12": {
+          "pixels": 127.0,
+          "per_page": 5
+        },
+        "20": {
+          "pixels": 207.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 407.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Comic Sans MS",
+      "size": 9,
+      "pixels_of_10_chars": 75.0,
+      "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
+      "row_height": 14.25,
+      "default_rows_then_tiny_rows_first_break": 183,
+      "columns_per_page": {
+        "1": {
+          "pixels": 12.0,
+          "per_page": 53
+        },
+        "3": {
+          "pixels": 26.0,
+          "per_page": 24
+        },
+        "8.43": {
+          "pixels": 64.0,
+          "per_page": 10
+        },
+        "12": {
+          "pixels": 89.0,
+          "per_page": 7
+        },
+        "20": {
+          "pixels": 145.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 285.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Comic Sans MS",
+      "size": 10,
+      "pixels_of_10_chars": 85.0,
+      "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
+      "row_height": 15.0,
+      "default_rows_then_tiny_rows_first_break": 103,
+      "columns_per_page": {
+        "1": {
+          "pixels": 13.0,
+          "per_page": 51
+        },
+        "3": {
+          "pixels": 29.0,
+          "per_page": 22
+        },
+        "8.43": {
+          "pixels": 72.0,
+          "per_page": 9
+        },
+        "12": {
+          "pixels": 101.0,
+          "per_page": 6
+        },
+        "20": {
+          "pixels": 165.0,
+          "per_page": 4
+        },
+        "40": {
+          "pixels": 325.0,
+          "per_page": 2
+        }
+      }
+    },
+    {
+      "font": "Comic Sans MS",
+      "size": 11,
+      "pixels_of_10_chars": 97.0,
+      "pixels_of_1_char": 16.0,
+      "default_column_pixels": 80.0,
+      "row_height": 16.5,
+      "default_rows_then_tiny_rows_first_break": 39,
+      "columns_per_page": {
+        "1": {
+          "pixels": 16.0,
+          "per_page": 42
+        },
+        "3": {
+          "pixels": 34.0,
+          "per_page": 20
+        },
+        "8.43": {
+          "pixels": 83.0,
+          "per_page": 8
+        },
+        "12": {
+          "pixels": 115.0,
+          "per_page": 5
+        },
+        "20": {
+          "pixels": 187.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 367.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Comic Sans MS",
+      "size": 12,
+      "pixels_of_10_chars": 107.0,
+      "pixels_of_1_char": 17.0,
+      "default_column_pixels": 88.0,
+      "row_height": 19.5,
+      "default_rows_then_tiny_rows_first_break": 36,
+      "columns_per_page": {
+        "1": {
+          "pixels": 17.0,
+          "per_page": 40
+        },
+        "3": {
+          "pixels": 37.0,
+          "per_page": 18
+        },
+        "8.43": {
+          "pixels": 91.0,
+          "per_page": 7
+        },
+        "12": {
+          "pixels": 127.0,
+          "per_page": 5
+        },
+        "20": {
+          "pixels": 207.0,
+          "per_page": 3
+        },
+        "40": {
+          "pixels": 407.0,
+          "per_page": 1
+        }
+      }
+    },
+    {
+      "font": "Comic Sans MS",
+      "size": 14,
+      "pixels_of_10_chars": 127.0,
+      "pixels_of_1_char": 19.0,
+      "default_column_pixels": 104.0,
+      "row_height": 21.0,
+      "default_rows_then_tiny_rows_first_break": 32,
+      "columns_per_page": {
+        "1": {
+          "pixels": 19.0,
+          "per_page": 37
+        },
+        "3": {
+          "pixels": 43.0,
+          "per_page": 16
+        },
+        "8.43": {
+          "pixels": 108.0,
+          "per_page": 6
+        },
+        "12": {
+          "pixels": 151.0,
+          "per_page": 4
+        },
+        "20": {
+          "pixels": 247.0,
+          "per_page": 2
+        },
+        "40": {
+          "pixels": 487.0,
+          "per_page": 1
+        }
+      }
+    }
+  ]
+}
