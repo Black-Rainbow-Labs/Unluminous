@@ -37,22 +37,16 @@ fn scratch(name: &str) -> PathBuf {
 
 /// Word's report on a file.
 fn inspect(path: &Path) -> Value {
-    let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/word-oracle/inspect.ps1");
-    let out = path.with_extension("word.json");
-    let _ = std::fs::remove_file(&out);
-    let status = std::process::Command::new("pwsh")
-        .args(["-NoProfile", "-NonInteractive", "-File"])
-        .arg(&script)
-        .arg("-Path")
-        .arg(path)
-        .arg("-Out")
-        .arg(&out)
-        .status()
-        .expect("pwsh runs");
-    assert!(status.success(), "inspect.ps1 failed on {}", path.display());
-    serde_json::from_str(std::fs::read_to_string(&out).unwrap().trim_start_matches('\u{feff}'))
-        .unwrap()
+    inspect_with_password(path, "")
 }
+
+/// One Word at a time. The tests run on several threads, and with a Word started for each, one of them
+/// now and then stopped answering while it opened its file, until its watchdog stopped it fifteen minutes
+/// later and left `inspect.ps1` waiting on nothing (task-2359, measured in three release runs).
+static ONE_WORD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// How long one report may take before the test says so rather than waiting on a Word that has stopped.
+const INSPECT_LIMIT: std::time::Duration = std::time::Duration::from_secs(600);
 
 fn texts(report: &Value) -> Vec<String> {
     report["paragraphs"]
@@ -506,22 +500,39 @@ fn comments_added_and_deleted_keep_their_side_parts_consistent() {
     assert_eq!(report["comments"].as_array().unwrap().len(), before);
 }
 
-/// Word's report on a file opened with a password.
+/// Word's report on a file opened with a password, an empty one for a file with none.
 fn inspect_with_password(path: &Path, password: &str) -> Value {
+    let _one = ONE_WORD.lock().unwrap_or_else(|held| held.into_inner());
     let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/word-oracle/inspect.ps1");
     let out = path.with_extension("word.json");
     let _ = std::fs::remove_file(&out);
-    let status = std::process::Command::new("pwsh")
+    let mut command = std::process::Command::new("pwsh");
+    command
         .args(["-NoProfile", "-NonInteractive", "-File"])
         .arg(&script)
         .arg("-Path")
         .arg(path)
         .arg("-Out")
-        .arg(&out)
-        .arg("-Password")
-        .arg(password)
-        .status()
-        .expect("pwsh runs");
+        .arg(&out);
+    if !password.is_empty() {
+        command.arg("-Password").arg(password);
+    }
+    let mut child = command.spawn().expect("pwsh runs");
+    let started = std::time::Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("pwsh can be waited for") {
+            break status;
+        }
+        if started.elapsed() > INSPECT_LIMIT {
+            let _ = child.kill();
+            panic!(
+                "Word gave no report on {} in {} seconds",
+                path.display(),
+                INSPECT_LIMIT.as_secs()
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    };
     assert!(status.success(), "inspect.ps1 failed on {}", path.display());
     serde_json::from_str(std::fs::read_to_string(&out).unwrap().trim_start_matches('\u{feff}'))
         .unwrap()
