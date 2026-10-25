@@ -31,6 +31,7 @@ pub mod chartdata;
 pub mod chartlayout;
 pub mod chartspec;
 pub mod charttype;
+pub mod plot;
 pub mod conditional;
 pub mod coord;
 pub mod dates;

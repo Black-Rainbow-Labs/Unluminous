@@ -42,6 +42,7 @@ function Describe-Axis($chart, $type, $group) {
 }
 
 function Describe-Chart($chart, $name) {
+    [Console]::Error.WriteLine("chart $name")
     $o = [ordered]@{ name = $name }
     $o.type = Try-Get { $chart.ChartType }
     $o.title = Try-Get { if ($chart.HasTitle) { $chart.ChartTitle.Text } }
@@ -52,9 +53,18 @@ function Describe-Chart($chart, $name) {
     $o.style = Try-Get { $chart.ChartStyle }
     $series = @()
     $n = Try-Get { $chart.SeriesCollection().Count }
+    # The Office 2016 chart types (117 and up) have no axes, trendlines or error bars in the object model, and
+    # asking for them makes Excel drop the connection.
+    $extended = $o.type -ge 117
     for ($i = 1; $i -le $n; $i++) {
         $s = $chart.SeriesCollection($i)
         $e = [ordered]@{}
+        if ($extended) {
+            $e.name = Try-Get { $s.Name }
+            $e.type = Try-Get { $s.ChartType }
+            $series += $e
+            continue
+        }
         $e.formula = Try-Get { $s.Formula }
         $e.type = Try-Get { $s.ChartType }
         $e.axisGroup = Try-Get { $s.AxisGroup }
@@ -83,10 +93,12 @@ function Describe-Chart($chart, $name) {
         $series += $e
     }
     $o.series = $series
-    $o.axes = [ordered]@{
-        category = Describe-Axis $chart 1 1
-        value = Describe-Axis $chart 2 1
-        secondaryValue = Describe-Axis $chart 2 2
+    if (-not $extended) {
+        $o.axes = [ordered]@{
+            category = Describe-Axis $chart 1 1
+            value = Describe-Axis $chart 2 1
+            secondaryValue = Describe-Axis $chart 2 2
+        }
     }
     return $o
 }
@@ -109,7 +121,7 @@ try {
         foreach ($sheet in $book.Sheets) {
             $isChartSheet = $false
             try { $null = $sheet.ChartObjects; } catch { $isChartSheet = $true }
-            if ($sheet.Type -eq -4109) {
+            if ($sheet.Type -eq 3) {
                 $d = Describe-Chart $sheet ('sheet:' + $sheet.Name)
                 $d.sheet = $sheet.Name
                 $charts += $d

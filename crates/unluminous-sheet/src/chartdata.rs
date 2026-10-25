@@ -111,6 +111,10 @@ pub struct Resolved {
     pub dates: bool,
     /// The rows and columns of the first rectangle.
     pub shape: (u32, u32),
+    /// Each cell as its format shows it, which is what a category label or a data label says.
+    pub texts: Vec<String>,
+    /// The number format of the first number cell, which a chart's axis follows when it is linked to the source.
+    pub format: String,
 }
 
 fn array_constant(formula: &str) -> Option<Vec<Value>> {
@@ -138,7 +142,8 @@ fn column_hidden(book: &Workbook, sheet: usize, col: u32) -> bool {
 pub fn resolve(book: &Workbook, current: usize, formula: &str) -> Resolved {
     if let Some(values) = array_constant(formula) {
         let hidden = vec![false; values.len()];
-        return Resolved { shape: (1, values.len() as u32), values, hidden, dates: false };
+        let texts = values.iter().map(Value::to_text).collect();
+        return Resolved { shape: (1, values.len() as u32), values, hidden, dates: false, texts, format: String::new() };
     }
     let Some(parts) = parse_refs(book, current, formula) else { return Resolved::default() };
     let mut out = Resolved::default();
@@ -154,11 +159,19 @@ pub fn resolve(book: &Workbook, current: usize, formula: &str) -> Resolved {
         for at in range.cells() {
             let cell = sheet.cell(at);
             let value = sheet.value_at(at);
-            if let Some(cell) = cell {
-                if !out.dates && matches!(value, Value::Number(_)) {
-                    out.dates = Format::parse(&book.styles.format_code(cell.style)).is_date();
+            let mut text = value.to_text();
+            if let (Some(cell), Value::Number(_)) = (cell, &value) {
+                let code = book.styles.format_code(cell.style);
+                let format = Format::parse(&code);
+                if !out.dates {
+                    out.dates = format.is_date();
+                }
+                text = format.render(&value, book.date1904, 11).text;
+                if out.format.is_empty() {
+                    out.format = code;
                 }
             }
+            out.texts.push(text);
             let row_hidden = sheet.rows.get(&at.row).is_some_and(|r| r.hidden);
             out.hidden.push(row_hidden || column_hidden(book, part.sheet, at.col));
             out.values.push(value);
