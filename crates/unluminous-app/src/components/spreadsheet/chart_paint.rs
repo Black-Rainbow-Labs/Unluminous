@@ -12,7 +12,7 @@ use egui::epaint::TextShape;
 use egui::{Color32, FontId, Pos2, Rect, Shape, Stroke, Vec2};
 use unluminous_sheet::chartspec::*;
 use unluminous_sheet::model::Chart;
-use unluminous_sheet::plot::{ExtendedPlot, Plot, PlotAxis, PlotSeries, WaterfallKind};
+use unluminous_sheet::plot::{BoxStats, ExtendedPlot, Plot, PlotAxis, PlotSeries, WaterfallBar, WaterfallKind};
 
 /// The colours a chart is drawn in.
 #[derive(Debug, Clone)]
@@ -344,8 +344,13 @@ pub fn draw(painter: &egui::Painter, area: Rect, plot: &Plot, chart: &Chart, col
     let m = Metrics { zoom };
     let spec = &chart.spec;
     let mut top = area.top();
-    if !plot.title.is_empty() || (spec.title_auto && plot.series.len() == 1) {
-        let title = if plot.title.is_empty() { plot.series[0].name.clone() } else { plot.title.clone() };
+    if !plot.title.is_empty() || (spec.title_auto && !plot.series.is_empty()) {
+        // An empty title element shows the series name for one series and a placeholder otherwise.
+        let title = match (plot.title.is_empty(), plot.series.len()) {
+            (false, _) => plot.title.clone(),
+            (true, 1) => plot.series[0].name.clone(),
+            (true, _) => "Chart Title".to_owned(),
+        };
         painter.text(Pos2::new(area.center().x, top + 2.0), egui::Align2::CENTER_TOP, title, m.title(), colours.text);
         top += 24.0 * zoom;
     }
@@ -1397,95 +1402,103 @@ fn draw_extended(painter: &egui::Painter, body: Rect, ex: &ExtendedPlot, chart: 
             let labels: Vec<String> = bins.iter().map(|b| b.label.clone()).collect();
             draw_columns(painter, area, &labels, &counts, colours.series(0), 0.0, colours, m);
         }
-        ExtendedPlot::Pareto { rows } => {
-            let labels: Vec<String> = rows.iter().map(|r| r.0.clone()).collect();
-            let values: Vec<f64> = rows.iter().map(|r| r.1).collect();
-            let plot = draw_columns(painter, area, &labels, &values, colours.series(0), 0.1, colours, m);
-            let pts: Vec<Pos2> = rows
-                .iter()
-                .enumerate()
-                .map(|(i, r)| Pos2::new(plot.left() + plot.width() * (i as f32 + 0.5) / rows.len().max(1) as f32, plot.bottom() - plot.height() * r.2 as f32))
-                .collect();
-            painter.add(Shape::line(pts.clone(), Stroke::new(2.0 * m.zoom.max(0.7), colours.series(1))));
-            for p in pts {
-                painter.circle_filled(p, 3.0 * m.zoom, colours.series(1));
-            }
-            painter.text(Pos2::new(plot.right() + 3.0, plot.top()), egui::Align2::LEFT_TOP, "100%", m.label(), colours.dim);
-        }
+        ExtendedPlot::Pareto { rows } => draw_pareto(painter, area, rows, colours, m),
         ExtendedPlot::BoxWhisker { boxes } => {
-            let values: Vec<f64> = boxes.iter().flat_map(|b| [b.1.minimum, b.1.maximum]).collect();
-            let (lo, hi) = (values.iter().copied().fold(f64::MAX, f64::min), values.iter().copied().fold(f64::MIN, f64::max));
-            let (lo, hi) = if lo >= hi { (lo - 1.0, hi + 1.0) } else { (lo - (hi - lo) * 0.05, hi + (hi - lo) * 0.05) };
-            let plot = area;
-            let y = |v: f64| plot.bottom() - plot.height() * ((v - lo) / (hi - lo)) as f32;
-            let band = plot.width() / boxes.len().max(1) as f32;
             let options = chart.spec.ex.as_ref().and_then(|e| e.series.first()).and_then(|s| s.box_options).unwrap_or_default();
-            for (i, (label, b)) in boxes.iter().enumerate() {
-                let c = colours.series(i);
-                let cx = plot.left() + band * (i as f32 + 0.5);
-                let half = band * 0.28;
-                painter.line_segment([Pos2::new(cx, y(b.low)), Pos2::new(cx, y(b.q1))], Stroke::new(m.line(), colours.text));
-                painter.line_segment([Pos2::new(cx, y(b.q3)), Pos2::new(cx, y(b.high))], Stroke::new(m.line(), colours.text));
-                for edge in [b.low, b.high] {
-                    painter.line_segment([Pos2::new(cx - half / 2.0, y(edge)), Pos2::new(cx + half / 2.0, y(edge))], Stroke::new(m.line(), colours.text));
-                }
-                painter.rect(Rect::from_min_max(Pos2::new(cx - half, y(b.q3)), Pos2::new(cx + half, y(b.q1))), 0, c.gamma_multiply(0.8), Stroke::new(m.line(), colours.text), egui::StrokeKind::Inside);
-                painter.line_segment([Pos2::new(cx - half, y(b.median)), Pos2::new(cx + half, y(b.median))], Stroke::new(1.5 * m.zoom.max(0.7), colours.text));
-                if options.mean_marker {
-                    painter.text(Pos2::new(cx, y(b.mean)), egui::Align2::CENTER_CENTER, "\u{D7}", m.font(12.0), colours.text);
-                }
-                if options.outlier_points {
-                    for o in &b.outliers {
-                        painter.circle_stroke(Pos2::new(cx, y(*o)), 3.0 * m.zoom, Stroke::new(m.line(), colours.text));
-                    }
-                }
-                painter.text(Pos2::new(cx, plot.bottom() + 3.0), egui::Align2::CENTER_TOP, label, m.label(), colours.dim);
-            }
+            draw_boxes(painter, area, boxes, &options, colours, m);
         }
-        ExtendedPlot::Waterfall { bars } => {
-            let (lo, hi) = bars.iter().fold((0.0f64, 0.0f64), |(l, h), (_, b)| (l.min(b.start).min(b.end), h.max(b.start).max(b.end)));
-            let hi = if hi <= lo { lo + 1.0 } else { hi * 1.05 };
-            let plot = Rect::from_min_max(area.min, Pos2::new(area.right(), area.bottom() - 14.0 * m.zoom));
-            let y = |v: f64| plot.bottom() - plot.height() * ((v - lo) / (hi - lo)) as f32;
-            let band = plot.width() / bars.len().max(1) as f32;
-            let mut previous: Option<Pos2> = None;
-            for (i, (label, b)) in bars.iter().enumerate() {
-                let colour = match b.kind {
-                    WaterfallKind::Increase => colours.series(0),
-                    WaterfallKind::Decrease => colours.series(1),
-                    WaterfallKind::Total => colours.series(2),
-                };
-                let x0 = plot.left() + band * i as f32 + band * 0.15;
-                let rect = Rect::from_min_max(Pos2::new(x0, y(b.start.max(b.end))), Pos2::new(x0 + band * 0.7, y(b.start.min(b.end))));
-                painter.rect_filled(rect, 0, colour);
-                if let Some(p) = previous {
-                    painter.line_segment([p, Pos2::new(x0, y(b.start))], Stroke::new(m.line(), colours.dim));
-                }
-                previous = Some(Pos2::new(x0 + band * 0.7, y(b.end)));
-                painter.text(Pos2::new(x0 + band * 0.35, plot.bottom() + 2.0), egui::Align2::CENTER_TOP, unluminous_sheet_trim(label, 8), m.label(), colours.dim);
-            }
-        }
-        ExtendedPlot::Funnel { items } => {
-            let biggest = items.iter().map(|i| i.1).fold(f64::MIN_POSITIVE, f64::max);
-            let band = area.height() / items.len().max(1) as f32;
-            for (i, (label, v)) in items.iter().enumerate() {
-                let w = area.width() * 0.8 * (*v / biggest).max(0.0) as f32;
-                let rect = Rect::from_center_size(Pos2::new(area.center().x, area.top() + band * (i as f32 + 0.5)), Vec2::new(w, band * 0.85));
-                painter.rect_filled(rect, 0, colours.series(0));
-                painter.text(Pos2::new(area.left(), rect.center().y), egui::Align2::LEFT_CENTER, unluminous_sheet_trim(label, 12), m.label(), colours.dim);
-                painter.text(rect.center(), egui::Align2::CENTER_CENTER, unluminous_sheet::numfmt::general(*v, 8), m.label(), Color32::WHITE);
-            }
-        }
+        ExtendedPlot::Waterfall { bars } => draw_waterfall(painter, area, bars, colours, m),
+        ExtendedPlot::Funnel { items } => draw_funnel(painter, area, items, colours, m),
         ExtendedPlot::Hierarchy { leaves } => draw_hierarchy(painter, area, leaves, chart, colours, m),
         ExtendedPlot::Map { regions } => {
-            painter.text(
-                area.center(),
-                egui::Align2::CENTER_CENTER,
-                format!("A map chart of {} regions, which needs Bing Maps to draw", regions.len()),
-                m.font(11.0),
-                colours.dim,
-            );
+            let words = format!("A map chart of {} regions, which needs Bing Maps to draw", regions.len());
+            painter.text(area.center(), egui::Align2::CENTER_CENTER, words, m.font(11.0), colours.dim);
         }
+    }
+}
+
+/// The columns of a Pareto chart and the line of running shares over them.
+fn draw_pareto(painter: &egui::Painter, area: Rect, rows: &[(String, f64, f64)], colours: &Colours, m: &Metrics) {
+    let labels: Vec<String> = rows.iter().map(|r| r.0.clone()).collect();
+    let values: Vec<f64> = rows.iter().map(|r| r.1).collect();
+    let plot = draw_columns(painter, area, &labels, &values, colours.series(0), 0.1, colours, m);
+    let share_at = |i: usize, share: f64| {
+        Pos2::new(plot.left() + plot.width() * (i as f32 + 0.5) / rows.len().max(1) as f32, plot.bottom() - plot.height() * share as f32)
+    };
+    let points: Vec<Pos2> = rows.iter().enumerate().map(|(i, r)| share_at(i, r.2)).collect();
+    painter.add(Shape::line(points.clone(), Stroke::new(2.0 * m.zoom.max(0.7), colours.series(1))));
+    for p in points {
+        painter.circle_filled(p, 3.0 * m.zoom, colours.series(1));
+    }
+    painter.text(Pos2::new(plot.right() + 3.0, plot.top()), egui::Align2::LEFT_TOP, "100%", m.label(), colours.dim);
+}
+
+/// Boxes with whiskers, medians, means and outliers.
+fn draw_boxes(painter: &egui::Painter, plot: Rect, boxes: &[(String, BoxStats)], options: &BoxOptions, colours: &Colours, m: &Metrics) {
+    let ends: Vec<f64> = boxes.iter().flat_map(|b| [b.1.minimum, b.1.maximum]).collect();
+    let (lo, hi) = (ends.iter().copied().fold(f64::MAX, f64::min), ends.iter().copied().fold(f64::MIN, f64::max));
+    let (lo, hi) = if lo >= hi { (lo - 1.0, hi + 1.0) } else { (lo - (hi - lo) * 0.05, hi + (hi - lo) * 0.05) };
+    let y = |v: f64| plot.bottom() - plot.height() * ((v - lo) / (hi - lo)) as f32;
+    let band = plot.width() / boxes.len().max(1) as f32;
+    let line = Stroke::new(m.line(), colours.text);
+    for (i, (label, b)) in boxes.iter().enumerate() {
+        let cx = plot.left() + band * (i as f32 + 0.5);
+        let half = band * 0.28;
+        painter.line_segment([Pos2::new(cx, y(b.low)), Pos2::new(cx, y(b.q1))], line);
+        painter.line_segment([Pos2::new(cx, y(b.q3)), Pos2::new(cx, y(b.high))], line);
+        for edge in [b.low, b.high] {
+            painter.line_segment([Pos2::new(cx - half / 2.0, y(edge)), Pos2::new(cx + half / 2.0, y(edge))], line);
+        }
+        let body = Rect::from_min_max(Pos2::new(cx - half, y(b.q3)), Pos2::new(cx + half, y(b.q1)));
+        painter.rect(body, 0, colours.series(i).gamma_multiply(0.8), line, egui::StrokeKind::Inside);
+        painter.line_segment([Pos2::new(cx - half, y(b.median)), Pos2::new(cx + half, y(b.median))], Stroke::new(1.5 * m.zoom.max(0.7), colours.text));
+        if options.mean_marker {
+            painter.text(Pos2::new(cx, y(b.mean)), egui::Align2::CENTER_CENTER, "\u{D7}", m.font(12.0), colours.text);
+        }
+        if options.outlier_points {
+            for o in &b.outliers {
+                painter.circle_stroke(Pos2::new(cx, y(*o)), 3.0 * m.zoom, line);
+            }
+        }
+        painter.text(Pos2::new(cx, plot.bottom() + 3.0), egui::Align2::CENTER_TOP, label, m.label(), colours.dim);
+    }
+}
+
+/// Floating bars joined by the running total.
+fn draw_waterfall(painter: &egui::Painter, area: Rect, bars: &[(String, WaterfallBar)], colours: &Colours, m: &Metrics) {
+    let (lo, hi) = bars.iter().fold((0.0f64, 0.0f64), |(l, h), (_, b)| (l.min(b.start).min(b.end), h.max(b.start).max(b.end)));
+    let hi = if hi <= lo { lo + 1.0 } else { hi * 1.05 };
+    let plot = Rect::from_min_max(area.min, Pos2::new(area.right(), area.bottom() - 14.0 * m.zoom));
+    let y = |v: f64| plot.bottom() - plot.height() * ((v - lo) / (hi - lo)) as f32;
+    let band = plot.width() / bars.len().max(1) as f32;
+    let mut previous: Option<Pos2> = None;
+    for (i, (label, b)) in bars.iter().enumerate() {
+        let colour = match b.kind {
+            WaterfallKind::Increase => colours.series(0),
+            WaterfallKind::Decrease => colours.series(1),
+            WaterfallKind::Total => colours.series(2),
+        };
+        let x0 = plot.left() + band * i as f32 + band * 0.15;
+        let rect = Rect::from_min_max(Pos2::new(x0, y(b.start.max(b.end))), Pos2::new(x0 + band * 0.7, y(b.start.min(b.end))));
+        painter.rect_filled(rect, 0, colour);
+        if let Some(p) = previous {
+            painter.line_segment([p, Pos2::new(x0, y(b.start))], Stroke::new(m.line(), colours.dim));
+        }
+        previous = Some(Pos2::new(x0 + band * 0.7, y(b.end)));
+        painter.text(Pos2::new(x0 + band * 0.35, plot.bottom() + 2.0), egui::Align2::CENTER_TOP, unluminous_sheet_trim(label, 8), m.label(), colours.dim);
+    }
+}
+
+/// Centred bars as wide as their values.
+fn draw_funnel(painter: &egui::Painter, area: Rect, items: &[(String, f64)], colours: &Colours, m: &Metrics) {
+    let biggest = items.iter().map(|i| i.1).fold(f64::MIN_POSITIVE, f64::max);
+    let band = area.height() / items.len().max(1) as f32;
+    for (i, (label, v)) in items.iter().enumerate() {
+        let w = area.width() * 0.8 * (*v / biggest).max(0.0) as f32;
+        let rect = Rect::from_center_size(Pos2::new(area.center().x, area.top() + band * (i as f32 + 0.5)), Vec2::new(w, band * 0.85));
+        painter.rect_filled(rect, 0, colours.series(0));
+        painter.text(Pos2::new(area.left(), rect.center().y), egui::Align2::LEFT_CENTER, unluminous_sheet_trim(label, 12), m.label(), colours.dim);
+        painter.text(rect.center(), egui::Align2::CENTER_CENTER, unluminous_sheet::numfmt::general(*v, 8), m.label(), Color32::WHITE);
     }
 }
 

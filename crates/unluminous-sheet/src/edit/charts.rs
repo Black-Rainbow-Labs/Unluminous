@@ -636,8 +636,14 @@ impl Session {
     pub fn set_axis_options(&mut self, sheet: usize, index: usize, axis: AxisSelector, options: AxisOptions) -> Result<(), String> {
         self.change_chart("Format axis", sheet, index, |chart| {
             let id = axis_id(chart, axis).ok_or("The chart has no such axis.")?;
+            let reversed = options.reverse;
             let a = chart.spec.axis_mut(id).ok_or("The chart has no such axis.")?;
-            apply_axis_options(a, options)
+            let was = a.reverse;
+            apply_axis_options(a, options)?;
+            if reversed.is_some_and(|r| r != was) {
+                flip_crossing_axes(chart, id);
+            }
+            Ok(())
         })
     }
 
@@ -1106,14 +1112,35 @@ fn axis_id(chart: &Chart, which: AxisSelector) -> Option<u32> {
     axes.iter().find(|a| (a.kind == AxisKind::Value) == wants_value && a.kind != AxisKind::Series).map(|a| a.id)
 }
 
+/// Reversing an axis moves the axes that cross it to the other side, as Excel does.
+fn flip_crossing_axes(chart: &mut Chart, id: u32) {
+    for a in chart.spec.axes.iter_mut().filter(|a| a.cross_axis == id && !a.deleted) {
+        a.position = match a.position {
+            AxisPosition::Left => AxisPosition::Right,
+            AxisPosition::Right => AxisPosition::Left,
+            AxisPosition::Top => AxisPosition::Bottom,
+            AxisPosition::Bottom => AxisPosition::Top,
+        };
+    }
+}
+
+/// Change an axis, refusing a scale Excel refuses.
 fn apply_axis_options(a: &mut Axis, o: AxisOptions) -> Result<(), String> {
+    apply_axis_scale(a, &o)?;
+    apply_axis_display(a, o);
+    Ok(())
+}
+
+/// The bounds, units and log base of an axis.
+fn apply_axis_scale(a: &mut Axis, o: &AxisOptions) -> Result<(), String> {
+    let mut next = a.clone();
     if let Some(v) = o.minimum {
-        a.min = v;
+        next.min = v;
     }
     if let Some(v) = o.maximum {
-        a.max = v;
+        next.max = v;
     }
-    if let (Some(min), Some(max)) = (a.min, a.max) {
+    if let (Some(min), Some(max)) = (next.min, next.max) {
         if min >= max {
             return Err("The maximum must be greater than the minimum.".to_owned());
         }
@@ -1122,20 +1149,26 @@ fn apply_axis_options(a: &mut Axis, o: AxisOptions) -> Result<(), String> {
         if v.is_some_and(|u| u <= 0.0) {
             return Err("The major unit must be greater than zero.".to_owned());
         }
-        a.major_unit = v;
+        next.major_unit = v;
     }
     if let Some(v) = o.minor_unit {
         if v.is_some_and(|u| u <= 0.0) {
             return Err("The minor unit must be greater than zero.".to_owned());
         }
-        a.minor_unit = v;
+        next.minor_unit = v;
     }
     if let Some(v) = o.log_base {
         if v.is_some_and(|b| !(2.0..=1000.0).contains(&b)) {
             return Err("The logarithmic base must be from 2 to 1000.".to_owned());
         }
-        a.log_base = v;
+        next.log_base = v;
     }
+    *a = next;
+    Ok(())
+}
+
+/// How an axis looks: direction, crossing, number format, ticks, labels, gridlines, title.
+fn apply_axis_display(a: &mut Axis, o: AxisOptions) {
     if let Some(v) = o.reverse {
         a.reverse = v;
     }
@@ -1178,7 +1211,6 @@ fn apply_axis_options(a: &mut Axis, o: AxisOptions) -> Result<(), String> {
     if let Some(v) = o.base_unit {
         a.base_unit = v;
     }
-    Ok(())
 }
 
 fn check_trendline(chart: &Chart, series: usize, t: &Trendline) -> Result<(), String> {

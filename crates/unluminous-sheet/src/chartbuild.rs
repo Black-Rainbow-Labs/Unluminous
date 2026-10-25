@@ -265,7 +265,7 @@ fn stock_with_volume(ty: ChartType) -> Built {
     let mut val2 = value_axis(SECONDARY[1], SECONDARY[0], AxisPosition::Right, true);
     val2.major_gridlines = None;
     val2.crosses = Crosses::Maximum;
-    axes.extend([cat2, val2]);
+    axes.extend([val2, cat2]);
     Built { groups: vec![volume, stock(ty, SECONDARY.to_vec())], axes, ..empty() }
 }
 
@@ -448,11 +448,6 @@ pub fn apply_type(chart: &mut Chart, ty: ChartType) {
             }
         }
     }
-    if matches!(ty, ChartType::Pie | ChartType::Doughnut | ChartType::PieExploded | ChartType::DoughnutExploded)
-        && chart.series.len() > 1
-    {
-        chart.series.truncate(1);
-    }
     chart.spec.dirty = true;
     chart.sync_kind();
 }
@@ -473,10 +468,13 @@ pub fn add_secondary_axes(spec: &mut ChartSpec, scatter: bool) -> Vec<u32> {
         };
         cat.deleted = true;
         cat.major_gridlines = None;
+        cat.major_tick = TickMark::Outside;
         val.major_gridlines = None;
+        val.major_tick = TickMark::Outside;
         val.crosses = Crosses::Maximum;
-        spec.axes.push(cat);
+        // Excel writes the secondary value axis before the secondary category axis.
         spec.axes.push(val);
+        spec.axes.push(cat);
     }
     SECONDARY.to_vec()
 }

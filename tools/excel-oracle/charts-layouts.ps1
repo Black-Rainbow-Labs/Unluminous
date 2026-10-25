@@ -50,6 +50,8 @@ try {
             $o.upDown = Probe 0 { [bool]$c.ChartGroups(1).HasUpDownBars }
             $o.dropLines = Probe 0 { [bool]$c.ChartGroups(1).HasDropLines }
             $o.style = Probe 0 { $c.ChartStyle }
+            $o.gapWidth = Probe 0 { $c.ChartGroups(1).GapWidth }
+            $o.overlap = Probe 0 { $c.ChartGroups(1).Overlap }
             $o | ConvertTo-Json -Compress
             $shape.Delete()
         }

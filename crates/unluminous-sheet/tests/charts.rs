@@ -613,16 +613,33 @@ fn excel_fixture(name: &str) -> Option<Workbook> {
     std::fs::read(path).ok().map(|b| unluminous_sheet::xlsx::read(&b).unwrap())
 }
 
+/// The lines on which two summaries differ, as `excel line` and `ours line`.
+fn differences(excel: &str, ours: &str) -> Vec<String> {
+    let (a, b): (Vec<&str>, Vec<&str>) = (excel.lines().collect(), ours.lines().collect());
+    let mut out = Vec::new();
+    for i in 0..a.len().max(b.len()) {
+        let (x, y) = (a.get(i).copied().unwrap_or("-"), b.get(i).copied().unwrap_or("-"));
+        if x != y {
+            out.push(format!("  excel: {x}\n  ours:  {y}"));
+        }
+    }
+    out
+}
+
 #[test]
 fn what_session_methods_make_reads_as_what_excel_makes_through_com() {
     let mut checked = 0;
+    let mut problems = Vec::new();
     for name in SCENARIOS {
         let Some(excel) = excel_fixture(name) else { continue };
         let ours = read_back(&scenario(name));
         let (a, b) = (&excel.sheets[0].charts[0], &ours.sheets[0].charts[0]);
-        assert_eq!(summary(a), summary(b), "scenario {name}");
+        for d in differences(&summary(a), &summary(b)) {
+            problems.push(format!("scenario {name}\n{d}"));
+        }
         checked += 1;
     }
+    assert!(problems.is_empty(), "{checked} scenarios compared\n{}", problems.join("\n"));
     println!("{checked} scenarios compared with Excel's own files");
 }
 
