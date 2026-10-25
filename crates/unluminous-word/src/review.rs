@@ -182,6 +182,7 @@ impl Session {
         let protection =
             (!password.is_empty()).then(|| protection_element("trackedChanges", password));
         let unlocking = protection.is_none();
+        self.permit = true;
         self.change(Scope::Whole, move |document, selection, _| {
             if let Some(settings) = document.settings.as_mut() {
                 settings.root.remove_children("w:documentProtection");
@@ -192,14 +193,110 @@ impl Session {
                         .insert(1.min(settings.root.children.len()), Node::El(el.clone()));
                     props::set_on_off(&mut settings.root, "w:trackRevisions", Some(true));
                 }
-                crate::order::sort(&mut settings.root);
+                crate::page_setup::sort_settings(&mut settings.root);
                 settings.dirty = true;
             }
             selection.clone()
         });
+        self.permit = false;
         if !unlocking {
             self.tracking = true;
         }
+        self.protection = (!unlocking).then(|| "trackedChanges".to_owned());
+    }
+
+    /// Restrict Editing: let this document be changed only as `kind` says (`readOnly`, `comments`,
+    /// `trackedChanges` or `forms`), until `password` stops it, as Word's Restrict Editing pane does.
+    pub fn restrict_editing(&mut self, kind: &str, password: &str) -> Result<(), String> {
+        if !matches!(kind, "readOnly" | "comments" | "trackedChanges" | "forms") {
+            return Err(format!("Restrict Editing is readOnly, comments, trackedChanges or forms, not {kind}"));
+        }
+        let protection = protection_element(kind, password);
+        self.permit = true;
+        let tracking = kind == "trackedChanges";
+        self.change(Scope::Whole, move |document, selection, _| {
+            if let Some(settings) = document.settings.as_mut() {
+                settings.root.remove_children("w:documentProtection");
+                settings.root.children.push(Node::El(protection.clone()));
+                if tracking {
+                    props::set_on_off(&mut settings.root, "w:trackRevisions", Some(true));
+                }
+                crate::page_setup::sort_settings(&mut settings.root);
+                settings.dirty = true;
+            }
+            selection.clone()
+        });
+        self.permit = false;
+        self.protection = Some(kind.to_owned());
+        if tracking {
+            self.tracking = true;
+        }
+        Ok(())
+    }
+
+    /// Stop Restrict Editing with its password.
+    pub fn stop_protection(&mut self, password: &str) -> Result<(), String> {
+        if self.protection.is_none() {
+            return Err("this document is not protected".into());
+        }
+        if !self.protection_password_matches(password) {
+            return Err("the password is not right".into());
+        }
+        self.permit = true;
+        self.change(Scope::Whole, |document, selection, _| {
+            if let Some(settings) = document.settings.as_mut() {
+                settings.root.remove_children("w:documentProtection");
+                settings.dirty = true;
+            }
+            selection.clone()
+        });
+        self.permit = false;
+        self.protection = None;
+        Ok(())
+    }
+
+    /// Password to Modify: a person who opens the document without `password` can read it and not
+    /// change it. An empty password takes it away.
+    pub fn set_password_to_modify(&mut self, password: &str) {
+        let element = (!password.is_empty()).then(|| {
+            let mut el = protection_element("readOnly", password);
+            el.name = "w:writeProtection".into();
+            el.remove_attr("w:edit");
+            el.remove_attr("w:enforcement");
+            el
+        });
+        self.permit = true;
+        self.change(Scope::Whole, move |document, selection, _| {
+            if let Some(settings) = document.settings.as_mut() {
+                settings.root.remove_children("w:writeProtection");
+                if let Some(el) = &element {
+                    settings.root.children.push(Node::El(el.clone()));
+                }
+                crate::page_setup::sort_settings(&mut settings.root);
+                settings.dirty = true;
+            }
+            selection.clone()
+        });
+        self.permit = false;
+    }
+
+    /// Open a document that has a password to modify for changing, with that password.
+    pub fn unlock_for_editing(&mut self, password: &str) -> Result<(), String> {
+        let Some(w) = self.document.settings.as_ref().and_then(|s| s.root.child("w:writeProtection")) else {
+            self.read_only = false;
+            return Ok(());
+        };
+        let (Some(salt), Some(hash)) = (w.attr("w:salt").or(w.attr("w:saltValue")), w.attr("w:hash").or(w.attr("w:hashValue"))) else {
+            self.read_only = false;
+            return Ok(());
+        };
+        let spins = w.attr("w:cryptSpinCount").or(w.attr("w:spinCount")).and_then(|v| v.parse().ok()).unwrap_or(100_000);
+        let salt = base64_decode(salt).ok_or("the document's password is not readable")?;
+        if base64(&password_hash(password, &salt, spins)) != hash {
+            return Err("the password is not right".into());
+        }
+        self.read_only = false;
+        Ok(())
     }
 
     /// Whether Lock Tracking is on, so tracking cannot be turned off without the password.
@@ -265,6 +362,15 @@ impl Session {
 
     /// Mark the selection as written in a language (`en-US`, `fr-FR`, `de-DE`), `w:lang`. Spelling
     /// checks only English (United States), so text in another language is left alone.
+    /// The document's language as a tag, such as `en-US`: the default run properties' `w:lang`.
+    pub fn language_tag(&self) -> String {
+        self.document
+            .styles
+            .as_ref()
+            .and_then(|s| s.root.child("w:docDefaults")?.child("w:rPrDefault")?.child("w:rPr")?.child("w:lang")?.attr("w:val").map(str::to_owned))
+            .unwrap_or_else(|| "en-US".into())
+    }
+
     /// The language of the text at the caret, as the status area names it: the run's own `w:lang`, its
     /// style's, or the document's default, with the common tags spelled out.
     pub fn language_at_caret(&self) -> String {
@@ -495,12 +601,16 @@ impl Session {
 /// `w:documentProtection` for an editing restriction (`readOnly`, `comments`, `trackedChanges`,
 /// `forms`) with the password hash Word writes.
 pub fn protection_element(edit: &str, password: &str) -> El {
-    let salt: [u8; 16] = std::array::from_fn(|i| {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.subsec_nanos());
-        (nanos.wrapping_mul(2654435761).wrapping_add(i as u32 * 40503) >> (i % 4 * 8)) as u8
-    });
+    let mut salt = [0u8; 16];
+    if getrandom::fill(&mut salt).is_err() {
+        // No random numbers: a salt from the clock, which is still unique to this moment.
+        salt = std::array::from_fn(|i| {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.subsec_nanos());
+            (nanos.wrapping_mul(2654435761).wrapping_add(i as u32 * 40503) >> (i % 4 * 8)) as u8
+        });
+    }
     let hash = password_hash(password, &salt, 100_000);
     El::new("w:documentProtection")
         .with("w:edit", edit)
@@ -593,6 +703,38 @@ fn contrast(a: props::Rgb, b: props::Rgb) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn restrict_editing_refuses_what_it_forbids_and_its_password_stops_it() {
+        let mut session = Session::new(crate::new::blank());
+        session.type_text("Some text");
+        session.restrict_editing("readOnly", "s3cret").unwrap();
+        session.type_text(" more");
+        assert!(session.refused.is_some(), "typing is refused");
+        let text = crate::export::to_text(&session.document);
+        assert!(!text.contains("more"), "{text}");
+        assert!(session.stop_protection("wrong").is_err());
+        session.stop_protection("s3cret").unwrap();
+        session.type_text(" more");
+        assert!(crate::export::to_text(&session.document).contains("more"));
+        session.restrict_editing("comments", "x").unwrap();
+        session.add_comment("allowed");
+        assert_eq!(session.document.comments.as_ref().map(|c| c.notes.len()), Some(1), "a comment is allowed");
+        session.type_text("not allowed");
+        assert!(!crate::export::to_text(&session.document).contains("not allowed"));
+        // Password to modify: read only until the password is given, after reading the saved file again.
+        let mut session = Session::new(crate::new::blank());
+        session.set_password_to_modify("pw");
+        let saved = crate::write::save(&session.document).unwrap();
+        let mut again = Session::new(crate::read::open(&saved).unwrap());
+        assert!(again.read_only);
+        again.type_text("x");
+        assert!(again.refused.is_some());
+        assert!(again.unlock_for_editing("nope").is_err());
+        again.unlock_for_editing("pw").unwrap();
+        again.type_text("x");
+        assert!(crate::export::to_text(&again.document).contains('x'));
+    }
 
     #[test]
     fn a_tracked_bold_records_the_formatting_before_it_and_rejects_back() {

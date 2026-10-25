@@ -898,6 +898,15 @@ impl Session {
 
     /// Add a comment on the selection (or the word at the caret) by the session's author. Answers its id.
     pub fn add_comment(&mut self, text: &str) -> i64 {
+        // Restrict Editing to comments lets a comment through.
+        let permitted = self.protection.as_deref() == Some("comments") && !self.read_only;
+        self.permit = permitted;
+        let id = self.add_comment_inner(text);
+        self.permit = false;
+        id
+    }
+
+    fn add_comment_inner(&mut self, text: &str) -> i64 {
         let text = text.to_owned();
         let author =
             if self.author.is_empty() { "Unluminous".to_owned() } else { self.author.clone() };

@@ -282,7 +282,7 @@ pub const WORD: &[(&str, &str)] = &[
     ("link", "The link at the caret: link show|open|edit <address> [text]|tip <text>|remove."),
     ("undo", "Undo."),
     ("redo", "Redo."),
-    ("export", "export pdf|html|md|txt [path]."),
+    ("export", "export pdf|html|md|txt [path] [--pdfa] [--no-tags] [--no-outline]: a PDF is tagged, has the headings as its outline and the document information, and --pdfa writes PDF/A-2b."),
     ("properties", "Title, subject, author, keywords: properties [name] [value]."),
     ("view", "How the document is shown: view zoom <percent> | marks [on|off] | navigation [on|off] | thumbnails | ruler [on|off] | gridlines [on|off] | multiple [on|off] | read | outline | print | fit-width | fit-page | new-window | paper light|theme."),
     ("panel", "Open the format panel at a level: panel text|paragraph|page|review|close."),

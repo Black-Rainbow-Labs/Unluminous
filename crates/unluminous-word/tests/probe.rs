@@ -248,3 +248,47 @@ fn layout_time_probe() {
         println!("{} pages in {:?}", pages.pages.len(), started.elapsed());
     }
 }
+
+/// Write `PROBE_OUT` as a fixture encrypted with the password `s3cret`, or decrypt `PROBE_IN` with it.
+#[test]
+#[ignore]
+fn crypto_probe() {
+    if let Ok(out) = std::env::var("PROBE_OUT") {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/kitchen-sink.docx");
+        let package = std::fs::read(path).unwrap();
+        std::fs::write(&out, unluminous_word::crypto::encrypt(&package, "s3cret").unwrap()).unwrap();
+        println!("wrote {out}");
+    }
+    if let Ok(input) = std::env::var("PROBE_IN") {
+        let bytes = std::fs::read(&input).unwrap();
+        let package = unluminous_word::crypto::decrypt(&bytes, "s3cret").unwrap();
+        let document = unluminous_word::read::open(&package).unwrap();
+        println!("decrypted {} paragraphs", unluminous_word::position::paragraphs(&document.body).len());
+    }
+}
+
+/// Write `PROBE_OUT` with Restrict Editing set to read only with the password `s3cret`.
+#[test]
+#[ignore]
+fn protection_probe() {
+    let out = std::env::var("PROBE_OUT").unwrap();
+    let mut session = unluminous_word::session::Session::new(unluminous_word::new::blank());
+    session.type_text("Protected text");
+    session.lock_tracking("s3cret");
+    std::fs::write(&out, unluminous_word::write::save(&session.document).unwrap()).unwrap();
+    println!("wrote {out}");
+}
+
+/// Write `PROBE_OUT` with a password to modify, `s3cret`, and `PROBE_OUT2` restricted to read only.
+#[test]
+#[ignore]
+fn modify_probe() {
+    let mut session = unluminous_word::session::Session::new(unluminous_word::new::blank());
+    session.type_text("Text");
+    session.set_password_to_modify("s3cret");
+    std::fs::write(std::env::var("PROBE_OUT").unwrap(), unluminous_word::write::save(&session.document).unwrap()).unwrap();
+    let mut session = unluminous_word::session::Session::new(unluminous_word::new::blank());
+    session.type_text("Text");
+    session.restrict_editing("readOnly", "s3cret").unwrap();
+    std::fs::write(std::env::var("PROBE_OUT2").unwrap(), unluminous_word::write::save(&session.document).unwrap()).unwrap();
+}

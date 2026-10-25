@@ -46,7 +46,7 @@ pub const SETTINGS: &[&str] = &[
 
 /// Put a settings part's children in the schema's order: a child it does not name stays after the one
 /// before it.
-fn sort_settings(root: &mut El) {
+pub(crate) fn sort_settings(root: &mut El) {
     let rank = |el: &El| el.name.strip_prefix("w:").and_then(|l| SETTINGS.iter().position(|k| *k == l));
     let mut last = 0usize;
     let mut keyed: Vec<(usize, usize, Node)> = Vec::new();

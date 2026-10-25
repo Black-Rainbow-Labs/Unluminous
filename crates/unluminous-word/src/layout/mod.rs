@@ -15,6 +15,8 @@ pub mod notes;
 pub mod paragraph;
 pub mod section;
 pub mod table;
+#[cfg(test)]
+mod tests;
 
 use std::collections::HashMap;
 

@@ -14,6 +14,7 @@
 pub mod autocorrect;
 pub mod builtin;
 pub mod clipboard;
+pub mod crypto;
 pub mod edit;
 pub mod export;
 pub mod fields;

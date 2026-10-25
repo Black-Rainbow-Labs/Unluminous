@@ -41,6 +41,11 @@ dom_query = { version = "0.28", default-features = false }
 # SVG by emf-core, and an SVG is drawn by resvg at the size the page shows it. No network, no fonts
 # beyond the machine's own.
 emf-core = { version = "0.1.1", default-features = false, features = ["svg"] }
+# A Word document encrypted with a password (task-2359, TDD 5.6): ECMA-376 agile encryption, AES-256 in
+# CBC mode inside an OLE compound file. The RustCrypto crates match the `sha2` and `hmac` already here.
+aes = "0.8.4"
+cbc = "0.1.2"
+cfb = "0.10.0"
 resvg = { version = "0.45.1", default-features = false, features = ["text", "system-fonts", "memmap-fonts"] }
 # Speech to text for the Agent-Chat prompt: the microphone, the "Sable" wake word, the local Moonshine model
 # and an OpenAI compatible endpoint. `task-2290`.

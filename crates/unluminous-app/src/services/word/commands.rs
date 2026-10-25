@@ -934,8 +934,13 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
         "export" => {
             let kind =
                 arguments.first().map(String::as_str).ok_or("export takes pdf, html, md or txt")?;
-            let to = arguments.get(1).map(PathBuf::from);
-            let said = export_to(doc, kind, to.as_deref())?;
+            let to = arguments.iter().skip(1).find(|a| !a.starts_with("--")).map(PathBuf::from);
+            let how = PdfHow {
+                tagged: !flag(arguments, "--no-tags"),
+                outline: !flag(arguments, "--no-outline"),
+                pdfa: flag(arguments, "--pdfa"),
+            };
+            let said = export_with(doc, kind, to.as_deref(), how)?;
             Ok(Answer::said(said))
         }
         "properties" => {
@@ -1767,12 +1772,53 @@ pub fn insert_picture_file(
 /// Export the document, beside itself or to `to`.
 /// The bytes of a PDF of `pages`, with the document's title and its fonts and pictures.
 pub(crate) fn pdf_bytes(doc: &Doc, pages: &unluminous_word::layout::Pages) -> Vec<u8> {
-    let title = unluminous_word::new::property(&doc.session.document, "dc:title").unwrap_or_else(|| doc.label());
+    pdf_bytes_with(doc, pages, PdfHow { tagged: false, outline: false, pdfa: false })
+}
+
+/// What an exported PDF holds besides its pages.
+#[derive(Debug, Clone, Copy)]
+pub struct PdfHow {
+    pub tagged: bool,
+    pub outline: bool,
+    pub pdfa: bool,
+}
+
+/// The bytes of a PDF of `pages` with the document's information, and its outline, tags and PDF/A
+/// metadata as `how` asks (task-2359, TDD 5.6).
+pub(crate) fn pdf_bytes_with(doc: &Doc, pages: &unluminous_word::layout::Pages, how: PdfHow) -> Vec<u8> {
     let document = &doc.session.document;
-    unluminous_word::pdf::write(pages, &title, &|style| pdf_face(style), &|part| pdf_picture(document, part))
+    let property = |name: &str| unluminous_word::new::property(document, name).unwrap_or_default();
+    let title = unluminous_word::new::property(document, "dc:title").filter(|t| !t.is_empty()).unwrap_or_else(|| doc.label());
+    let outline = if how.outline {
+        doc.session
+            .toc_entries(6, pages)
+            .into_iter()
+            .filter_map(|(level, text, _, path)| {
+                let (page, line) = pages.find(&Pos::new(path, 0))?;
+                Some((level, text, page, line.top))
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let options = unluminous_word::pdf::PdfOptions {
+        title,
+        author: property("dc:creator"),
+        subject: property("dc:subject"),
+        keywords: property("cp:keywords"),
+        lang: doc.session.language_tag(),
+        outline,
+        structure: (how.tagged || how.pdfa).then(|| unluminous_word::pdf::structure(document, pages)),
+        pdfa: how.pdfa,
+    };
+    unluminous_word::pdf::write_with(pages, &options, &|style| pdf_face(style), &|part| pdf_picture(document, part))
 }
 
 pub fn export_to(doc: &mut Doc, kind: &str, to: Option<&Path>) -> Result<String, String> {
+    export_with(doc, kind, to, PdfHow { tagged: true, outline: true, pdfa: false })
+}
+
+pub fn export_with(doc: &mut Doc, kind: &str, to: Option<&Path>, how: PdfHow) -> Result<String, String> {
     let path = to
         .map(Path::to_path_buf)
         .or_else(|| Word::export_path(doc, kind))
@@ -1786,7 +1832,7 @@ pub fn export_to(doc: &mut Doc, kind: &str, to: Option<&Path>) -> Result<String,
         "pdf" => {
             doc.ensure_pages();
             let pages = doc.pages.clone();
-            pdf_bytes(doc, &pages)
+            pdf_bytes_with(doc, &pages, how)
         }
         other => return Err(format!("{other} is not a format: pdf, html, md or txt")),
     };

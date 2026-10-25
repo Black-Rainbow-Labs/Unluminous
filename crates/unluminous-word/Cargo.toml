@@ -33,6 +33,13 @@ hyphenation.workspace = true
 dom_query.workspace = true
 # The password hash Word writes for Lock Tracking and Restrict Editing (task-2359). Already in the tree.
 sha2.workspace = true
+# Opening and saving a document encrypted with a password (`crypto.rs`, task-2359).
+aes.workspace = true
+cbc.workspace = true
+cfb.workspace = true
+hmac.workspace = true
+getrandom.workspace = true
+base64.workspace = true
 
 [dev-dependencies]
 # A small picture for the test that has Word open a document Unluminous wrote.
