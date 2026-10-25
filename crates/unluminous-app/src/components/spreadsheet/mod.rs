@@ -14,6 +14,7 @@ pub mod keys;
 pub mod keys_b;
 pub mod menus;
 pub mod objects;
+pub mod objects_c;
 pub mod sparkline;
 pub mod overlay_a;
 pub mod panes_a;
@@ -144,6 +145,8 @@ fn draw(
                     }
                 }
             }
+        } else if !ctx.text_edit_focused() && objects_c::keys(&ctx, book, &mut asked.words) {
+            // A chosen object took the key: nudged, deleted or let go.
         } else if let Some(index) =
             book.view.chart.filter(|_| ctx.input(|i| i.key_pressed(egui::Key::Delete)))
         {
@@ -179,7 +182,6 @@ fn draw(
     if out.pressed {
         book.view.chart = None;
     }
-    chart::show_pictures(ui, book, frame);
     if let Some(chosen) = chart::show(ui, book, frame, &ink, look, book.view.chart) {
         book.view.chart = Some(chosen);
         asked.requests.push(Request::TakeTheKeyboard(true));

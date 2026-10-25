@@ -293,7 +293,12 @@ pub fn show(
     panes = layout.panes(book);
     let split = read_the_split_bars(ui, &response, book, &layout);
     let on_outline = super::overlay_a::over_outline(ui, book, &layout, panes[under].frame);
-    if !split && !on_outline {
+    // A press on a picture, shape or text box belongs to it, and so does a drag it has begun.
+    let on_object = !split
+        && !on_outline
+        && !pointing
+        && super::objects_c::pointer(ui, &response, book, &panes, out);
+    if !split && !on_outline && !on_object {
         read_the_pointer(ui, &response, book, panes[under].frame, area, pointing, out);
     }
     panes = layout.panes(book);
@@ -301,9 +306,10 @@ pub fn show(
     out.frame = Some(main);
     ui.painter_at(layout.cells).rect_filled(layout.cells, 0, ink.paper);
     let mut formats: HashMap<u32, Format> = HashMap::new();
-    for pane in &panes {
+    for (index, pane) in panes.iter().enumerate() {
         draw_pane(ui, look, book, rules, pane.frame, &ink, &mut formats);
         draw_selection(ui, book, pane.frame, &ink, look);
+        super::objects_c::draw(ui, book, pane.frame, &ink, index);
     }
     draw_dividers(ui, &layout, &panes, look);
     for pane in &panes {

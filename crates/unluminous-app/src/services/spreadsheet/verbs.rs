@@ -57,6 +57,7 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Option<Resul
         "fill-handle" => fill_handle(sheet, args),
         _ => {
             return super::verbs_a::run(sheet, verb, args)
+                .or_else(|| super::verbs_c::run(sheet, verb, args))
                 .or_else(|| super::verbs_b::run(sheet, verb, args))
         }
     })

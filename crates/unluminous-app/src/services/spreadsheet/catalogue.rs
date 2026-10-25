@@ -530,6 +530,7 @@ fn insert() -> Item {
                     .map(|k| run(&capitalised(k), "", &format!("chart {k}")))
                     .collect(),
             ),
+            super::catalogue_c::insert_objects(),
         ],
     )
 }
@@ -684,6 +685,8 @@ pub fn panel_root(book: &Book) -> Vec<Item> {
         super::catalogue_a::review(book),
         super::catalogue_a::protection(),
         super::catalogue_a::styles_and_themes(book),
+        super::catalogue_c::object_level(book),
+        super::catalogue_c::sparkline_level(book),
         super::catalogue_b::page_layout(book),
         super::catalogue_b::pivot_table(book),
         view(book),
@@ -800,6 +803,8 @@ pub fn everything(book: &Book) -> Vec<Item> {
         super::catalogue_a::review(book),
         super::catalogue_a::protection(),
         super::catalogue_a::styles_and_themes(book),
+        super::catalogue_c::object_level(book),
+        super::catalogue_c::sparkline_level(book),
         super::catalogue_b::page_layout(book),
         super::catalogue_b::pivot_table(book),
         view(book),
@@ -807,8 +812,11 @@ pub fn everything(book: &Book) -> Vec<Item> {
     ]
 }
 
-/// The right click menu of the chosen cells.
+/// The right click menu of the chosen cells, or of the chosen objects when they were right clicked.
 pub fn cell_menu(book: &Book) -> Vec<Item> {
+    if book.view.objects.menu.is_some() {
+        return super::catalogue_c::object_menu(book);
+    }
     let at = book.view.cursor;
     let s = &book.session.book.sheets[book.view.sheet];
     let has_note = s.notes.contains_key(&(at.row, at.col));
