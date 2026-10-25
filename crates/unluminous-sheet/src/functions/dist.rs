@@ -224,20 +224,7 @@ pub const FUNCTIONS: &[Function] = &[
             number(tails * (1.0 - t_cdf(x, df)))
         },
     ),
-    s(
-        "T.INV",
-        2,
-        2,
-        "probability, deg_freedom",
-        "The inverse of Student's t distribution.",
-        |ctx, a| {
-            let (p, df) = (num(ctx, &a[0])?, num(ctx, &a[1])?.trunc());
-            if p <= 0.0 || p >= 1.0 || df < 1.0 {
-                return Err(ErrorKind::Num);
-            }
-            number(t_inverse(p, df))
-        },
-    ),
+    s("T.INV", 2, 2, "probability, deg_freedom", "The inverse of Student's t distribution.", t_inv),
     s(
         "T.INV.2T",
         2,
@@ -268,14 +255,14 @@ pub const FUNCTIONS: &[Function] = &[
             number(if opt_bool(a, 2, true)? {
                 gamma_p(df / 2.0, x / 2.0)
             } else if x == 0.0 {
-                if df == 2.0 {
-                    0.5
-                } else {
-                    0.0
+                // The density at 0 is infinite with one degree of freedom, which Excel gives as #NUM!.
+                match df {
+                    1.0 => return Err(ErrorKind::Num),
+                    2.0 => 0.5,
+                    _ => 0.0,
                 }
             } else {
-                ((df / 2.0 - 1.0) * x.ln() - x / 2.0 - (df / 2.0) * 2f64.ln() - ln_gamma(df / 2.0))
-                    .exp()
+                0.5 * gamma_front(df / 2.0, x / 2.0).exp() / (x / 2.0)
             })
         },
     ),
@@ -364,10 +351,20 @@ pub const FUNCTIONS: &[Function] = &[
                 return Err(ErrorKind::Num);
             }
             number(if opt_bool(a, 3, true)? {
-                beta_i(d1 * x / (d1 * x + d2), d1 / 2.0, d2 / 2.0)
+                beta_i_pair(d1 * x / (d1 * x + d2), d2 / (d1 * x + d2), d1 / 2.0, d2 / 2.0)
+            } else if x == 0.0 {
+                // The density at 0 is 0, 1 or infinite as the first degrees of freedom are above, at or
+                // under 2; infinite is #NUM!.
+                match d1 {
+                    1.0 => return Err(ErrorKind::Num),
+                    2.0 => 1.0,
+                    _ => 0.0,
+                }
             } else {
-                ((d1 * x).powf(d1) * d2.powf(d2) / (d1 * x + d2).powf(d1 + d2)).sqrt()
-                    / (x * ln_beta(d1 / 2.0, d2 / 2.0).exp())
+                {
+                    let half = -d1 * (d2 / (d1 * x)).ln_1p() - d2 * (d1 * x / d2).ln_1p();
+                    (0.5 * half - ln_beta(d1 / 2.0, d2 / 2.0)).exp() / x
+                }
             })
         },
     ),
@@ -443,7 +440,7 @@ fn poisson(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
     if k < 0.0 || m < 0.0 {
         return Err(ErrorKind::Num);
     }
-    let pmf = |i: f64| (i * m.ln() - m - ln_gamma(i + 1.0)).exp();
+    let pmf = |i: f64| gamma_front(i + 1.0, m).exp() / m;
     number(if opt_bool(a, 2, true)? {
         if m == 0.0 {
             1.0
@@ -477,6 +474,9 @@ fn weibull(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
     let t = (x / l).powf(k);
     number(if opt_bool(a, 3, true)? {
         1.0 - (-t).exp()
+    } else if x == 0.0 {
+        // Excel answers 0 for the density at 0 whatever the shape.
+        0.0
     } else {
         k / l * (x / l).powf(k - 1.0) * (-t).exp()
     })
@@ -495,6 +495,10 @@ fn t_inv_2t(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
     if p <= 0.0 || p > 1.0 || df < 1.0 {
         return Err(ErrorKind::Num);
     }
+    if p == 1.0 {
+        // Half of the probability is on each side of 0, so the answer is exactly 0.
+        return number(0.0);
+    }
     number(t_inverse(1.0 - p / 2.0, df))
 }
 
@@ -508,12 +512,21 @@ fn tinv(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
     number(t_inverse(1.0 - p / 2.0, df))
 }
 
+/// The one tailed inverse, which is exactly 0 at one half.
+fn t_inv(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
+    let (p, df) = (num(ctx, &a[0])?, num(ctx, &a[1])?.trunc());
+    if p <= 0.0 || p >= 1.0 || df < 1.0 {
+        return Err(ErrorKind::Num);
+    }
+    number(if p == 0.5 { 0.0 } else { t_inverse(p, df) })
+}
+
 fn chisq_rt(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
     let (x, df) = (num(ctx, &a[0])?, num(ctx, &a[1])?.trunc());
     if x < 0.0 || df < 1.0 {
         return Err(ErrorKind::Num);
     }
-    number(1.0 - gamma_p(df / 2.0, x / 2.0))
+    number(gamma_q(df / 2.0, x / 2.0))
 }
 
 fn chisq_inv_rt(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
@@ -551,7 +564,11 @@ fn gamma_dist(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
     number(if opt_bool(a, 3, true)? {
         gamma_p(alpha, x / beta)
     } else {
-        ((alpha - 1.0) * x.ln() - x / beta - alpha * beta.ln() - ln_gamma(alpha)).exp()
+        if x == 0.0 {
+            // Excel has no density at 0 unless the shape is above 1, where it is 0.
+            return if alpha > 1.0 { number(0.0) } else { Err(ErrorKind::Num) };
+        }
+        gamma_front(alpha, x / beta).exp() / x
     })
 }
 
@@ -560,7 +577,7 @@ fn f_rt(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
     if x < 0.0 || d1 < 1.0 || d2 < 1.0 {
         return Err(ErrorKind::Num);
     }
-    number(beta_i(d2 / (d2 + d1 * x), d2 / 2.0, d1 / 2.0))
+    number(beta_i_pair(d2 / (d2 + d1 * x), d1 * x / (d2 + d1 * x), d2 / 2.0, d1 / 2.0))
 }
 
 pub fn normal_pdf(z: f64) -> f64 {
@@ -595,8 +612,53 @@ pub fn erfc(x: f64) -> f64 {
     gamma_q(0.5, x * x)
 }
 
-/// The natural log of the gamma function, by the Lanczos approximation.
+/// What Stirling's series adds to the log gamma function of `x`, for x of at least 10, where the terms
+/// shown reach the last digit of a double.
+fn stirling_correction(x: f64) -> f64 {
+    let r = 1.0 / x;
+    let r2 = r * r;
+    r * (1.0 / 12.0
+        - r2 * (1.0 / 360.0
+            - r2 * (1.0 / 1260.0
+                - r2 * (1.0 / 1680.0 - r2 * (1.0 / 1188.0 - r2 * 691.0 / 360_360.0)))))
+}
+
+/// ln(1 + u) - u, which is the small difference of two nearly equal numbers when u is small and is
+/// summed as a series there.
+fn log1pmx(u: f64) -> f64 {
+    if u.abs() >= 0.1 {
+        return u.ln_1p() - u;
+    }
+    let (mut power, mut sum) = (u * u, 0.0);
+    for k in 2..60 {
+        let term = power / k as f64;
+        sum += if k % 2 == 0 { -term } else { term };
+        power *= u;
+        if term.abs() < sum.abs() * 1e-18 {
+            break;
+        }
+    }
+    sum
+}
+
+/// a ln x - x - ln gamma(a), the exponent in front of the incomplete gamma series. For a large `a`
+/// the three terms are each huge and nearly cancel, so they are combined by hand.
+fn gamma_front(a: f64, x: f64) -> f64 {
+    if a < 10.0 {
+        return a * x.ln() - x - ln_gamma(a);
+    }
+    let u = (x - a) / a;
+    a * log1pmx(u) + 0.5 * a.ln() - 0.5 * (2.0 * std::f64::consts::PI).ln() - stirling_correction(a)
+}
+
+/// The natural log of the gamma function: the Lanczos approximation below 10 and Stirling's series
+/// from there, which is accurate to the last digit of a result in the thousands.
 pub fn ln_gamma(x: f64) -> f64 {
+    if x >= 10.0 {
+        return (x - 0.5) * x.ln() - x
+            + 0.5 * (2.0 * std::f64::consts::PI).ln()
+            + stirling_correction(x);
+    }
     const G: f64 = 7.0;
     const C: [f64; 9] = [
         0.999_999_999_999_809_9,
@@ -632,8 +694,26 @@ pub fn gamma(x: f64) -> f64 {
     ln_gamma(x).exp()
 }
 
+/// The log of the beta function. When an argument is large, gamma(a) and gamma(a + b) are far apart
+/// in size, so the difference of their logs is worked out from the ratio instead of from two huge
+/// numbers: a result near 1e11 can only be rounded to 1e-5.
 fn ln_beta(a: f64, b: f64) -> f64 {
-    ln_gamma(a) + ln_gamma(b) - ln_gamma(a + b)
+    let (big, small) = if a >= b { (a, b) } else { (b, a) };
+    if big < 10.0 {
+        return ln_gamma(a) + ln_gamma(b) - ln_gamma(a + b);
+    }
+    let ratio = (small / big).ln_1p();
+    if small < 10.0 {
+        let difference =
+            -small * big.ln() - (big + small - 0.5) * ratio + small + stirling_correction(big)
+                - stirling_correction(big + small);
+        return ln_gamma(small) + difference;
+    }
+    0.5 * (2.0 * std::f64::consts::PI).ln() + stirling_correction(a) + stirling_correction(b)
+        - stirling_correction(a + b)
+        - big * ratio
+        + (small - 0.5) * (small / (big + small)).ln()
+        - 0.5 * big.ln()
 }
 
 /// The regularised lower incomplete gamma function P(a, x).
@@ -646,7 +726,7 @@ pub fn gamma_p(a: f64, x: f64) -> f64 {
         let mut sum = 1.0 / a;
         let mut term = sum;
         let mut n = a;
-        for _ in 0..1000 {
+        for _ in 0..MOST_TERMS {
             n += 1.0;
             term *= x / n;
             sum += term;
@@ -654,7 +734,7 @@ pub fn gamma_p(a: f64, x: f64) -> f64 {
                 break;
             }
         }
-        (sum.ln() - x + a * x.ln() - ln_gamma(a)).exp()
+        sum * gamma_front(a, x).exp()
     } else {
         1.0 - gamma_q(a, x)
     }
@@ -674,7 +754,7 @@ pub fn gamma_q(a: f64, x: f64) -> f64 {
     let mut c = 1.0 / tiny;
     let mut d = 1.0 / b;
     let mut h = d;
-    for i in 1..1000 {
+    for i in 1..MOST_TERMS {
         let an = -(i as f64) * (i as f64 - a);
         b += 2.0;
         d = an * d + b;
@@ -692,36 +772,112 @@ pub fn gamma_q(a: f64, x: f64) -> f64 {
             break;
         }
     }
-    (-x + a * x.ln() - ln_gamma(a)).exp() * h
+    gamma_front(a, x).exp() * h
 }
+
+/// The most terms a series or continued fraction runs for. Near its centre the incomplete gamma
+/// function of a million needs thousands of terms, and of ten billion about a million.
+const MOST_TERMS: usize = 20_000_000;
 
 /// The regularised incomplete beta function I_x(a, b).
 pub fn beta_i(x: f64, a: f64, b: f64) -> f64 {
+    beta_i_pair(x, 1.0 - x, a, b)
+}
+
+/// I_x(a, b) given both x and 1 - x. A caller that has 1 - x to more digits than the subtraction
+/// would leave passes it here, which matters when x is within 1e-9 of 1, as it is for an F or t
+/// distribution with billions of degrees of freedom.
+pub fn beta_i_pair(x: f64, y: f64, a: f64, b: f64) -> f64 {
     if x <= 0.0 {
         return 0.0;
     }
-    if x >= 1.0 {
+    if y <= 0.0 {
         return 1.0;
     }
-    let front = (a * x.ln() + b * (1.0 - x).ln() - ln_beta(a, b)).exp();
-    if x < (a + 1.0) / (a + b + 2.0) {
-        front * beta_fraction(x, a, b) / a
+    // Whichever of x and y is near 1 has its log taken from the other, which is the small one.
+    let ln_x = if x > 0.5 { (-y).ln_1p() } else { x.ln() };
+    let ln_y = if y > 0.5 { (-x).ln_1p() } else { y.ln() };
+    let front = (a * ln_x + b * ln_y - ln_beta(a, b)).exp();
+    // The fraction is run in the smaller of x and y when one is near 1: a fraction in x itself would
+    // take its terms from a difference of numbers that agree to nine digits.
+    let centre = (a + 1.0) / (a + b + 2.0);
+    // The fraction in x still converges a little past the centre, and when y is near 1 that is more
+    // accurate than the fraction in y, whose first terms are then differences of numbers near 1.
+    // Measured at b = 5e9, a = 15: 2e-9 off against 2e-8 off.
+    let reaches_past = y > 0.9 && x < 1.5 * centre;
+    if if x < centre { x <= 0.9 } else { reaches_past } {
+        front * beta_fraction(x, y, a, b) / a
     } else {
-        1.0 - front * beta_fraction(1.0 - x, b, a) / b
+        1.0 - front * beta_fraction(y, x, b, a) / b
     }
 }
 
-fn beta_fraction(x: f64, a: f64, b: f64) -> f64 {
+/// Solves `f(x) = target` for an increasing `f`, bisecting from `lo` to `hi` until the bracket is two
+/// neighbouring doubles. With `open_ended` the upper end is doubled until `f` reaches the target.
+pub fn solve_increasing(
+    f: impl Fn(f64) -> f64,
+    target: f64,
+    lo: f64,
+    hi: f64,
+    open_ended: bool,
+) -> f64 {
+    let (mut lo, mut hi) = (lo, hi);
+    if open_ended {
+        let mut doublings = 0;
+        while f(hi) < target && doublings < 1100 {
+            lo = hi;
+            hi *= 2.0;
+            doublings += 1;
+        }
+    }
+    for _ in 0..2200 {
+        let mid = lo + (hi - lo) / 2.0;
+        if mid <= lo || mid >= hi {
+            break;
+        }
+        if f(mid) < target {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    lo + (hi - lo) / 2.0
+}
+
+/// The x with I_x(a, b) = p and its complement 1 - x. The one that is below a half is the one bisected,
+/// so the other is a subtraction from something near 1 and loses nothing.
+pub fn beta_inverse_pair(p: f64, a: f64, b: f64) -> (f64, f64) {
+    if p <= beta_i(0.5, a, b) {
+        let x = solve_increasing(|x| beta_i_pair(x, 1.0 - x, a, b), p, 0.0, 0.5, false);
+        (x, 1.0 - x)
+    } else {
+        let y = solve_increasing(|y| beta_i_pair(y, 1.0 - y, b, a), 1.0 - p, 0.0, 0.5, false);
+        (1.0 - y, y)
+    }
+}
+
+/// The t that leaves `alpha` in both tails together, for `df` degrees of freedom.
+pub fn t_two_tail_inverse(alpha: f64, df: f64) -> f64 {
+    if alpha >= 1.0 {
+        return 0.0;
+    }
+    let (u, w) = beta_inverse_pair(alpha, df / 2.0, 0.5);
+    (df * w / u).sqrt()
+}
+
+/// The continued fraction for the incomplete beta function, given x and y = 1 - x. The first step has
+/// 1 - (a + b) x / (a + 1), which is a difference of two numbers near 1 when x is, so it is written in y.
+fn beta_fraction(x: f64, y: f64, a: f64, b: f64) -> f64 {
     let tiny = 1e-300;
     let (qab, qap, qam) = (a + b, a + 1.0, a - 1.0);
     let mut c = 1.0;
-    let mut d = 1.0 - qab * x / qap;
+    let mut d = if x > 0.5 { (1.0 - b + qab * y) / qap } else { 1.0 - qab * x / qap };
     if d.abs() < tiny {
         d = tiny;
     }
     d = 1.0 / d;
     let mut h = d;
-    for m in 1..1000 {
+    for m in 1..MOST_TERMS {
         let m = m as f64;
         let m2 = 2.0 * m;
         let aa = m * (b - m) * x / ((qam + m2) * (a + m2));
@@ -755,12 +911,13 @@ fn beta_fraction(x: f64, a: f64, b: f64) -> f64 {
 }
 
 fn t_pdf(x: f64, df: f64) -> f64 {
-    (ln_gamma((df + 1.0) / 2.0) - ln_gamma(df / 2.0)).exp() / (df * std::f64::consts::PI).sqrt()
-        * (1.0 + x * x / df).powf(-(df + 1.0) / 2.0)
+    (-ln_beta(df / 2.0, 0.5) - 0.5 * df.ln() - (df + 1.0) / 2.0 * (x * x / df).ln_1p()).exp()
 }
 
-fn t_cdf(x: f64, df: f64) -> f64 {
-    let tail = 0.5 * beta_i(df / (df + x * x), df / 2.0, 0.5);
+/// Student's t cumulative distribution for a possibly fractional number of degrees of freedom.
+pub fn t_cdf(x: f64, df: f64) -> f64 {
+    let square = x * x;
+    let tail = 0.5 * beta_i_pair(df / (df + square), square / (df + square), df / 2.0, 0.5);
     if x >= 0.0 {
         1.0 - tail
     } else {
@@ -768,8 +925,17 @@ fn t_cdf(x: f64, df: f64) -> f64 {
     }
 }
 
+/// The t value with probability `p` below it, found from the smaller of its two tails.
 fn t_inverse(p: f64, df: f64) -> f64 {
-    invert(|x| t_cdf(x, df), p, -1e6, 1e6)
+    if p == 0.5 {
+        return 0.0;
+    }
+    let t = t_two_tail_inverse(2.0 * p.min(1.0 - p), df);
+    if p < 0.5 {
+        -t
+    } else {
+        t
+    }
 }
 
 /// Solve `f(x) = target` for an increasing `f` by bisection, then polish.

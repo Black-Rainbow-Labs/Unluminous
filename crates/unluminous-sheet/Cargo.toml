@@ -13,6 +13,8 @@ flate2.workspace = true
 crc32fast.workspace = true
 # Reading SpreadsheetML. Already in the tree. XML is written by hand with one escaping function.
 roxmltree.workspace = true
+# Regular expressions for REGEXTEST, REGEXEXTRACT and REGEXREPLACE.
+fancy-regex.workspace = true
 
 [dev-dependencies]
 # The oracle's answers are JSON lines written by PowerShell.

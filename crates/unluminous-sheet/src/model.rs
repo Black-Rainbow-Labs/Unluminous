@@ -47,13 +47,34 @@ pub struct Workbook {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CalcSettings {
     pub automatic: bool,
+    /// Iterative calculation (`iterate`): a circular reference is calculated over and over until it settles,
+    /// instead of being left at 0.
+    pub iterate: bool,
+    /// The most passes iterative calculation makes (`iterateCount`).
+    pub iterate_count: u32,
+    /// Iteration stops once no cell of a circular reference changes by this much (`iterateDelta`).
+    pub iterate_delta: f64,
+    /// False for "precision as displayed" (`fullPrecision="0"`): a number is stored as it is shown.
+    pub full_precision: bool,
     /// The other `calcPr` attributes, kept.
     pub attrs: Vec<(String, String)>,
 }
 
+/// How many passes iterative calculation makes when the file does not say.
+pub const DEFAULT_ITERATE_COUNT: u32 = 100;
+/// The largest change that ends iteration when the file does not say.
+pub const DEFAULT_ITERATE_DELTA: f64 = 0.001;
+
 impl Default for CalcSettings {
     fn default() -> Self {
-        Self { automatic: true, attrs: Vec::new() }
+        Self {
+            automatic: true,
+            iterate: false,
+            iterate_count: DEFAULT_ITERATE_COUNT,
+            iterate_delta: DEFAULT_ITERATE_DELTA,
+            full_precision: true,
+            attrs: Vec::new(),
+        }
     }
 }
 
@@ -476,6 +497,8 @@ pub struct Sheet {
     pub default_row_height: f64,
     pub spills: Spills,
     pub raw: SheetRaw,
+    /// How the sheet prints: page setup, margins, headers and footers, manual page breaks.
+    pub page: crate::pages::PageSetup,
     /// The legacy array formulas: a range sharing one formula entered with Ctrl+Shift+Enter.
     pub array_formulas: Vec<Range>,
     /// What If data tables (`TABLE()`): the results range and its input cells.
@@ -786,6 +809,16 @@ impl Workbook {
             styles: Styles::default_workbook(),
             ..Default::default()
         }
+    }
+
+    /// A number as a cell with this style stores it under precision as displayed: rounded to what its
+    /// number format shows.
+    pub fn shown_number(&self, style: u32, n: f64, date1904: bool) -> f64 {
+        let code = self.styles.format_code(style);
+        if code == "General" {
+            return n;
+        }
+        crate::numfmt::Format::parse(&code).shown_value(n, date1904)
     }
 
     pub fn sheet_index(&self, name: &str) -> Option<usize> {

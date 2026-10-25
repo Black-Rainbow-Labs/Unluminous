@@ -3,7 +3,7 @@
 use std::cmp::Ordering;
 
 use super::criteria::Criterion;
-use super::math::{aligned, clipped, ifs_mask};
+use super::math::{aligned, clipped, IfsParts};
 use super::{gather, gather_val, num, number, numbers_at, r, s, Function, Gather, MANY};
 use crate::eval::{Ctx, Val};
 use crate::formula::Expr;
@@ -75,8 +75,10 @@ pub const FUNCTIONS: &[Function] = &[
         MANY,
         "criteria_range1, criteria1, ...",
         "How many cells meet every criterion.",
-        |ctx, a| match ifs_mask(ctx, a, None) {
-            Ok((mask, ..)) => Val::number(mask.iter().filter(|m| **m).count() as f64),
+        |ctx, a| match IfsParts::read(ctx, a, None) {
+            Ok(parts) => {
+                parts.answer(ctx, |mask| Value::Number(mask.iter().filter(|m| **m).count() as f64))
+            }
             Err(e) => Val::error(e),
         },
     ),
@@ -356,6 +358,9 @@ pub const FUNCTIONS: &[Function] = &[
     r("SKEW.P", 1, MANY, "number1, [number2], ...", "The skewness of a population.", |ctx, a| {
         over(ctx, a, Gather::Numbers, |n| {
             let c = n.len() as f64;
+            if c < 3.0 {
+                return Err(ErrorKind::Div0);
+            }
             let m = mean(n).ok_or(ErrorKind::Div0)?;
             let sd = population_variance(n).ok_or(ErrorKind::Div0)?.sqrt();
             if sd == 0.0 {
@@ -459,14 +464,6 @@ pub const FUNCTIONS: &[Function] = &[
         "x, known_y's, known_x's",
         "A value on the regression line.",
         forecast,
-    ),
-    r(
-        "TREND",
-        1,
-        4,
-        "known_y's, [known_x's], [new_x's], [const]",
-        "Values on the regression line.",
-        trend,
     ),
     r(
         "FREQUENCY",
@@ -657,22 +654,28 @@ fn ifs_over(ctx: &mut Ctx, args: &[Expr], f: fn(&[f64]) -> Result<f64, ErrorKind
         Val::Value(Value::Error(e)) => return Val::error(e),
         _ => return Val::error(ErrorKind::Value),
     };
-    let (mask, rows, cols) = match ifs_mask(ctx, &args[1..], Some(area)) {
-        Ok(m) => m,
+    let parts = match IfsParts::read(ctx, &args[1..], Some(area)) {
+        Ok(p) => p,
         Err(e) => return Val::error(e),
     };
-    let values = ctx.read_range(area.sheet, aligned(&area, rows, cols));
-    let mut numbers = Vec::new();
-    for (i, keep) in mask.iter().enumerate() {
-        if *keep {
-            match &values.data[i] {
-                Value::Number(n) => numbers.push(*n),
-                Value::Error(e) => return Val::error(*e),
-                _ => {}
+    let values = ctx.read_range(area.sheet, aligned(&area, parts.rows, parts.cols));
+    parts.answer(ctx, |mask| {
+        let mut numbers = Vec::new();
+        for (i, keep) in mask.iter().enumerate() {
+            if *keep {
+                match &values.data[i] {
+                    Value::Number(n) => numbers.push(*n),
+                    Value::Error(e) => return Value::Error(*e),
+                    _ => {}
+                }
             }
         }
-    }
-    f(&numbers).map_or_else(Val::error, Val::number)
+        match f(&numbers) {
+            Ok(n) if n.is_finite() => Value::Number(n),
+            Ok(_) => Value::Error(ErrorKind::Num),
+            Err(e) => Value::Error(e),
+        }
+    })
 }
 
 fn count(ctx: &mut Ctx, args: &[Expr]) -> Val {
@@ -936,64 +939,6 @@ fn paired_line(ctx: &mut Ctx, ys: &Expr, xs: &Expr) -> Result<(f64, f64), ErrorK
     let (y, x): (Vec<f64>, Vec<f64>) =
         a.iter().zip(&b).filter_map(|(p, q)| Some(((*p)?, (*q)?))).unzip();
     line(&x, &y)
-}
-
-fn trend(ctx: &mut Ctx, args: &[Expr]) -> Val {
-    let (ys, rows, cols) = match numbers_at(ctx, &args[0]) {
-        Ok(v) => v,
-        Err(e) => return Val::error(e),
-    };
-    let xs: Vec<Option<f64>> = match args.get(1).filter(|e| !matches!(e, Expr::Missing)) {
-        Some(e) => match numbers_at(ctx, e) {
-            Ok((v, ..)) => v,
-            Err(e) => return Val::error(e),
-        },
-        None => (1..=ys.len()).map(|i| Some(i as f64)).collect(),
-    };
-    if xs.len() != ys.len() {
-        return Val::error(ErrorKind::Ref);
-    }
-    let with_constant = match args.get(3) {
-        Some(e) if !matches!(e, Expr::Missing) => {
-            let v = ctx.eval(e);
-            let v = ctx.single(v);
-            crate::eval::to_bool(&v).unwrap_or(true)
-        }
-        _ => true,
-    };
-    let (y, x): (Vec<f64>, Vec<f64>) =
-        ys.iter().zip(&xs).filter_map(|(p, q)| Some(((*p)?, (*q)?))).unzip();
-    if y.is_empty() {
-        return Val::error(ErrorKind::Value);
-    }
-    let all_alike = x.iter().all(|v| *v == x[0]);
-    let (slope, intercept) = if with_constant && all_alike {
-        // Every x is the same, so the line is flat through the mean of y, as Excel's least squares gives.
-        (0.0, mean(&y).unwrap_or(0.0))
-    } else if with_constant {
-        match line(&x, &y) {
-            Ok(l) => l,
-            Err(e) => return Val::error(e),
-        }
-    } else {
-        let sxx: f64 = x.iter().map(|a| a * a).sum();
-        if sxx == 0.0 {
-            return Val::error(ErrorKind::Div0);
-        }
-        (x.iter().zip(&y).map(|(a, b)| a * b).sum::<f64>() / sxx, 0.0)
-    };
-    let (new_x, nr, nc) = match args.get(2).filter(|e| !matches!(e, Expr::Missing)) {
-        Some(e) => match numbers_at(ctx, e) {
-            Ok(v) => v,
-            Err(e) => return Val::error(e),
-        },
-        None => (xs.clone(), rows, cols),
-    };
-    let data = new_x
-        .iter()
-        .map(|x| x.map_or(Value::Error(ErrorKind::Value), |x| Value::Number(slope * x + intercept)))
-        .collect();
-    Val::Array(Array::new(nr, nc, data))
 }
 
 fn frequency(ctx: &mut Ctx, args: &[Expr]) -> Val {

@@ -6,6 +6,7 @@
 //! same call into [`super::commands::run`]. A test walks the tree and runs every entry.
 
 use super::display::SWATCHES;
+use super::view::Field;
 use super::Book;
 
 /// One entry.
@@ -27,6 +28,13 @@ pub enum Item {
         second: Option<String>,
         initial: String,
     },
+    /// Ask for several fields in a box, then run the words with what they say.
+    Form {
+        label: String,
+        title: String,
+        words: Vec<String>,
+        fields: Vec<Field>,
+    },
     /// A level of its own.
     Sub {
         label: String,
@@ -46,6 +54,7 @@ impl Item {
         match self {
             Item::Run { label, .. }
             | Item::Ask { label, .. }
+            | Item::Form { label, .. }
             | Item::Sub { label, .. }
             | Item::Colors { label, .. } => label,
             Item::Line => "",
@@ -84,6 +93,16 @@ fn ask2(label: &str, field: &str, second: &str, text: &str) -> Item {
         words: words(text),
         second: Some(second.to_owned()),
         initial: String::new(),
+    }
+}
+
+/// A box of several fields. The title is the label without its trailing dots.
+pub fn form(label: &str, text: &str, fields: Vec<Field>) -> Item {
+    Item::Form {
+        label: label.to_owned(),
+        title: label.trim_end_matches("...").to_owned(),
+        words: words(text),
+        fields,
     }
 }
 
@@ -274,6 +293,7 @@ fn cell_size() -> Item {
             ask("Column width...", "Width in characters", "width"),
             ask("Row height...", "Height in points", "height"),
             run("AutoFit columns", "", "width auto"),
+            run("AutoFit rows", "", "height auto"),
             run("Default column width", "", "width default"),
             run("Default row height", "", "height default"),
             Item::Line,
@@ -375,17 +395,60 @@ fn data(book: &Book) -> Item {
 
 fn view(book: &Book) -> Item {
     let s = &book.session.book.sheets[book.view.sheet];
+    let v = &s.view;
+    let kind = |k: unluminous_sheet::model::ViewKind| v.kind == k;
     sub(
         "View",
         vec![
+            check("Normal", "view normal", kind(unluminous_sheet::model::ViewKind::Normal)),
+            check(
+                "Page break preview",
+                "view page-break",
+                kind(unluminous_sheet::model::ViewKind::PageBreakPreview),
+            ),
+            check(
+                "Page layout",
+                "view layout",
+                kind(unluminous_sheet::model::ViewKind::PageLayout),
+            ),
+            Item::Line,
             run("Freeze panes here", "", "freeze"),
             run("Freeze top row", "", "freeze rows 1"),
             run("Freeze first column", "", "freeze columns 1"),
             run("Unfreeze panes", "", "freeze off"),
             check(
+                "Split",
+                if v.split.is_some() { "split off" } else { "split window" },
+                v.split.is_some(),
+            ),
+            Item::Line,
+            check(
                 "Gridlines",
                 if s.show_grid { "gridlines off" } else { "gridlines on" },
                 s.show_grid,
+            ),
+            check("Headings", "headings toggle", v.show_headings),
+            check("Show formulas", "show-formulas toggle", v.show_formulas),
+            check("Zero values", "zeros toggle", v.show_zeros),
+            check("Right to left", "right-to-left toggle", v.right_to_left),
+            sub(
+                "Status bar",
+                super::config::AGGREGATES
+                    .iter()
+                    .map(|name| {
+                        let on = book.view.aggregates.iter().any(|a| a == name);
+                        check(&status_label(name), &format!("status-bar toggle {name}"), on)
+                    })
+                    .collect(),
+            ),
+            sub(
+                "Calculation",
+                vec![
+                    check("Automatic", "calc-mode automatic", book.session.book.calc.automatic),
+                    check("Manual", "calc-mode manual", !book.session.book.calc.automatic),
+                    run("Calculate now", "F9", "calculate all"),
+                    run("Calculate sheet", "Shift+F9", "calculate sheet"),
+                ],
             ),
             sub(
                 "Zoom",
@@ -402,6 +465,14 @@ fn view(book: &Book) -> Item {
             ),
         ],
     )
+}
+
+/// The name of a status bar figure as Excel's menu calls it.
+fn status_label(name: &str) -> String {
+    match name {
+        "numbers" => "Numerical Count".to_owned(),
+        other => capitalised(other),
+    }
 }
 
 fn sheet(book: &Book) -> Item {
@@ -440,13 +511,14 @@ fn insert() -> Item {
     sub(
         "Insert",
         vec![
-            run("Rows above", "Ctrl+Shift+=", "insert rows"),
+            run("Cells...", "Ctrl+Shift+=", "insert ask"),
+            run("Rows above", "", "insert rows"),
             run("Columns left", "", "insert columns"),
             run("Cells, shifting down", "", "insert down"),
             run("Cells, shifting right", "", "insert right"),
             run("Sheet", "Shift+F11", "sheet add"),
             Item::Line,
-            run("Function", "Shift+F3", "edit ="),
+            insert_function(),
             run("AutoSum", "Alt+=", "autosum"),
             ask("Note...", "Note", "note"),
             ask2("Link...", "Address, or a place such as Sheet2!A1", "Text to show", "link"),
@@ -462,11 +534,35 @@ fn insert() -> Item {
     )
 }
 
+/// Insert Function: every function, by category, each opening its Function Arguments box.
+pub fn insert_function() -> Item {
+    let mut categories: Vec<&'static str> = Vec::new();
+    for f in unluminous_sheet::functions::all() {
+        if !categories.contains(&f.category) {
+            categories.push(f.category);
+        }
+    }
+    categories.sort_unstable();
+    let levels = categories
+        .iter()
+        .map(|category| {
+            let items = unluminous_sheet::functions::all()
+                .iter()
+                .filter(|f| f.category == *category)
+                .map(|f| run(f.name, "", &format!("insert-function {}", f.name)))
+                .collect();
+            sub(category, items)
+        })
+        .collect();
+    sub("Function", levels)
+}
+
 fn delete() -> Item {
     sub(
         "Delete",
         vec![
-            run("Rows", "Ctrl+-", "delete rows"),
+            run("Cells...", "Ctrl+-", "delete ask"),
+            run("Rows", "", "delete rows"),
             run("Columns", "", "delete columns"),
             run("Cells, shifting up", "", "delete up"),
             run("Cells, shifting left", "", "delete left"),
@@ -483,6 +579,88 @@ fn delete() -> Item {
 fn capitalised(word: &str) -> String {
     let mut c = word.chars();
     c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+}
+
+/// Name Manager: every defined name with what it refers to, each opening to edit or delete it, and new
+/// names made from a box or from the labels beside the selection.
+pub fn names(book: &Book) -> Item {
+    let wb = &book.session.book;
+    let mut items = vec![
+        form(
+            "New name...",
+            "names new",
+            vec![
+                Field::bare("Name", ""),
+                Field::bare("Refers to", &selection_reference(book)),
+                Field::choices("Scope", "scope", scopes(book), "workbook"),
+            ],
+        ),
+        form(
+            "Create from selection...",
+            "names from-selection",
+            vec![
+                Field::check("Top row", "top", true),
+                Field::check("Left column", "left", true),
+                Field::check("Bottom row", "bottom", false),
+                Field::check("Right column", "right", false),
+            ],
+        ),
+        run("Use in formula", "F3", "names paste"),
+        Item::Line,
+    ];
+    for n in wb.names.iter().filter(|n| !n.hidden && !n.name.starts_with("_xl")) {
+        let scope = match n.scope {
+            Some(i) => wb.sheets.get(i).map_or("?".to_owned(), |s| s.name.clone()),
+            None => "workbook".to_owned(),
+        };
+        let label = format!("{}  ={}  ({scope})", n.name, n.formula);
+        let scope_word = n.scope.map_or("workbook".to_owned(), |i| (i + 1).to_string());
+        items.push(sub(
+            &label,
+            vec![
+                Item::Ask {
+                    label: "Edit...".to_owned(),
+                    title: format!("Edit {}", n.name),
+                    field: "Refers to".to_owned(),
+                    words: vec!["names".into(), "edit".into(), n.name.clone(), scope_word.clone()],
+                    second: None,
+                    initial: n.formula.clone(),
+                },
+                Item::Run {
+                    label: "Delete".to_owned(),
+                    keys: "",
+                    words: vec!["names".into(), "delete".into(), n.name.clone(), scope_word],
+                    checked: false,
+                },
+            ],
+        ));
+    }
+    sub("Names", items)
+}
+
+/// The selection written as a name refers to it: `Sheet1!$A$1:$B$4`.
+fn selection_reference(book: &Book) -> String {
+    let r = book.view.range();
+    let a = |c: unluminous_sheet::coord::CellRef| {
+        format!("${}${}", unluminous_sheet::coord::column_name(c.col), c.row + 1)
+    };
+    let area = if r.len() == 1 { a(r.first) } else { format!("{}:{}", a(r.first), a(r.last)) };
+    let sheet = &book.session.book.sheets[book.view.sheet].name;
+    format!("{}!{area}", unluminous_sheet::formula::print::sheet_name(sheet))
+}
+
+/// The scopes a name can have: the workbook, or one sheet by its number.
+fn scopes(book: &Book) -> Vec<(String, String)> {
+    let mut out = vec![("Workbook".to_owned(), "workbook".to_owned())];
+    for (i, s) in book.session.book.sheets.iter().enumerate() {
+        out.push((s.name.clone(), (i + 1).to_string()));
+    }
+    out
+}
+
+/// The Formulas level: functions, names, auditing and calculation, as Excel's Formulas tab groups them.
+pub fn formulas(book: &Book) -> Item {
+    sub("Formulas", vec![insert_function(), run("AutoSum", "Alt+=", "autosum"), names(book)])
 }
 
 /// The Format panel's first level.
@@ -569,6 +747,7 @@ pub fn everything(book: &Book) -> Vec<Item> {
             vec![
                 run("Undo", "Ctrl+Z", "undo"),
                 run("Redo", "Ctrl+Y", "redo"),
+                run("Repeat", "F4", "repeat"),
                 Item::Line,
                 run("Cut", "Ctrl+X", "cut"),
                 run("Copy", "Ctrl+C", "copy"),
@@ -582,10 +761,12 @@ pub fn everything(book: &Book) -> Vec<Item> {
                 run("Fill right", "Ctrl+R", "fill right"),
                 run("Find...", "Ctrl+F", "find-bar"),
                 run("Replace...", "Ctrl+H", "find-bar replace"),
+                run("Go to...", "Ctrl+G", "goto"),
             ],
         ),
         insert(),
         delete(),
+        formulas(book),
         sub(
             "Format",
             vec![
