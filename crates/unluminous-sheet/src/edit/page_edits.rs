@@ -307,6 +307,15 @@ impl Session {
 /// that starts its page, so inserting before that row pushes the break down with it, and deleting that row
 /// takes the break away.
 pub(super) fn shift_page_breaks(page: &mut PageSetup, axis: Axis, at: u32, count: i64) {
+    // A row break spans columns and a column break spans rows (`min` to `max`), so an edit along one axis moves
+    // the span of the breaks of the other axis, as Excel does.
+    let across = match axis {
+        Axis::Rows => &mut page.col_breaks,
+        Axis::Columns => &mut page.row_breaks,
+    };
+    for b in across.iter_mut() {
+        shift_span(b, at, count);
+    }
     let breaks = match axis {
         Axis::Rows => &mut page.row_breaks,
         Axis::Columns => &mut page.col_breaks,
@@ -322,6 +331,26 @@ pub(super) fn shift_page_breaks(page: &mut PageSetup, axis: Axis, at: u32, count
         }
         true
     });
+}
+
+/// Move the start of the span a break covers when rows or columns are inserted at or before it, or deleted
+/// before it. The end of a span that reaches the edge of the sheet stays at the edge.
+fn shift_span(b: &mut PageBreak, at: u32, count: i64) {
+    let removed_to = (at as i64).saturating_sub(count);
+    let moved = |v: u32| -> u32 {
+        let v = v as i64;
+        if v < at as i64 {
+            v as u32
+        } else if count < 0 && v < removed_to {
+            at
+        } else {
+            (v + count).max(0) as u32
+        }
+    };
+    b.min = moved(b.min);
+    if b.max < MAX_COLS - 1 {
+        b.max = moved(b.max);
+    }
 }
 
 /// Put a manual break in its place in the list, unless one is already there.

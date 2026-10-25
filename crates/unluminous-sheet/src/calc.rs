@@ -260,7 +260,8 @@ impl Engine {
     fn iterate(&mut self, book: &mut Workbook, cycle: &[Key], env: &Env) {
         let passes = book.calc.iterate_count.max(1);
         let delta = book.calc.iterate_delta;
-        for _ in 0..passes {
+        let saved: Vec<Value> = cycle.iter().map(|&key| cell_value(book, key)).collect();
+        for pass in 0..passes {
             let mut largest = 0.0f64;
             for &key in cycle {
                 let before = cell_value(book, key);
@@ -270,6 +271,14 @@ impl Engine {
                 largest = largest.max(change_between(&before, &cell_value(book, key)));
             }
             if largest < delta {
+                // Excel leaves the values of a cycle that is already within the change limit as they were.
+                if pass == 0 {
+                    for (&key, value) in cycle.iter().zip(saved) {
+                        if let Some(cell) = book.sheets[key.0].cells.get_mut(&(key.1, key.2)) {
+                            cell.value = value;
+                        }
+                    }
+                }
                 break;
             }
         }
