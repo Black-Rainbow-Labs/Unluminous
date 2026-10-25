@@ -1,7 +1,7 @@
 //! The pivot table definition: what is on the rows, the columns and the filters, what the value fields
 //! add up, and how each field is laid out.
 
-use super::cache::PivotCache;
+use super::cache::{CacheValue, PivotCache};
 use super::{Form, Func, ShowAs, SortType};
 use crate::coord::{CellRef, Range};
 
@@ -59,6 +59,25 @@ impl Subtotals {
     /// Only the Automatic subtotal, which can sit on the item's own row.
     pub fn is_plain(&self) -> bool {
         self.automatic && self.funcs.is_empty()
+    }
+
+    /// The subtotals as they are shown: a function ticked beside Automatic is the same subtotal when every
+    /// value field uses that function.
+    pub fn effective(&self, data: &[DataField]) -> Subtotals {
+        let mut out = self.clone();
+        if out.automatic && !data.is_empty() {
+            out.funcs.retain(|f| data.iter().any(|d| d.func != *f));
+        }
+        out
+    }
+
+    /// The one subtotal there is, when there is only one: `Some(None)` is Automatic.
+    pub fn single(&self) -> Option<Option<Func>> {
+        match (self.automatic, self.funcs.as_slice()) {
+            (true, []) => Some(None),
+            (false, [f]) => Some(Some(*f)),
+            _ => None,
+        }
     }
 }
 
@@ -521,16 +540,21 @@ impl PivotTable {
         self.data.iter().any(|d| d.field == field)
     }
 
-    /// The default name of a value field: `Sum of Units`, made unique among the table's fields.
+    /// The name Excel gives a new value field. It first names the field as it would be summed (counted for a
+    /// field holding text), taking the first number that is free, and then keeps that number when the
+    /// function is applied, moving on to the next free number if the final name is taken as well.
     pub fn default_data_name(&self, cache: &PivotCache, field: usize, func: Func) -> String {
-        let base = format!("{} of {}", func.label(), self.caption(cache, field));
+        let caption = self.caption(cache, field);
+        let has_text = cache.records.iter().any(|r| matches!(r.get(field), Some(CacheValue::Text(_) | CacheValue::Error(_))));
+        let first = if has_text { Func::Count } else { Func::Sum };
         let taken = |n: &str| {
             self.data.iter().any(|d| d.name.eq_ignore_ascii_case(n))
                 || (0..cache.fields.len()).any(|f| self.caption(cache, f).eq_ignore_ascii_case(n))
         };
-        if !taken(&base) {
-            return base;
-        }
-        (2..).map(|n| format!("{base}{n}")).find(|n| !taken(n)).unwrap_or(base)
+        let spelt = |label: &str, n: usize| {
+            if n < 2 { format!("{label} of {caption}") } else { format!("{label} of {caption}{n}") }
+        };
+        let start = (1..).find(|n| !taken(&spelt(first.label(), *n))).unwrap_or(1);
+        (start..).map(|n| spelt(func.label(), n)).find(|n| !taken(n)).unwrap_or_default()
     }
 }

@@ -139,7 +139,7 @@ impl Func {
     /// The word in a subtotal's label: `East Sum`, `East Count Nums`, `East StdDev`.
     pub fn subtotal_label(&self) -> &'static str {
         match self {
-            Func::CountNums => "Count Nums",
+            Func::CountNums => "Count",
             other => other.label(),
         }
     }

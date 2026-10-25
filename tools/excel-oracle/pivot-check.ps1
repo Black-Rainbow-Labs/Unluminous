@@ -77,7 +77,7 @@ function Set-FieldOptions($pt, $case) {
         if ($o.subtotal_at) { $pf.LayoutSubtotalLocation = $(if ($o.subtotal_at -eq 'bottom') { 2 } else { 1 }) }
         if ($null -ne $o.blank_row) { $pf.LayoutBlankLine = [bool]$o.blank_row }
         if ($null -ne $o.repeat) { $pf.RepeatLabels = [bool]$o.repeat }
-        if ($o.layout) { $pf.LayoutForm = $LAYOUT[$o.layout] }
+        if ($o.layout -eq 'compact') { $pf.LayoutCompactRow = $true } elseif ($o.layout -eq 'outline') { $pf.LayoutCompactRow = $false; $pf.LayoutForm = 1 } elseif ($o.layout -eq 'tabular') { $pf.LayoutCompactRow = $false; $pf.LayoutForm = 0 }
         if ($o.caption) { $pf.Caption = $o.caption }
         if ($o.sort) {
             $order = $(if ($o.sort -eq 'desc') { 2 } else { 1 })
@@ -109,7 +109,9 @@ function Group-Field($excel, $pt, $g) {
         $by = $(if ($null -ne $g.step) { $g.step } else { [Type]::Missing })
         $null = $pf.DataRange.Cells(1).Group($start, $end, $by, $periods)
     } elseif ($g.kind -eq 'number') {
-        $null = $pf.DataRange.Cells(1).Group($g.start, $g.end, $g.step)
+        $from = $(if ($null -ne $g.start) { $g.start } else { $true })
+        $to = $(if ($null -ne $g.end) { $g.end } else { $true })
+        $null = $pf.DataRange.Cells(1).Group($from, $to, $g.step)
     } else {
         foreach ($members in $g.groups) {
             $range = $null

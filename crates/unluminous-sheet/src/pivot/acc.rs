@@ -96,7 +96,7 @@ impl Acc {
             return CellVal::Empty;
         }
         if let Some(e) = self.error {
-            if func != Func::Count {
+            if !matches!(func, Func::Count | Func::CountNums) {
                 return CellVal::Err(e);
             }
         }

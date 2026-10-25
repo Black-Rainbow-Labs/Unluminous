@@ -437,6 +437,8 @@ impl Session {
         let mut data = DataField::new(&name, field, func);
         if let Some(f) = data.show.default_format() {
             data.num_fmt = Some(crate::styles::builtin_format(f).unwrap_or("General").to_owned());
+        } else {
+            data.num_fmt = inherited_format(&self.book.pivots.caches[cache], field);
         }
         table.data.push(data);
         let index = table.data.len() - 1;
@@ -481,6 +483,7 @@ impl Session {
         }
         self.remember_whole("Change PivotTable value field");
         let table = &mut self.book.pivots.tables[t];
+        let inherited = inherited_format(&self.book.pivots.caches[table.cache], table.data[data].field);
         let d = &mut table.data[data];
         if let Some(func) = s.func {
             let old_default = format!("{} of ", d.func.label());
@@ -495,7 +498,7 @@ impl Session {
         if let Some(show) = s.show {
             d.show = show;
             if let Some(id) = show.default_format() {
-                if d.num_fmt.is_none() {
+                if d.num_fmt.is_none() || d.num_fmt == inherited {
                     d.num_fmt = Some(crate::styles::builtin_format(id).unwrap_or("General").to_owned());
                 }
             }
@@ -860,4 +863,16 @@ pub fn sheet_value(v: CellVal) -> Value {
 /// A filter that keeps the items whose label begins with some text.
 pub fn label_filter(kind: FilterKind, value: &str) -> Filter {
     Filter { kind, data: None, value1: value.to_owned(), value2: None, top: true, id: 1 }
+}
+
+/// The number format a value field shows its figures in when nobody chose one: the source column's, unless
+/// that is General or shows dates or times.
+fn inherited_format(cache: &super::cache::PivotCache, field: usize) -> Option<String> {
+    let source = &cache.fields[field];
+    let code = match &source.num_fmt_code {
+        Some(code) => code.clone(),
+        None => crate::styles::builtin_format(source.num_fmt_id).unwrap_or("General").to_owned(),
+    };
+    let format = crate::numfmt::Format::parse(&code);
+    (!format.is_general() && !format.is_date()).then_some(code)
 }

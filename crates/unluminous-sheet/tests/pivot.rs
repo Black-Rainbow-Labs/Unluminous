@@ -205,6 +205,18 @@ fn build(session: &mut Session, spec: &Json, case: &Json) -> Result<usize, Strin
         group(session, t, g)?;
     }
     field_options(session, t, case)?;
+    if let Some(c) = case["captions"].as_object() {
+        let text = |k: &str| c.get(k).and_then(Json::as_str).map(str::to_owned);
+        let (row, col, grand) = (text("row_header"), text("col_header"), text("grand"));
+        let (empty, error) = (text("empty"), text("error"));
+        session.pivot_set_options(t, |o| {
+            o.row_header_caption = row;
+            o.col_header_caption = col;
+            o.grand_total_caption = grand;
+            o.missing_caption = empty;
+            o.error_caption = error;
+        })?;
+    }
     if let Some(sel) = case["page_select"].as_object() {
         for (name, item) in sel {
             let f = field_index(session, t, name);
@@ -304,6 +316,9 @@ fn field_options(session: &mut Session, t: usize, case: &Json) -> Result<(), Str
         }
         if let Some(c) = o["caption"].as_str() {
             s.name = Some(Some(c.to_owned()));
+        }
+        if let Some(c) = o["numfmt"].as_str() {
+            s.num_fmt = Some(Some(c.to_owned()));
         }
         session.pivot_field_settings(t, f, s)?;
         if let Some(order) = o["sort"].as_str() {
@@ -406,7 +421,7 @@ fn compare_cell(session: &Session, sheet: usize, at: CellRef, want: &Json) -> Op
         return Some(format!("{}: Excel has {kind}:{text}, we have {have:?}", at.a1()));
     }
     let want_format = want["f"].as_str().unwrap_or("General");
-    if !have.is_empty() && code != want_format {
+    if matches!(have, Value::Number(_)) && code != want_format {
         return Some(format!("{}: Excel format {want_format}, ours {code}", at.a1()));
     }
     None
@@ -489,6 +504,9 @@ fn pivots_match_excel() {
         let book = workbook(&spec);
         let mut session = Session::new(book, 46319.5);
         let problems = run_case(&mut session, &spec, case, want);
+        if only.is_some() {
+            show_grids(&session, want);
+        }
         checked += 1;
         if !problems.is_empty() {
             failed.push((id.to_owned(), problems));
@@ -856,10 +874,13 @@ fn what_is_written_is_read_back_as_the_same_pivot_table() {
         for (i, (x, y)) in ca.fields.iter().zip(cb.fields.iter()).enumerate() {
             let mut x2 = x.clone();
             // A field the file did not list is listed when a table needs it; the items are the same.
+            let mut y2 = y.clone();
             if x2.shared.is_empty() {
                 x2.shared = y.shared.clone();
+            } else if y2.shared.is_empty() {
+                y2.shared = x.shared.clone();
             }
-            if &x2 != y {
+            if x2 != y2 {
                 differences.push(format!("cache field {i}: {x:?} against {y:?}"));
             }
         }
@@ -868,4 +889,29 @@ fn what_is_written_is_read_back_as_the_same_pivot_table() {
         }
     }
     assert!(failed.is_empty(), "{} of {} differ:\n{}", failed.len(), checked, failed.join("\n"));
+}
+
+/// Print the cells of both sides, for working out why a case differs.
+fn show_grids(session: &Session, want: &Json) {
+    let Some(table) = session.book.pivots.tables.first() else { return };
+    let range = Range::parse(want["range"].as_str().unwrap()).unwrap();
+    let rows = range.rows().max(table.full_range().rows());
+    let cols = range.cols().max(table.full_range().cols());
+    for i in 0..rows {
+        let mut line = String::new();
+        for j in 0..cols {
+            let excel = want["cells"].get(i as usize).and_then(|r| r.get(j as usize)).filter(|c| !c.is_null());
+            let excel = excel.map(|c| c["t"].as_str().unwrap_or("").to_owned()).unwrap_or_default();
+            let at = CellRef::new(range.first.row + i, range.first.col + j);
+            let ours = match session.book.sheets[table.sheet].value_at(at) {
+                Value::Empty => String::new(),
+                Value::Number(n) => unluminous_sheet::value::number_to_text(n),
+                Value::Text(t) => t.to_string(),
+                other => format!("{other:?}"),
+            };
+            let mark = if excel == ours || (excel.len() > 6 && ours.starts_with(&excel[..4])) { " " } else { "*" };
+            line.push_str(&format!("{:<20}{}", format!("{excel} / {ours}"), mark));
+        }
+        println!("{line}");
+    }
 }

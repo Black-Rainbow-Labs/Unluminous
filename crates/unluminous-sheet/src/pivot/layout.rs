@@ -149,13 +149,14 @@ impl Shape {
         let has_real_cols = cols.iter().any(|l| matches!(l, Level::Field(..)));
         let mut label_col = Vec::new();
         let mut width = 0u32;
+        // A field has a column of its own unless the field before it is compact, which hands its column on.
         let mut previous_compact = false;
         for level in rows {
             let form = match level {
                 Level::Field(f, _) => table.fields[*f].form,
                 Level::Values => table.options.form,
             };
-            if form == Form::Compact && previous_compact {
+            if previous_compact {
                 label_col.push(width - 1);
             } else {
                 label_col.push(width);
@@ -302,24 +303,31 @@ impl Builder<'_, '_> {
             if is_leaf_line {
                 self.out.push(line(LineKind::Leaf, path.clone(), child, data, li));
             } else {
-                let subtotals_on = more_real && pf.subtotals.is_on();
-                let top_values = self.rows
+                let subtotals = pf.subtotals.effective(&self.calc.table.data);
+                let subtotals_on = more_real && subtotals.is_on();
+                // One subtotal can sit on the item's own row, which then shows its figures.
+                let top = if self.rows
                     && subtotals_on
-                    && pf.subtotals.is_plain()
                     && pf.subtotal_top
                     && form != Form::Tabular
-                    && !values_after;
+                    && !values_after
+                {
+                    subtotals.single()
+                } else {
+                    None
+                };
                 if self.rows && form != Form::Tabular {
                     let mut header = line(LineKind::Header, path.clone(), child, data, li);
-                    header.values = top_values;
+                    header.values = top.is_some();
+                    header.func = top.flatten();
                     self.out.push(header);
                 }
                 self.walk(li + 1, child, data, path);
-                if subtotals_on && !top_values {
+                if subtotals_on && top.is_none() {
                     self.subtotal_lines(li, child, data, values_after, path);
                 }
             }
-            if self.rows && pf.blank_row {
+            if self.rows && pf.blank_row && more_real {
                 self.out.push(line(LineKind::Blank, path.clone(), child, None, li));
             }
             path.pop();
@@ -331,13 +339,13 @@ impl Builder<'_, '_> {
             Level::Field(f, _) => f,
             Level::Values => return,
         };
-        let pf = &self.calc.table.fields[f];
+        let subtotals = self.calc.table.fields[f].subtotals.effective(&self.calc.table.data);
         let mut funcs: Vec<Option<Func>> = Vec::new();
-        if pf.subtotals.automatic {
+        if subtotals.automatic {
             funcs.push(None);
         }
         for func in Func::ALL {
-            if pf.subtotals.funcs.contains(&func) {
+            if subtotals.funcs.contains(&func) {
                 funcs.push(Some(func));
             }
         }
@@ -480,6 +488,7 @@ fn label_value(calc: &Calc, levels: &[Level], at: usize, seg: Seg) -> (Value, Op
             v @ (super::cache::CacheValue::Number(_) | super::cache::CacheValue::Date(_)) => {
                 (v.to_value(), Some(calc.field_format(*f)))
             }
+            super::cache::CacheValue::Bool(b) => (Value::text(if b { "TRUE" } else { "FALSE" }), None),
             v => (v.to_value(), None),
         },
         _ => (Value::text(seg_label(calc, levels, at, seg)), None),
@@ -517,15 +526,17 @@ fn corner_cells(calc: &Calc, shape: &Shape, rows: &[Level], cols: &[Level], out:
     } else if n_data == 1 {
         out.put_text(0, shape.width, &table.data[0].name, Role::Caption);
     }
-    // Row captions.
+    // Row captions: the first column says Row Labels when the table or any of its fields is compact, and
+    // every other column is named after the first field in it.
     let mut written: Vec<u32> = Vec::new();
+    let any_compact = opts.form == Form::Compact
+        || rows.iter().any(|l| matches!(l, Level::Field(f, _) if table.fields[*f].form == Form::Compact));
     for (i, level) in rows.iter().enumerate() {
         let col = shape.label_col[i];
-        let form = form_at(calc, rows, i);
-        let text = if form == Form::Compact {
-            if written.contains(&col) {
-                continue;
-            }
+        if written.contains(&col) {
+            continue;
+        }
+        let text = if col == 0 && any_compact {
             match level {
                 Level::Values if rows.len() == 1 => opts.data_caption.clone(),
                 _ => opts.row_header_caption.clone().unwrap_or_else(|| "Row Labels".to_owned()),

@@ -8,7 +8,7 @@ use crate::value::ErrorKind;
 
 /// Which axis a base field is on and at what level of it.
 #[derive(Debug, Clone, Copy)]
-struct Base {
+struct BaseField {
     rows: bool,
     /// The level of the nodes whose items the base field has.
     level: usize,
@@ -25,15 +25,21 @@ impl Calc<'_> {
         let base = |r: usize, c: usize| self.raw(r, c, d, None);
         match field.show {
             ShowAs::Normal => v,
-            ShowAs::PercentOfTotal => ratio(v, base(0, 0)),
-            ShowAs::PercentOfRow => ratio(v, base(r, 0)),
-            ShowAs::PercentOfCol => ratio(v, base(0, c)),
+            ShowAs::PercentOfTotal => share_of_total(v, base(0, 0)),
+            ShowAs::PercentOfRow => share_of_total(v, base(r, 0)),
+            ShowAs::PercentOfCol => share_of_total(v, base(0, c)),
             ShowAs::Index => index(v, base(0, 0), base(r, 0), base(0, c)),
             ShowAs::PercentOfParentRow => {
-                ratio(v, base(self.rows.nodes[r].parent.unwrap_or(0), c))
+                if self.rows.fields.is_empty() {
+                    return CellVal::Empty;
+                }
+                blank_errors(ratio(v, base(self.rows.nodes[r].parent.unwrap_or(0), c)))
             }
             ShowAs::PercentOfParentCol => {
-                ratio(v, base(r, self.cols.nodes[c].parent.unwrap_or(0)))
+                if self.cols.fields.is_empty() {
+                    return CellVal::Empty;
+                }
+                blank_errors(ratio(v, base(r, self.cols.nodes[c].parent.unwrap_or(0))))
             }
             _ => {
                 let Some(b) = self.base_of(field.base_field) else { return v };
@@ -42,11 +48,11 @@ impl Calc<'_> {
         }
     }
 
-    fn base_of(&self, field: usize) -> Option<Base> {
+    fn base_of(&self, field: usize) -> Option<BaseField> {
         if let Some(i) = self.rows.fields.iter().position(|f| *f == field) {
-            return Some(Base { rows: true, level: i + 1 });
+            return Some(BaseField { rows: true, level: i + 1 });
         }
-        self.cols.fields.iter().position(|f| *f == field).map(|i| Base { rows: false, level: i + 1 })
+        self.cols.fields.iter().position(|f| *f == field).map(|i| BaseField { rows: false, level: i + 1 })
     }
 
     fn axis_of(&self, rows: bool) -> &Axis {
@@ -57,8 +63,9 @@ impl Calc<'_> {
         }
     }
 
-    /// The settings that compare a cell with other items of the base field.
-    fn relative(&self, r: usize, c: usize, d: usize, b: Base) -> CellVal {
+    /// The settings that compare a cell with other items of the base field. A cell deeper than the base
+    /// field is compared with the cell at the same place under the other item.
+    fn relative(&self, r: usize, c: usize, d: usize, b: BaseField) -> CellVal {
         let field = &self.table.data[d];
         let axis = self.axis_of(b.rows);
         let node = if b.rows { r } else { c };
@@ -67,62 +74,107 @@ impl Calc<'_> {
         // Settings about one item's own parent need only the ancestor at the base field's level.
         if field.show == ShowAs::PercentOfParent {
             return match axis.ancestor_at(node, b.level) {
-                Some(a) => ratio(v, at(a)),
+                Some(a) => blank_errors(ratio(v, at(a))),
                 None => CellVal::Empty,
             };
         }
-        if axis.nodes[node].level != b.level {
-            return CellVal::Empty;
-        }
-        let parent = axis.nodes[node].parent.unwrap_or(0);
+        let Some(a) = axis.ancestor_at(node, b.level) else {
+            // Above the base field there is nothing to compare, except that a share of a running total
+            // that is an error says so.
+            return match (field.show, v) {
+                (ShowAs::PercentRunTotal, CellVal::Err(e)) => CellVal::Err(e),
+                _ => CellVal::Empty,
+            };
+        };
+        let below: Vec<usize> = axis.chain(node).iter().skip(b.level + 1).map(|n| axis.nodes[*n].item).collect();
+        let under = |s: usize| -> Option<CellVal> { axis.follow(s, &below).map(at) };
+        let parent = axis.nodes[a].parent.unwrap_or(0);
         let siblings = &axis.nodes[parent].children;
-        let place = siblings.iter().position(|s| *s == node).unwrap_or(0);
+        let place = siblings.iter().position(|s| *s == a).unwrap_or(0);
         match field.show {
             ShowAs::Difference | ShowAs::Percent | ShowAs::PercentDiff => {
-                let target = self.base_sibling(axis, siblings, place, field.base_item);
-                let Some(t) = target else { return CellVal::Empty };
-                let base_value = at(t);
-                compare(field.show, v, base_value, t == node)
+                match self.base_sibling(axis, siblings, place, field.base_item) {
+                    Base::Nothing => CellVal::Empty,
+                    Base::Missing => CellVal::Err(ErrorKind::NA),
+                    Base::Node(t) => match under(t) {
+                        Some(base_value) => compare(field.show, v, base_value, t == a),
+                        None => CellVal::Empty,
+                    },
+                }
             }
             ShowAs::RunTotal | ShowAs::PercentRunTotal => {
-                let mut sum = 0.0;
-                for s in &siblings[..=place] {
-                    match at(*s) {
-                        CellVal::Num(n) => sum += n,
-                        CellVal::Err(e) => return CellVal::Err(e),
-                        CellVal::Empty => {}
+                // The sum of the figures there are, and whether there were any.
+                let sum_of = |list: &[usize]| -> Result<(f64, bool), ErrorKind> {
+                    let (mut sum, mut any) = (0.0, false);
+                    for s in list {
+                        match under(*s) {
+                            Some(CellVal::Num(n)) => {
+                                sum += n;
+                                any = true;
+                            }
+                            Some(CellVal::Err(e)) => return Err(e),
+                            _ => {}
+                        }
                     }
-                }
+                    Ok((sum, any))
+                };
+                let running = match sum_of(&siblings[..=place]) {
+                    Ok((n, _)) => n,
+                    Err(e) => return CellVal::Err(e),
+                };
                 if field.show == ShowAs::RunTotal {
-                    CellVal::Num(sum)
-                } else {
-                    ratio(CellVal::Num(sum), at(parent))
+                    return CellVal::Num(running);
+                }
+                if below.is_empty() {
+                    return match at(parent) {
+                        CellVal::Err(_) => CellVal::Err(ErrorKind::Div0),
+                        total => ratio(CellVal::Num(running), total),
+                    };
+                }
+                match sum_of(siblings) {
+                    Ok((total, true)) => ratio(CellVal::Num(running), CellVal::Num(total)),
+                    Ok((_, false)) => CellVal::Empty,
+                    Err(e) => CellVal::Err(e),
                 }
             }
             _ => {
                 let CellVal::Num(x) = v else { return CellVal::Empty };
-                let mut rank = 1;
+                // Equal figures share a rank and the next figure takes the next rank.
+                let mut ahead: Vec<f64> = Vec::new();
                 for s in siblings.iter() {
-                    if let CellVal::Num(y) = at(*s) {
-                        let ahead = if field.show == ShowAs::RankAscending { y < x } else { y > x };
-                        if ahead {
-                            rank += 1;
+                    if let Some(CellVal::Num(y)) = under(*s) {
+                        let before = if field.show == ShowAs::RankAscending { y < x } else { y > x };
+                        if before && !ahead.contains(&y) {
+                            ahead.push(y);
                         }
                     }
                 }
-                CellVal::Num(rank as f64)
+                CellVal::Num(ahead.len() as f64 + 1.0)
             }
         }
     }
 
     /// The sibling a base item names: the previous or the next one, or the item itself.
-    fn base_sibling(&self, axis: &Axis, siblings: &[usize], place: usize, base_item: u32) -> Option<usize> {
+    fn base_sibling(&self, axis: &Axis, siblings: &[usize], place: usize, base_item: u32) -> Base {
+        let found = |n: Option<usize>| n.map_or(Base::Nothing, Base::Node);
         match base_item {
-            BASE_PREVIOUS => place.checked_sub(1).map(|p| siblings[p]),
-            BASE_NEXT => siblings.get(place + 1).copied(),
-            item => siblings.iter().copied().find(|s| axis.nodes[*s].item == item as usize),
+            BASE_PREVIOUS => found(place.checked_sub(1).map(|p| siblings[p])),
+            BASE_NEXT => found(siblings.get(place + 1).copied()),
+            item => match siblings.iter().copied().find(|s| axis.nodes[*s].item == item as usize) {
+                Some(n) => Base::Node(n),
+                None => Base::Missing,
+            },
         }
     }
+}
+
+/// What a base item picks out among the siblings of a cell.
+enum Base {
+    /// There is no such sibling: the first item has no previous one.
+    Nothing,
+    /// The item is not among them.
+    Missing,
+    Node(usize),
 }
 
 /// A figure as a share of another. A total with nothing in it leaves the cell empty, a total of nothing
@@ -141,6 +193,25 @@ fn ratio(x: CellVal, den: CellVal) -> CellVal {
     }
 }
 
+/// A share that is an error shows nothing.
+fn blank_errors(v: CellVal) -> CellVal {
+    match v {
+        CellVal::Err(_) => CellVal::Empty,
+        other => other,
+    }
+}
+
+/// A share of a total: a total with nothing in it is a division by zero.
+fn share_of_total(x: CellVal, total: CellVal) -> CellVal {
+    match total {
+        CellVal::Empty => match x {
+            CellVal::Err(e) => CellVal::Err(e),
+            _ => CellVal::Err(ErrorKind::Div0),
+        },
+        total => ratio(x, total),
+    }
+}
+
 fn index(v: CellVal, grand: CellVal, row: CellVal, col: CellVal) -> CellVal {
     for part in [v, grand, row, col] {
         if let CellVal::Err(e) = part {
@@ -148,7 +219,7 @@ fn index(v: CellVal, grand: CellVal, row: CellVal, col: CellVal) -> CellVal {
         }
     }
     let (CellVal::Num(g), CellVal::Num(r), CellVal::Num(c)) = (grand, row, col) else {
-        return CellVal::Empty;
+        return CellVal::Err(ErrorKind::Div0);
     };
     if r * c == 0.0 {
         return CellVal::Err(ErrorKind::Div0);
@@ -162,7 +233,8 @@ fn compare(show: ShowAs, x: CellVal, base: CellVal, is_base: bool) -> CellVal {
         return CellVal::Err(e);
     }
     if let CellVal::Err(e) = base {
-        return CellVal::Err(e);
+        // A difference carries the error on; a share of an item that is an error shows nothing.
+        return if show == ShowAs::Difference { CellVal::Err(e) } else { CellVal::Empty };
     }
     match show {
         ShowAs::Difference => {

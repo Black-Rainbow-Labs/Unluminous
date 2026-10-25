@@ -143,17 +143,24 @@ pub fn group_numbers(
     let (lo, hi) = cache.number_bounds(field).ok_or("The field has no numbers.")?;
     let auto_start = start.is_none();
     let auto_end = end.is_none();
-    let start = start.unwrap_or_else(|| (lo / step).floor() * step);
+    let start = start.unwrap_or(lo);
     let end = end.unwrap_or(hi);
     cache.ensure_shared(field);
     let has_blank = cache.records.iter().any(|r| r[field].is_blank());
     let blank_note = if has_blank { " or (blank)" } else { "" };
-    let mut items = vec![CacheValue::text(&format!("<{}{blank_note}", shown(cache, field, start, date1904)))];
+    // With the start left to Excel the first range is the blanks, if there are any.
+    let first = if auto_start && has_blank {
+        "(blank)".to_owned()
+    } else {
+        format!("<{}{blank_note}", shown(cache, field, start, date1904))
+    };
+    let mut items = vec![CacheValue::text(&first)];
     let whole = step.fract() == 0.0 && start.fract() == 0.0;
     let mut at = start;
     while at <= end {
         let upper = if whole { at + step - 1.0 } else { at + step };
-        let upper = upper.min(end);
+        // The last range runs up to an end that was given, and a whole range when it was not.
+        let upper = if !auto_end && at + step >= end { end } else { upper };
         let label = format!("{}-{}", shown(cache, field, at, date1904), shown(cache, field, upper, date1904));
         items.push(CacheValue::text(&label));
         at += step;

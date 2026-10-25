@@ -45,6 +45,15 @@ impl Axis {
         self.nodes[node].level == self.fields.len()
     }
 
+    /// The node reached from `from` by following some items down, if every one is there.
+    pub fn follow(&self, from: usize, items: &[usize]) -> Option<usize> {
+        let mut at = from;
+        for item in items {
+            at = *self.nodes[at].children.iter().find(|c| self.nodes[**c].item == *item)?;
+        }
+        Some(at)
+    }
+
     /// The nodes from the root down to this one.
     pub fn chain(&self, node: usize) -> Vec<usize> {
         let mut out = vec![node];
@@ -343,12 +352,15 @@ impl<'a> Calc<'a> {
         let parent = axis.nodes[node].parent?;
         let field = axis.fields[axis.nodes[node].level - 1];
         let lookup = |_f: Option<&str>, name: &str| -> Result<f64, ErrorKind> {
-            let sibling = axis.nodes[parent]
+            // An item the parent does not have adds up to nothing.
+            let Some(sibling) = axis.nodes[parent]
                 .children
                 .iter()
                 .copied()
                 .find(|s| *s != node && self.label(field, axis.nodes[*s].item).eq_ignore_ascii_case(name))
-                .ok_or(ErrorKind::Ref)?;
+            else {
+                return Ok(0.0);
+            };
             let v = if rows { self.raw(sibling, c, d, None) } else { self.raw(r, sibling, d, None) };
             match v {
                 CellVal::Num(n) => Ok(n),
@@ -362,25 +374,30 @@ impl<'a> Calc<'a> {
         })
     }
 
-    /// The calculated items under a node add their figures to its total.
+    /// The calculated items under a node, however deep, add their figures to its total.
     fn calculated_extra(&self, r: usize, c: usize, d: usize) -> f64 {
         let mut extra = 0.0;
         if !self.calc_rows.is_empty() {
-            for &k in &self.rows.nodes[r].children {
-                if self.calc_rows.contains_key(&k) {
-                    if let Some(CellVal::Num(n)) = self.calculated_value(k, c, d) {
-                        extra += n;
-                    }
-                }
-            }
+            extra += self.extra_below(true, r, r, c, d);
         }
         if !self.calc_cols.is_empty() {
-            for &k in &self.cols.nodes[c].children {
-                if self.calc_cols.contains_key(&k) {
-                    if let Some(CellVal::Num(n)) = self.calculated_value(r, k, d) {
-                        extra += n;
-                    }
+            extra += self.extra_below(false, c, r, c, d);
+        }
+        extra
+    }
+
+    fn extra_below(&self, rows: bool, node: usize, r: usize, c: usize, d: usize) -> f64 {
+        let axis = if rows { &self.rows } else { &self.cols };
+        let calc = if rows { &self.calc_rows } else { &self.calc_cols };
+        let mut extra = 0.0;
+        for &k in &axis.nodes[node].children {
+            if calc.contains_key(&k) {
+                let value = if rows { self.calculated_value(k, c, d) } else { self.calculated_value(r, k, d) };
+                if let Some(CellVal::Num(n)) = value {
+                    extra += n;
                 }
+            } else {
+                extra += self.extra_below(rows, k, r, c, d);
             }
         }
         extra
@@ -650,15 +667,17 @@ impl<'a> Calc<'a> {
     }
 
     fn raw_plain(&self, r: usize, c: usize, d: usize, func: Option<Func>) -> CellVal {
-        let Some(cell) = self.cells.get(&(r, c)) else { return CellVal::Empty };
+        let empty = CellAcc { records: 0, accs: vec![Acc::default(); self.slots.len()] };
         let Some(field) = self.table.data.get(d) else { return CellVal::Empty };
+        let cell = match self.cells.get(&(r, c)) {
+            Some(cell) => cell,
+            None if matches!(self.sources[d], Source::Formula(..)) => &empty,
+            None => return CellVal::Empty,
+        };
         let func = func.unwrap_or(field.func);
         match &self.sources[d] {
             Source::Slot(s) => cell.accs[*s].result(func),
             Source::Formula(expr, refs) => {
-                if cell.records == 0 {
-                    return CellVal::Empty;
-                }
                 let lookup = |_item_field: Option<&str>, name: &str| -> Result<f64, ErrorKind> {
                     let key = name.to_ascii_lowercase();
                     refs.iter()
