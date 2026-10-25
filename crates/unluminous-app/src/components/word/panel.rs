@@ -79,6 +79,10 @@ pub fn show(
                 Level::TableProperties => table_properties(ui, doc, requests),
                 Level::Picture => picture(ui, doc, requests),
                 Level::Print => print(ui, doc, requests),
+                Level::PageSetup => super::panel_setup::page_setup(ui, doc, requests),
+                Level::ModifyStyle => super::panel_setup::modify_style(ui, look, doc, requests),
+                Level::Symbol => super::panel_setup::symbols(ui, look, doc, requests),
+                Level::NoteOptions => super::panel_setup::note_options(ui, doc, requests),
             }
         });
 }
@@ -122,13 +126,13 @@ fn root(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc) {
     }
 }
 
-fn heading(ui: &mut egui::Ui, text: &str) {
+pub(super) fn heading(ui: &mut egui::Ui, text: &str) {
     ui.add_space(4.0);
     ui.label(RichText::new(text).strong());
 }
 
 /// A row of buttons that each run an action from the shared list.
-fn actions_row(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>, ids: &[&str]) {
+pub(super) fn actions_row(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>, ids: &[&str]) {
     ui.horizontal_wrapped(|ui| {
         for id in ids {
             let Some(action) = crate::services::word::actions::find(id) else { continue };
@@ -221,12 +225,38 @@ fn text(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<Re
             }
         }
     });
+    ui.horizontal(|ui| {
+        let mut colour = run.color.map_or(crate::theme::color::word_ink(), |c| egui::Color32::from_rgb(c.0, c.1, c.2));
+        ui.label("More colours");
+        if ui.color_edit_button_srgba(&mut colour).changed() {
+            let hex = format!("{:02X}{:02X}{:02X}", colour.r(), colour.g(), colour.b());
+            doc.session.format(move |rpr| props::set_val(rpr, "w:color", Some(&hex)));
+        }
+        if ui.button("Automatic").clicked() {
+            doc.session.format(|rpr| props::set_val(rpr, "w:color", Some("auto")));
+        }
+    });
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Theme");
+        for theme in ["text1", "text2", "accent1", "accent2", "accent3", "accent4", "accent5", "accent6"] {
+            let rgb = unluminous_word::styles::Resolver::new(&doc.session.document).theme.colour(theme);
+            let colour = rgb.map_or(crate::theme::color::word_ink(), |c| egui::Color32::from_rgb(c.0, c.1, c.2));
+            let button = egui::Button::new(RichText::new("■").color(colour).size(18.0)).frame(false);
+            if ui.add(button).with_hint(theme).clicked() {
+                let hex = rgb.map_or_else(|| "000000".to_owned(), |c| format!("{:02X}{:02X}{:02X}", c.0, c.1, c.2));
+                let theme = theme.to_owned();
+                doc.session.format(move |rpr| {
+                    rpr.put(unluminous_word::xml::El::new("w:color").with("w:val", hex.clone()).with("w:themeColor", theme.clone()));
+                });
+            }
+        }
+    });
     heading(ui, "Highlight");
     ui.horizontal_wrapped(|ui| {
         if ui.button("None").clicked() {
             doc.session.format(|rpr| props::set_val(rpr, "w:highlight", None));
         }
-        for (name, rgb) in props::HIGHLIGHTS.iter().take(12) {
+        for (name, rgb) in props::HIGHLIGHTS.iter() {
             let colour = egui::Color32::from_rgb(rgb.0, rgb.1, rgb.2);
             if ui
                 .add(egui::Button::new(RichText::new("■").color(colour).size(18.0)).frame(false))
@@ -247,6 +277,50 @@ fn text(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<Re
         {
             let twips = ((spacing * 20.0).round() as i64).to_string();
             doc.session.format(move |rpr| props::set_val(rpr, "w:spacing", Some(&twips)));
+        }
+    });
+    ui.horizontal(|ui| {
+        let mut scale = run.scale * 100.0;
+        ui.label("Scale");
+        if ui.add(egui::DragValue::new(&mut scale).range(1.0..=600.0).speed(1.0).suffix("%")).changed() {
+            let value = (scale.round() as i64).to_string();
+            doc.session.format(move |rpr| props::set_val(rpr, "w:w", (value != "100").then_some(value.as_str())));
+        }
+        let mut position = run.position;
+        ui.label("Raise");
+        if ui.add(egui::DragValue::new(&mut position).range(-1584.0..=1584.0).speed(0.5).suffix(" pt")).changed() {
+            let half = ((position * 2.0).round() as i64).to_string();
+            doc.session.format(move |rpr| props::set_val(rpr, "w:position", (half != "0").then_some(half.as_str())));
+        }
+    });
+    ui.horizontal(|ui| {
+        let mut kern = run.kern.is_some();
+        if ui.checkbox(&mut kern, "Kerning").changed() {
+            doc.session.format(move |rpr| props::set_val(rpr, "w:kern", kern.then_some("2")));
+        }
+        let ligatures = doc.session.look_at_caret_rpr_has("w14:ligatures");
+        let mut on = ligatures;
+        if ui.checkbox(&mut on, "Ligatures").changed() {
+            doc.session.format(move |rpr| {
+                if on {
+                    rpr.put(unluminous_word::xml::El::new("w14:ligatures").with("w14:val", "standardContextual"));
+                } else {
+                    rpr.remove_children("w14:ligatures");
+                }
+            });
+        }
+    });
+    heading(ui, "Text effects");
+    ui.horizontal_wrapped(|ui| {
+        for (label, element, on) in [
+            ("Outline", "w:outline", run.outline),
+            ("Shadow", "w:shadow", run.shadow),
+            ("Emboss", "w:emboss", run.emboss),
+            ("Engrave", "w:imprint", run.imprint),
+        ] {
+            if ui.selectable_label(on, label).clicked() {
+                doc.session.format(move |rpr| props::set_on_off(rpr, element, (!on).then_some(true)));
+            }
         }
     });
     heading(ui, "Case");
@@ -355,6 +429,27 @@ fn paragraph(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut V
             spacing.set_attr("w:lineRule", rule);
         });
     }
+    let mut contextual = p.contextual;
+    if ui.checkbox(&mut contextual, "Don't add space between paragraphs of the same style").changed() {
+        doc.session.format_paragraphs(move |ppr| props::set_on_off(ppr, "w:contextualSpacing", contextual.then_some(true)));
+    }
+    ui.horizontal(|ui| {
+        ui.label("Outline level");
+        let mut level = p.outline_level.map_or(10u8, |l| l + 1);
+        egui::ComboBox::from_id_salt(("word-outline-level-of", &doc.key))
+            .selected_text(if level >= 10 { "Body text".to_owned() } else { format!("Level {level}") })
+            .show_ui(ui, |ui| {
+                crate::components::controls::set_in_the_list_size(ui);
+                for n in 1..=9u8 {
+                    ui.selectable_value(&mut level, n, format!("Level {n}"));
+                }
+                ui.selectable_value(&mut level, 10, "Body text");
+            });
+        if level != p.outline_level.map_or(10u8, |l| l + 1) {
+            let value = (level.min(10) - 1).to_string();
+            doc.session.format_paragraphs(move |ppr| props::set_val(ppr, "w:outlineLvl", Some(value.as_str())));
+        }
+    });
     heading(ui, "Pagination");
     let mut keep_next = p.keep_next;
     let mut keep_lines = p.keep_lines;
@@ -408,6 +503,64 @@ fn paragraph(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut V
             doc.session.format_paragraphs(|ppr| ppr.remove_children("w:shd"));
         }
     });
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Border on");
+        for side in ["top", "bottom", "left", "right", "between"] {
+            if ui.button(side).clicked() {
+                let style = doc.view.fields.get("border-style").cloned().unwrap_or_else(|| "single".into());
+                let size = doc.view.fields.get("border-width").cloned().unwrap_or_else(|| "4".into());
+                let colour = doc.view.fields.get("border-colour").cloned().unwrap_or_else(|| "auto".into());
+                doc.session.format_paragraphs(move |ppr| {
+                    let borders = ppr.child_or_insert("w:pBdr");
+                    borders.put(
+                        unluminous_word::xml::El::new(format!("w:{side}"))
+                            .with("w:val", style.clone())
+                            .with("w:sz", size.clone())
+                            .with("w:space", "4")
+                            .with("w:color", colour.clone()),
+                    );
+                    unluminous_word::order::sort(ppr);
+                });
+            }
+        }
+    });
+    ui.horizontal(|ui| {
+        let mut style = doc.view.fields.get("border-style").cloned().unwrap_or_else(|| "single".into());
+        egui::ComboBox::from_id_salt(("word-border-style", &doc.key)).selected_text(&style).show_ui(ui, |ui| {
+            crate::components::controls::set_in_the_list_size(ui);
+            for name in ["single", "double", "dotted", "dashed", "thick", "wave"] {
+                ui.selectable_value(&mut style, name.to_owned(), name);
+            }
+        });
+        doc.view.fields.insert("border-style", style);
+        let mut width = doc.view.fields.get("border-width").and_then(|w| w.parse::<f32>().ok()).map_or(0.5, |w| w / 8.0);
+        if ui.add(egui::DragValue::new(&mut width).range(0.25..=6.0).speed(0.05).suffix(" pt")).changed() {
+            doc.view.fields.insert("border-width", ((width * 8.0).round() as i64).to_string());
+        }
+        let mut colour = egui::Color32::BLACK; // any ground: a border colour, not a surface
+        if ui.color_edit_button_srgba(&mut colour).changed() {
+            doc.view.fields.insert("border-colour", format!("{:02X}{:02X}{:02X}", colour.r(), colour.g(), colour.b()));
+        }
+        let mut shade = p.shading.map_or(egui::Color32::WHITE, |c| egui::Color32::from_rgb(c.0, c.1, c.2)); // any ground: a shading colour
+        ui.label("Shading");
+        if ui.color_edit_button_srgba(&mut shade).changed() {
+            let hex = format!("{:02X}{:02X}{:02X}", shade.r(), shade.g(), shade.b());
+            doc.session.format_paragraphs(move |ppr| {
+                ppr.put(unluminous_word::xml::El::new("w:shd").with("w:val", "clear").with("w:color", "auto").with("w:fill", hex.clone()));
+                unluminous_word::order::sort(ppr);
+            });
+        }
+    });
+    heading(ui, "Sort");
+    ui.horizontal(|ui| {
+        for (label, ascending) in [("A to Z", true), ("Z to A", false)] {
+            if ui.button(label).clicked() {
+                if let Err(problem) = doc.session.sort_paragraphs(ascending) {
+                    requests.push(Request::Message(problem));
+                }
+            }
+        }
+    });
     heading(ui, "Tab stops");
     let field = doc.view.fields.entry("tab").or_default();
     let mut add = None;
@@ -422,22 +575,32 @@ fn paragraph(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut V
                 .desired_width(90.0),
         );
         for (label, kind) in
-            [("Left", "left"), ("Center", "center"), ("Right", "right"), ("Decimal", "decimal")]
+            [("Left", "left"), ("Center", "center"), ("Right", "right"), ("Decimal", "decimal"), ("Bar", "bar")]
         {
             if ui.button(label).clicked() {
                 add = field.trim().parse::<f32>().ok().map(|p| (p, kind));
             }
         }
     });
+    let mut leader = doc.view.fields.get("tab-leader").cloned().unwrap_or_else(|| "none".into());
+    ui.horizontal(|ui| {
+        ui.label("Leader");
+        for (label, value) in [("None", "none"), ("....", "dot"), ("----", "hyphen"), ("____", "underscore")] {
+            if ui.selectable_label(leader == value, label).clicked() {
+                leader = value.to_owned();
+            }
+        }
+    });
+    doc.view.fields.insert("tab-leader", leader.clone());
     if let Some((points, kind)) = add {
         let pos = twips(points);
         doc.session.format_paragraphs(move |ppr| {
             let tabs = ppr.child_or_insert("w:tabs");
-            tabs.children.push(unluminous_word::xml::Node::El(
-                unluminous_word::xml::El::new("w:tab")
-                    .with("w:val", kind)
-                    .with("w:pos", pos.clone()),
-            ));
+            let mut tab = unluminous_word::xml::El::new("w:tab").with("w:val", kind).with("w:pos", pos.clone());
+            if leader != "none" {
+                tab.set_attr("w:leader", leader.clone());
+            }
+            tabs.children.push(unluminous_word::xml::Node::El(tab));
         });
     }
     for stop in &p.tabs {
@@ -453,11 +616,19 @@ fn styles(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<
     heading(ui, "Paragraph styles");
     let listed = unluminous_word::styles::Resolver::new(&doc.session.document).listed("paragraph");
     for (id, name) in listed {
-        if ui.selectable_label(current == id, RichText::new(&name).size(look.font_size)).clicked() {
-            if let Err(problem) = doc.session.apply_style(&id) {
-                requests.push(Request::Message(problem));
+        ui.horizontal(|ui| {
+            if ui.selectable_label(current == id, RichText::new(&name).size(look.font_size)).clicked() {
+                if let Err(problem) = doc.session.apply_style(&id) {
+                    requests.push(Request::Message(problem));
+                }
             }
-        }
+            let modify = ui.small_button("Modify");
+            modify.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Modify {name}")));
+            if modify.clicked() {
+                doc.view.modify_style = Some(id.clone());
+                doc.view.panel.push(Level::ModifyStyle);
+            }
+        });
     }
     heading(ui, "Built in");
     actions_row(
@@ -683,6 +854,51 @@ fn insert(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
             "shape-diamond",
         ],
     );
+    heading(ui, "Pages");
+    actions_row(ui, doc, requests, &["blank-page", "cover-page"]);
+    heading(ui, "Date and time");
+    ui.horizontal_wrapped(|ui| {
+        for format in ["M/d/yyyy", "dddd, MMMM d, yyyy", "MMMM d, yyyy", "d MMMM yyyy", "yyyy-MM-dd", "h:mm am/pm", "M/d/yyyy h:mm am/pm"] {
+            if ui.button(format).clicked() {
+                let code = format!("DATE \\@ \"{format}\"");
+                let shown = unluminous_word::fields::format_date(&unluminous_word::session::now_iso(), Some(format), format.contains('h'));
+                doc.session.insert_field(&code, &shown);
+            }
+        }
+    });
+    heading(ui, "Document property");
+    ui.horizontal_wrapped(|ui| {
+        for (label, code) in [("Title", "TITLE"), ("Author", "AUTHOR"), ("Subject", "SUBJECT"), ("Keywords", "KEYWORDS"), ("File name", "FILENAME"), ("Pages", "NUMPAGES"), ("Words", "NUMWORDS")] {
+            if ui.button(label).clicked() {
+                doc.session.insert_field(code, "");
+                let pages = doc.pages.clone();
+                doc.session.update_selected_fields(&pages);
+            }
+        }
+    });
+    heading(ui, "Text from file");
+    let file = doc.view.fields.entry("text-from-file").or_default();
+    let mut from_file = None;
+    ui.horizontal(|ui| {
+        ui.add(
+            egui::TextEdit::singleline(file)
+                .hint_text(crate::components::controls::placeholder(
+                    "a .docx, .txt or .md file",
+                    &egui::TextStyle::Body.resolve(ui.style()),
+                    crate::theme::color::text_faint(),
+                ))
+                .desired_width(170.0),
+        );
+        if ui.button("Insert").clicked() && !file.trim().is_empty() {
+            from_file = Some(file.trim().to_owned());
+        }
+    });
+    if let Some(path) = from_file {
+        match crate::services::word::insert_text_from_file(doc, std::path::Path::new(&path)) {
+            Ok(said) => requests.push(Request::Message(said)),
+            Err(problem) => requests.push(Request::Message(problem)),
+        }
+    }
     heading(ui, "Breaks");
     actions_row(
         ui,
@@ -763,6 +979,7 @@ fn insert(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
         doc.session.insert_bookmark(&name);
         doc.view.fields.remove("bookmark");
     }
+    deeper(ui, doc, Level::Symbol);
     heading(ui, "Symbol");
     ui.horizontal_wrapped(|ui| {
         for symbol in [
@@ -808,6 +1025,7 @@ fn page(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
     if changed {
         doc.session.set_margins(margins);
     }
+    deeper(ui, doc, Level::PageSetup);
     heading(ui, "Columns");
     actions_row(ui, doc, requests, &["one-column", "two-columns", "three-columns"]);
     heading(ui, "Header and footer");
@@ -899,7 +1117,31 @@ fn references(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
         &["update-fields", "field-codes", "unlink-fields", "lock-fields", "unlock-fields"],
     );
     heading(ui, "Notes");
-    actions_row(ui, doc, requests, &["footnote", "endnote"]);
+    actions_row(ui, doc, requests, &["footnote", "endnote", "next-footnote", "previous-footnote"]);
+    deeper(ui, doc, Level::NoteOptions);
+    heading(ui, "Cross reference");
+    let targets = doc.session.cross_reference_targets();
+    let mut target: usize = doc.view.fields.get("xref-target").and_then(|t| t.parse().ok()).unwrap_or(usize::MAX);
+    let shown = targets.get(target).map_or_else(|| "Choose a heading, caption or bookmark".to_owned(), |t| t.1.clone());
+    egui::ComboBox::from_id_salt(("word-xref", &doc.key)).selected_text(shown).width(ui.available_width() - 20.0).show_ui(ui, |ui| {
+        crate::components::controls::set_in_the_list_size(ui);
+        for (index, (_, label)) in targets.iter().enumerate() {
+            ui.selectable_value(&mut target, index, label);
+        }
+    });
+    doc.view.fields.insert("xref-target", target.to_string());
+    ui.horizontal_wrapped(|ui| {
+        for (label, what) in [("Insert its text", "text"), ("Its page number", "page"), ("Above or below", "above-below")] {
+            if ui.button(label).clicked() {
+                if let Some((path, _)) = targets.get(target) {
+                    let pages = doc.pages.clone();
+                    if let Err(problem) = doc.session.insert_cross_reference(path, what, &pages) {
+                        requests.push(Request::Message(problem));
+                    }
+                }
+            }
+        }
+    });
     heading(ui, "Captions");
     actions_row(ui, doc, requests, &["caption"]);
     heading(ui, "Bookmarks");

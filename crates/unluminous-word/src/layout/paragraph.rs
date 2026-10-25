@@ -1528,6 +1528,39 @@ fn raise_of(run: &RunLook) -> f32 {
         }
 }
 
+/// A run of text with Word's text effects drawn round it (TDD 5.5): a grey copy under and to the right
+/// for a shadow, the letters in white over copies of themselves a little each way for an outline, and a
+/// light or a dark copy beside them for emboss and engrave.
+fn push_with_effects(texts: &mut Vec<Item>, item: TextItem, run: &RunLook) {
+    let copy = |dx: f32, dy: f32, color: unluminous_core::Color| {
+        let mut c = item.clone();
+        c.baseline += dy;
+        for x in &mut c.xs {
+            *x += dx;
+        }
+        c.style.color = color;
+        Item::Text(c)
+    };
+    let size = item.style.size;
+    if run.shadow {
+        texts.push(copy(size * 0.06, size * 0.06, unluminous_core::Color::rgb(150, 150, 150)));
+    }
+    if run.emboss || run.imprint {
+        let (dx, shade) = if run.emboss { (-0.6, 200) } else { (0.6, 90) };
+        texts.push(copy(dx, dx, unluminous_core::Color::rgb(shade, shade, shade)));
+    }
+    if run.outline {
+        let ink = item.style.color;
+        let d = (size * 0.035).max(0.3);
+        for (dx, dy) in [(-d, 0.0), (d, 0.0), (0.0, -d), (0.0, d)] {
+            texts.push(copy(dx, dy, ink));
+        }
+        texts.push(copy(0.0, 0.0, unluminous_core::Color::rgb(255, 255, 255)));
+        return;
+    }
+    texts.push(Item::Text(item));
+}
+
 /// The items a placed line draws: text grouped by look, rules, fills and pictures.
 #[allow(clippy::too_many_arguments)]
 fn emit(
@@ -1547,9 +1580,9 @@ fn emit(
     // Text runs, one item per look and small caps state.
     let mut current: Option<(usize, bool, TextItem)> = None;
     let flush = |current: &mut Option<(usize, bool, TextItem)>, texts: &mut Vec<Item>| {
-        if let Some((_, _, item)) = current.take() {
+        if let Some((look, _, item)) = current.take() {
             if !item.text.is_empty() {
-                texts.push(Item::Text(item));
+                push_with_effects(texts, item, &looks[look].run);
             }
         }
     };

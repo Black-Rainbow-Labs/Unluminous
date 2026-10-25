@@ -18,6 +18,7 @@ pub mod edit;
 pub mod export;
 pub mod fields;
 pub mod find;
+pub mod import;
 pub mod kern;
 pub mod layout;
 pub mod lists;

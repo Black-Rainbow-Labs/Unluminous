@@ -162,12 +162,16 @@ pub enum Level {
     TableProperties,
     Picture,
     Print,
+    PageSetup,
+    ModifyStyle,
+    Symbol,
+    NoteOptions,
 }
 
 impl Level {
     /// The third levels, which the root level does not list.
     pub const DEEPER: &'static [Level] =
-        &[Level::Proofing, Level::Contents, Level::TableProperties, Level::Picture, Level::Print];
+        &[Level::Proofing, Level::Contents, Level::TableProperties, Level::Picture, Level::Print, Level::PageSetup, Level::ModifyStyle, Level::Symbol, Level::NoteOptions];
 
     /// The level a third level is opened from.
     pub fn parent(self) -> Option<Level> {
@@ -176,6 +180,10 @@ impl Level {
             Level::Contents => Some(Level::References),
             Level::TableProperties | Level::Picture => Some(Level::Insert),
             Level::Print => Some(Level::Document),
+            Level::PageSetup => Some(Level::Page),
+            Level::ModifyStyle => Some(Level::Styles),
+            Level::Symbol => Some(Level::Insert),
+            Level::NoteOptions => Some(Level::References),
             _ => None,
         }
     }
@@ -209,6 +217,10 @@ impl Level {
             Level::TableProperties => "Table properties",
             Level::Picture => "Picture",
             Level::Print => "Print",
+            Level::PageSetup => "Page setup",
+            Level::ModifyStyle => "Modify style",
+            Level::Symbol => "Symbol",
+            Level::NoteOptions => "Note options",
         }
     }
 
@@ -240,6 +252,10 @@ impl Level {
             Level::TableProperties => "Alignment, width, rows, cells, style, borders",
             Level::Picture => "Size, wrap, position, crop, alt text, order",
             Level::Print => "Pages, copies, odd or even, pages per sheet, preview",
+            Level::PageSetup => "Custom margins, paper, line numbers, borders, page numbers",
+            Level::ModifyStyle => "Font, paragraph, based on, next style",
+            Level::Symbol => "Every character of a block, recent ones, special characters",
+            Level::NoteOptions => "Number format, restart, where notes go",
         }
     }
 }
@@ -324,6 +340,10 @@ pub struct View {
     pub pane_width: f32,
     /// New Window was asked for; the tab asks the window for the second tab.
     pub new_window: bool,
+    /// The style the Modify Style level is changing.
+    pub modify_style: Option<String>,
+    /// The symbols inserted lately, newest first.
+    pub recent_symbols: Vec<char>,
     /// The right click menu, while it is open.
     pub context_menu: Option<ContextMenu>,
     /// Shift+F10 asked for the menu at the caret; the page view opens it, because it knows where that is.
@@ -392,6 +412,38 @@ pub fn remember_the_paste(
 pub fn ask_for_the_clipboard(doc: &mut Doc, text: String, requests: &mut Vec<Request>) {
     doc.view.paste_waiting = Some((text, unluminous_word::clipboard::PasteAs::Source));
     requests.push(Request::ClipboardRich { id: format!("word-paste:{}", doc.key) });
+}
+
+/// Insert the text of a file at the caret, as Insert's Text from File does: a Word document's paragraphs
+/// with their formatting, a Markdown file converted, an HTML file read as the clipboard reads it, and
+/// anything else as plain text.
+pub fn insert_text_from_file(doc: &mut Doc, path: &Path) -> Result<String, String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("{} could not be read: {e}", path.display()))?;
+    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    let paragraphs: Vec<unluminous_word::model::Paragraph> = match extension.as_str() {
+        "docx" | "dotx" | "docm" | "dotm" => {
+            let other = unluminous_word::read::open(&bytes)?;
+            for (_, paragraph) in unluminous_word::position::paragraphs(&other.body) {
+                if let Some(id) = paragraph.props.val_of("w:pStyle") {
+                    let _ = unluminous_word::builtin::ensure_style(&mut doc.session.document, id);
+                }
+            }
+            unluminous_word::position::paragraphs(&other.body).into_iter().map(|(_, p)| p.clone()).collect()
+        }
+        "md" | "markdown" => {
+            let text = String::from_utf8_lossy(&bytes).into_owned();
+            unluminous_word::import::from_markdown(&mut doc.session.document, &text)
+        }
+        "html" | "htm" => {
+            let text = String::from_utf8_lossy(&bytes).into_owned();
+            unluminous_word::import::from_html(&mut doc.session.document, &text)
+        }
+        _ => unluminous_word::import::from_text(&String::from_utf8_lossy(&bytes)),
+    };
+    let count = paragraphs.len();
+    doc.session.paste_fragment(paragraphs);
+    doc.view.reveal = true;
+    Ok(format!("Inserted {count} paragraphs from {}", path.display()))
 }
 
 /// Paste a picture from the clipboard as an inline PNG, its own size at 96 pixels an inch and no wider
@@ -534,6 +586,8 @@ impl View {
             carrying: false,
             object_drag: None,
             context_menu: None,
+            modify_style: None,
+            recent_symbols: Vec::new(),
             mode: Mode::Print,
             ruler: false,
             ruler_tab: unluminous_word::props::TabKind::Left,

@@ -13,6 +13,7 @@ pub mod objects;
 pub mod overlays;
 pub mod page_view;
 pub mod panel;
+pub mod panel_setup;
 pub mod outline;
 pub mod settings_page;
 pub mod spelling;

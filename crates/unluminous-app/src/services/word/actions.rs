@@ -94,6 +94,31 @@ fn outline_move(doc: &mut Doc, up: bool) -> Result<String, String> {
     Ok(String::new())
 }
 
+/// The next or the previous footnote reference in the body after the caret, as Next Footnote goes.
+fn note_step(doc: &mut Doc, forward: bool) -> Result<String, String> {
+    let at = doc.session.selection.head.clone();
+    let mut references: Vec<unluminous_word::position::Pos> = Vec::new();
+    for (path, paragraph) in unluminous_word::position::paragraphs(&doc.session.document.body) {
+        let mut offset = 0;
+        for run in &paragraph.runs {
+            if let unluminous_word::model::Content::Object(el) = &run.content {
+                if el.name == "w:footnoteReference" {
+                    references.push(unluminous_word::position::Pos::new(path.clone(), offset));
+                }
+            }
+            offset += run.len();
+        }
+    }
+    let found = if forward {
+        references.into_iter().find(|p| *p > at)
+    } else {
+        references.into_iter().rev().find(|p| *p < at)
+    };
+    let pos = found.ok_or("there is no footnote there")?;
+    doc.session.select(pos.clone(), pos);
+    Ok(String::new())
+}
+
 fn underline_kind(doc: &mut Doc, kind: &'static str) -> Result<String, String> {
     let on = doc.session.look_at_caret().underline != props::Underline::parse(kind);
     doc.session.format(move |rpr| props::set_val(rpr, "w:u", on.then_some(kind)));
@@ -2055,6 +2080,65 @@ pub const ACTIONS: &[Action] = &[
             crate::components::word::outline::fold_at_caret(d, false);
             done("")
         },
+    },
+    Action {
+        id: "next-footnote",
+        label: "Next footnote",
+        level: Level::References,
+        slash: false,
+        run: |d| note_step(d, true),
+    },
+    Action {
+        id: "previous-footnote",
+        label: "Previous footnote",
+        level: Level::References,
+        slash: false,
+        run: |d| note_step(d, false),
+    },
+    Action {
+        id: "blank-page",
+        label: "Blank page",
+        level: Level::Insert,
+        slash: true,
+        run: |d| {
+            d.session.insert_break(PAGE_BREAK);
+            d.session.insert_break(PAGE_BREAK);
+            done("")
+        },
+    },
+    Action {
+        id: "cover-page",
+        label: "Cover page",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_cover_page("Title", "Subtitle", "").map(|()| String::new()),
+    },
+    Action {
+        id: "page-setup",
+        label: "Page setup",
+        level: Level::Page,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Page, Level::PageSetup];
+            done("")
+        },
+    },
+    Action {
+        id: "symbol-dialog",
+        label: "Symbol",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Insert, Level::Symbol];
+            done("")
+        },
+    },
+    Action {
+        id: "sort-paragraphs",
+        label: "Sort paragraphs",
+        level: Level::Paragraph,
+        slash: false,
+        run: |d| d.session.sort_paragraphs(true).map(|()| String::new()),
     },
 ];
 

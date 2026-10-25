@@ -169,6 +169,112 @@ impl Session {
         Ok(())
     }
 
+    /// Sort the selected paragraphs of one body, cell or content control by their text, A to Z or Z to A,
+    /// as Home's Sort does for paragraphs. Numbers sort by value when every paragraph starts with one.
+    pub fn sort_paragraphs(&mut self, ascending: bool) -> Result<(), String> {
+        let (from, to) = (self.selection.ordered().0.clone(), self.selection.ordered().1.clone());
+        if from.story != to.story || from.path.len() != to.path.len() || from.path[..from.path.len() - 1] != to.path[..to.path.len() - 1] {
+            return Err("select paragraphs next to each other to sort them".into());
+        }
+        let (first, last) = (*from.path.last().expect("a path") as usize, *to.path.last().expect("a path") as usize);
+        if last <= first {
+            return Err("select two paragraphs or more to sort them".into());
+        }
+        self.change(Scope::Story, move |document, selection, _| {
+            let Some(blocks) = position::story_mut(document, &from.story) else { return selection.clone() };
+            let Some((container, _)) = position::container_mut(blocks, &from.path) else { return selection.clone() };
+            let range = first..(last + 1).min(container.len());
+            if !container[range.clone()].iter().all(|b| matches!(b, Block::Paragraph(_))) {
+                return selection.clone();
+            }
+            let text = |b: &Block| b.as_paragraph().map(|p| p.visible_text()).unwrap_or_default();
+            let number = |t: &str| t.trim().split(|c: char| !c.is_ascii_digit() && c != '.').next().and_then(|n| n.parse::<f64>().ok());
+            let numeric = container[range.clone()].iter().all(|b| number(&text(b)).is_some());
+            let mut part: Vec<Block> = container.drain(range.clone()).collect();
+            part.sort_by(|a, b| {
+                let order = if numeric {
+                    number(&text(a)).unwrap_or(0.0).total_cmp(&number(&text(b)).unwrap_or(0.0))
+                } else {
+                    text(a).to_lowercase().cmp(&text(b).to_lowercase())
+                };
+                if ascending { order } else { order.reverse() }
+            });
+            for (i, block) in part.into_iter().enumerate() {
+                container.insert(first + i, block);
+            }
+            selection.clone()
+        });
+        Ok(())
+    }
+
+    /// What a cross reference can point at: every heading, every caption and every paragraph holding a
+    /// bookmark a person named, with the words Word lists it by.
+    pub fn cross_reference_targets(&self) -> Vec<(Vec<u32>, String)> {
+        let resolver = crate::styles::Resolver::new(&self.document);
+        let mut out = Vec::new();
+        for (path, paragraph) in position::paragraphs(&self.document.body) {
+            let look = resolver.paragraph(&paragraph.props, None);
+            let text: String = paragraph.visible_text().chars().take(60).collect();
+            if let Some(level) = look.outline_level {
+                out.push((path.clone(), format!("Heading {}: {text}", level + 1)));
+            } else if look.style == "Caption" {
+                out.push((path.clone(), format!("Caption: {text}")));
+            }
+            for mark in &paragraph.marks {
+                if mark.el.name == "w:bookmarkStart" {
+                    if let Some(name) = mark.el.attr("w:name").filter(|n| !n.starts_with('_')) {
+                        out.push((path.clone(), format!("Bookmark {name}: {text}")));
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// Whether the run at the caret sets `name` itself, such as `w14:ligatures`.
+    pub fn look_at_caret_rpr_has(&self, name: &str) -> bool {
+        let head = &self.selection.head;
+        position::paragraph(&self.document, &head.story, &head.path)
+            .is_some_and(|p| crate::edit::props_at(p, head.offset).0.child(name).is_some())
+    }
+
+    /// A cover page at the top of the document: the title in Title, the subtitle in Subtitle, the
+    /// author and the date, then a page break, as Word's plainest cover page has them.
+    pub fn insert_cover_page(&mut self, title: &str, subtitle: &str, author: &str) -> Result<(), String> {
+        for style in ["Title", "Subtitle"] {
+            crate::builtin::ensure_style(&mut self.document, style)?;
+        }
+        let lines: Vec<(Option<&str>, String)> = vec![
+            (Some("Title"), title.to_owned()),
+            (Some("Subtitle"), subtitle.to_owned()),
+            (None, author.to_owned()),
+            (None, crate::fields::format_date(&crate::session::now_iso(), Some("MMMM d, yyyy"), false)),
+        ];
+        self.change(Scope::Story, move |document, selection, _| {
+            let mut blocks: Vec<Block> = Vec::new();
+            for (style, text) in &lines {
+                let mut paragraph = Paragraph::new();
+                if let Some(style) = style {
+                    paragraph.props.put(El::new("w:pStyle").with("w:val", *style));
+                }
+                if !text.is_empty() {
+                    paragraph.runs.push(Run::text(text.clone(), no_props()));
+                }
+                blocks.push(Block::Paragraph(paragraph));
+            }
+            let mut breaker = Paragraph::new();
+            breaker.runs.push(Run { content: Content::Break(El::new("w:br").with("w:type", "page")), ..Run::text("", no_props()) });
+            blocks.push(Block::Paragraph(breaker));
+            for (i, block) in blocks.into_iter().enumerate() {
+                document.body.insert(i, block);
+            }
+            let _ = selection;
+            // The caret goes to the title, to type it.
+            Selection::caret(Pos::new(vec![0], 0))
+        });
+        Ok(())
+    }
+
     /// F11 and Shift+F11: select the next field after the caret, or the one before it, in the story.
     pub fn select_next_field(&mut self, forward: bool) -> Result<(), String> {
         let head = self.selection.ordered().1.clone();
