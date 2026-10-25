@@ -76,6 +76,7 @@ pub fn show(
                 Level::Document => document(ui, doc, requests),
                 Level::Proofing => proofing(ui, doc),
                 Level::Contents => contents(ui, doc, requests),
+                Level::TableProperties => table_properties(ui, doc, requests),
             }
         });
 }
@@ -615,6 +616,23 @@ fn insert(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
                 }
             }
         });
+        actions_row(
+            ui,
+            doc,
+            requests,
+            &[
+                "merge-cells",
+                "split-table",
+                "distribute-rows",
+                "distribute-columns",
+                "sort-table",
+                "table-to-text",
+                "select-row",
+                "select-column",
+                "select-table",
+            ],
+        );
+        deeper(ui, doc, Level::TableProperties);
         ui.horizontal_wrapped(|ui| {
             ui.label("Shade cell");
             for hex in ["D9E2F3", "FBE4D5", "E2EFD9", "FFF2CC", "EDEDED"] {
@@ -868,6 +886,93 @@ fn references(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
     }
 }
 
+/// Insert -> Table properties: the table's alignment and width, the selected rows' height and whether
+/// they repeat or break across pages, the selected cells' vertical alignment, the table style with its
+/// options, and borders.
+fn table_properties(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
+    if doc.session.cell_at_caret().is_none() {
+        ui.label(RichText::new("Put the caret in a table to change its properties.").weak());
+        return;
+    }
+    let mut set = |doc: &mut Doc, name: &str, values: &[&str]| {
+        let values: Vec<String> = values.iter().map(|v| (*v).to_owned()).collect();
+        if let Err(problem) = doc.session.table_property(name, &values) {
+            requests.push(Request::Message(problem));
+        }
+    };
+    heading(ui, "Table");
+    ui.horizontal(|ui| {
+        ui.label("Alignment");
+        for (label, value) in [("Left", "left"), ("Center", "center"), ("Right", "right")] {
+            if ui.button(label).clicked() {
+                set(doc, "align", &[value]);
+            }
+        }
+    });
+    ui.horizontal(|ui| {
+        ui.label("Width");
+        for (label, value) in [("Auto", "auto"), ("50%", "50%"), ("75%", "75%"), ("100%", "100%")] {
+            if ui.button(label).clicked() {
+                set(doc, "width", &[value]);
+            }
+        }
+    });
+    heading(ui, "Rows");
+    let height = doc.view.fields.entry("row-height").or_insert_with(|| "0".to_owned());
+    let mut apply_height = false;
+    ui.horizontal(|ui| {
+        ui.label("Height (pt, 0 for auto)");
+        ui.add(egui::TextEdit::singleline(height).desired_width(44.0));
+        apply_height = ui.button("Set").clicked();
+    });
+    if apply_height {
+        let value = doc.view.fields.get("row-height").cloned().unwrap_or_default();
+        set(doc, "row-height", &[value.as_str()]);
+    }
+    ui.horizontal(|ui| {
+        if ui.button("Repeat as header row").clicked() {
+            set(doc, "repeat-header", &["on"]);
+        }
+        if ui.button("Keep row on one page").clicked() {
+            set(doc, "allow-break", &["off"]);
+        }
+        if ui.button("Allow row to break").clicked() {
+            set(doc, "allow-break", &["on"]);
+        }
+    });
+    heading(ui, "Cells");
+    ui.horizontal(|ui| {
+        ui.label("Vertical alignment");
+        for (label, value) in [("Top", "top"), ("Center", "center"), ("Bottom", "bottom")] {
+            if ui.button(label).clicked() {
+                set(doc, "valign", &[value]);
+            }
+        }
+    });
+    heading(ui, "Style");
+    ui.horizontal_wrapped(|ui| {
+        for (label, id) in [("Table Grid", "TableGrid"), ("Plain", "TableNormal")] {
+            if ui.button(label).clicked() {
+                if let Err(problem) = doc.session.apply_table_style(id, None) {
+                    requests.push(Request::Message(problem));
+                }
+            }
+        }
+    });
+    heading(ui, "Borders");
+    ui.horizontal_wrapped(|ui| {
+        for (label, which) in
+            [("All", "all"), ("Outside", "outside"), ("Inside", "inside"), ("None", "none")]
+        {
+            if ui.button(label).clicked() {
+                if let Err(problem) = doc.session.set_table_borders(which, 0.5, None) {
+                    requests.push(Request::Message(problem));
+                }
+            }
+        }
+    });
+}
+
 /// Review -> Proofing: a tick box for each autocorrect rule.
 fn proofing(ui: &mut egui::Ui, doc: &mut Doc) {
     heading(ui, "AutoCorrect as you type");
@@ -1049,8 +1154,102 @@ fn review(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<
             });
         });
     }
+    heading(ui, "Display for review");
+    ui.horizontal_wrapped(|ui| {
+        use unluminous_word::review::Markup;
+        for (label, mode) in [
+            ("Simple Markup", Markup::Simple),
+            ("All Markup", Markup::All),
+            ("No Markup", Markup::None),
+            ("Original", Markup::Original),
+        ] {
+            if ui.selectable_label(doc.view.markup == mode, label).clicked() {
+                doc.view.markup = mode;
+                doc.laid = 0;
+            }
+        }
+    });
+    ui.checkbox(&mut doc.view.show_comments, "Show comments");
+    ui.horizontal(|ui| {
+        if ui.button("Previous change").clicked() {
+            doc.session.go_to_change(false);
+            doc.view.reveal = true;
+        }
+        if ui.button("Next change").clicked() {
+            doc.session.go_to_change(true);
+            doc.view.reveal = true;
+        }
+    });
+    heading(ui, "Lock tracking");
+    let password = doc.view.fields.entry("lock-password").or_default();
+    let mut lock = None;
+    ui.horizontal(|ui| {
+        ui.add(egui::TextEdit::singleline(password).password(true).desired_width(140.0));
+        let locked = doc.session.tracking_locked();
+        if ui.button(if locked { "Unlock" } else { "Lock" }).clicked() {
+            lock = Some((locked, password.clone()));
+        }
+    });
+    if let Some((locked, password)) = lock {
+        doc.view.fields.remove("lock-password");
+        if locked {
+            if doc.session.protection_password_matches(&password) {
+                doc.session.lock_tracking("");
+            } else {
+                requests.push(Request::Message("That is not the password".into()));
+            }
+        } else if !password.is_empty() {
+            doc.session.lock_tracking(&password);
+        }
+    }
+    heading(ui, "Language");
+    let tag = doc.view.fields.entry("language").or_insert_with(|| "en-US".to_owned());
+    let mut set_language = None;
+    ui.horizontal(|ui| {
+        ui.add(egui::TextEdit::singleline(tag).desired_width(80.0));
+        if ui.button("Set for the selection").clicked() {
+            set_language = Some(tag.clone());
+        }
+    });
+    if let Some(tag) = set_language {
+        doc.session.set_language(tag.trim());
+    }
+    heading(ui, "Accessibility");
+    let issues = doc.session.accessibility();
+    if issues.is_empty() {
+        ui.label(RichText::new("No accessibility issues found").color(look.palette.text_dim));
+    }
+    for issue in issues.into_iter().take(30) {
+        if ui.link(&issue.message).clicked() {
+            doc.session.select(issue.at.clone(), issue.at);
+            doc.view.reveal = true;
+        }
+    }
+    heading(ui, "Document inspector");
+    let found = doc.session.inspect();
+    for (label, count, kind) in [
+        ("Comments", found.comments, "comments"),
+        ("Tracked changes", found.revisions, "revisions"),
+        ("Hidden text", found.hidden, "hidden"),
+        ("Personal names in properties", found.personal.len(), "personal"),
+    ] {
+        ui.horizontal(|ui| {
+            ui.label(format!("{label}: {count}"));
+            if count > 0 && ui.button("Remove all").clicked() {
+                if let Err(problem) = doc.session.remove_inspected(kind) {
+                    requests.push(Request::Message(problem));
+                }
+            }
+        });
+    }
     heading(ui, "Word count");
-    let stats = doc.session.stats(Some(&doc.pages));
+    ui.checkbox(&mut doc.view.count_notes, "Include text boxes, footnotes and endnotes");
+    let mut stats = doc.session.stats(Some(&doc.pages));
+    if doc.view.count_notes {
+        let (words, characters) = doc.session.word_count_with_notes();
+        stats.words = words;
+        stats.characters = characters;
+    }
     egui::Grid::new("word-stats").num_columns(2).show(ui, |ui| {
         for (label, value) in [
             ("Pages", stats.pages),

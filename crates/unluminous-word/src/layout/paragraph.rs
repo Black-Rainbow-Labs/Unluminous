@@ -33,6 +33,8 @@ struct Look {
     /// Drawn struck through as a tracked deletion, or underlined as an insertion.
     deleted: bool,
     inserted: bool,
+    /// Part of a tracked change, whether or not it is drawn as one, for Simple Markup's margin bar.
+    revised: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -99,6 +101,12 @@ fn char_style(run: &RunLook, size: f32, color: Option<Rgb>) -> CharStyle {
 }
 
 fn make_look(ctx: &Ctx, run: RunLook, deleted: bool, inserted: bool) -> Look {
+    let revised = deleted || inserted;
+    // Only All Markup draws a change as a change; the other views draw the text as it is or was.
+    let (deleted, inserted) = match ctx.markup {
+        crate::review::Markup::All => (deleted, inserted),
+        _ => (false, false),
+    };
     let tracked = (deleted || inserted).then_some(REVISION);
     let style = char_style(&run, run.drawn_size(), tracked);
     let metrics = ctx.metrics.line_metrics(&style);
@@ -107,7 +115,7 @@ fn make_look(ctx: &Ctx, run: RunLook, deleted: bool, inserted: bool) -> Look {
         let metrics = ctx.metrics.line_metrics(&small);
         (small, metrics)
     });
-    Look { run, style, metrics, small, deleted, inserted }
+    Look { run, style, metrics, small, deleted, inserted, revised }
 }
 
 /// Lay a paragraph out at `width`, the width of the column or cell it is in.
@@ -438,6 +446,15 @@ fn collect_atoms(
             continue;
         }
         if fields.open.iter().any(|field| field.1) {
+            continue;
+        }
+        // No Markup and Simple Markup show the text as it will be, Original as it was.
+        let hidden_by_markup = match ctx.markup {
+            crate::review::Markup::All => false,
+            crate::review::Markup::Original => run.is_inserted(),
+            _ => run.is_deleted(),
+        };
+        if hidden_by_markup {
             continue;
         }
         let look = {
@@ -1351,6 +1368,20 @@ fn place_line(
     };
     let mut chunk = Chunk { height, slack, ..Chunk::default() };
     emit(ctx, looks, atoms, line, &xs, baseline, height, &mut chunk);
+    // Simple Markup marks a changed line with a bar in the left margin.
+    if ctx.markup == crate::review::Markup::Simple
+        && line.atoms.iter().any(|&i| looks[atoms[i].look].revised)
+    {
+        chunk.items.push(Item::Rule {
+            x0: -10.0,
+            y0: 0.0,
+            x1: -10.0,
+            y1: height,
+            width: 1.0,
+            color: REVISION,
+            kind: RuleKind::Solid,
+        });
+    }
     if let (Some((look_index, _)), Some((x, w))) = (hyphen, xs.last()) {
         let look_of = &looks[look_index];
         chunk.items.push(Item::Text(TextItem {

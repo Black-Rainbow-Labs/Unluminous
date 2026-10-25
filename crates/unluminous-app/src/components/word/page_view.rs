@@ -21,7 +21,8 @@ pub const COMMENTS: f32 = 240.0;
 
 /// Whether the document has comments, which is when the pages move left to make room for them.
 pub fn has_comments(doc: &Doc) -> bool {
-    doc.session.document.comments.as_ref().is_some_and(|part| !part.notes.is_empty())
+    doc.view.show_comments
+        && doc.session.document.comments.as_ref().is_some_and(|part| !part.notes.is_empty())
 }
 
 /// Where each page's top left corner is, in screen points relative to the top of the scrolled content,

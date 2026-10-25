@@ -1674,6 +1674,13 @@ fn add_comment_to_side_parts(document: &mut Document, para: &str, author: &str) 
                 .with("w16cid:durableId", durable.clone()),
         ));
     });
+    // Word lists every comment in commentsExtended, open (`w15:done="0"`) unless it is resolved; a reply
+    // has its parent set there later by `set_comment_extended`, which replaces this entry.
+    edit_related_part(document, COMMENTS_EXTENDED, |root| {
+        root.children.push(Node::El(
+            El::new("w15:commentEx").with("w15:paraId", para.to_owned()).with("w15:done", "0"),
+        ));
+    });
     let date = now_iso();
     edit_related_part(document, COMMENTS_EXTENSIBLE, |root| {
         root.children.push(Node::El(

@@ -16,7 +16,7 @@ use crate::services::word::Doc;
 /// The chords a Word tab answers itself: Word's own formatting, editing and navigation keys.
 pub fn claims(key: Key, modifiers: &Modifiers) -> bool {
     if !modifiers.command {
-        return matches!(key, Key::Tab | Key::F7 | Key::F9 | Key::F11 | Key::Escape);
+        return matches!(key, Key::Tab | Key::F4 | Key::F7 | Key::F9 | Key::F11 | Key::Escape);
     }
     // Saving, closing a tab, quitting and switching tabs stay the window's.
     !matches!(key, Key::S | Key::W | Key::Q | Key::O | Key::N | Key::Tab | Key::P | Key::Comma)
@@ -197,6 +197,10 @@ fn key_press(doc: &mut Doc, key: Key, modifiers: &Modifiers, requests: &mut Vec<
             (Key::Z, true) | (Key::Y, false) => Some("redo"),
             (Key::A, false) => Some("select-all"),
             (Key::F, false) => Some("find"),
+            (Key::G, false) => {
+                doc.view.goto = Some(String::new());
+                None
+            }
             (Key::H, false) => Some("replace"),
             (Key::Space, false) => Some("clear-formatting"),
             (Key::N, true) => Some("normal"),
@@ -310,6 +314,11 @@ fn key_press(doc: &mut Doc, key: Key, modifiers: &Modifiers, requests: &mut Vec<
             }
         }
         Key::F7 => super::run_action(doc, "spelling", requests),
+        Key::F4 => {
+            if let Some(id) = doc.view.last_action {
+                super::run_action(doc, id, requests);
+            }
+        }
         // Alt+F9 and Shift+F9 show the field codes instead of the results, F9 updates the fields.
         Key::F9 if modifiers.alt || shift => super::run_action(doc, "field-codes", requests),
         Key::F9 => super::run_action(doc, "update-fields", requests),

@@ -57,6 +57,62 @@ fn paragraph_path(doc: &Doc, n: usize) -> Result<Vec<u32>, String> {
         .ok_or_else(|| format!("there is no paragraph {n}: the document has {count}"))
 }
 
+/// A search from a verb's words: the text, `--case`, `--word`, `--wildcards`, `--all-stories` and
+/// `--format=bold,italic,underline,highlight,color:RRGGBB,style:<id>,align:center`.
+fn search_from(arguments: &[String]) -> Result<unluminous_word::search::Search, String> {
+    Ok(unluminous_word::search::Search {
+        query: unluminous_word::find::Query {
+            text: rest(&words(arguments), 0),
+            match_case: flag(arguments, "--case"),
+            whole_word: flag(arguments, "--word"),
+            wildcards: flag(arguments, "--wildcards"),
+        },
+        format: format_from(arguments, "--format=")?,
+        every_story: flag(arguments, "--all-stories"),
+    })
+}
+
+/// The formatting a `--format=` (or `--with-format=`) word names: comma separated, each `bold`,
+/// `italic`, `underline`, `highlight`, `not-bold` and so on, `color:RRGGBB`, `style:<id>`, `align:<a>`.
+fn format_from(
+    arguments: &[String],
+    prefix: &str,
+) -> Result<unluminous_word::search::Format, String> {
+    let mut format = unluminous_word::search::Format::default();
+    let Some(list) = arguments.iter().find_map(|a| a.strip_prefix(prefix)) else {
+        return Ok(format);
+    };
+    for item in list.split(',').map(str::trim).filter(|i| !i.is_empty()) {
+        let (not, name) = match item.strip_prefix("not-") {
+            Some(name) => (true, name),
+            None => (false, item),
+        };
+        match name.split_once(':') {
+            Some(("color" | "colour", hex)) => {
+                format.colour =
+                    Some(props::Rgb::parse(hex).ok_or_else(|| format!("{hex} is not a colour"))?)
+            }
+            Some(("style", id)) => format.style = Some(id.to_owned()),
+            Some(("align", a)) => {
+                format.align = Some(match a {
+                    "center" | "centre" => props::Align::Center,
+                    "right" => props::Align::Right,
+                    "justify" => props::Align::Justify,
+                    _ => props::Align::Left,
+                })
+            }
+            _ => match name {
+                "bold" => format.bold = Some(!not),
+                "italic" => format.italic = Some(!not),
+                "underline" => format.underline = Some(!not),
+                "highlight" => format.highlight = Some(!not),
+                other => return Err(format!("{other} is not a formatting the search knows")),
+            },
+        }
+    }
+    Ok(format)
+}
+
 /// `fields [update|unlink|lock|unlock|list]`: Update Fields, and the field commands on the selection.
 fn fields(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
     match arguments.get(1).map_or("update", String::as_str) {
@@ -364,6 +420,51 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
             }
             Ok(Answer::said("Deleted"))
         }
+        "find"
+            if flag(arguments, "--wildcards")
+                || flag(arguments, "--all-stories")
+                || arguments.iter().any(|a| a.starts_with("--format")) =>
+        {
+            let search = search_from(arguments)?;
+            let found = session.search(&search)?;
+            let hits: Vec<serde_json::Value> = found
+                .iter()
+                .map(|s| json!({ "story": super::story_name(&s.anchor.story), "path": s.anchor.path, "offset": s.anchor.offset, "length": s.head.offset - s.anchor.offset }))
+                .collect();
+            if let Some(first) = found.first() {
+                session.selection = first.clone();
+                doc.view.reveal = true;
+            }
+            Ok(Answer::said(format!("{} found", hits.len())).with(json!(hits)))
+        }
+        "replace"
+            if flag(arguments, "--wildcards")
+                || flag(arguments, "--all-stories")
+                || arguments
+                    .iter()
+                    .any(|a| a.starts_with("--format") || a.starts_with("--with-format")) =>
+        {
+            let plain = words(arguments);
+            let split = plain.iter().position(|a| a == "--").ok_or(
+                "replace takes the text to find, then --, then the text to put in its place",
+            )?;
+            let mut search = search_from(arguments)?;
+            search.query.text = plain[..split].join(" ");
+            let with = unescape(&plain[split + 1..].join(" "));
+            let format = format_from(arguments, "--with-format=")?;
+            let count = session.replace_matches(&search, &with, &format)?;
+            Ok(Answer::said(format!("{count} replaced")).with(json!({ "replaced": count })))
+        }
+        "goto" | "go-to" => {
+            doc.ensure_pages();
+            let what = arguments.first().ok_or("goto takes what to go to and which one")?;
+            let which = rest(arguments, 1);
+            let pages = doc.pages.clone();
+            let at = doc.session.go_to(what, &which, &pages)?;
+            doc.view.reveal = true;
+            Ok(Answer::said(format!("At {what} {which}"))
+                .with(json!({ "path": at.path, "offset": at.offset })))
+        }
         "find" => {
             let needle = rest(&words(arguments), 0);
             let found = session.find(&needle, flag(arguments, "--case"), flag(arguments, "--word"));
@@ -416,13 +517,53 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
                     .collect();
                 return Ok(Answer::said(format!("{} styles", styles.len())).with(json!(styles)));
             }
+            let style_id = |session: &unluminous_word::session::Session, wanted: &str| {
+                unluminous_word::styles::Resolver::new(&session.document)
+                    .find(wanted)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| wanted.replace(' ', ""))
+            };
+            match arguments.first().map(String::as_str) {
+                Some("modify") => {
+                    let id = style_id(
+                        session,
+                        arguments
+                            .get(1)
+                            .ok_or("style modify takes a style, a property and a value")?,
+                    );
+                    let property = arguments
+                        .get(2)
+                        .ok_or("style modify takes a style, a property and a value")?;
+                    session.modify_style(&id, property, &rest(arguments, 3))?;
+                    return Ok(Answer::said(format!("{id} changed")));
+                }
+                Some("new") => {
+                    let id = session.new_style_from_selection(&rest(arguments, 1))?;
+                    return Ok(Answer::said(format!("New style {id}")).with(json!({ "id": id })));
+                }
+                Some("update") => {
+                    let id = session.update_style_to_match()?;
+                    return Ok(Answer::said(format!("{id} updated to match the selection")));
+                }
+                Some("delete") => {
+                    let id = style_id(session, &rest(arguments, 1));
+                    session.delete_style(&id)?;
+                    return Ok(Answer::said(format!("{id} deleted")));
+                }
+                Some("revert") => {
+                    let id = style_id(session, &rest(arguments, 1));
+                    session.revert_style(&id)?;
+                    return Ok(Answer::said(format!("{id} is Word's own again")));
+                }
+                _ => {}
+            }
             let wanted = rest(arguments, 0);
             let id = {
                 let resolver = unluminous_word::styles::Resolver::new(&session.document);
                 resolver.find(&wanted).map(str::to_owned)
             }
             .unwrap_or_else(|| wanted.replace(' ', ""));
-            session.apply_style(&id)?;
+            session.apply_style_where_it_fits(&id)?;
             Ok(Answer::said(format!("Applied {wanted}")))
         }
         "list" => {
@@ -452,6 +593,9 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
         "track" => {
             match arguments.first().map(String::as_str) {
                 Some("on") => session.set_tracking(true),
+                Some("off") if session.tracking_locked() => {
+                    return Err("Track Changes is locked on; track unlock <password> unlocks it".into())
+                }
                 Some("off") => session.set_tracking(false),
                 Some("accept") | Some("reject") => {
                     let accept = arguments[0] == "accept";
@@ -472,8 +616,40 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
                     ))
                     .with(json!({ "tracking": session.tracking, "changes": changes })));
                 }
+                Some("view") => {
+                    let mode = arguments
+                        .get(1)
+                        .and_then(|m| unluminous_word::review::Markup::parse(m))
+                        .ok_or("track view takes simple, all, none or original")?;
+                    doc.view.markup = mode;
+                    doc.laid = 0;
+                    return Ok(Answer::said(format!("Showing {} markup", mode.name())));
+                }
+                Some("next") | Some("previous") => {
+                    let forward = arguments[0] == "next";
+                    if !session.go_to_change(forward) {
+                        return Err("there are no tracked changes".into());
+                    }
+                    doc.view.reveal = true;
+                    return Ok(Answer::said("At the change"));
+                }
+                Some("lock") => {
+                    let password = rest(arguments, 1);
+                    if password.is_empty() {
+                        return Err("track lock takes a password".into());
+                    }
+                    session.lock_tracking(&password);
+                    return Ok(Answer::said("Track Changes is locked on"));
+                }
+                Some("unlock") => {
+                    if !session.protection_password_matches(&rest(arguments, 1)) {
+                        return Err("that is not the password Track Changes was locked with".into());
+                    }
+                    session.lock_tracking("");
+                    return Ok(Answer::said("Track Changes is unlocked"));
+                }
                 Some(other) => {
-                    return Err(format!("track takes on, off, list, accept or reject, not {other}"))
+                    return Err(format!("track takes on, off, list, accept, reject, view, next, previous, lock or unlock, not {other}"))
                 }
             }
             Ok(Answer::said(format!(
@@ -505,6 +681,44 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
             Ok(Answer::said(format!("Cross reference to paragraph {n} added")))
         }
         "link" => link(doc, arguments),
+        "language" => {
+            let tag = arguments.first().ok_or("language takes a tag such as en-US or fr-FR")?;
+            session.set_language(tag);
+            Ok(Answer::said(format!("The selection is in {tag}")))
+        }
+        "accessibility" => {
+            let issues: Vec<serde_json::Value> = session
+                .accessibility()
+                .into_iter()
+                .map(|i| json!({ "kind": i.kind, "message": i.message, "path": i.at.path, "offset": i.at.offset }))
+                .collect();
+            Ok(Answer::said(format!("{} accessibility issues", issues.len())).with(json!(issues)))
+        }
+        "inspect" => match arguments.first().map(String::as_str) {
+            Some("remove") => {
+                let kind = arguments
+                    .get(1)
+                    .ok_or("inspect remove takes comments, revisions, hidden or personal")?;
+                let count = session.remove_inspected(kind)?;
+                Ok(Answer::said(format!("{count} removed")))
+            }
+            _ => {
+                let found = session.inspect();
+                Ok(Answer::said(format!(
+                    "{} comments, {} tracked changes, {} hidden runs, {} personal names",
+                    found.comments,
+                    found.revisions,
+                    found.hidden,
+                    found.personal.len()
+                ))
+                .with(json!({
+                    "comments": found.comments,
+                    "revisions": found.revisions,
+                    "hidden": found.hidden,
+                    "personal": found.personal.iter().map(|(k, v)| json!({ "property": k, "value": v })).collect::<Vec<_>>(),
+                })))
+            }
+        },
         "paste" => {
             // `paste --as source|merge|text` changes the last paste, as Paste Options does;
             // `paste --html <html>` and `paste --rtf <rtf>` paste formatted text an agent has in hand.
@@ -965,9 +1179,90 @@ fn table(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
             }
             session.selection = Selection::caret(Pos::new(path, 0));
         }
+        "select" => session.select_in_table(arguments.get(1).map_or("cell", String::as_str))?,
+        "merge" => session.merge_cells()?,
+        "split-table" => session.split_table()?,
+        "convert" => match arguments.get(1).map(String::as_str) {
+            Some("to-text") => {
+                session.table_to_text(arguments.get(2).map_or("tab", String::as_str))?
+            }
+            Some("to-table") => {
+                session.text_to_table(arguments.get(2).map_or("tab", String::as_str))?
+            }
+            _ => {
+                return Err(
+                    "table convert takes to-text or to-table, then tab, comma or paragraph".into()
+                )
+            }
+        },
+        "sort" => {
+            let column: usize = arguments
+                .get(1)
+                .and_then(|c| c.parse::<usize>().ok())
+                .ok_or("table sort takes a column, from 1")?;
+            let by = match arguments.get(2).map(String::as_str) {
+                Some("number") => unluminous_word::tables::SortBy::Number,
+                Some("date") => unluminous_word::tables::SortBy::Date,
+                _ => unluminous_word::tables::SortBy::Text,
+            };
+            session.sort_table(
+                column.saturating_sub(1),
+                by,
+                flag(arguments, "--descending") || flag(arguments, "desc"),
+                flag(arguments, "--header"),
+            )?
+        }
+        "distribute" => {
+            doc.ensure_pages();
+            let rows = arguments.get(1).map(String::as_str) != Some("columns");
+            let heights = row_heights(doc);
+            doc.session.distribute(rows, &heights)?
+        }
+        "properties" | "property" => {
+            let name = arguments.get(1).ok_or("table properties takes a property and its value")?;
+            session.table_property(name, arguments.get(2..).unwrap_or(&[]))?
+        }
+        "style" => {
+            let id = arguments.get(1).ok_or("table style takes a style id, such as TableGrid")?;
+            let look = arguments.get(2).map(|flags| {
+                let on = |c: char| flags.contains(c);
+                // h header row, t total row, f first column, l last column, r banded rows, c banded columns
+                [on('h'), on('t'), on('f'), on('l'), on('r'), on('c')]
+            });
+            session.apply_table_style(id, look)?
+        }
+        "borders" => {
+            let which = arguments.get(1).map_or("all", String::as_str);
+            let width = arguments.get(2).and_then(|w| w.parse().ok()).unwrap_or(0.5);
+            let colour = arguments.get(3).and_then(|c| props::Rgb::parse(c));
+            session.set_table_borders(which, width, colour)?
+        }
         op => session.table_op(op)?,
     }
     Ok(Answer::said(format!("table {what}")))
+}
+
+/// The height of each row of the caret's table as the layout drew it, for Distribute Rows.
+pub(crate) fn row_heights(doc: &Doc) -> Vec<f32> {
+    let Some(range) = doc.session.selected_cells() else { return Vec::new() };
+    let mut tops: Vec<(u32, f32, f32)> = Vec::new();
+    for page in &doc.pages.pages {
+        for line in page.carets.iter().filter(|l| l.story == StoryId::Body) {
+            if line.path.len() > range.table.len() && line.path.starts_with(&range.table) {
+                let row = line.path[range.table.len()];
+                let bottom = line.top + line.height;
+                match tops.iter_mut().find(|(r, _, _)| *r == row) {
+                    Some(entry) => {
+                        entry.1 = entry.1.min(line.top);
+                        entry.2 = entry.2.max(bottom);
+                    }
+                    None => tops.push((row, line.top, bottom)),
+                }
+            }
+        }
+    }
+    tops.sort_by_key(|(r, _, _)| *r);
+    tops.iter().map(|(_, top, bottom)| bottom - top).collect()
 }
 
 fn section(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {

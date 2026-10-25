@@ -19,6 +19,11 @@ fn template_styles() -> El {
     document.styles.expect("the template has styles").root
 }
 
+/// Word's own definition of a built in style, from the template, as a `w:style` element.
+pub fn definition(id: &str) -> Option<El> {
+    template_styles().children_named("w:style").find(|s| s.attr("w:styleId") == Some(id)).cloned()
+}
+
 /// Make sure the style with this id is defined, copying it from Word's own definition when it is not.
 pub fn ensure_style(document: &mut Document, id: &str) -> Result<(), String> {
     if document.styles.as_ref().is_some_and(|part| {

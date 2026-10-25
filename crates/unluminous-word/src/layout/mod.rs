@@ -350,6 +350,8 @@ pub struct Ctx<'a> {
     pub show_marks: bool,
     /// Draw each field as its code in braces instead of its result, as Word's Alt+F9 does.
     pub show_codes: bool,
+    /// How tracked changes are shown: Word's Display for Review.
+    pub markup: crate::review::Markup,
     /// Each footnote's number, by its id, in order of first reference.
     pub footnote_numbers: HashMap<i64, u32>,
     pub endnote_numbers: HashMap<i64, u32>,
@@ -393,6 +395,8 @@ pub struct Options {
     pub show_marks: bool,
     /// Field codes instead of their results.
     pub show_codes: bool,
+    /// Simple Markup, All Markup, No Markup or Original.
+    pub markup: crate::review::Markup,
 }
 
 /// The pages of a document.
@@ -477,6 +481,7 @@ pub fn lay_out(document: &Document, metrics: &dyn FontMetrics, options: Options)
         default_tab: default_tab(document),
         show_marks: options.show_marks,
         show_codes: options.show_codes,
+        markup: options.markup,
         footnote_numbers,
         endnote_numbers,
         footnote_marks,

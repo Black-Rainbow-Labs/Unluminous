@@ -72,7 +72,7 @@ fn paragraph_toggle(doc: &mut Doc, name: &'static str) -> Result<String, String>
 }
 
 fn style(doc: &mut Doc, id: &'static str) -> Result<String, String> {
-    doc.session.apply_style(id)?;
+    doc.session.apply_style_where_it_fits(id)?;
     Ok(String::new())
 }
 
@@ -555,6 +555,84 @@ pub const ACTIONS: &[Action] = &[
             d.session.insert_table(3, 3);
             Ok(String::new())
         },
+    },
+    Action {
+        id: "merge-cells",
+        label: "Merge cells",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.merge_cells().map(|()| String::new()),
+    },
+    Action {
+        id: "split-table",
+        label: "Split table",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.split_table().map(|()| String::new()),
+    },
+    Action {
+        id: "distribute-rows",
+        label: "Distribute rows",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            let heights = super::commands::row_heights(d);
+            d.session.distribute(true, &heights).map(|()| String::new())
+        },
+    },
+    Action {
+        id: "distribute-columns",
+        label: "Distribute columns",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.distribute(false, &[]).map(|()| String::new()),
+    },
+    Action {
+        id: "table-to-text",
+        label: "Convert table to text",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.table_to_text("tab").map(|()| String::new()),
+    },
+    Action {
+        id: "text-to-table",
+        label: "Convert text to table",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.text_to_table("tab").map(|()| String::new()),
+    },
+    Action {
+        id: "sort-table",
+        label: "Sort table A to Z",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            let column = d.session.selected_cells().map_or(0, |r| r.cells.0);
+            d.session
+                .sort_table(column, unluminous_word::tables::SortBy::Text, false, false)
+                .map(|()| String::new())
+        },
+    },
+    Action {
+        id: "select-row",
+        label: "Select row",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.select_in_table("row").map(|()| String::new()),
+    },
+    Action {
+        id: "select-column",
+        label: "Select column",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.select_in_table("column").map(|()| String::new()),
+    },
+    Action {
+        id: "select-table",
+        label: "Select table",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.select_in_table("table").map(|()| String::new()),
     },
     Action {
         id: "picture",
@@ -1122,11 +1200,24 @@ pub fn applies(id: &str, doc: &Doc) -> bool {
     match id {
         "comment" => !matches!(head.story, StoryId::Header(_)),
         "remove-link" => doc.session.hyperlink_at(head).is_some(),
+        "merge-cells" | "split-table" | "distribute-rows" | "distribute-columns"
+        | "table-to-text" | "sort-table" | "select-row" | "select-column" | "select-table" => {
+            doc.session.cell_at_caret().is_some()
+        }
         "update-table" | "remove-table-of-contents" => {
             !unluminous_word::references::find_tocs(&doc.session.document).is_empty()
         }
         _ => true,
     }
+}
+
+/// Whether F4 repeats an action: one that formats the selection or puts something in, not one that
+/// moves, finds, undoes, opens a view or exports.
+pub fn repeatable(action: &Action) -> bool {
+    matches!(
+        action.level,
+        Level::Text | Level::Paragraph | Level::Styles | Level::Lists | Level::Insert
+    ) && !matches!(action.id, "copy-formatting" | "find" | "replace" | "select-all")
 }
 
 pub fn find(id: &str) -> Option<&'static Action> {

@@ -113,6 +113,77 @@ pub fn show(
     if doc.view.find.is_some() {
         find_bar(ui, look, doc, area, requests);
     }
+    if doc.view.goto.is_some() {
+        go_to_box(ui, look, doc, area, requests);
+    }
+}
+
+/// Go To (Ctrl+G): a box at the top of the pages for `page 3`, `section 2`, `line 40`, `bookmark Intro`,
+/// `footnote 1`, `comment 2`, `heading 3`, `table 1` or `picture 2`. A number alone is a page.
+fn go_to_box(
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    doc: &mut Doc,
+    area: Rect,
+    requests: &mut Vec<Request>,
+) {
+    let width = 320.0 * look.scale();
+    let at = Pos2::new(area.center().x - width / 2.0, area.top() + 10.0);
+    let mut go = None;
+    let mut close = false;
+    egui::Area::new(ui.id().with("word-goto")).order(egui::Order::Foreground).fixed_pos(at).show(
+        ui.ctx(),
+        |ui| {
+            egui::Frame::popup(ui.style()).show(ui, |ui| {
+                ui.set_width(width - 16.0);
+                let Some(text) = doc.view.goto.as_mut() else { return };
+                ui.horizontal(|ui| {
+                    ui.label("Go to");
+                    let field = ui.add(
+                        egui::TextEdit::singleline(text)
+                            .hint_text(crate::components::controls::placeholder(
+                                "page 3, heading 2, bookmark Intro",
+                                &egui::TextStyle::Body.resolve(ui.style()),
+                                crate::theme::color::text_faint(),
+                            ))
+                            .desired_width(width * 0.6),
+                    );
+                    if text.is_empty() && !field.has_focus() {
+                        field.request_focus();
+                    }
+                    if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        go = Some(text.clone());
+                    }
+                    if ui.input(|i| i.key_pressed(egui::Key::Escape))
+                        || ui.button("✕").with_hint("Close").clicked()
+                    {
+                        close = true;
+                    }
+                });
+            });
+        },
+    );
+    remember_popup(ui, Rect::from_min_size(at, Vec2::new(width, 40.0)));
+    if let Some(text) = go {
+        let mut words = text.split_whitespace();
+        let first = words.next().unwrap_or("page").to_owned();
+        let rest = words.collect::<Vec<_>>().join(" ");
+        let (what, which) =
+            if first.parse::<usize>().is_ok() { ("page".to_owned(), first) } else { (first, rest) };
+        let pages = doc.pages.clone();
+        match doc.session.go_to(&what, &which, &pages) {
+            Ok(_) => {
+                doc.view.goto = None;
+                doc.view.reveal = true;
+                requests.push(Request::TakeTheKeyboard(true));
+            }
+            Err(problem) => requests.push(Request::Message(problem)),
+        }
+    }
+    if close {
+        doc.view.goto = None;
+        requests.push(Request::TakeTheKeyboard(true));
+    }
 }
 
 /// Note that a popup covers `card` this frame, so the page under it does not take a press meant for one
@@ -533,6 +604,10 @@ fn find_bar(
                     }
                     ui.toggle_value(&mut find.case, "Aa").with_hint("Match case");
                     ui.toggle_value(&mut find.word, "W").with_hint("Whole words");
+                    ui.toggle_value(&mut find.wildcards, "?*")
+                        .with_hint("Use wildcards: ? one character, * any, [a-z], (group) and \\1");
+                    ui.toggle_value(&mut find.every_story, "All")
+                        .with_hint("Also search headers, footers, notes, comments and text boxes");
                     if ui.button("↑").with_hint("Previous").clicked() {
                         go = Some(false);
                     }
@@ -561,7 +636,11 @@ fn find_bar(
             });
         });
     let Some(find) = doc.view.find.clone() else { return };
-    let matches = doc.session.find(&find.needle, find.case, find.word);
+    let search = find.search();
+    let (matches, problem) = match doc.session.search(&search) {
+        Ok(found) => (found, None),
+        Err(problem) => (Vec::new(), Some(problem)),
+    };
     if let Some(forward) = go {
         if !matches.is_empty() {
             let head = doc.session.selection.ordered().1.clone();
@@ -579,15 +658,37 @@ fn find_bar(
     }
     if replace_one && !matches.is_empty() {
         let current = matches.iter().position(|m| *m == doc.session.selection).unwrap_or(0);
-        doc.session.selection = matches[current].clone();
-        doc.session.type_text(&find.with);
+        let chosen = matches[current].clone();
+        let text = unluminous_word::position::paragraph(
+            &doc.session.document,
+            &chosen.anchor.story,
+            &chosen.anchor.path,
+        )
+        .map(|p| p.flat_text())
+        .unwrap_or_default();
+        let groups = unluminous_word::find::find_all(&search.query, &text)
+            .unwrap_or_default()
+            .into_iter()
+            .find(|f| f.start == chosen.anchor.offset)
+            .map(|f| f.groups)
+            .unwrap_or_default();
+        let hit = unluminous_word::find::Found {
+            start: chosen.anchor.offset,
+            end: chosen.head.offset,
+            groups,
+        };
+        let new = unluminous_word::find::replacement(&search.query, &find.with, &text, &hit);
+        doc.session.selection = chosen;
+        doc.session.type_text(&new);
     }
     if replace_all {
-        let count = doc.session.replace_all(&find.needle, &find.with, find.case, find.word);
-        requests.push(Request::Message(format!("{count} replaced")));
+        match doc.session.replace_matches(&search, &find.with, &Default::default()) {
+            Ok(count) => requests.push(Request::Message(format!("{count} replaced"))),
+            Err(problem) => requests.push(Request::Message(problem)),
+        }
     }
     if !find.needle.is_empty() {
-        let label = format!("{} found", matches.len());
+        let label = problem.unwrap_or_else(|| format!("{} found", matches.len()));
         ui.ctx()
             .layer_painter(egui::LayerId::new(
                 egui::Order::Foreground,

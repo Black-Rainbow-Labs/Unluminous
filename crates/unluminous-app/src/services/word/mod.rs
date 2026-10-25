@@ -125,17 +125,20 @@ pub enum Level {
     /// Third levels, each opened from the level `parent` names (task-2359, TDD 5.5).
     Proofing,
     Contents,
+    TableProperties,
 }
 
 impl Level {
     /// The third levels, which the root level does not list.
-    pub const DEEPER: &'static [Level] = &[Level::Proofing, Level::Contents];
+    pub const DEEPER: &'static [Level] =
+        &[Level::Proofing, Level::Contents, Level::TableProperties];
 
     /// The level a third level is opened from.
     pub fn parent(self) -> Option<Level> {
         match self {
             Level::Proofing => Some(Level::Review),
             Level::Contents => Some(Level::References),
+            Level::TableProperties => Some(Level::Insert),
             _ => None,
         }
     }
@@ -166,6 +169,7 @@ impl Level {
             Level::Document => "Document",
             Level::Proofing => "Proofing",
             Level::Contents => "Table of contents",
+            Level::TableProperties => "Table properties",
         }
     }
 
@@ -194,6 +198,7 @@ impl Level {
             Level::Document => "Properties, view, export",
             Level::Proofing => "Autocorrect and AutoFormat as you type",
             Level::Contents => "Levels, page numbers, leader, links",
+            Level::TableProperties => "Alignment, width, rows, cells, style, borders",
         }
     }
 }
@@ -207,6 +212,12 @@ pub struct View {
     pub marks: bool,
     /// Field codes drawn instead of their results (Alt+F9).
     pub codes: bool,
+    /// Display for Review: how tracked changes are drawn.
+    pub markup: unluminous_word::review::Markup,
+    /// Show Markup: the comment cards beside the pages.
+    pub show_comments: bool,
+    /// The word count includes footnotes, endnotes and text boxes.
+    pub count_notes: bool,
     /// The text of a paste waiting for the window to say what else the clipboard holds.
     pub paste_waiting: Option<(String, unluminous_word::clipboard::PasteAs)>,
     /// The last paste, for Paste Options: what was pasted, its text, where it started and where the
@@ -225,6 +236,12 @@ pub struct View {
     pub palette: Option<(String, usize)>,
     /// The find bar: what is looked for, what replaces it, match case, whole words.
     pub find: Option<Find>,
+    /// Which tab the navigation pane shows: 0 headings, 1 pages, 2 the results of the find bar.
+    pub navigation_tab: u8,
+    /// The last formatting or insertion command, which F4 repeats.
+    pub last_action: Option<&'static str>,
+    /// The Go To box (Ctrl+G), with what has been typed in it: `page 3`, `heading 2`, `bookmark Intro`.
+    pub goto: Option<String>,
     /// The x the caret keeps while it moves up and down.
     pub goal_x: Option<f32>,
     /// Scroll the caret into view on the next frame.
@@ -352,6 +369,26 @@ pub struct Find {
     pub word: bool,
     pub replace: bool,
     pub current: usize,
+    /// Word's wildcard language (`?`, `*`, `[a-z]`, `(...)` and `\1`) instead of plain text.
+    pub wildcards: bool,
+    /// Search the headers, footers, notes, comments and text boxes too.
+    pub every_story: bool,
+}
+
+impl Find {
+    /// The search the bar's fields and toggles describe.
+    pub fn search(&self) -> unluminous_word::search::Search {
+        unluminous_word::search::Search {
+            query: unluminous_word::find::Query {
+                text: self.needle.clone(),
+                match_case: self.case,
+                whole_word: self.word,
+                wildcards: self.wildcards,
+            },
+            format: Default::default(),
+            every_story: self.every_story,
+        }
+    }
 }
 
 impl View {
@@ -361,6 +398,9 @@ impl View {
             scroll: 0.0,
             marks: config.marks,
             codes: false,
+            markup: unluminous_word::review::Markup::All,
+            show_comments: true,
+            count_notes: false,
             paste_waiting: None,
             pasted: None,
             spelling: config.spelling,
@@ -371,6 +411,9 @@ impl View {
             palette: None,
             find: None,
             goal_x: None,
+            navigation_tab: 0,
+            last_action: None,
+            goto: None,
             reveal: true,
             dragging: false,
             carrying: false,
@@ -421,7 +464,11 @@ impl Doc {
         self.pages = layout::lay_out(
             &self.session.document,
             &fonts,
-            layout::Options { show_marks: self.view.marks, show_codes: self.view.codes },
+            layout::Options {
+                show_marks: self.view.marks,
+                show_codes: self.view.codes,
+                markup: self.view.markup,
+            },
         );
         self.laid = self.session.revision;
         self.formatted_text = Some("window".into());

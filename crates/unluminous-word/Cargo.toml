@@ -31,6 +31,8 @@ spellbook.workspace = true
 hyphenation.workspace = true
 # Pasting HTML (task-2359, TDD 5.4).
 dom_query.workspace = true
+# The password hash Word writes for Lock Tracking and Restrict Editing (task-2359). Already in the tree.
+sha2.workspace = true
 
 [dev-dependencies]
 # A small picture for the test that has Word open a document Unluminous wrote.

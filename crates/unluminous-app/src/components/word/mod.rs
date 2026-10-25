@@ -69,6 +69,10 @@ pub fn show(doc: &mut Doc, config: &Config, ui: &mut egui::Ui, look: &Look<'_>) 
 /// Run an action from the shared list by its id and say what it said in the status bar.
 pub fn run_action(doc: &mut Doc, id: &str, requests: &mut Vec<Request>) {
     let Some(action) = crate::services::word::actions::find(id) else { return };
+    // F4 repeats the last command that formats or inserts, as Word's Repeat does.
+    if crate::services::word::actions::repeatable(action) {
+        doc.view.last_action = Some(action.id);
+    }
     match (action.run)(doc) {
         Ok(said) if !said.is_empty() => requests.push(Request::Message(said)),
         Ok(_) => {}

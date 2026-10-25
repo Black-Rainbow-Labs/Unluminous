@@ -103,8 +103,10 @@ fn png() -> Vec<u8> {
     png
 }
 
-/// Select the text `words` in the body.
+/// Select the text `words` in the body. The caret may be in a note it just added, so the search is
+/// started from the body.
 fn select(session: &mut Session, words: &str) {
+    session.selection = Selection::caret(Pos::new(vec![0], 0));
     let found = session.find(words, true, false);
     session.selection =
         found.first().cloned().unwrap_or_else(|| panic!("{words} is in the document"));

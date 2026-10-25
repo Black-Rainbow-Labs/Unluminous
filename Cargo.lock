@@ -6846,6 +6846,7 @@ dependencies = [
  "hyphenation",
  "roxmltree",
  "serde_json",
+ "sha2",
  "spellbook",
  "ttf-parser",
  "unicode-segmentation",

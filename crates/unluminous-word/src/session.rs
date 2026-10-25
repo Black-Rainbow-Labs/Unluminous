@@ -396,7 +396,12 @@ impl Session {
             return;
         }
         let change = Arc::new(change);
-        self.change(Scope::Story, move |document, selection, _| {
+        self.change(Scope::Story, move |document, selection, tracking| {
+            // With Track Changes on, what the text looked like before goes into a w:rPrChange.
+            if let Some(t) = tracking {
+                let (from, to) = selection.ordered();
+                Session::track_run_formatting(document, from, to, &t.author);
+            }
             edit::format_range(document, &selection.anchor, &selection.head, &|el| change(el));
             selection.clone()
         });
@@ -423,7 +428,11 @@ impl Session {
 
     /// Change the paragraph properties of every paragraph the selection touches.
     pub fn format_paragraphs(&mut self, change: impl Fn(&mut El) + 'static) {
-        self.change(Scope::Story, move |document, selection, _| {
+        self.change(Scope::Story, move |document, selection, tracking| {
+            if let Some(t) = tracking {
+                let (from, to) = selection.ordered();
+                Session::track_paragraph_formatting(document, from, to, &t.author);
+            }
             edit::format_paragraphs(document, &selection.anchor, &selection.head, &change);
             selection.clone()
         });
@@ -580,41 +589,16 @@ impl Session {
 
     /// Every match of `needle` in the body's visible text, as selections.
     pub fn find(&self, needle: &str, match_case: bool, whole_word: bool) -> Vec<Selection> {
-        if needle.is_empty() {
-            return Vec::new();
-        }
-        let story = self.selection.head.story.clone();
-        let Some(blocks) = position::story(&self.document, &story) else { return Vec::new() };
-        let mut found = Vec::new();
-        let fold = |s: &str| if match_case { s.to_owned() } else { s.to_lowercase() };
-        let needle_folded = fold(needle);
-        for (path, paragraph) in position::paragraphs(blocks) {
-            let text = paragraph.flat_text();
-            // Lower casing can change byte lengths; search per character position in the original.
-            let haystack = fold(&text);
-            if haystack.len() != text.len() {
-                continue;
-            }
-            let mut from = 0;
-            while let Some(at) = haystack[from..].find(&needle_folded) {
-                let start = from + at;
-                let end = start + needle_folded.len();
-                let starts_a_word =
-                    text[..start].chars().last().is_none_or(|c| !c.is_alphanumeric());
-                let ends_a_word = text[end..].chars().next().is_none_or(|c| !c.is_alphanumeric());
-                if !whole_word || (starts_a_word && ends_a_word) {
-                    found.push(Selection {
-                        anchor: Pos { story: story.clone(), path: path.clone(), offset: start },
-                        head: Pos { story: story.clone(), path: path.clone(), offset: end },
-                    });
-                }
-                from = end.max(start + 1);
-                while !text.is_char_boundary(from) {
-                    from += 1;
-                }
-            }
-        }
-        found
+        let search = crate::search::Search {
+            query: crate::find::Query {
+                text: needle.to_owned(),
+                match_case,
+                whole_word,
+                wildcards: false,
+            },
+            ..crate::search::Search::default()
+        };
+        self.search(&search).unwrap_or_default()
     }
 
     /// Replace every match, as one undo step. Answers how many were replaced.
