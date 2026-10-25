@@ -126,6 +126,8 @@ pub fn show(
     let (tops, total) = page_tops(doc, area.width());
     doc.view.scroll = doc.view.scroll.clamp(0.0, (total - area.height()).max(0.0));
     doc.view.viewport_height = area.height();
+    doc.view.pages_rect = area;
+    doc.view.window_zoom = ui.ctx().zoom_factor();
     doc.view.pane_width = area.width();
     if doc.view.reveal {
         reveal(doc, area, &tops);
@@ -180,6 +182,7 @@ pub fn show(
     }
     let free = ui.input(|i| i.modifiers.shift);
     super::objects::paint(&painter, doc, area, free);
+    super::objects::paint_column_guide(&painter, doc, area);
     paint_header_frame(&painter, doc, area, &tops);
     if has_comments(doc) {
         paint_comments(ui, look, &painter, doc, area, &tops);
@@ -773,6 +776,21 @@ Ctrl+click to follow the link"
                 return;
             }
         }
+    }
+    // A table column's edge: dragged to change the column's width (task-2359, TDD 5.4).
+    if response.hovered() && super::objects::over_column_edge(doc, area, at) {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+    }
+    if doc.view.column_drag.is_some() {
+        let released = ui.input(|i| i.pointer.primary_released());
+        if let Some(Err(error)) = super::objects::drag_column_edge(doc, area, at, released) {
+            requests.push(Request::Notice { text: error, kind: crate::components::toast::Kind::Problem });
+        }
+        return;
+    }
+    if pressed && count == 1 && super::objects::press_column_edge(doc, area, at) {
+        doc.view.clicks = (now, at, count);
+        return;
     }
     // A picture, shape or text box: its handles, or the object itself (task-2359, TDD 5.3).
     if doc.view.object_drag.is_some() {

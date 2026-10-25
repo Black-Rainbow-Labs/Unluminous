@@ -47,6 +47,31 @@ fn on(text: Option<&String>) -> Option<bool> {
     }
 }
 
+/// The story `--story <kind> [n]` names, and the words after it: `body`, `header <n>`, `footer <n>`
+/// (the nth header or footer part), `footnote <id>`, `endnote <id>`, `comment <id>` or `textbox <n>`.
+fn story_from(document: &unluminous_word::model::Document, arguments: &[String]) -> Result<(StoryId, Vec<String>), String> {
+    let at = arguments.iter().position(|a| a == "--story").ok_or("--story names a story")?;
+    let kind = arguments.get(at + 1).ok_or("--story takes body, header, footer, footnote, endnote, comment or textbox")?;
+    let number = arguments.get(at + 2).and_then(|n| n.parse::<i64>().ok());
+    let used = if number.is_some() { 3 } else { 2 };
+    let rest: Vec<String> = arguments.iter().enumerate().filter(|(i, a)| (*i < at || *i >= at + used) && a.as_str() != "--runs").map(|(_, a)| a.clone()).collect();
+    let n = number.unwrap_or(1);
+    let story = match kind.as_str() {
+        "body" => StoryId::Body,
+        "header" | "footer" => {
+            let footer = kind == "footer";
+            let header = document.headers.iter().filter(|h| h.footer == footer).nth((n - 1).max(0) as usize).ok_or_else(|| format!("there is no {kind} {n}"))?;
+            StoryId::Header(header.id.clone())
+        }
+        "footnote" => StoryId::Footnote(n),
+        "endnote" => StoryId::Endnote(n),
+        "comment" => StoryId::Comment(n),
+        "textbox" => StoryId::TextBox(document.textboxes.get((n - 1).max(0) as usize).ok_or_else(|| format!("there is no text box {n}"))?.id),
+        other => return Err(format!("--story takes body, header, footer, footnote, endnote, comment or textbox, not {other}")),
+    };
+    Ok((story, rest))
+}
+
 /// The body paragraph numbered `n` from 1, as `read` numbers them.
 fn paragraph_path(doc: &Doc, n: usize) -> Result<Vec<u32>, String> {
     let all = position::paragraphs(&doc.session.document.body);
@@ -335,6 +360,59 @@ fn autocorrect(word: &mut Word, arguments: &[String]) -> Result<Answer, String> 
 fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Result<Answer, String> {
     let session = &mut doc.session;
     match command {
+        "read" if arguments.iter().any(|a| a == "--story") => {
+            let (story, rest) = story_from(&session.document, arguments)?;
+            let numbers: Vec<usize> = rest.iter().filter_map(|a| a.parse().ok()).collect();
+            let from = numbers.first().copied().unwrap_or(1);
+            let to = numbers.get(1).copied().unwrap_or(if numbers.is_empty() { usize::MAX } else { from });
+            let blocks = position::story(&session.document, &story).ok_or("there is no such story")?;
+            let paragraphs = unluminous_word::export::paragraphs_value_in(&session.document, blocks, from, to, flag(arguments, "--runs"));
+            Ok(Answer::said(format!("{} paragraphs in {}", paragraphs.len(), super::story_name(&story))).with(json!(paragraphs)))
+        }
+        "locate" => {
+            // locate <paragraph> [offset] [--story <kind> [n]]: where that place is drawn in the window, for
+            // a press there.
+            let (story, rest) = if arguments.iter().any(|a| a == "--story") {
+                story_from(&session.document, arguments)?
+            } else {
+                (StoryId::Body, arguments.to_vec())
+            };
+            let numbers: Vec<usize> = rest.iter().filter_map(|a| a.parse().ok()).collect();
+            let blocks = position::story(&session.document, &story).ok_or("there is no such story")?;
+            let all = position::paragraphs(blocks);
+            let (path, _) = all.get(numbers.first().copied().unwrap_or(1).saturating_sub(1)).ok_or("there is no such paragraph")?;
+            let at = Pos { story, path: path.clone(), offset: numbers.get(1).copied().unwrap_or(0) };
+            let area = doc.view.pages_rect;
+            let (tops, _) = crate::components::word::page_view::page_tops(doc, area.width());
+            let (index, line) = doc.pages.find(&at).ok_or("that place is not on a page yet")?;
+            let zoom = doc.view.zoom;
+            let origin = area.min + egui::vec2(tops[index].x, tops[index].y - doc.view.scroll);
+            let x = origin.x + line.x_of(at.offset) * zoom;
+            let y = origin.y + (line.top + line.height / 2.0) * zoom;
+            let (x, y) = (x * doc.view.window_zoom, y * doc.view.window_zoom);
+            Ok(Answer::said(format!("{x:.0}, {y:.0}")).with(json!({ "x": x, "y": y, "page": index + 1 })))
+        }
+        "stories" => {
+            // Every story an agent can read: the body, each header and footer, each note, comment and text box.
+            let document = &session.document;
+            let mut out = vec![json!({ "story": "body" })];
+            for (n, header) in document.headers.iter().enumerate() {
+                out.push(json!({ "story": if header.footer { "footer" } else { "header" }, "n": n + 1, "id": header.id }));
+            }
+            for (kind, part) in [("footnote", &document.footnotes), ("endnote", &document.endnotes), ("comment", &document.comments)] {
+                if let Some(part) = part {
+                    for note in &part.notes {
+                        if let Some(id) = note.id().filter(|id| kind == "comment" || *id > 0) {
+                            out.push(json!({ "story": kind, "n": id }));
+                        }
+                    }
+                }
+            }
+            for (n, textbox) in document.textboxes.iter().enumerate() {
+                out.push(json!({ "story": "textbox", "n": n + 1, "id": textbox.id }));
+            }
+            Ok(Answer::said(format!("{} stories", out.len())).with(json!(out)))
+        }
         "read" => {
             let numbers: Vec<usize> = arguments.iter().filter_map(|a| a.parse().ok()).collect();
             let from = numbers.first().copied().unwrap_or(1);
@@ -979,6 +1057,24 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
 }
 
 fn select(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
+    // select --story <kind> [n] <paragraph> [offset] [to-offset]: a place in a header, a note, a comment
+    // or a text box, its paragraphs numbered from 1 as `read --story` numbers them.
+    if arguments.iter().any(|a| a == "--story") {
+        let (story, rest) = story_from(&doc.session.document, arguments)?;
+        let numbers: Vec<usize> = rest.iter().filter_map(|a| a.parse().ok()).collect();
+        let blocks = position::story(&doc.session.document, &story).ok_or("there is no such story")?;
+        let all = position::paragraphs(blocks);
+        let n = numbers.first().copied().unwrap_or(1);
+        let (path, paragraph) = all.get(n.saturating_sub(1)).ok_or_else(|| format!("the story has {} paragraphs", all.len()))?;
+        let len = paragraph.len();
+        let from = numbers.get(1).copied().unwrap_or(0).min(len);
+        let to = numbers.get(2).copied().unwrap_or(from).min(len);
+        let anchor = Pos { story: story.clone(), path: path.clone(), offset: from };
+        let head = Pos { story, path: path.clone(), offset: to };
+        doc.session.select(anchor, head);
+        doc.view.reveal = true;
+        return Ok(Answer::said(doc.session.selected_text()).with(json!({ "selection": selection_value(&doc.session.selection) })));
+    }
     match arguments.first().map(String::as_str) {
         Some("all") => doc.session.select_all(),
         Some("text") => {
@@ -1252,7 +1348,22 @@ fn format(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
 }
 
 fn paragraph(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
-    let what = arguments.first().map(String::as_str).ok_or("paragraph takes a property")?;
+    let what = arguments.first().map(String::as_str).unwrap_or("info");
+    // paragraph info: how the paragraph at the caret looks, its style's formatting and its own together.
+    if what == "info" {
+        let look = doc.session.paragraph_at_caret();
+        let tabs: Vec<serde_json::Value> = look
+            .tabs
+            .iter()
+            .map(|t| json!({ "position": t.position, "kind": format!("{:?}", t.kind).to_lowercase(), "leader": t.leader.map(|c| c.to_string()) }))
+            .collect();
+        return Ok(Answer::said(look.style.clone()).with(json!({
+            "style": look.style, "align": look.align.name(), "indentLeft": look.indent_left, "indentRight": look.indent_right,
+            "indentFirst": look.indent_first, "spaceBefore": look.space_before, "spaceAfter": look.space_after,
+            "line": format!("{:?}", look.line), "keepNext": look.keep_next, "keepLines": look.keep_lines,
+            "outlineLevel": look.outline_level.map(|l| l + 1), "tabs": tabs,
+        })));
+    }
     let session = &mut doc.session;
     let twips = |p: f32| ((p * 20.0).round() as i64).to_string();
     match what {
@@ -1362,6 +1473,14 @@ fn table(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
     let what = arguments.first().map(String::as_str).ok_or("table takes an operation")?;
     let session = &mut doc.session;
     match what {
+        "width" if arguments.len() >= 3 => {
+            // table width <column> <pt>: the column from 1, the next column giving or taking the difference.
+            let column: usize = arguments[1].parse().map_err(|_| "table width takes a column number and points")?;
+            let width = points(arguments.get(2))?;
+            let (table, _, _) = session.cell_at_caret().ok_or("the caret is not in a table")?;
+            let story = session.selection.head.story.clone();
+            session.drag_column_edge(&story, &table, column.saturating_sub(1), width)?
+        }
         "width" => session.set_column_width(points(arguments.get(1))?)?,
         "shade" => session.shade_cell(arguments.get(1).and_then(|c| props::Rgb::parse(c)))?,
         "cell" => {
@@ -1751,6 +1870,21 @@ pub fn view(word: &Word) -> serde_json::Value {
             "navigation": d.view.navigation,
             "canUndo": d.session.can_undo(),
             "canRedo": d.session.can_redo(),
+            "mode": match d.view.mode { super::Mode::Print => "print", super::Mode::Read => "read", super::Mode::Outline => "outline" },
+            "ruler": d.view.ruler,
+            "rulerMarks": d.view.ruler_marks.map(|m| m.map(|v| v * d.view.window_zoom)),
+            "multiple": d.view.multiple,
+            "contextMenu": d.view.context_menu.as_ref().map(|m| m.entries.iter().map(|e| e.label.clone()).collect::<Vec<_>>()),
+            "object": d.session.object_info().map(|info| {
+                let screen = crate::components::word::objects::selected(d).and_then(|(page, rect)| {
+                    crate::components::word::objects::to_screen(d, d.view.pages_rect, page, rect)
+                });
+                json!({
+                    "kind": info.kind, "width": info.width, "height": info.height, "wrap": info.wrap, "alt": info.alt,
+                    "screen": screen.map(|r| { let z = d.view.window_zoom; [r.left() * z, r.top() * z, r.width() * z, r.height() * z] }),
+                })
+            }),
+            "cropping": d.view.cropping,
         })),
         "author": word.config.author,
     })

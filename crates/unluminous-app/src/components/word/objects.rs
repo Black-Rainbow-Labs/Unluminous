@@ -42,6 +42,93 @@ pub struct ObjectDrag {
     pub crop: bool,
 }
 
+/// A drag of a table column's edge, while it lasts.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ColumnDrag {
+    pub page: usize,
+    pub from: f32,
+    pub to: f32,
+    /// The top and bottom of the table's edge on the page, for the guide.
+    pub top: f32,
+    pub bottom: f32,
+    pub story: unluminous_word::position::StoryId,
+    pub table: Vec<u32>,
+    /// The grid column the edge ends: the one whose width changes.
+    pub column: usize,
+}
+
+/// The table column edge within a few points of `at`, on the page under it.
+fn column_edge_at(doc: &Doc, area: Rect, at: Pos2) -> Option<ColumnDrag> {
+    let (page, x, y) = page_point(doc, area, at)?;
+    let reach = 3.0 / doc.view.zoom;
+    doc.pages.pages.get(page)?.items.iter().find_map(|item| match item {
+        Item::TableEdge { x: edge, top, bottom, story, table, column }
+            if (x - edge).abs() <= reach && y >= *top && y <= *bottom && *column > 0 =>
+        {
+            Some(ColumnDrag {
+                page,
+                from: *edge,
+                to: *edge,
+                top: *top,
+                bottom: *bottom,
+                story: story.clone(),
+                table: table.clone(),
+                column: column - 1,
+            })
+        }
+        _ => None,
+    })
+}
+
+/// The pointer over a column's edge shows the resize arrows.
+pub fn over_column_edge(doc: &Doc, area: Rect, at: Pos2) -> bool {
+    doc.view.column_drag.is_some() || column_edge_at(doc, area, at).is_some()
+}
+
+/// A press on a column's edge starts dragging it. Answers whether the press was taken.
+pub fn press_column_edge(doc: &mut Doc, area: Rect, at: Pos2) -> bool {
+    match column_edge_at(doc, area, at) {
+        Some(drag) => {
+            doc.view.column_drag = Some(drag);
+            true
+        }
+        None => false,
+    }
+}
+
+/// The column edge follows the pointer, and on release the column takes its new width.
+pub fn drag_column_edge(doc: &mut Doc, area: Rect, at: Pos2, released: bool) -> Option<Result<(), String>> {
+    if let Some((_, x, _)) = page_point(doc, area, at) {
+        if let Some(drag) = &mut doc.view.column_drag {
+            drag.to = x;
+        }
+    }
+    if !released {
+        return None;
+    }
+    let drag = doc.view.column_drag.take()?;
+    if (drag.to - drag.from).abs() < 0.5 {
+        return None;
+    }
+    let width = {
+        let blocks = unluminous_word::position::story(&doc.session.document, &drag.story)?;
+        match unluminous_word::position::block(blocks, &drag.table)? {
+            unluminous_word::model::Block::Table(t) => t.columns().get(drag.column).copied()? as f32 / 20.0,
+            _ => return None,
+        }
+    };
+    Some(doc.session.drag_column_edge(&drag.story, &drag.table, drag.column, width + drag.to - drag.from))
+}
+
+/// The guide line of a column edge being dragged.
+pub fn paint_column_guide(painter: &egui::Painter, doc: &Doc, area: Rect) {
+    let Some(drag) = &doc.view.column_drag else { return };
+    let rect = unluminous_word::layout::Rect { x: drag.to, y: drag.top, w: 0.0, h: drag.bottom - drag.top };
+    if let Some(line) = to_screen(doc, area, drag.page, rect) {
+        painter.line_segment([line.left_top(), line.left_bottom()], Stroke::new(1.0, crate::theme::color::accent()));
+    }
+}
+
 /// How far from a handle's centre a press still takes it, in screen points.
 const GRAB: f32 = 6.0;
 
@@ -84,7 +171,7 @@ fn handles(rect: Rect) -> [(Handle, Pos2); 8] {
 }
 
 /// A page rectangle on the screen.
-fn to_screen(doc: &Doc, area: Rect, page: usize, rect: unluminous_word::layout::Rect) -> Option<Rect> {
+pub fn to_screen(doc: &Doc, area: Rect, page: usize, rect: unluminous_word::layout::Rect) -> Option<Rect> {
     let (tops, _) = page_tops(doc, area.width());
     let top = tops.get(page)?;
     let zoom = doc.view.zoom;

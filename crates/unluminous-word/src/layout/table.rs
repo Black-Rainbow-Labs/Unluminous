@@ -216,10 +216,13 @@ pub fn lay_out(
     // Every cell laid out first, so a cell merged down several rows can make the last of them taller.
     let mut rows: Vec<Vec<CellPiece>> = Vec::with_capacity(table.rows.len());
     let mut heights: Vec<f32> = Vec::with_capacity(table.rows.len());
+    // Each row's cell edges, for the pointer: the right edge of each cell and the grid column it ends at.
+    let mut edges: Vec<Vec<(f32, usize)>> = Vec::with_capacity(table.rows.len());
     for (r, row) in table.rows.iter().enumerate() {
         let mut cells = Vec::with_capacity(row.cells.len());
         let mut column = grid_before(row);
         let mut tallest: f32 = 0.0;
+        let mut row_edges: Vec<(f32, usize)> = Vec::new();
         for (c, cell) in row.cells.iter().enumerate() {
             let span = span_of(cell);
             let x: f32 = left + columns.iter().take(column).sum::<f32>();
@@ -301,9 +304,11 @@ pub fn lay_out(
             if !continues && spans <= 1 {
                 tallest = tallest.max(piece.content_height() + cell_margins.2 + cell_margins.3);
             }
+            row_edges.push((x + w, column + span));
             cells.push(piece);
             column += span;
         }
+        edges.push(std::mem::take(&mut row_edges));
         let (set, rule) = set_height(row);
         let height = match rule.as_deref() {
             Some("exact") => set,
@@ -353,7 +358,17 @@ pub fn lay_out(
                 cell.drawn_height = heights[r..end].iter().sum();
             }
         }
-        let chunk = draw_row(&cells, height);
+        let mut chunk = draw_row(&cells, height);
+        for (x, column) in &edges[r] {
+            chunk.items.push(super::Item::TableEdge {
+                x: *x,
+                top: 0.0,
+                bottom: height,
+                story: story.clone(),
+                table: path.to_vec(),
+                column: *column,
+            });
+        }
         let header = crate::props::on_off(&row.props, "w:tblHeader") == Some(true);
         let cant_split = crate::props::on_off(&row.props, "w:cantSplit") == Some(true)
             || cells.iter().any(|c| c.spans > 1);

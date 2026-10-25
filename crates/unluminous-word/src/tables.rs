@@ -28,6 +28,58 @@ pub enum SortBy {
 }
 
 impl Session {
+    /// Make grid column `column` of the table at `table` `width` points wide, the column after it giving
+    /// or taking the difference so the table keeps its width, as dragging a column's edge in Word does;
+    /// the last column's edge makes the table wider or narrower instead. Cells that start in a changed
+    /// column take the new widths.
+    pub fn drag_column_edge(&mut self, story: &StoryId, table: &Path, column: usize, width: f32) -> Result<(), String> {
+        let found = table_at(&self.document, story, table)?;
+        let mut grid = found.columns();
+        if column >= grid.len() {
+            return Err(format!("the table has {} columns", grid.len()));
+        }
+        let new = (width * 20.0).round().max(144.0) as i64;
+        let delta = new - grid[column];
+        if let Some(next) = grid.get_mut(column + 1) {
+            if *next - delta < 144 {
+                return Err("the column after it would be too narrow".into());
+            }
+            *next -= delta;
+        }
+        grid[column] = new;
+        let (story, table) = (story.clone(), table.to_vec());
+        let saved_table = table.clone();
+        self.change(Scope::Story, move |document, selection, _| {
+            let Some(blocks) = position::story_mut(document, &story) else { return selection.clone() };
+            let Some(Block::Table(t)) = position::block_mut(blocks, &saved_table) else { return selection.clone() };
+            t.grid.children = grid
+                .iter()
+                .map(|w| Node::El(El::new("w:gridCol").with("w:w", w.to_string())))
+                .collect();
+            for row in &mut t.rows {
+                let mut at = row.props.child("w:gridBefore").and_then(|g| g.attr("w:val")).and_then(|v| v.parse::<usize>().ok()).unwrap_or(0);
+                for cell in &mut row.cells {
+                    let span = cell.props.child("w:gridSpan").and_then(|g| g.attr("w:val")).and_then(|v| v.parse::<usize>().ok()).unwrap_or(1);
+                    let w: i64 = grid.iter().skip(at).take(span).sum();
+                    if at <= column + 1 && at + span > column {
+                        cell.props.put(El::new("w:tcW").with("w:w", w.to_string()).with("w:type", "dxa"));
+                        crate::order::sort(&mut cell.props);
+                    }
+                    at += span;
+                }
+            }
+            // The table's own width follows the grid when it states one in points.
+            let total: i64 = grid.iter().sum();
+            if t.props.child("w:tblW").is_some_and(|w| w.attr("w:type") == Some("dxa")) {
+                t.props.put(El::new("w:tblW").with("w:w", total.to_string()).with("w:type", "dxa"));
+                crate::order::sort(&mut t.props);
+            }
+            let _ = &table;
+            selection.clone()
+        });
+        Ok(())
+    }
+
     /// The cells the selection covers: the rectangle between the anchor's cell and the head's when both
     /// are in the same table, or the caret's cell.
     pub fn selected_cells(&self) -> Option<CellRange> {

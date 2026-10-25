@@ -135,6 +135,7 @@ pub fn ruler(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, rect: Rect, page
     let hang_x = to_x(left);
     let right_x = to_x(page.body.w - right);
     let (y_top, y_bottom) = (band.top(), band.bottom());
+    doc.view.ruler_marks = Some([first_x, hang_x, right_x, y_top, y_bottom]);
     // First line: a triangle pointing down from the top. Hanging: one pointing up, with the left indent's
     // box under it. Right: one pointing up at the right.
     let triangle = |x: f32, down: bool| {

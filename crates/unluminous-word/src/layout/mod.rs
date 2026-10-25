@@ -108,6 +108,16 @@ pub enum Item {
         rect: Rect,
         label: String,
     },
+    /// The right edge of a table cell in one row, ending at grid column `column`: nothing is drawn for
+    /// it, and the window lets a person drag it to change the column's width.
+    TableEdge {
+        x: f32,
+        top: f32,
+        bottom: f32,
+        story: StoryId,
+        table: Path,
+        column: usize,
+    },
     /// Where a picture, shape or text box is, and the position of its character: nothing is drawn for
     /// it, and the window selects the object when it is pressed.
     Object {
@@ -144,6 +154,11 @@ impl Item {
                 *y1 = *y1 * s + dy;
                 *width *= s;
             }
+            Item::TableEdge { x, top, bottom, .. } => {
+                *x = *x * s + dx;
+                *top = *top * s + dy;
+                *bottom = *bottom * s + dy;
+            }
         }
     }
 
@@ -169,6 +184,11 @@ impl Item {
                 *x1 += dx;
                 *y0 += dy;
                 *y1 += dy;
+            }
+            Item::TableEdge { x, top, bottom, .. } => {
+                *x += dx;
+                *top += dy;
+                *bottom += dy;
             }
         }
     }

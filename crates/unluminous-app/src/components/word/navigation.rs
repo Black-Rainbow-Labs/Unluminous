@@ -128,7 +128,7 @@ fn paint_thumbnail(painter: &egui::Painter, page: &unluminous_word::layout::Page
             Item::Rule { x0, y0, x1, y1, .. } => {
                 painter.line_segment([at(*x0, *y0), at(*x1, *y1)], Stroke::new(0.5, grey));
             }
-            Item::Object { .. } => {}
+            Item::Object { .. } | Item::TableEdge { .. } => {}
         }
     }
     if here {

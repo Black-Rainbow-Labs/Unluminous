@@ -397,10 +397,21 @@ pub fn paragraphs_value(
     to: usize,
     with_runs: bool,
 ) -> Vec<serde_json::Value> {
+    paragraphs_value_in(document, &document.body, from, to, with_runs)
+}
+
+/// [`paragraphs_value`] for the paragraphs of any story: a header, a note, a comment or a text box.
+pub fn paragraphs_value_in(
+    document: &Document,
+    blocks: &[Block],
+    from: usize,
+    to: usize,
+    with_runs: bool,
+) -> Vec<serde_json::Value> {
     let resolver = Resolver::new(document);
     let mut counters = crate::numbering::Counters::default();
     let mut out = Vec::new();
-    for (index, (path, p)) in position::paragraphs(&document.body).into_iter().enumerate() {
+    for (index, (path, p)) in position::paragraphs(blocks).into_iter().enumerate() {
         let look = resolver.paragraph(&p.props, None);
         let label =
             look.numbering.and_then(|(num, level)| counters.next(&resolver.numbering, num, level));
@@ -418,7 +429,7 @@ pub fn paragraphs_value(
             value["list"] =
                 serde_json::json!({ "label": label.text, "level": look.numbering.map(|(_, l)| l) });
         }
-        if let Some((_, row, cell)) = position::cell_of(&document.body, &path) {
+        if let Some((_, row, cell)) = position::cell_of(blocks, &path) {
             value["cell"] = serde_json::json!({ "row": row + 1, "column": cell + 1 });
         }
         if look.align != Align::Left {

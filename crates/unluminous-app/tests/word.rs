@@ -250,3 +250,219 @@ fn switched_off_a_docx_is_a_file_that_cannot_be_shown() {
     );
     did(&mut harness, "plugins enable word");
 }
+
+// ---- task-2359: the window's round 2 controls ----
+
+fn point(value: &serde_json::Value) -> egui::Pos2 {
+    egui::pos2(value["x"].as_f64().unwrap() as f32, value["y"].as_f64().unwrap() as f32)
+}
+
+fn press_at(harness: &mut Harness<'static, UnluminousApp>, at: egui::Pos2, button: egui::PointerButton) {
+    harness.input_mut().events.push(egui::Event::PointerMoved(at));
+    steady(harness);
+    for pressed in [true, false] {
+        harness.input_mut().events.push(egui::Event::PointerButton {
+            pos: at,
+            button,
+            pressed,
+            modifiers: Modifiers::default(),
+        });
+        steady(harness);
+    }
+}
+
+fn current(harness: &mut Harness<'static, UnluminousApp>) -> serde_json::Value {
+    view(harness)["current"].clone()
+}
+
+fn menu(harness: &mut Harness<'static, UnluminousApp>) -> Vec<String> {
+    current(harness)["contextMenu"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|l| l.as_str().map(str::to_owned)).collect())
+        .unwrap_or_default()
+}
+
+fn rect_of(value: &serde_json::Value) -> Vec<f32> {
+    value.as_array().unwrap().iter().map(|v| v.as_f64().unwrap() as f32).collect()
+}
+
+/// **A right click opens the menu for what is under the pointer**: text and a table cell, each with
+/// Word's own entries, and an entry runs what it names.
+#[test]
+fn the_right_click_menu_offers_what_is_under_the_pointer() {
+    let (_, mut harness) = a_word_window("unluminous-word-context", "blank.docx");
+    type_text(&mut harness, "Quick brown fox");
+    let at = point(&did(&mut harness, "plugins run word locate 1 3"));
+    press_at(&mut harness, at, egui::PointerButton::Secondary);
+    let entries = menu(&mut harness);
+    for wanted in ["Cut", "Copy", "Paste", "Font...", "Paragraph...", "New Comment"] {
+        assert!(entries.iter().any(|e| e == wanted), "{wanted} in {entries:?}");
+    }
+    assert!(entries.iter().any(|e| e.starts_with("Synonyms of")), "the word's synonyms: {entries:?}");
+    harness.snapshot(shot("word_context_text"));
+    harness.key_press(Key::Escape);
+    steady(&mut harness);
+    assert!(current(&mut harness)["contextMenu"].is_null());
+    did(&mut harness, "plugins run word insert table 2 2");
+    steady(&mut harness);
+    let cell = paragraphs(&mut harness)
+        .iter()
+        .position(|p| p["cell"]["row"] == 1 && p["cell"]["column"] == 1)
+        .unwrap()
+        + 1;
+    let at = point(&did(&mut harness, &format!("plugins run word locate {cell} 0")));
+    press_at(&mut harness, at, egui::PointerButton::Secondary);
+    let entries = menu(&mut harness);
+    assert!(entries.iter().any(|e| e == "Insert Rows Above"), "{entries:?}");
+    harness.get_by_label("Insert Rows Below").click();
+    steady(&mut harness);
+    assert!(paragraphs(&mut harness).iter().any(|p| p["cell"]["row"] == 3), "a row was added");
+}
+
+/// **A picture is selected, resized by a corner handle and wrapped from its menu.**
+#[test]
+fn a_picture_is_resized_by_its_handle_and_wrapped_from_its_menu() {
+    let (folder, mut harness) = a_word_window("unluminous-word-picture", "blank.docx");
+    write_sample_picture(&folder.join("picture.png"));
+    type_text(&mut harness, "Before after");
+    did(&mut harness, "plugins run word select 1 7");
+    did(
+        &mut harness,
+        &format!("plugins run word insert picture {} 120", folder.join("picture.png").display()),
+    );
+    did(&mut harness, "plugins run word picture select 1 7");
+    steady(&mut harness);
+    let object = current(&mut harness)["object"].clone();
+    assert_eq!(object["kind"], "Picture");
+    let width = object["width"].as_f64().unwrap();
+    let screen = rect_of(&object["screen"]);
+    let corner = egui::pos2(screen[0] + screen[2], screen[1] + screen[3]);
+    harness.snapshot(shot("word_picture_selected"));
+    drag(&mut harness, corner, corner + egui::vec2(60.0, 0.0));
+    let after = current(&mut harness)["object"].clone();
+    assert!(
+        after["width"].as_f64().unwrap() > width + 20.0,
+        "the corner made it wider: {width} then {}",
+        after["width"]
+    );
+    let ratio = |o: &serde_json::Value| o["width"].as_f64().unwrap() / o["height"].as_f64().unwrap();
+    assert!((ratio(&after) - ratio(&object)).abs() < 0.02, "a corner keeps the ratio");
+    let screen = rect_of(&after["screen"]);
+    let middle = egui::pos2(screen[0] + screen[2] / 2.0, screen[1] + screen[3] / 2.0);
+    press_at(&mut harness, middle, egui::PointerButton::Secondary);
+    assert!(menu(&mut harness).iter().any(|e| e == "Wrap Text: Square"));
+    harness.get_by_label("Wrap Text: Square").click();
+    steady(&mut harness);
+    assert_eq!(current(&mut harness)["object"]["wrap"], "square");
+}
+
+/// **The ruler's hanging indent box drags the left indent, and a press on the ruler adds a tab stop.**
+#[test]
+fn the_ruler_drags_an_indent_and_adds_a_tab_stop() {
+    let (_, mut harness) = a_word_window("unluminous-word-ruler", "blank.docx");
+    type_text(&mut harness, "A paragraph long enough to show its indents on the ruler");
+    did(&mut harness, "plugins run word view ruler on");
+    steady(&mut harness);
+    let marks = rect_of(&current(&mut harness)["rulerMarks"]);
+    let (hang, bottom) = (marks[1], marks[4]);
+    let zoom = current(&mut harness)["zoom"].as_f64().unwrap() as f32;
+    harness.snapshot(shot("word_ruler"));
+    drag(&mut harness, egui::pos2(hang, bottom - 1.0), egui::pos2(hang + 36.0 * zoom, bottom - 1.0));
+    let look = did(&mut harness, "plugins run word paragraph info");
+    assert!((look["indentLeft"].as_f64().unwrap() - 36.0).abs() < 5.0, "{look}");
+    press_at(&mut harness, egui::pos2(hang + 200.0 * zoom, bottom - 4.0), egui::PointerButton::Primary);
+    let look = did(&mut harness, "plugins run word paragraph info");
+    assert_eq!(look["tabs"].as_array().unwrap().len(), 1, "{look}");
+}
+
+/// **Ctrl+Alt+F makes a footnote and the caret goes into it to type.**
+#[test]
+fn a_footnote_is_made_with_its_chord_and_typed_into() {
+    let (_, mut harness) = a_word_window("unluminous-word-footnote", "blank.docx");
+    type_text(&mut harness, "A claim");
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::ALT, Key::F);
+    steady(&mut harness);
+    type_text(&mut harness, "the source");
+    let note = did(&mut harness, "plugins run word read --story footnote 1");
+    let text = note[0]["text"].as_str().unwrap();
+    assert!(text.ends_with("the source"), "{text}");
+}
+
+/// **Ctrl+Alt+1 is Heading 1, not single spacing.**
+#[test]
+fn ctrl_alt_1_is_heading_1() {
+    let (_, mut harness) = a_word_window("unluminous-word-headings", "blank.docx");
+    type_text(&mut harness, "A title");
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::ALT, Key::Num1);
+    steady(&mut harness);
+    assert_eq!(paragraphs(&mut harness)[0]["style"], "Heading 1");
+}
+
+/// **A table column's edge is dragged to make the column wider.**
+#[test]
+fn a_table_column_edge_is_dragged() {
+    let (_, mut harness) = a_word_window("unluminous-word-columns", "blank.docx");
+    did(&mut harness, "plugins run word insert table 1 2");
+    steady(&mut harness);
+    let second = paragraphs(&mut harness).iter().position(|p| p["cell"]["column"] == 2).unwrap() + 1;
+    let before = point(&did(&mut harness, &format!("plugins run word locate {second} 0")));
+    let zoom = current(&mut harness)["zoom"].as_f64().unwrap() as f32;
+    let edge = egui::pos2(before.x - 5.4 * zoom, before.y);
+    drag(&mut harness, edge, edge + egui::vec2(50.0, 0.0));
+    let after = point(&did(&mut harness, &format!("plugins run word locate {second} 0")));
+    assert!(after.x > before.x + 30.0, "the second column starts further right: {before:?} then {after:?}");
+}
+
+/// **Read Mode, Outline view, Fit Width, the thumbnails and Print.**
+#[test]
+fn the_views_and_print_work_from_the_window() {
+    let (folder, mut harness) = a_word_window("unluminous-word-views", "styles.docx");
+    harness.get_by_label("View: Read Mode").click();
+    steady(&mut harness);
+    assert_eq!(current(&mut harness)["mode"], "read");
+    harness.snapshot(shot("word_read_mode"));
+    harness.key_press(Key::Escape);
+    steady(&mut harness);
+    assert_eq!(current(&mut harness)["mode"], "print");
+    harness.get_by_label("View: Outline").click();
+    steady(&mut harness);
+    assert_eq!(current(&mut harness)["mode"], "outline");
+    harness.snapshot(shot("word_outline"));
+    let heading = paragraphs(&mut harness).iter().position(|p| p["style"] == "Heading 2").map(|i| i + 1);
+    if let Some(heading) = heading {
+        did(&mut harness, &format!("plugins run word select {heading} 0"));
+        harness.get_by_label("Promote").click();
+        steady(&mut harness);
+        assert_eq!(paragraphs(&mut harness)[heading - 1]["style"], "Heading 1", "Promote made it Heading 1");
+    }
+    did(&mut harness, "plugins run word view print");
+    steady(&mut harness);
+    let before = current(&mut harness)["zoom"].as_f64().unwrap();
+    did(&mut harness, "plugins run word view fit-width");
+    assert_ne!(current(&mut harness)["zoom"].as_f64().unwrap(), before, "Fit Width changed the zoom");
+    did(&mut harness, "plugins run word view thumbnails");
+    steady(&mut harness);
+    harness.get_by_label("Page 1");
+    harness.snapshot(shot("word_thumbnails"));
+    let pdf = folder.join("printed.pdf");
+    did(&mut harness, &format!("plugins run word print 1 --to {}", pdf.display()));
+    assert!(std::fs::read(&pdf).unwrap().starts_with(b"%PDF"), "Print wrote the sheets");
+}
+
+/// **The Modify Style level changes a style.**
+#[test]
+fn the_modify_style_level_changes_a_style() {
+    let (_, mut harness) = a_word_window("unluminous-word-modify", "styles.docx");
+    did(&mut harness, "plugins run word panel styles");
+    steady(&mut harness);
+    harness.get_by_label("Modify Heading 1").click();
+    steady(&mut harness);
+    assert_eq!(current(&mut harness)["panel"], serde_json::json!(["Format", "Styles", "Modify style"]));
+    harness.snapshot(shot("word_modify_style"));
+    harness.get_by_label("2.0").click();
+    steady(&mut harness);
+    let heading = paragraphs(&mut harness).iter().position(|p| p["style"] == "Heading 1").unwrap() + 1;
+    did(&mut harness, &format!("plugins run word select {heading} 0"));
+    let look = did(&mut harness, "plugins run word paragraph info");
+    assert!(look["line"].as_str().unwrap().contains("2.0"), "Heading 1 is double spaced now: {look}");
+}

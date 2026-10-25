@@ -340,6 +340,16 @@ pub struct View {
     pub pane_width: f32,
     /// New Window was asked for; the tab asks the window for the second tab.
     pub new_window: bool,
+    /// A table column's edge being dragged: the page, where the edge was and is in page points, and
+    /// which table and grid column it ends.
+    pub column_drag: Option<crate::components::word::objects::ColumnDrag>,
+    /// Where the pages were drawn on the last frame, in the window's points.
+    pub pages_rect: egui::Rect,
+    /// The window's interface zoom on the last frame, which turns egui's points into the window's own.
+    pub window_zoom: f32,
+    /// Where the ruler drew its first line, hanging and right indent marks, and its band's top and
+    /// bottom, on the last frame.
+    pub ruler_marks: Option<[f32; 5]>,
     /// The style the Modify Style level is changing.
     pub modify_style: Option<String>,
     /// The symbols inserted lately, newest first.
@@ -587,6 +597,10 @@ impl View {
             object_drag: None,
             context_menu: None,
             modify_style: None,
+            pages_rect: egui::Rect::NOTHING,
+            window_zoom: 1.0,
+            ruler_marks: None,
+            column_drag: None,
             recent_symbols: Vec::new(),
             mode: Mode::Print,
             ruler: false,
