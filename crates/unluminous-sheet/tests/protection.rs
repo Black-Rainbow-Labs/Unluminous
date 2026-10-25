@@ -274,6 +274,16 @@ fn a_refused_change_leaves_the_workbook_and_the_undo_history_alone() {
 }
 
 #[test]
+fn cutting_locked_cells_is_refused_even_when_the_place_they_go_is_free() {
+    let mut s = matrix_book();
+    s.protect_sheet(0, None, &options_for("none")).unwrap();
+    let clip = s.copy(0, rg("A1"), true);
+    let err = s.paste(&clip, 0, rg("C1"), unluminous_sheet::edit::PasteMode::All).unwrap_err();
+    assert_eq!(err, LOCKED_CELL);
+    assert_eq!(s.book.sheets[0].value_at(at("A1")), Value::Number(1.0));
+}
+
+#[test]
 fn selecting_cells_follows_the_select_flags() {
     let mut s = matrix_book();
     assert!(s.can_select(0, at("A1")));

@@ -18,6 +18,8 @@ roxmltree.workspace = true
 sha2.workspace = true
 base64.workspace = true
 getrandom.workspace = true
+# Regular expressions for REGEXTEST, REGEXEXTRACT and REGEXREPLACE.
+fancy-regex.workspace = true
 
 [dev-dependencies]
 # The oracle's answers are JSON lines written by PowerShell.

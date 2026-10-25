@@ -184,6 +184,30 @@ fn a_data_table_refuses_changes_to_part_of_it_and_survives_a_file() {
     assert_eq!(s.book.sheets[0].data_tables.len(), 4);
 }
 
+#[test]
+fn inserting_rows_and_columns_moves_data_tables_and_scenarios_with_their_cells() {
+    let mut s = Session::new(read_fixture(LANE, "datatable.xlsx"), NOW);
+    let before: Vec<String> = values(&s.book).into_iter().map(|(_, v)| v).collect();
+    s.insert(0, rg("1:2"), unluminous_sheet::edit::Shift::WholeRows).unwrap();
+    s.insert(0, rg("A:A"), unluminous_sheet::edit::Shift::WholeColumns).unwrap();
+    let table =
+        s.data_table_at(0, at("O5")).expect("the 2 variable table moved down 2 and right 1");
+    assert_eq!(table.range, rg("O4:Q6"));
+    assert_eq!(table.formula(), "TABLE(C4,C3)");
+    let mut after: Vec<String> = values(&s.book).into_iter().map(|(_, v)| v).collect();
+    let mut sorted_before = before;
+    sorted_before.sort();
+    after.sort();
+    assert_eq!(after, sorted_before, "every value, the tables' too, is still there");
+
+    let mut s = scenario_session("scenarios-added.xlsx");
+    s.insert(0, rg("1:1"), unluminous_sheet::edit::Shift::WholeRows).unwrap();
+    s.show_scenario(0, "Best").unwrap();
+    assert_eq!(s.book.sheets[0].value_at(at("B2")), Value::Number(12.0));
+    assert_eq!(s.book.sheets[0].value_at(at("B3")), Value::Number(150.0));
+    assert_eq!(s.book.sheets[0].value_at(at("B1")), Value::Empty);
+}
+
 // ---------------------------------------------------------------------------------------------------
 // Scenarios.
 

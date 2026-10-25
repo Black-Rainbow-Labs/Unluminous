@@ -24,6 +24,8 @@ use crate::model::*;
 use crate::styles::{StyleChange, Styles};
 use crate::value::Value;
 
+mod page_edits;
+
 /// What a change put back when undone.
 #[derive(Debug, Clone)]
 enum Before {
@@ -204,6 +206,72 @@ impl Session {
         self.engine.recalculate(&mut self.book, self.now, seed);
     }
 
+    /// Switch between automatic and manual calculation. Going back to automatic computes everything.
+    pub fn set_automatic_calculation(&mut self, automatic: bool) {
+        self.remember_whole("Calculation mode");
+        self.book.calc.automatic = automatic;
+        if automatic {
+            self.recalculate_all();
+        }
+    }
+
+    /// Turn iterative calculation on or off and set how many passes it makes and how small a change ends it.
+    /// A count below one is one, and a delta below zero is zero. With automatic calculation the workbook is
+    /// calculated again, so circular references settle at once.
+    pub fn set_iteration(&mut self, on: bool, count: u32, delta: f64) {
+        self.remember_whole("Iterative calculation");
+        let calc = &mut self.book.calc;
+        calc.iterate = on;
+        calc.iterate_count = count.max(1);
+        calc.iterate_delta = delta.max(0.0);
+        if calc.automatic {
+            self.recalculate_all();
+        }
+    }
+
+    /// Turn precision as displayed on or off. Turning it on rounds every number typed into a cell to what
+    /// its format shows, for good, as Excel does, and then calculates again; turning it off leaves the
+    /// numbers as they are.
+    pub fn set_precision_as_displayed(&mut self, on: bool) {
+        self.remember_whole("Precision as displayed");
+        self.book.calc.full_precision = !on;
+        if on {
+            self.round_constants_to_shown();
+            self.recalculate_all();
+        }
+    }
+
+    /// Round every constant number in the workbook to what its cell shows.
+    fn round_constants_to_shown(&mut self) {
+        let date1904 = self.book.date1904;
+        for sheet in 0..self.book.sheets.len() {
+            let changes: Vec<((u32, u32), f64)> = self.book.sheets[sheet]
+                .cells
+                .iter()
+                .filter(|(_, c)| c.formula.is_none())
+                .filter_map(|(k, c)| match c.value {
+                    Value::Number(n) => Some((*k, self.book.shown_number(c.style, n, date1904))),
+                    _ => None,
+                })
+                .collect();
+            for (key, n) in changes {
+                if let Some(cell) = self.book.sheets[sheet].cells.get_mut(&key) {
+                    cell.value = Value::Number(n);
+                }
+            }
+        }
+    }
+
+    /// A number typed into a cell, kept as the cell shows it when precision is as displayed.
+    fn as_stored(&self, style: u32, value: Value) -> Value {
+        match value {
+            Value::Number(n) if !self.book.calc.full_precision => {
+                Value::Number(self.book.shown_number(style, n, self.book.date1904))
+            }
+            other => other,
+        }
+    }
+
     fn push(&mut self, step: Step) {
         self.undo.push(step);
         if self.undo.len() > UNDO_LIMIT {
@@ -325,6 +393,7 @@ impl Session {
                         self.book.styles.derive(style, &StyleChange::NumberFormat(code.to_owned()));
                 }
             }
+            let value = if formula.is_none() { self.as_stored(style, value) } else { value };
             let cell = Cell { value, formula, style, rich: None, extra: old.extra.clone() };
             self.book.sheets[sheet].set(at, cell);
             self.engine.changed(&self.book, sheet, at);
@@ -364,7 +433,9 @@ impl Session {
         self.remember_cells("Set value", sheet, &[Range::cell(at)], false);
         let s = &mut self.book.sheets[sheet];
         let old = s.cells.get(&(at.row, at.col)).cloned().unwrap_or_default();
-        s.set(at, Cell { value, formula: None, style: old.style, rich: None, extra: old.extra });
+        let value = self.as_stored(old.style, value);
+        self.book.sheets[sheet]
+            .set(at, Cell { value, formula: None, style: old.style, rich: None, extra: old.extra });
         self.engine.changed(&self.book, sheet, at);
         self.recalculate();
         Ok(())
@@ -854,6 +925,9 @@ impl Session {
                 }
             }
         }
+        if band.is_none() {
+            page_edits::shift_page_breaks(&mut s.page, axis, at, count);
+        }
         s.spills = Spills::default();
         // A table whose every row was deleted goes with them, as it does in Excel.
         self.book.tables.retain_mut(|t| {
@@ -1225,15 +1299,16 @@ impl Session {
         Ok(())
     }
 
-    /// Change how a sheet is shown: the view kind, headings, zeros, formulas, right to left.
+    /// Change how a sheet is shown: the view kind, headings, zeros, formulas, right to left. Not an undo
+    /// step, as these are not in Excel, but saved with the file.
     pub fn set_view(
         &mut self,
         sheet: usize,
         change: impl FnOnce(&mut crate::model::SheetView),
     ) -> Result<(), String> {
         self.check_sheet(sheet)?;
-        self.remember_whole("Change view");
         change(&mut self.book.sheets[sheet].view);
+        self.modified = true;
         Ok(())
     }
 
@@ -1373,6 +1448,7 @@ impl Session {
             self.allowed(sheet, Guard::Write(&[target]))?;
         }
         if clip.cut {
+            self.allowed(clip.sheet, Guard::Write(&[clip.range]))?;
             self.remember_whole("Move cells");
             self.move_cells(clip, sheet, target.first);
             return Ok(target);

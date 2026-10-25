@@ -1,0 +1,551 @@
+{"input":"1/2","kind":"number","value":"46024","numberformat":"d-mmm","text":"2-Jan","hasformula":false,"prefix":""}
+{"input":"1/2/2026","kind":"number","value":"46024","numberformat":"m/d/yyyy","text":"1/2/2026","hasformula":false,"prefix":""}
+{"input":"2026-01-02","kind":"number","value":"46024","numberformat":"m/d/yyyy","text":"1/2/2026","hasformula":false,"prefix":""}
+{"input":"02/01/26","kind":"number","value":"46054","numberformat":"m/d/yyyy","text":"2/1/2026","hasformula":false,"prefix":""}
+{"input":"1-2","kind":"number","value":"46024","numberformat":"d-mmm","text":"2-Jan","hasformula":false,"prefix":""}
+{"input":"Jan 2","kind":"number","value":"46024","numberformat":"d-mmm","text":"2-Jan","hasformula":false,"prefix":""}
+{"input":"2 Jan","kind":"number","value":"46024","numberformat":"d-mmm","text":"2-Jan","hasformula":false,"prefix":""}
+{"input":"January 2 2026","kind":"text","value":"January 2 2026","numberformat":"General","text":"January 2 2026","hasformula":false,"prefix":""}
+{"input":"13:00","kind":"number","value":"0.5416666666666666","numberformat":"h:mm","text":"13:00","hasformula":false,"prefix":""}
+{"input":"1:00 PM","kind":"number","value":"0.5416666666666666","numberformat":"h:mm AM/PM","text":"1:00 PM","hasformula":false,"prefix":""}
+{"input":"1:00 p","kind":"number","value":"0.5416666666666666","numberformat":"h:mm AM/PM","text":"1:00 PM","hasformula":false,"prefix":""}
+{"input":"25:00","kind":"number","value":"1.0416666666666667","numberformat":"[h]:mm:ss","text":"25:00:00","hasformula":false,"prefix":""}
+{"input":"12:30:15.5","kind":"number","value":"0.5210127314814815","numberformat":"mm:ss.0","text":"30:15.5","hasformula":false,"prefix":""}
+{"input":"$5","kind":"number","value":"5","numberformat":"$#,##0_);[Red]($#,##0)","text":"$5 ","hasformula":false,"prefix":""}
+{"input":"$1,234.50","kind":"number","value":"1234.5","numberformat":"$#,##0.00_);[Red]($#,##0.00)","text":"########","hasformula":false,"prefix":""}
+{"input":"(5)","kind":"number","value":"-5","numberformat":"General","text":"-5","hasformula":false,"prefix":""}
+{"input":"-5","kind":"number","value":"-5","numberformat":"General","text":"-5","hasformula":false,"prefix":""}
+{"input":"5-","kind":"text","value":"5-","numberformat":"General","text":"5-","hasformula":false,"prefix":""}
+{"input":"50%","kind":"number","value":"0.5","numberformat":"0%","text":"50%","hasformula":false,"prefix":""}
+{"input":"5 %","kind":"number","value":"0.05","numberformat":"0%","text":"5%","hasformula":false,"prefix":""}
+{"input":"1e3","kind":"number","value":"1000","numberformat":"0.00E+00","text":"1.00E+03","hasformula":false,"prefix":""}
+{"input":"1E-3","kind":"number","value":"0.001","numberformat":"0.00E+00","text":"1.00E-03","hasformula":false,"prefix":""}
+{"input":"1,234","kind":"number","value":"1234","numberformat":"#,##0","text":"1,234","hasformula":false,"prefix":""}
+{"input":"1,23","kind":"text","value":"1,23","numberformat":"General","text":"1,23","hasformula":false,"prefix":""}
+{"input":"0 1/2","kind":"number","value":"0.5","numberformat":"# ?/?","text":" 1/2","hasformula":false,"prefix":""}
+{"input":"3 1/4","kind":"number","value":"3.25","numberformat":"# ?/?","text":"3 1/4","hasformula":false,"prefix":""}
+{"input":"1/0","kind":"number","value":"36526","numberformat":"mmm-yy","text":"Jan-00","hasformula":false,"prefix":""}
+{"input":"true","kind":"bool","value":"True","numberformat":"General","text":"TRUE","hasformula":false,"prefix":""}
+{"input":"FALSE","kind":"bool","value":"False","numberformat":"General","text":"FALSE","hasformula":false,"prefix":""}
+{"input":"yes","kind":"text","value":"yes","numberformat":"General","text":"yes","hasformula":false,"prefix":""}
+{"input":"'text","kind":"text","value":"text","numberformat":"General","text":"text","hasformula":false,"prefix":"'"}
+{"input":"'0123","kind":"text","value":"0123","numberformat":"General","text":"0123","hasformula":false,"prefix":"'"}
+{"input":"0123","kind":"number","value":"123","numberformat":"General","text":"123","hasformula":false,"prefix":""}
+{"input":"00:00","kind":"number","value":"0","numberformat":"h:mm","text":"0:00","hasformula":false,"prefix":""}
+{"input":"1.2.3","kind":"text","value":"1.2.3","numberformat":"General","text":"1.2.3","hasformula":false,"prefix":""}
+{"input":".5","kind":"number","value":"0.5","numberformat":"General","text":"0.5","hasformula":false,"prefix":""}
+{"input":"5.","kind":"number","value":"5","numberformat":"General","text":"5","hasformula":false,"prefix":""}
+{"input":"+5","kind":"number","value":"5","numberformat":"General","text":"5","hasformula":false,"prefix":""}
+{"input":"--5","kind":"text","value":"--5","numberformat":"General","text":"--5","hasformula":false,"prefix":""}
+{"input":"1 000","kind":"text","value":"1 000","numberformat":"General","text":"1 000","hasformula":false,"prefix":""}
+{"input":"1_000","kind":"text","value":"1_000","numberformat":"General","text":"1_000","hasformula":false,"prefix":""}
+{"input":"½","kind":"text","value":"½","numberformat":"General","text":"½","hasformula":false,"prefix":""}
+{"input":"1,234.56.78","kind":"text","value":"1,234.56.78","numberformat":"General","text":"1,234.56.78","hasformula":false,"prefix":""}
+{"input":"12/31/1899","kind":"text","value":"12/31/1899","numberformat":"General","text":"12/31/1899","hasformula":false,"prefix":""}
+{"input":"1/1/1900","kind":"number","value":"1","numberformat":"m/d/yyyy","text":"1/1/1900","hasformula":false,"prefix":""}
+{"input":"2/29/1900","kind":"number","value":"60","numberformat":"m/d/yyyy","text":"2/29/1900","hasformula":false,"prefix":""}
+{"input":"2/29/2024","kind":"number","value":"45351","numberformat":"m/d/yyyy","text":"2/29/2024","hasformula":false,"prefix":""}
+{"input":"2/30/2024","kind":"text","value":"2/30/2024","numberformat":"General","text":"2/30/2024","hasformula":false,"prefix":""}
+{"input":"31/12/2026","kind":"text","value":"31/12/2026","numberformat":"General","text":"31/12/2026","hasformula":false,"prefix":""}
+{"input":"2026/13/01","kind":"text","value":"2026/13/01","numberformat":"General","text":"2026/13/01","hasformula":false,"prefix":""}
+{"input":"9999999999999999","kind":"number","value":"9999999999999990","numberformat":"General","text":"1E+16","hasformula":false,"prefix":""}
+{"input":"99999999999999999","kind":"number","value":"99999999999999900","numberformat":"General","text":"1E+17","hasformula":false,"prefix":""}
+{"input":"1.2345678901234567","kind":"number","value":"1.23456789012345","numberformat":"General","text":"1.234568","hasformula":false,"prefix":""}
+{"input":"123456789012345678901","kind":"number","value":"1.23456789012345E+20","numberformat":"General","text":"1.23E+20","hasformula":false,"prefix":""}
+{"input":"1e308","kind":"text","value":"1e308","numberformat":"0.00E+00","text":"1e308","hasformula":false,"prefix":""}
+{"input":"1e309","kind":"text","value":"1e309","numberformat":"0.00E+00","text":"1e309","hasformula":false,"prefix":""}
+{"input":"-0","kind":"number","value":"0","numberformat":"General","text":"0","hasformula":false,"prefix":""}
+{"input":"0x10","kind":"text","value":"0x10","numberformat":"General","text":"0x10","hasformula":false,"prefix":""}
+{"input":"#N/A","kind":"error","value":"#N/A","numberformat":"General","text":"#N/A","hasformula":false,"prefix":""}
+{"input":"#DIV/0!","kind":"error","value":"#DIV/0!","numberformat":"General","text":"#DIV/0!","hasformula":false,"prefix":""}
+{"input":"=1+","kind":"refused","value":"0x800A03EC","numberformat":"","text":"","hasformula":false,"prefix":""}
+{"input":"@sum","kind":"text","value":"@sum","numberformat":"General","text":"@sum","hasformula":false,"prefix":""}
+{"input":"true ","kind":"text","value":"true ","numberformat":"General","text":"true ","hasformula":false,"prefix":""}
+{"input":"   leading spaces","kind":"text","value":"   leading spaces","numberformat":"General","text":"   leading spaces","hasformula":false,"prefix":""}
+{"input":"3:4","kind":"number","value":"0.12777777777777777","numberformat":"h:mm","text":"3:04","hasformula":false,"prefix":""}
+{"input":"3:4:5","kind":"number","value":"0.12783564814814816","numberformat":"h:mm:ss","text":"3:04:05","hasformula":false,"prefix":""}
+{"input":"1:2:3:4","kind":"text","value":"1:2:3:4","numberformat":"General","text":"1:2:3:4","hasformula":false,"prefix":""}
+{"input":"15:30 PM","kind":"text","value":"15:30 PM","numberformat":"General","text":"15:30 PM","hasformula":false,"prefix":""}
+{"input":"12 AM","kind":"number","value":"0","numberformat":"h:mm AM/PM","text":"12:00 AM","hasformula":false,"prefix":""}
+{"input":"24:00","kind":"number","value":"1","numberformat":"[h]:mm:ss","text":"24:00:00","hasformula":false,"prefix":""}
+{"input":"1899-12-31","kind":"text","value":"1899-12-31","numberformat":"General","text":"1899-12-31","hasformula":false,"prefix":""}
+{"input":"-1,234.5","kind":"number","value":"-1234.5","numberformat":"#,##0.00","text":"-1,234.50","hasformula":false,"prefix":""}
+{"input":"1,234,567","kind":"number","value":"1234567","numberformat":"#,##0","text":"1,234,567","hasformula":false,"prefix":""}
+{"input":"12.50%","kind":"number","value":"0.125","numberformat":"0.00%","text":"12.50%","hasformula":false,"prefix":""}
+{"input":"$-5","kind":"number","value":"-5","numberformat":"$#,##0_);[Red]($#,##0)","text":"($5)","hasformula":false,"prefix":""}
+{"input":"-$5","kind":"number","value":"-5","numberformat":"$#,##0_);[Red]($#,##0)","text":"($5)","hasformula":false,"prefix":""}
+{"input":"1/2/26","kind":"number","value":"46024","numberformat":"m/d/yyyy","text":"1/2/2026","hasformula":false,"prefix":""}
+{"input":"Jan-26","kind":"number","value":"46048","numberformat":"d-mmm","text":"26-Jan","hasformula":false,"prefix":""}
+{"input":"Jan 2026","kind":"number","value":"46023","numberformat":"mmm-yy","text":"Jan-26","hasformula":false,"prefix":""}
+{"input":"2-Jan","kind":"number","value":"46024","numberformat":"d-mmm","text":"2-Jan","hasformula":false,"prefix":""}
+{"input":"12:30","kind":"number","value":"0.5208333333333334","numberformat":"h:mm","text":"12:30","hasformula":false,"prefix":""}
+{"input":"0:0","kind":"number","value":"0","numberformat":"h:mm","text":"0:00","hasformula":false,"prefix":""}
+{"input":"1 1/2","kind":"number","value":"1.5","numberformat":"# ?/?","text":"1 1/2","hasformula":false,"prefix":""}
+{"input":"TRUE","kind":"bool","value":"True","numberformat":"General","text":"TRUE","hasformula":false,"prefix":""}
+{"input":"#VALUE!","kind":"error","value":"#VALUE!","numberformat":"General","text":"#VALUE!","hasformula":false,"prefix":""}
+{"input":"#REF!","kind":"error","value":"#REF!","numberformat":"General","text":"#REF!","hasformula":false,"prefix":""}
+{"input":"1e","kind":"text","value":"1e","numberformat":"General","text":"1e","hasformula":false,"prefix":""}
+{"input":"e5","kind":"text","value":"e5","numberformat":"General","text":"e5","hasformula":false,"prefix":""}
+{"input":"1,000.","kind":"number","value":"1000","numberformat":"#,##0.00","text":"1,000.00","hasformula":false,"prefix":""}
+{"input":"€5","kind":"number","value":"5","numberformat":"General","text":"5","hasformula":false,"prefix":""}
+{"input":"5€","kind":"number","value":"5","numberformat":"General","text":"5","hasformula":false,"prefix":""}
+{"input":"1/32768","kind":"text","value":"1/32768","numberformat":"General","text":"1/32768","hasformula":false,"prefix":""}
+{"input":"12/12/12","kind":"number","value":"41255","numberformat":"m/d/yyyy","text":"########","hasformula":false,"prefix":""}
+{"input":"00:00:00","kind":"number","value":"0","numberformat":"h:mm:ss","text":"0:00:00","hasformula":false,"prefix":""}
+{"input":"1.5E+3","kind":"number","value":"1500","numberformat":"0.00E+00","text":"1.50E+03","hasformula":false,"prefix":""}
+{"input":"1/4","kind":"number","value":"46026","numberformat":"d-mmm","text":"4-Jan","hasformula":false,"prefix":""}
+{"input":"0 1/4","kind":"number","value":"0.25","numberformat":"# ?/?","text":" 1/4","hasformula":false,"prefix":""}
+{"input":"-1 1/2","kind":"number","value":"-1.5","numberformat":"# ?/?","text":"-1 1/2","hasformula":false,"prefix":""}
+{"input":"1 1/10","kind":"number","value":"1.1","numberformat":"# ??/??","text":"1  1/10","hasformula":false,"prefix":""}
+{"input":"12 3/16","kind":"number","value":"12.1875","numberformat":"# ??/??","text":"12  3/16","hasformula":false,"prefix":""}
+{"input":"1 5/3","kind":"number","value":"2.666666666666667","numberformat":"# ?/?","text":"2 2/3","hasformula":false,"prefix":""}
+{"input":"1 0/2","kind":"number","value":"1","numberformat":"# ?/?","text":"1    ","hasformula":false,"prefix":""}
+{"input":"1 1/0","kind":"text","value":"1 1/0","numberformat":"General","text":"1 1/0","hasformula":false,"prefix":""}
+{"input":"-0 1/2","kind":"number","value":"-0.5","numberformat":"# ?/?","text":"- 1/2","hasformula":false,"prefix":""}
+{"input":"3/4 ","kind":"number","value":"46085","numberformat":"d-mmm","text":"4-Mar","hasformula":false,"prefix":""}
+{"input":"1  1/2","kind":"text","value":"1  1/2","numberformat":"General","text":"1  1/2","hasformula":false,"prefix":""}
+{"input":"1 1/ 2","kind":"text","value":"1 1/ 2","numberformat":"General","text":"1 1/ 2","hasformula":false,"prefix":""}
+{"input":"$0.5","kind":"number","value":"0.5","numberformat":"$#,##0.00_);[Red]($#,##0.00)","text":"$0.50 ","hasformula":false,"prefix":""}
+{"input":"$1,000","kind":"number","value":"1000","numberformat":"$#,##0_);[Red]($#,##0)","text":"$1,000 ","hasformula":false,"prefix":""}
+{"input":"-$1,234.5","kind":"number","value":"-1234.5","numberformat":"$#,##0.00_);[Red]($#,##0.00)","text":"########","hasformula":false,"prefix":""}
+{"input":"($5)","kind":"number","value":"-5","numberformat":"$#,##0_);[Red]($#,##0)","text":"($5)","hasformula":false,"prefix":""}
+{"input":"$(5)","kind":"number","value":"-5","numberformat":"$#,##0_);[Red]($#,##0)","text":"($5)","hasformula":false,"prefix":""}
+{"input":"5$","kind":"text","value":"5$","numberformat":"General","text":"5$","hasformula":false,"prefix":""}
+{"input":"USD5","kind":"text","value":"USD5","numberformat":"General","text":"USD5","hasformula":false,"prefix":""}
+{"input":"£5","kind":"text","value":"£5","numberformat":"General","text":"£5","hasformula":false,"prefix":""}
+{"input":"¥5","kind":"text","value":"¥5","numberformat":"General","text":"¥5","hasformula":false,"prefix":""}
+{"input":"€5.5","kind":"number","value":"5.5","numberformat":"General","text":"5.5","hasformula":false,"prefix":""}
+{"input":"€1,234.50","kind":"number","value":"1234.5","numberformat":"General","text":"1234.5","hasformula":false,"prefix":""}
+{"input":"$ 5","kind":"number","value":"5","numberformat":"$#,##0_);[Red]($#,##0)","text":"$5 ","hasformula":false,"prefix":""}
+{"input":"$1,00","kind":"text","value":"$1,00","numberformat":"General","text":"$1,00","hasformula":false,"prefix":""}
+{"input":"$1.","kind":"number","value":"1","numberformat":"$#,##0.00_);[Red]($#,##0.00)","text":"$1.00 ","hasformula":false,"prefix":""}
+{"input":"$.5","kind":"number","value":"0.5","numberformat":"$#,##0.00_);[Red]($#,##0.00)","text":"$0.50 ","hasformula":false,"prefix":""}
+{"input":"$5%","kind":"text","value":"$5%","numberformat":"General","text":"$5%","hasformula":false,"prefix":""}
+{"input":"$1e3","kind":"number","value":"1000","numberformat":"0.00E+00","text":"1.00E+03","hasformula":false,"prefix":""}
+{"input":"0.5%","kind":"number","value":"0.005","numberformat":"0.00%","text":"0.50%","hasformula":false,"prefix":""}
+{"input":"-5%","kind":"number","value":"-0.05","numberformat":"0%","text":"-5%","hasformula":false,"prefix":""}
+{"input":"5%%","kind":"text","value":"5%%","numberformat":"General","text":"5%%","hasformula":false,"prefix":""}
+{"input":"1,000%","kind":"number","value":"10","numberformat":"0%","text":"1000%","hasformula":false,"prefix":""}
+{"input":"%5","kind":"number","value":"0.05","numberformat":"0%","text":"5%","hasformula":false,"prefix":""}
+{"input":"5 %%","kind":"text","value":"5 %%","numberformat":"General","text":"5 %%","hasformula":false,"prefix":""}
+{"input":"(5%)","kind":"number","value":"-0.05","numberformat":"0%","text":"-5%","hasformula":false,"prefix":""}
+{"input":"+5%","kind":"number","value":"0.05","numberformat":"0%","text":"5%","hasformula":false,"prefix":""}
+{"input":"1:2","kind":"number","value":"0.043055555555555555","numberformat":"h:mm","text":"1:02","hasformula":false,"prefix":""}
+{"input":"0:0:0","kind":"number","value":"0","numberformat":"h:mm:ss","text":"0:00:00","hasformula":false,"prefix":""}
+{"input":"13:00:00","kind":"number","value":"0.5416666666666666","numberformat":"h:mm:ss","text":"13:00:00","hasformula":false,"prefix":""}
+{"input":"1:00:00 AM","kind":"number","value":"0.041666666666666664","numberformat":"h:mm:ss AM/PM","text":"########","hasformula":false,"prefix":""}
+{"input":"12:00 PM","kind":"number","value":"0.5","numberformat":"h:mm AM/PM","text":"12:00 PM","hasformula":false,"prefix":""}
+{"input":"12:30 am","kind":"number","value":"0.020833333333333332","numberformat":"h:mm AM/PM","text":"12:30 AM","hasformula":false,"prefix":""}
+{"input":"1:5:7.25","kind":"number","value":"0.04522280092592593","numberformat":"mm:ss.0","text":"05:07.2","hasformula":false,"prefix":""}
+{"input":"00:00:59.999","kind":"number","value":"0.0006944328703703704","numberformat":"mm:ss.0","text":"01:00.0","hasformula":false,"prefix":""}
+{"input":"23:59:59","kind":"number","value":"0.999988425925926","numberformat":"h:mm:ss","text":"23:59:59","hasformula":false,"prefix":""}
+{"input":"1:00 pm","kind":"number","value":"0.5416666666666666","numberformat":"h:mm AM/PM","text":"1:00 PM","hasformula":false,"prefix":""}
+{"input":"1:00PM","kind":"text","value":"1:00PM","numberformat":"General","text":"1:00PM","hasformula":false,"prefix":""}
+{"input":"10:61","kind":"number","value":"0.45902777777777776","numberformat":"General","text":"0.459028","hasformula":false,"prefix":""}
+{"input":"1:00:60","kind":"number","value":"0.04236111111111111","numberformat":"General","text":"0.042361","hasformula":false,"prefix":""}
+{"input":"-1:00","kind":"text","value":"-1:00","numberformat":"General","text":"-1:00","hasformula":false,"prefix":""}
+{"input":":30","kind":"text","value":":30","numberformat":"General","text":":30","hasformula":false,"prefix":""}
+{"input":"1:","kind":"number","value":"0.041666666666666664","numberformat":"h:mm","text":"1:00","hasformula":false,"prefix":""}
+{"input":"1:30:00.123456","kind":"number","value":"0.0625014236111111","numberformat":"mm:ss.0","text":"30:00.1","hasformula":false,"prefix":""}
+{"input":"0:0.5","kind":"number","value":"5.787037037037037E-06","numberformat":"mm:ss.0","text":"00:00.5","hasformula":false,"prefix":""}
+{"input":"59:59","kind":"number","value":"2.4993055555555554","numberformat":"[h]:mm:ss","text":"59:59:00","hasformula":false,"prefix":""}
+{"input":"1:00:00.5 PM","kind":"number","value":"0.5416724537037036","numberformat":"mm:ss.0","text":"00:00.5","hasformula":false,"prefix":""}
+{"input":"11 PM","kind":"number","value":"0.9583333333333334","numberformat":"h:mm AM/PM","text":"11:00 PM","hasformula":false,"prefix":""}
+{"input":"11PM","kind":"text","value":"11PM","numberformat":"General","text":"11PM","hasformula":false,"prefix":""}
+{"input":"13 PM","kind":"text","value":"13 PM","numberformat":"General","text":"13 PM","hasformula":false,"prefix":""}
+{"input":"0 AM","kind":"number","value":"0","numberformat":"h:mm AM/PM","text":"12:00 AM","hasformula":false,"prefix":""}
+{"input":"12:00:00 am","kind":"number","value":"0","numberformat":"h:mm:ss AM/PM","text":"########","hasformula":false,"prefix":""}
+{"input":"2:30:15 PM","kind":"number","value":"0.6043402777777778","numberformat":"h:mm:ss AM/PM","text":"########","hasformula":false,"prefix":""}
+{"input":"1/1/2026","kind":"number","value":"46023","numberformat":"m/d/yyyy","text":"1/1/2026","hasformula":false,"prefix":""}
+{"input":"12/31/2026","kind":"number","value":"46387","numberformat":"m/d/yyyy","text":"########","hasformula":false,"prefix":""}
+{"input":"1/1/30","kind":"number","value":"10959","numberformat":"m/d/yyyy","text":"1/1/1930","hasformula":false,"prefix":""}
+{"input":"1/1/29","kind":"number","value":"47119","numberformat":"m/d/yyyy","text":"1/1/2029","hasformula":false,"prefix":""}
+{"input":"1/1/00","kind":"number","value":"36526","numberformat":"m/d/yyyy","text":"1/1/2000","hasformula":false,"prefix":""}
+{"input":"13/1/2026","kind":"text","value":"13/1/2026","numberformat":"General","text":"13/1/2026","hasformula":false,"prefix":""}
+{"input":"January 2026","kind":"number","value":"46023","numberformat":"mmm-yy","text":"Jan-26","hasformula":false,"prefix":""}
+{"input":"Jan 2, 2026","kind":"number","value":"46024","numberformat":"d-mmm-yy","text":"2-Jan-26","hasformula":false,"prefix":""}
+{"input":"2 January 2026","kind":"number","value":"46024","numberformat":"d-mmm-yy","text":"2-Jan-26","hasformula":false,"prefix":""}
+{"input":"2-Jan-26","kind":"number","value":"46024","numberformat":"d-mmm-yy","text":"2-Jan-26","hasformula":false,"prefix":""}
+{"input":"Jan-2","kind":"number","value":"46024","numberformat":"d-mmm","text":"2-Jan","hasformula":false,"prefix":""}
+{"input":"Jan-02","kind":"number","value":"46024","numberformat":"d-mmm","text":"2-Jan","hasformula":false,"prefix":""}
+{"input":"Jan-32","kind":"number","value":"11689","numberformat":"mmm-yy","text":"Jan-32","hasformula":false,"prefix":""}
+{"input":"2026-1-2","kind":"number","value":"46024","numberformat":"m/d/yyyy","text":"1/2/2026","hasformula":false,"prefix":""}
+{"input":"2026/1/2","kind":"number","value":"46024","numberformat":"m/d/yyyy","text":"1/2/2026","hasformula":false,"prefix":""}
+{"input":"1.2.2026","kind":"text","value":"1.2.2026","numberformat":"General","text":"1.2.2026","hasformula":false,"prefix":""}
+{"input":"1/2/2026 1:00","kind":"number","value":"46024.041666666664","numberformat":"m/d/yyyy h:mm","text":"########","hasformula":false,"prefix":""}
+{"input":"1/2/2026 1:00 PM","kind":"number","value":"46024.541666666664","numberformat":"m/d/yyyy h:mm","text":"########","hasformula":false,"prefix":""}
+{"input":"2026-01-02 13:00","kind":"number","value":"46024.541666666664","numberformat":"m/d/yyyy h:mm","text":"########","hasformula":false,"prefix":""}
+{"input":"2026-01-02T13:00","kind":"text","value":"2026-01-02T13:00","numberformat":"General","text":"2026-01-02T13:00","hasformula":false,"prefix":""}
+{"input":"Mon 1/2/2026","kind":"text","value":"Mon 1/2/2026","numberformat":"General","text":"Mon 1/2/2026","hasformula":false,"prefix":""}
+{"input":"Monday, January 2, 2026","kind":"text","value":"Monday, January 2, 2026","numberformat":"General","text":"Monday, January 2, 2026","hasformula":false,"prefix":""}
+{"input":"1/2/10000","kind":"text","value":"1/2/10000","numberformat":"General","text":"1/2/10000","hasformula":false,"prefix":""}
+{"input":"1/0/1900","kind":"text","value":"1/0/1900","numberformat":"General","text":"1/0/1900","hasformula":false,"prefix":""}
+{"input":"2/29/2100","kind":"text","value":"2/29/2100","numberformat":"General","text":"2/29/2100","hasformula":false,"prefix":""}
+{"input":"Sept 2","kind":"number","value":"46267","numberformat":"d-mmm","text":"2-Sep","hasformula":false,"prefix":""}
+{"input":"Sep 2","kind":"number","value":"46267","numberformat":"d-mmm","text":"2-Sep","hasformula":false,"prefix":""}
+{"input":"Sept. 2","kind":"text","value":"Sept. 2","numberformat":"General","text":"Sept. 2","hasformula":false,"prefix":""}
+{"input":"Jan 2 2026","kind":"text","value":"Jan 2 2026","numberformat":"General","text":"Jan 2 2026","hasformula":false,"prefix":""}
+{"input":"1/2/2026 25:00","kind":"number","value":"46025.041666666664","numberformat":"General","text":"46025.04","hasformula":false,"prefix":""}
+{"input":"Jan 31","kind":"number","value":"46053","numberformat":"d-mmm","text":"31-Jan","hasformula":false,"prefix":""}
+{"input":"Feb 30","kind":"number","value":"10990","numberformat":"mmm-yy","text":"Feb-30","hasformula":false,"prefix":""}
+{"input":"Feb 29","kind":"number","value":"47150","numberformat":"mmm-yy","text":"Feb-29","hasformula":false,"prefix":""}
+{"input":"Dec 31","kind":"number","value":"46387","numberformat":"d-mmm","text":"31-Dec","hasformula":false,"prefix":""}
+{"input":"2-Jan-1899","kind":"text","value":"2-Jan-1899","numberformat":"General","text":"2-Jan-1899","hasformula":false,"prefix":""}
+{"input":"1-Jan-1900","kind":"number","value":"1","numberformat":"d-mmm-yy","text":"1-Jan-00","hasformula":false,"prefix":""}
+{"input":"1/1/9999","kind":"number","value":"2958101","numberformat":"m/d/yyyy","text":"1/1/9999","hasformula":false,"prefix":""}
+{"input":"12/31/9999","kind":"number","value":"2958465","numberformat":"m/d/yyyy","text":"########","hasformula":false,"prefix":""}
+{"input":"1/1/10000","kind":"text","value":"1/1/10000","numberformat":"General","text":"1/1/10000","hasformula":false,"prefix":""}
+{"input":"3/4","kind":"number","value":"46085","numberformat":"d-mmm","text":"4-Mar","hasformula":false,"prefix":""}
+{"input":"13/4","kind":"text","value":"13/4","numberformat":"General","text":"13/4","hasformula":false,"prefix":""}
+{"input":"2/31","kind":"number","value":"11355","numberformat":"mmm-yy","text":"Feb-31","hasformula":false,"prefix":""}
+{"input":"1/2/","kind":"text","value":"1/2/","numberformat":"General","text":"1/2/","hasformula":false,"prefix":""}
+{"input":"/1/2","kind":"text","value":"/1/2","numberformat":"General","text":"/1/2","hasformula":false,"prefix":""}
+{"input":"1//2","kind":"text","value":"1//2","numberformat":"General","text":"1//2","hasformula":false,"prefix":""}
+{"input":"1/2/3/4","kind":"text","value":"1/2/3/4","numberformat":"General","text":"1/2/3/4","hasformula":false,"prefix":""}
+{"input":"1-2-3","kind":"number","value":"37623","numberformat":"m/d/yyyy","text":"1/2/2003","hasformula":false,"prefix":""}
+{"input":"1-2-2026","kind":"number","value":"46024","numberformat":"m/d/yyyy","text":"1/2/2026","hasformula":false,"prefix":""}
+{"input":"31-12-2026","kind":"text","value":"31-12-2026","numberformat":"General","text":"31-12-2026","hasformula":false,"prefix":""}
+{"input":"2026-12-31","kind":"number","value":"46387","numberformat":"m/d/yyyy","text":"########","hasformula":false,"prefix":""}
+{"input":"99-1-2","kind":"text","value":"99-1-2","numberformat":"General","text":"99-1-2","hasformula":false,"prefix":""}
+{"input":"12-2026","kind":"number","value":"46357","numberformat":"mmm-yy","text":"Dec-26","hasformula":false,"prefix":""}
+{"input":"2026-12","kind":"text","value":"2026-12","numberformat":"General","text":"2026-12","hasformula":false,"prefix":""}
+{"input":"Dec 2026 5","kind":"text","value":"Dec 2026 5","numberformat":"General","text":"Dec 2026 5","hasformula":false,"prefix":""}
+{"input":"January","kind":"text","value":"January","numberformat":"General","text":"January","hasformula":false,"prefix":""}
+{"input":"Jan","kind":"text","value":"Jan","numberformat":"General","text":"Jan","hasformula":false,"prefix":""}
+{"input":"may 5","kind":"number","value":"46147","numberformat":"d-mmm","text":"5-May","hasformula":false,"prefix":""}
+{"input":"MAY 5","kind":"number","value":"46147","numberformat":"d-mmm","text":"5-May","hasformula":false,"prefix":""}
+{"input":"5 may","kind":"number","value":"46147","numberformat":"d-mmm","text":"5-May","hasformula":false,"prefix":""}
+{"input":"5may","kind":"number","value":"46147","numberformat":"d-mmm","text":"5-May","hasformula":false,"prefix":""}
+{"input":"5-may","kind":"number","value":"46147","numberformat":"d-mmm","text":"5-May","hasformula":false,"prefix":""}
+{"input":"may-5","kind":"number","value":"46147","numberformat":"d-mmm","text":"5-May","hasformula":false,"prefix":""}
+{"input":"Jan 5th","kind":"text","value":"Jan 5th","numberformat":"General","text":"Jan 5th","hasformula":false,"prefix":""}
+{"input":"1st Jan","kind":"text","value":"1st Jan","numberformat":"General","text":"1st Jan","hasformula":false,"prefix":""}
+{"input":"1e5","kind":"number","value":"100000","numberformat":"0.00E+00","text":"1.00E+05","hasformula":false,"prefix":""}
+{"input":"1E5","kind":"number","value":"100000","numberformat":"0.00E+00","text":"1.00E+05","hasformula":false,"prefix":""}
+{"input":"1e+5","kind":"number","value":"100000","numberformat":"0.00E+00","text":"1.00E+05","hasformula":false,"prefix":""}
+{"input":"1e-5","kind":"number","value":"1E-05","numberformat":"0.00E+00","text":"1.00E-05","hasformula":false,"prefix":""}
+{"input":"1.e5","kind":"number","value":"100000","numberformat":"0.00E+00","text":"1.00E+05","hasformula":false,"prefix":""}
+{"input":".e5","kind":"text","value":".e5","numberformat":"General","text":".e5","hasformula":false,"prefix":""}
+{"input":"1e5.5","kind":"text","value":"1e5.5","numberformat":"General","text":"1e5.5","hasformula":false,"prefix":""}
+{"input":"-1e5","kind":"number","value":"-100000","numberformat":"0.00E+00","text":"########","hasformula":false,"prefix":""}
+{"input":"+1e5","kind":"number","value":"100000","numberformat":"0.00E+00","text":"1.00E+05","hasformula":false,"prefix":""}
+{"input":"1e0","kind":"number","value":"1","numberformat":"0.00E+00","text":"1.00E+00","hasformula":false,"prefix":""}
+{"input":"1e400","kind":"text","value":"1e400","numberformat":"0.00E+00","text":"1e400","hasformula":false,"prefix":""}
+{"input":"1e-400","kind":"text","value":"1e-400","numberformat":"0.00E+00","text":"1e-400","hasformula":false,"prefix":""}
+{"input":"1e-320","kind":"text","value":"1e-320","numberformat":"0.00E+00","text":"1e-320","hasformula":false,"prefix":""}
+{"input":"1d5","kind":"text","value":"1d5","numberformat":"General","text":"1d5","hasformula":false,"prefix":""}
+{"input":"12345678901234567890","kind":"number","value":"1.23456789012345E+19","numberformat":"General","text":"1.23E+19","hasformula":false,"prefix":""}
+{"input":"0.000001","kind":"number","value":"1E-06","numberformat":"General","text":"0.000001","hasformula":false,"prefix":""}
+{"input":"1234567.891","kind":"number","value":"1234567.891","numberformat":"General","text":"1234568","hasformula":false,"prefix":""}
+{"input":"1,2","kind":"text","value":"1,2","numberformat":"General","text":"1,2","hasformula":false,"prefix":""}
+{"input":"1,2,3","kind":"text","value":"1,2,3","numberformat":"General","text":"1,2,3","hasformula":false,"prefix":""}
+{"input":"1,234,56","kind":"text","value":"1,234,56","numberformat":"General","text":"1,234,56","hasformula":false,"prefix":""}
+{"input":"1.234,5","kind":"text","value":"1.234,5","numberformat":"General","text":"1.234,5","hasformula":false,"prefix":""}
+{"input":"1 234","kind":"text","value":"1 234","numberformat":"General","text":"1 234","hasformula":false,"prefix":""}
+{"input":"12 34","kind":"text","value":"12 34","numberformat":"General","text":"12 34","hasformula":false,"prefix":""}
+{"input":"- 5","kind":"number","value":"-5","numberformat":"General","text":"-5","hasformula":false,"prefix":""}
+{"input":"+ 5","kind":"number","value":"5","numberformat":"General","text":"5","hasformula":false,"prefix":""}
+{"input":"5 -","kind":"text","value":"5 -","numberformat":"General","text":"5 -","hasformula":false,"prefix":""}
+{"input":"5+","kind":"text","value":"5+","numberformat":"General","text":"5+","hasformula":false,"prefix":""}
+{"input":"(5","kind":"text","value":"(5","numberformat":"General","text":"(5","hasformula":false,"prefix":""}
+{"input":"5)","kind":"text","value":"5)","numberformat":"General","text":"5)","hasformula":false,"prefix":""}
+{"input":"()","kind":"text","value":"()","numberformat":"General","text":"()","hasformula":false,"prefix":""}
+{"input":"(-5)","kind":"text","value":"(-5)","numberformat":"General","text":"(-5)","hasformula":false,"prefix":""}
+{"input":"-(5)","kind":"text","value":"-(5)","numberformat":"General","text":"-(5)","hasformula":false,"prefix":""}
+{"input":"- -5","kind":"text","value":"- -5","numberformat":"General","text":"- -5","hasformula":false,"prefix":""}
+{"input":"+-5","kind":"text","value":"+-5","numberformat":"General","text":"+-5","hasformula":false,"prefix":""}
+{"input":"-+5","kind":"text","value":"-+5","numberformat":"General","text":"-+5","hasformula":false,"prefix":""}
+{"input":"1,234.","kind":"number","value":"1234","numberformat":"#,##0.00","text":"1,234.00","hasformula":false,"prefix":""}
+{"input":"1,234.5.","kind":"text","value":"1,234.5.","numberformat":"General","text":"1,234.5.","hasformula":false,"prefix":""}
+{"input":"1.5.","kind":"text","value":"1.5.","numberformat":"General","text":"1.5.","hasformula":false,"prefix":""}
+{"input":"$-","kind":"text","value":"$-","numberformat":"General","text":"$-","hasformula":false,"prefix":""}
+{"input":"0","kind":"number","value":"0","numberformat":"General","text":"0","hasformula":false,"prefix":""}
+{"input":"00","kind":"number","value":"0","numberformat":"General","text":"0","hasformula":false,"prefix":""}
+{"input":"-0.0","kind":"number","value":"0","numberformat":"General","text":"0","hasformula":false,"prefix":""}
+{"input":"0.0","kind":"number","value":"0","numberformat":"General","text":"0","hasformula":false,"prefix":""}
+{"input":"000.5","kind":"number","value":"0.5","numberformat":"General","text":"0.5","hasformula":false,"prefix":""}
+{"input":"1/2/2026x","kind":"text","value":"1/2/2026x","numberformat":"General","text":"1/2/2026x","hasformula":false,"prefix":""}
+{"input":"x1/2/2026","kind":"text","value":"x1/2/2026","numberformat":"General","text":"x1/2/2026","hasformula":false,"prefix":""}
+{"input":"TRUE ","kind":"text","value":"TRUE ","numberformat":"General","text":"TRUE ","hasformula":false,"prefix":""}
+{"input":"True","kind":"bool","value":"True","numberformat":"General","text":"TRUE","hasformula":false,"prefix":""}
+{"input":"tRuE","kind":"bool","value":"True","numberformat":"General","text":"TRUE","hasformula":false,"prefix":""}
+{"input":"FALSE ","kind":"text","value":"FALSE ","numberformat":"General","text":"FALSE ","hasformula":false,"prefix":""}
+{"input":"t","kind":"text","value":"t","numberformat":"General","text":"t","hasformula":false,"prefix":""}
+{"input":"f","kind":"text","value":"f","numberformat":"General","text":"f","hasformula":false,"prefix":""}
+{"input":"#N/A ","kind":"text","value":"#N/A ","numberformat":"General","text":"#N/A ","hasformula":false,"prefix":""}
+{"input":"#n/a","kind":"error","value":"#N/A","numberformat":"General","text":"#N/A","hasformula":false,"prefix":""}
+{"input":"#NULL!","kind":"error","value":"#NULL!","numberformat":"General","text":"#NULL!","hasformula":false,"prefix":""}
+{"input":"#NUM!","kind":"error","value":"#NUM!","numberformat":"General","text":"#NUM!","hasformula":false,"prefix":""}
+{"input":"#NAME?","kind":"error","value":"#NAME?","numberformat":"General","text":"#NAME?","hasformula":false,"prefix":""}
+{"input":"#SPILL!","kind":"text","value":"#SPILL!","numberformat":"General","text":"#SPILL!","hasformula":false,"prefix":""}
+{"input":"#CALC!","kind":"text","value":"#CALC!","numberformat":"General","text":"#CALC!","hasformula":false,"prefix":""}
+{"input":"#N/A!","kind":"text","value":"#N/A!","numberformat":"General","text":"#N/A!","hasformula":false,"prefix":""}
+{"input":"=","kind":"text","value":"=","numberformat":"General","text":"=","hasformula":false,"prefix":""}
+{"input":"= 1","kind":"number","value":"1","numberformat":"General","text":"1","hasformula":true,"prefix":""}
+{"input":"=1","kind":"number","value":"1","numberformat":"General","text":"1","hasformula":true,"prefix":""}
+{"input":"=1+1","kind":"number","value":"2","numberformat":"General","text":"2","hasformula":true,"prefix":""}
+{"input":"=A1","kind":"number","value":"0","numberformat":"General","text":"0","hasformula":true,"prefix":""}
+{"input":"=SUM(","kind":"refused","value":"0x800A03EC","numberformat":"","text":"","hasformula":false,"prefix":""}
+{"input":"==1","kind":"refused","value":"0x800A03EC","numberformat":"","text":"","hasformula":false,"prefix":""}
+{"input":"+1+1","kind":"text","value":"+1+1","numberformat":"General","text":"+1+1","hasformula":false,"prefix":""}
+{"input":"-1+1","kind":"text","value":"-1+1","numberformat":"General","text":"-1+1","hasformula":false,"prefix":""}
+{"input":"@","kind":"text","value":"@","numberformat":"General","text":"@","hasformula":false,"prefix":""}
+{"input":"@1","kind":"text","value":"@1","numberformat":"General","text":"@1","hasformula":false,"prefix":""}
+{"input":"'","kind":"text","value":"","numberformat":"General","text":"","hasformula":false,"prefix":"'"}
+{"input":"''a","kind":"text","value":"'a","numberformat":"General","text":"'a","hasformula":false,"prefix":"'"}
+{"input":"' a","kind":"text","value":" a","numberformat":"General","text":" a","hasformula":false,"prefix":"'"}
+{"input":"'=1","kind":"text","value":"=1","numberformat":"General","text":"=1","hasformula":false,"prefix":"'"}
+{"input":"'1/2","kind":"text","value":"1/2","numberformat":"General","text":"1/2","hasformula":false,"prefix":"'"}
+{"input":"  5","kind":"number","value":"5","numberformat":"General","text":"5","hasformula":false,"prefix":""}
+{"input":"5  ","kind":"number","value":"5","numberformat":"General","text":"5","hasformula":false,"prefix":""}
+{"input":"\t5","kind":"text","value":"\t5","numberformat":"General","text":"\t5","hasformula":false,"prefix":""}
+{"input":"5\t","kind":"text","value":"5\t","numberformat":"General","text":"5\t","hasformula":false,"prefix":""}
+{"input":"1\n2","kind":"text","value":"1\n2","numberformat":"General","text":"1\n2","hasformula":false,"prefix":""}
+{"input":" 5","kind":"text","value":" 5","numberformat":"General","text":" 5","hasformula":false,"prefix":""}
+{"input":"5 ","kind":"text","value":"5 ","numberformat":"General","text":"5 ","hasformula":false,"prefix":""}
+{"input":"1 1/100","kind":"number","value":"1.01","numberformat":"# ??/??","text":"1  1/99","hasformula":false,"prefix":""}
+{"input":"1 1/1000","kind":"number","value":"1.001","numberformat":"# ??/??","text":"1      ","hasformula":false,"prefix":""}
+{"input":"1 1/10000","kind":"number","value":"1.0001","numberformat":"# ??/??","text":"1      ","hasformula":false,"prefix":""}
+{"input":"1 1/32767","kind":"number","value":"1.000030518509476","numberformat":"# ??/??","text":"1      ","hasformula":false,"prefix":""}
+{"input":"1 1/32768","kind":"text","value":"1 1/32768","numberformat":"General","text":"1 1/32768","hasformula":false,"prefix":""}
+{"input":"1 100/2","kind":"number","value":"51","numberformat":"# ?/?","text":"51    ","hasformula":false,"prefix":""}
+{"input":"-1 1/3","kind":"number","value":"-1.3333333333333333","numberformat":"# ?/?","text":"-1 1/3","hasformula":false,"prefix":""}
+{"input":"1 1/-2","kind":"text","value":"1 1/-2","numberformat":"General","text":"1 1/-2","hasformula":false,"prefix":""}
+{"input":"1 1.5/2","kind":"text","value":"1 1.5/2","numberformat":"General","text":"1 1.5/2","hasformula":false,"prefix":""}
+{"input":"1.5 1/2","kind":"text","value":"1.5 1/2","numberformat":"General","text":"1.5 1/2","hasformula":false,"prefix":""}
+{"input":"+1 1/2","kind":"number","value":"1.5","numberformat":"# ?/?","text":"1 1/2","hasformula":false,"prefix":""}
+{"input":"(1 1/2)","kind":"number","value":"-1.5","numberformat":"# ?/?","text":"-1 1/2","hasformula":false,"prefix":""}
+{"input":"$1 1/2","kind":"number","value":"1.5","numberformat":"# ?/?","text":"1 1/2","hasformula":false,"prefix":""}
+{"input":"1 1/2%","kind":"number","value":"0.015","numberformat":"0.00%","text":"1.50%","hasformula":false,"prefix":""}
+{"input":"1/2 1/2","kind":"text","value":"1/2 1/2","numberformat":"General","text":"1/2 1/2","hasformula":false,"prefix":""}
+{"input":"1 1/2 1/2","kind":"text","value":"1 1/2 1/2","numberformat":"General","text":"1 1/2 1/2","hasformula":false,"prefix":""}
+{"input":"1 1 /2","kind":"text","value":"1 1 /2","numberformat":"General","text":"1 1 /2","hasformula":false,"prefix":""}
+{"input":"01 01/02","kind":"number","value":"1.5","numberformat":"# ?/?","text":"1 1/2","hasformula":false,"prefix":""}
+{"input":"1 01/2","kind":"number","value":"1.5","numberformat":"# ?/?","text":"1 1/2","hasformula":false,"prefix":""}
+{"input":"24:30","kind":"number","value":"1.0208333333333333","numberformat":"[h]:mm:ss","text":"24:30:00","hasformula":false,"prefix":""}
+{"input":"24:00:00","kind":"number","value":"1","numberformat":"[h]:mm:ss","text":"24:00:00","hasformula":false,"prefix":""}
+{"input":"25:00:00","kind":"number","value":"1.0416666666666667","numberformat":"[h]:mm:ss","text":"25:00:00","hasformula":false,"prefix":""}
+{"input":"100:00","kind":"number","value":"4.166666666666667","numberformat":"[h]:mm:ss","text":"100:00:00","hasformula":false,"prefix":""}
+{"input":"1:30.5","kind":"number","value":"0.0010474537037037037","numberformat":"mm:ss.0","text":"01:30.5","hasformula":false,"prefix":""}
+{"input":"1:30:45.5","kind":"number","value":"0.06302662037037036","numberformat":"mm:ss.0","text":"30:45.5","hasformula":false,"prefix":""}
+{"input":"23:59:59.9999","kind":"number","value":"1","numberformat":"mm:ss.0","text":"00:00.0","hasformula":false,"prefix":""}
+{"input":"0:60","kind":"number","value":"0.041666666666666664","numberformat":"General","text":"0.041667","hasformula":false,"prefix":""}
+{"input":"0:0:60","kind":"number","value":"0.0006944444444444445","numberformat":"General","text":"0.000694","hasformula":false,"prefix":""}
+{"input":"0:0:61","kind":"number","value":"0.0007060185185185185","numberformat":"General","text":"0.000706","hasformula":false,"prefix":""}
+{"input":"1:100","kind":"number","value":"0.1111111111111111","numberformat":"General","text":"0.111111","hasformula":false,"prefix":""}
+{"input":"99999:00","kind":"text","value":"99999:00","numberformat":"General","text":"99999:00","hasformula":false,"prefix":""}
+{"input":"12:00:00.0","kind":"number","value":"0.5","numberformat":"mm:ss.0","text":"00:00.0","hasformula":false,"prefix":""}
+{"input":"1:00.5 PM","kind":"number","value":"0.5007002314814815","numberformat":"mm:ss.0","text":"01:00.5","hasformula":false,"prefix":""}
+{"input":"1.5:00","kind":"text","value":"1.5:00","numberformat":"General","text":"1.5:00","hasformula":false,"prefix":""}
+{"input":"1:00:00:","kind":"number","value":"0.041666666666666664","numberformat":"h:mm:ss","text":"1:00:00","hasformula":false,"prefix":""}
+{"input":"1:00 xm","kind":"text","value":"1:00 xm","numberformat":"General","text":"1:00 xm","hasformula":false,"prefix":""}
+{"input":"1:00 AM PM","kind":"text","value":"1:00 AM PM","numberformat":"General","text":"1:00 AM PM","hasformula":false,"prefix":""}
+{"input":"1:00 AM ","kind":"number","value":"0.041666666666666664","numberformat":"h:mm AM/PM","text":"1:00 AM","hasformula":false,"prefix":""}
+{"input":"1:00  AM","kind":"number","value":"0.041666666666666664","numberformat":"h:mm AM/PM","text":"1:00 AM","hasformula":false,"prefix":""}
+{"input":"1:00 a.m.","kind":"text","value":"1:00 a.m.","numberformat":"General","text":"1:00 a.m.","hasformula":false,"prefix":""}
+{"input":"1:00 A","kind":"number","value":"0.041666666666666664","numberformat":"h:mm AM/PM","text":"1:00 AM","hasformula":false,"prefix":""}
+{"input":"1:00 P","kind":"number","value":"0.5416666666666666","numberformat":"h:mm AM/PM","text":"1:00 PM","hasformula":false,"prefix":""}
+{"input":"1:00p","kind":"text","value":"1:00p","numberformat":"General","text":"1:00p","hasformula":false,"prefix":""}
+{"input":"12 pm","kind":"number","value":"0.5","numberformat":"h:mm AM/PM","text":"12:00 PM","hasformula":false,"prefix":""}
+{"input":"0 pm","kind":"number","value":"0.5","numberformat":"h:mm AM/PM","text":"12:00 PM","hasformula":false,"prefix":""}
+{"input":"12 p","kind":"number","value":"0.5","numberformat":"h:mm AM/PM","text":"12:00 PM","hasformula":false,"prefix":""}
+{"input":"1 a","kind":"number","value":"0.041666666666666664","numberformat":"h:mm AM/PM","text":"1:00 AM","hasformula":false,"prefix":""}
+{"input":"23:59","kind":"number","value":"0.9993055555555556","numberformat":"h:mm","text":"23:59","hasformula":false,"prefix":""}
+{"input":"24:59","kind":"number","value":"1.0409722222222222","numberformat":"[h]:mm:ss","text":"24:59:00","hasformula":false,"prefix":""}
+{"input":"1/1/100","kind":"text","value":"1/1/100","numberformat":"General","text":"1/1/100","hasformula":false,"prefix":""}
+{"input":"1/1/999","kind":"text","value":"1/1/999","numberformat":"General","text":"1/1/999","hasformula":false,"prefix":""}
+{"input":"1/1/1000","kind":"text","value":"1/1/1000","numberformat":"General","text":"1/1/1000","hasformula":false,"prefix":""}
+{"input":"1/100","kind":"text","value":"1/100","numberformat":"General","text":"1/100","hasformula":false,"prefix":""}
+{"input":"1/1899","kind":"text","value":"1/1899","numberformat":"General","text":"1/1899","hasformula":false,"prefix":""}
+{"input":"1/1900","kind":"number","value":"1","numberformat":"mmm-yy","text":"Jan-00","hasformula":false,"prefix":""}
+{"input":"1/9999","kind":"number","value":"2958101","numberformat":"mmm-yy","text":"Jan-99","hasformula":false,"prefix":""}
+{"input":"1/10000","kind":"text","value":"1/10000","numberformat":"General","text":"1/10000","hasformula":false,"prefix":""}
+{"input":"12/0","kind":"number","value":"36861","numberformat":"mmm-yy","text":"Dec-00","hasformula":false,"prefix":""}
+{"input":"2/30","kind":"number","value":"10990","numberformat":"mmm-yy","text":"Feb-30","hasformula":false,"prefix":""}
+{"input":"2/29","kind":"number","value":"47150","numberformat":"mmm-yy","text":"Feb-29","hasformula":false,"prefix":""}
+{"input":"0/1","kind":"text","value":"0/1","numberformat":"General","text":"0/1","hasformula":false,"prefix":""}
+{"input":"0/0/2000","kind":"text","value":"0/0/2000","numberformat":"General","text":"0/0/2000","hasformula":false,"prefix":""}
+{"input":"1/1/0","kind":"number","value":"36526","numberformat":"m/d/yyyy","text":"1/1/2000","hasformula":false,"prefix":""}
+{"input":"Jan 1 00","kind":"text","value":"Jan 1 00","numberformat":"General","text":"Jan 1 00","hasformula":false,"prefix":""}
+{"input":"Jan 1, 99","kind":"number","value":"36161","numberformat":"d-mmm-yy","text":"1-Jan-99","hasformula":false,"prefix":""}
+{"input":"Jan 1, 29","kind":"number","value":"47119","numberformat":"d-mmm-yy","text":"1-Jan-29","hasformula":false,"prefix":""}
+{"input":"Jan 1, 30","kind":"number","value":"10959","numberformat":"d-mmm-yy","text":"1-Jan-30","hasformula":false,"prefix":""}
+{"input":"Jan 1, 1899","kind":"text","value":"Jan 1, 1899","numberformat":"General","text":"Jan 1, 1899","hasformula":false,"prefix":""}
+{"input":"Jan 1, 1900","kind":"number","value":"1","numberformat":"d-mmm-yy","text":"1-Jan-00","hasformula":false,"prefix":""}
+{"input":"Jan 1, 9999","kind":"number","value":"2958101","numberformat":"d-mmm-yy","text":"1-Jan-99","hasformula":false,"prefix":""}
+{"input":"Jan 0","kind":"number","value":"36526","numberformat":"mmm-yy","text":"Jan-00","hasformula":false,"prefix":""}
+{"input":"Jan 0, 2026","kind":"text","value":"Jan 0, 2026","numberformat":"General","text":"Jan 0, 2026","hasformula":false,"prefix":""}
+{"input":"Jan 32, 2026","kind":"text","value":"Jan 32, 2026","numberformat":"General","text":"Jan 32, 2026","hasformula":false,"prefix":""}
+{"input":"Feb 29, 2026","kind":"text","value":"Feb 29, 2026","numberformat":"General","text":"Feb 29, 2026","hasformula":false,"prefix":""}
+{"input":"Feb 29, 2024","kind":"number","value":"45351","numberformat":"d-mmm-yy","text":"29-Feb-24","hasformula":false,"prefix":""}
+{"input":"Feb 29, 2100","kind":"text","value":"Feb 29, 2100","numberformat":"General","text":"Feb 29, 2100","hasformula":false,"prefix":""}
+{"input":"29 Feb 2024","kind":"number","value":"45351","numberformat":"d-mmm-yy","text":"29-Feb-24","hasformula":false,"prefix":""}
+{"input":"Feb 2024","kind":"number","value":"45323","numberformat":"mmm-yy","text":"Feb-24","hasformula":false,"prefix":""}
+{"input":"Feb 99","kind":"number","value":"36192","numberformat":"mmm-yy","text":"Feb-99","hasformula":false,"prefix":""}
+{"input":"Feb 100","kind":"text","value":"Feb 100","numberformat":"General","text":"Feb 100","hasformula":false,"prefix":""}
+{"input":"Feb 1900","kind":"number","value":"32","numberformat":"mmm-yy","text":"Feb-00","hasformula":false,"prefix":""}
+{"input":"Feb 1899","kind":"text","value":"Feb 1899","numberformat":"General","text":"Feb 1899","hasformula":false,"prefix":""}
+{"input":"Feb 10000","kind":"text","value":"Feb 10000","numberformat":"General","text":"Feb 10000","hasformula":false,"prefix":""}
+{"input":"1-Jan","kind":"number","value":"46023","numberformat":"d-mmm","text":"1-Jan","hasformula":false,"prefix":""}
+{"input":"1-Jan-26 1:00","kind":"number","value":"46023.041666666664","numberformat":"m/d/yyyy h:mm","text":"########","hasformula":false,"prefix":""}
+{"input":"Jan-1-26","kind":"text","value":"Jan-1-26","numberformat":"General","text":"Jan-1-26","hasformula":false,"prefix":""}
+{"input":"Jan-1-2026","kind":"text","value":"Jan-1-2026","numberformat":"General","text":"Jan-1-2026","hasformula":false,"prefix":""}
+{"input":"1/Jan/2026","kind":"number","value":"46023","numberformat":"d-mmm-yy","text":"1-Jan-26","hasformula":false,"prefix":""}
+{"input":"1 Jan, 2026","kind":"text","value":"1 Jan, 2026","numberformat":"General","text":"1 Jan, 2026","hasformula":false,"prefix":""}
+{"input":"Jan,1,2026","kind":"text","value":"Jan,1,2026","numberformat":"General","text":"Jan,1,2026","hasformula":false,"prefix":""}
+{"input":"1 jan 26","kind":"number","value":"46023","numberformat":"d-mmm-yy","text":"1-Jan-26","hasformula":false,"prefix":""}
+{"input":"1 January","kind":"number","value":"46023","numberformat":"d-mmm","text":"1-Jan","hasformula":false,"prefix":""}
+{"input":"Jan 1 1:00","kind":"number","value":"46023.041666666664","numberformat":"m/d/yyyy h:mm","text":"########","hasformula":false,"prefix":""}
+{"input":"2026-01-02 1:00 PM","kind":"number","value":"46024.541666666664","numberformat":"m/d/yyyy h:mm","text":"########","hasformula":false,"prefix":""}
+{"input":"2026-1-2 25:00","kind":"number","value":"46025.041666666664","numberformat":"General","text":"46025.04","hasformula":false,"prefix":""}
+{"input":"1/2 13:00","kind":"number","value":"46024.541666666664","numberformat":"m/d/yyyy h:mm","text":"########","hasformula":false,"prefix":""}
+{"input":"1/2/26 13:00:00","kind":"number","value":"46024.541666666664","numberformat":"m/d/yyyy h:mm","text":"########","hasformula":false,"prefix":""}
+{"input":"Jan 2 13:00","kind":"number","value":"46024.541666666664","numberformat":"m/d/yyyy h:mm","text":"########","hasformula":false,"prefix":""}
+{"input":"13:00 1/2/2026","kind":"number","value":"46024.541666666664","numberformat":"m/d/yyyy h:mm","text":"########","hasformula":false,"prefix":""}
+{"input":"1/2/2026 13:00:00.5","kind":"number","value":"46024.541672453706","numberformat":"mm:ss.0","text":"00:00.5","hasformula":false,"prefix":""}
+{"input":"Jan 2, 2026 1:00","kind":"number","value":"46024.041666666664","numberformat":"m/d/yyyy h:mm","text":"########","hasformula":false,"prefix":""}
+{"input":"$5.5","kind":"number","value":"5.5","numberformat":"$#,##0.00_);[Red]($#,##0.00)","text":"$5.50 ","hasformula":false,"prefix":""}
+{"input":"$5.50","kind":"number","value":"5.5","numberformat":"$#,##0.00_);[Red]($#,##0.00)","text":"$5.50 ","hasformula":false,"prefix":""}
+{"input":"$5.0","kind":"number","value":"5","numberformat":"$#,##0.00_);[Red]($#,##0.00)","text":"$5.00 ","hasformula":false,"prefix":""}
+{"input":"$1,234","kind":"number","value":"1234","numberformat":"$#,##0_);[Red]($#,##0)","text":"$1,234 ","hasformula":false,"prefix":""}
+{"input":"$1,23","kind":"text","value":"$1,23","numberformat":"General","text":"$1,23","hasformula":false,"prefix":""}
+{"input":"($1,234.50)","kind":"number","value":"-1234.5","numberformat":"$#,##0.00_);[Red]($#,##0.00)","text":"########","hasformula":false,"prefix":""}
+{"input":"($5","kind":"text","value":"($5","numberformat":"General","text":"($5","hasformula":false,"prefix":""}
+{"input":"$5)","kind":"text","value":"$5)","numberformat":"General","text":"$5)","hasformula":false,"prefix":""}
+{"input":"-($5)","kind":"text","value":"-($5)","numberformat":"General","text":"-($5)","hasformula":false,"prefix":""}
+{"input":"$-5.5","kind":"number","value":"-5.5","numberformat":"$#,##0.00_);[Red]($#,##0.00)","text":"($5.50)","hasformula":false,"prefix":""}
+{"input":"-$5.5","kind":"number","value":"-5.5","numberformat":"$#,##0.00_);[Red]($#,##0.00)","text":"($5.50)","hasformula":false,"prefix":""}
+{"input":"$ -5","kind":"number","value":"-5","numberformat":"$#,##0_);[Red]($#,##0)","text":"($5)","hasformula":false,"prefix":""}
+{"input":"- $5","kind":"number","value":"-5","numberformat":"$#,##0_);[Red]($#,##0)","text":"($5)","hasformula":false,"prefix":""}
+{"input":"$+5","kind":"number","value":"5","numberformat":"$#,##0_);[Red]($#,##0)","text":"$5 ","hasformula":false,"prefix":""}
+{"input":"+$5","kind":"number","value":"5","numberformat":"$#,##0_);[Red]($#,##0)","text":"$5 ","hasformula":false,"prefix":""}
+{"input":"$5 ","kind":"number","value":"5","numberformat":"$#,##0_);[Red]($#,##0)","text":"$5 ","hasformula":false,"prefix":""}
+{"input":"$ 5.0e1","kind":"number","value":"50","numberformat":"0.00E+00","text":"5.00E+01","hasformula":false,"prefix":""}
+{"input":"$((5))","kind":"text","value":"$((5))","numberformat":"General","text":"$((5))","hasformula":false,"prefix":""}
+{"input":"€-5","kind":"number","value":"-5","numberformat":"General","text":"-5","hasformula":false,"prefix":""}
+{"input":"-€5","kind":"number","value":"-5","numberformat":"General","text":"-5","hasformula":false,"prefix":""}
+{"input":"(€5)","kind":"number","value":"-5","numberformat":"General","text":"-5","hasformula":false,"prefix":""}
+{"input":"€(5)","kind":"number","value":"-5","numberformat":"General","text":"-5","hasformula":false,"prefix":""}
+{"input":"€5%","kind":"text","value":"€5%","numberformat":"General","text":"€5%","hasformula":false,"prefix":""}
+{"input":"€ 5","kind":"number","value":"5","numberformat":"General","text":"5","hasformula":false,"prefix":""}
+{"input":"5 €","kind":"number","value":"5","numberformat":"General","text":"5","hasformula":false,"prefix":""}
+{"input":"5€ ","kind":"number","value":"5","numberformat":"General","text":"5","hasformula":false,"prefix":""}
+{"input":"€1e3","kind":"number","value":"1000","numberformat":"0.00E+00","text":"1.00E+03","hasformula":false,"prefix":""}
+{"input":"€ 1,000","kind":"number","value":"1000","numberformat":"General","text":"1000","hasformula":false,"prefix":""}
+{"input":"1,000€","kind":"number","value":"1000","numberformat":"General","text":"1000","hasformula":false,"prefix":""}
+{"input":"€$5","kind":"text","value":"€$5","numberformat":"General","text":"€$5","hasformula":false,"prefix":""}
+{"input":"$€5","kind":"text","value":"$€5","numberformat":"General","text":"$€5","hasformula":false,"prefix":""}
+{"input":"5.5%","kind":"number","value":"0.055","numberformat":"0.00%","text":"5.50%","hasformula":false,"prefix":""}
+{"input":"5.0%","kind":"number","value":"0.05","numberformat":"0.00%","text":"5.00%","hasformula":false,"prefix":""}
+{"input":".5%","kind":"number","value":"0.005","numberformat":"0.00%","text":"0.50%","hasformula":false,"prefix":""}
+{"input":"5.%","kind":"number","value":"0.05","numberformat":"0.00%","text":"5.00%","hasformula":false,"prefix":""}
+{"input":"-.5%","kind":"number","value":"-0.005","numberformat":"0.00%","text":"-0.50%","hasformula":false,"prefix":""}
+{"input":"1e2%","kind":"number","value":"1","numberformat":"0.00E+00","text":"1.00E+00","hasformula":false,"prefix":""}
+{"input":"1,000.5%","kind":"number","value":"10.005","numberformat":"0.00%","text":"1000.50%","hasformula":false,"prefix":""}
+{"input":"$5.5%","kind":"text","value":"$5.5%","numberformat":"General","text":"$5.5%","hasformula":false,"prefix":""}
+{"input":"50 %","kind":"number","value":"0.5","numberformat":"0%","text":"50%","hasformula":false,"prefix":""}
+{"input":"50% ","kind":"number","value":"0.5","numberformat":"0%","text":"50%","hasformula":false,"prefix":""}
+{"input":"% 5","kind":"number","value":"0.05","numberformat":"0%","text":"5%","hasformula":false,"prefix":""}
+{"input":"%-5","kind":"number","value":"-0.05","numberformat":"0%","text":"-5%","hasformula":false,"prefix":""}
+{"input":"-%5","kind":"number","value":"-0.05","numberformat":"0%","text":"-5%","hasformula":false,"prefix":""}
+{"input":"5%.","kind":"text","value":"5%.","numberformat":"General","text":"5%.","hasformula":false,"prefix":""}
+{"input":"1e-3%","kind":"number","value":"1E-05","numberformat":"0.00E+00","text":"1.00E-05","hasformula":false,"prefix":""}
+{"input":"1e5 ","kind":"number","value":"100000","numberformat":"0.00E+00","text":"1.00E+05","hasformula":false,"prefix":""}
+{"input":"1 e5","kind":"text","value":"1 e5","numberformat":"General","text":"1 e5","hasformula":false,"prefix":""}
+{"input":"1e 5","kind":"text","value":"1e 5","numberformat":"General","text":"1e 5","hasformula":false,"prefix":""}
+{"input":"1E+05","kind":"number","value":"100000","numberformat":"0.00E+00","text":"1.00E+05","hasformula":false,"prefix":""}
+{"input":"1e+","kind":"text","value":"1e+","numberformat":"General","text":"1e+","hasformula":false,"prefix":""}
+{"input":"1e-","kind":"text","value":"1e-","numberformat":"General","text":"1e-","hasformula":false,"prefix":""}
+{"input":"0e5","kind":"number","value":"0","numberformat":"0.00E+00","text":"0.00E+00","hasformula":false,"prefix":""}
+{"input":"0e0","kind":"number","value":"0","numberformat":"0.00E+00","text":"0.00E+00","hasformula":false,"prefix":""}
+{"input":"-0e5","kind":"number","value":"0","numberformat":"0.00E+00","text":"0.00E+00","hasformula":false,"prefix":""}
+{"input":"00e5","kind":"number","value":"0","numberformat":"0.00E+00","text":"0.00E+00","hasformula":false,"prefix":""}
+{"input":"1,234e2","kind":"number","value":"123400","numberformat":"0.00E+00","text":"1.23E+05","hasformula":false,"prefix":""}
+{"input":"9999:00","kind":"number","value":"416.625","numberformat":"[h]:mm:ss","text":"########","hasformula":false,"prefix":""}
+{"input":"10000:00","kind":"text","value":"10000:00","numberformat":"General","text":"10000:00","hasformula":false,"prefix":""}
+{"input":"32767:00","kind":"text","value":"32767:00","numberformat":"General","text":"32767:00","hasformula":false,"prefix":""}
+{"input":"32768:00","kind":"text","value":"32768:00","numberformat":"General","text":"32768:00","hasformula":false,"prefix":""}
+{"input":"25:70","kind":"text","value":"25:70","numberformat":"General","text":"25:70","hasformula":false,"prefix":""}
+{"input":"1:61 PM","kind":"text","value":"1:61 PM","numberformat":"General","text":"1:61 PM","hasformula":false,"prefix":""}
+{"input":"30 Feb","kind":"text","value":"30 Feb","numberformat":"General","text":"30 Feb","hasformula":false,"prefix":""}
+{"input":"32 Jan","kind":"text","value":"32 Jan","numberformat":"General","text":"32 Jan","hasformula":false,"prefix":""}
+{"input":"99 Jan","kind":"text","value":"99 Jan","numberformat":"General","text":"99 Jan","hasformula":false,"prefix":""}
+{"input":"30 Jan","kind":"number","value":"46052","numberformat":"d-mmm","text":"30-Jan","hasformula":false,"prefix":""}
+{"input":"1 Jan 2026 1:00","kind":"number","value":"46023.041666666664","numberformat":"m/d/yyyy h:mm","text":"########","hasformula":false,"prefix":""}
+{"input":"1:00 1:00","kind":"text","value":"1:00 1:00","numberformat":"General","text":"1:00 1:00","hasformula":false,"prefix":""}
+{"input":"12/12/12 12:12","kind":"number","value":"41255.50833333333","numberformat":"m/d/yyyy h:mm","text":"########","hasformula":false,"prefix":""}
+{"input":"24:00 1/1/2026","kind":"number","value":"46024","numberformat":"General","text":"46024","hasformula":false,"prefix":""}
+{"input":"1:30 PM 1/1/2026","kind":"number","value":"46023.5625","numberformat":"m/d/yyyy h:mm","text":"########","hasformula":false,"prefix":""}
+{"input":"1/1/2026 1:30 PM","kind":"number","value":"46023.5625","numberformat":"m/d/yyyy h:mm","text":"########","hasformula":false,"prefix":""}
+{"input":"10 PM","kind":"number","value":"0.9166666666666666","numberformat":"h:mm AM/PM","text":"10:00 PM","hasformula":false,"prefix":""}
+{"input":"10:30:15.75 PM","kind":"number","value":"0.9376822916666666","numberformat":"mm:ss.0","text":"30:15.8","hasformula":false,"prefix":""}
+{"input":"0:0:0.0004","kind":"number","value":"0","numberformat":"mm:ss.0","text":"00:00.0","hasformula":false,"prefix":""}
+{"input":"0:0:0.0005","kind":"number","value":"1.1574074074074074E-08","numberformat":"mm:ss.0","text":"00:00.0","hasformula":false,"prefix":""}
+{"input":"1:1:1.9999","kind":"number","value":"0.04238425925925926","numberformat":"mm:ss.0","text":"01:02.0","hasformula":false,"prefix":""}
+{"input":"1.5","kind":"number","value":"1.5","numberformat":"General","text":"1.5","hasformula":false,"prefix":""}
+{"input":"1,5","kind":"text","value":"1,5","numberformat":"General","text":"1,5","hasformula":false,"prefix":""}
+{"input":"1/2/2026 ","kind":"number","value":"46024","numberformat":"m/d/yyyy","text":"1/2/2026","hasformula":false,"prefix":""}
+{"input":"  1/2/2026","kind":"text","value":"  1/2/2026","numberformat":"General","text":"  1/2/2026","hasformula":false,"prefix":""}
+{"input":"1/2/2026  1:00  PM","kind":"number","value":"46024.541666666664","numberformat":"m/d/yyyy h:mm","text":"########","hasformula":false,"prefix":""}
+{"input":" 1/2/2026","kind":"text","value":" 1/2/2026","numberformat":"General","text":" 1/2/2026","hasformula":false,"prefix":""}
+{"input":" 13:00","kind":"text","value":" 13:00","numberformat":"General","text":" 13:00","hasformula":false,"prefix":""}
+{"input":"  13:00","kind":"text","value":"  13:00","numberformat":"General","text":"  13:00","hasformula":false,"prefix":""}
+{"input":" Jan 2","kind":"text","value":" Jan 2","numberformat":"General","text":" Jan 2","hasformula":false,"prefix":""}
+{"input":" 1 1/2","kind":"number","value":"1.5","numberformat":"# ?/?","text":"1 1/2","hasformula":false,"prefix":""}
+{"input":"  1 1/2","kind":"number","value":"1.5","numberformat":"# ?/?","text":"1 1/2","hasformula":false,"prefix":""}
+{"input":"  $5","kind":"number","value":"5","numberformat":"$#,##0_);[Red]($#,##0)","text":"$5 ","hasformula":false,"prefix":""}
+{"input":"  50%","kind":"number","value":"0.5","numberformat":"0%","text":"50%","hasformula":false,"prefix":""}
+{"input":"  (5)","kind":"number","value":"-5","numberformat":"General","text":"-5","hasformula":false,"prefix":""}
+{"input":" 1-2","kind":"text","value":" 1-2","numberformat":"General","text":" 1-2","hasformula":false,"prefix":""}
+{"input":"1:00 ","kind":"number","value":"0.041666666666666664","numberformat":"h:mm","text":"1:00","hasformula":false,"prefix":""}
+{"input":" 1:00 PM","kind":"text","value":" 1:00 PM","numberformat":"General","text":" 1:00 PM","hasformula":false,"prefix":""}
+{"input":"  1e3","kind":"number","value":"1000","numberformat":"0.00E+00","text":"1.00E+03","hasformula":false,"prefix":""}
+{"input":"Jan2","kind":"number","value":"46024","numberformat":"d-mmm","text":"2-Jan","hasformula":false,"prefix":""}
+{"input":"Jan22","kind":"number","value":"46044","numberformat":"d-mmm","text":"22-Jan","hasformula":false,"prefix":""}
+{"input":"Jan2026","kind":"number","value":"46023","numberformat":"mmm-yy","text":"Jan-26","hasformula":false,"prefix":""}
+{"input":"Dec31","kind":"number","value":"46387","numberformat":"d-mmm","text":"31-Dec","hasformula":false,"prefix":""}
+{"input":"Jan,2","kind":"text","value":"Jan,2","numberformat":"General","text":"Jan,2","hasformula":false,"prefix":""}
+{"input":"Jan.2","kind":"text","value":"Jan.2","numberformat":"General","text":"Jan.2","hasformula":false,"prefix":""}
+{"input":"2Jan2026","kind":"number","value":"46024","numberformat":"d-mmm-yy","text":"2-Jan-26","hasformula":false,"prefix":""}
+{"input":"2Jan26","kind":"number","value":"46024","numberformat":"d-mmm-yy","text":"2-Jan-26","hasformula":false,"prefix":""}
+{"input":"Jan2,2026","kind":"text","value":"Jan2,2026","numberformat":"General","text":"Jan2,2026","hasformula":false,"prefix":""}
+{"input":"Jan2, 2026","kind":"number","value":"46024","numberformat":"d-mmm-yy","text":"2-Jan-26","hasformula":false,"prefix":""}
+{"input":"2-Jan2026","kind":"number","value":"46024","numberformat":"d-mmm-yy","text":"2-Jan-26","hasformula":false,"prefix":""}
+{"input":"Jan 2 ,2026","kind":"text","value":"Jan 2 ,2026","numberformat":"General","text":"Jan 2 ,2026","hasformula":false,"prefix":""}
+{"input":"Jan  2","kind":"number","value":"46024","numberformat":"d-mmm","text":"2-Jan","hasformula":false,"prefix":""}
+{"input":"Jan 2  ","kind":"number","value":"46024","numberformat":"d-mmm","text":"2-Jan","hasformula":false,"prefix":""}
+{"input":"2  Jan","kind":"number","value":"46024","numberformat":"d-mmm","text":"2-Jan","hasformula":false,"prefix":""}
+{"input":"Jan-","kind":"text","value":"Jan-","numberformat":"General","text":"Jan-","hasformula":false,"prefix":""}
+{"input":"-Jan","kind":"text","value":"-Jan","numberformat":"General","text":"-Jan","hasformula":false,"prefix":""}
+{"input":"Jan/2","kind":"number","value":"46024","numberformat":"d-mmm","text":"2-Jan","hasformula":false,"prefix":""}
+{"input":"Jan/2/2026","kind":"text","value":"Jan/2/2026","numberformat":"General","text":"Jan/2/2026","hasformula":false,"prefix":""}
+{"input":"2/Jan","kind":"number","value":"46024","numberformat":"d-mmm","text":"2-Jan","hasformula":false,"prefix":""}
+{"input":"Sept2","kind":"number","value":"46267","numberformat":"d-mmm","text":"2-Sep","hasformula":false,"prefix":""}
+{"input":"sep 2026","kind":"number","value":"46266","numberformat":"mmm-yy","text":"Sep-26","hasformula":false,"prefix":""}
+{"input":"Sept 2026","kind":"number","value":"46266","numberformat":"mmm-yy","text":"Sep-26","hasformula":false,"prefix":""}
+{"input":"Sept 2, 2026","kind":"number","value":"46267","numberformat":"d-mmm-yy","text":"2-Sep-26","hasformula":false,"prefix":""}
+{"input":"may2026","kind":"number","value":"46143","numberformat":"mmm-yy","text":"May-26","hasformula":false,"prefix":""}
+{"input":"5may2026","kind":"number","value":"46147","numberformat":"d-mmm-yy","text":"5-May-26","hasformula":false,"prefix":""}
+{"input":"5may26","kind":"number","value":"46147","numberformat":"d-mmm-yy","text":"5-May-26","hasformula":false,"prefix":""}
+{"input":"5 may 26","kind":"number","value":"46147","numberformat":"d-mmm-yy","text":"5-May-26","hasformula":false,"prefix":""}
+{"input":"5-may-2026","kind":"number","value":"46147","numberformat":"d-mmm-yy","text":"5-May-26","hasformula":false,"prefix":""}
+{"input":"5/may/26","kind":"number","value":"46147","numberformat":"d-mmm-yy","text":"5-May-26","hasformula":false,"prefix":""}
+{"input":"may 5, 26","kind":"number","value":"46147","numberformat":"d-mmm-yy","text":"5-May-26","hasformula":false,"prefix":""}
+{"input":"May 5th","kind":"text","value":"May 5th","numberformat":"General","text":"May 5th","hasformula":false,"prefix":""}
+{"input":"MAY5","kind":"number","value":"46147","numberformat":"d-mmm","text":"5-May","hasformula":false,"prefix":""}
+{"input":"january2","kind":"number","value":"46024","numberformat":"d-mmm","text":"2-Jan","hasformula":false,"prefix":""}
+{"input":"Janu 2","kind":"number","value":"46024","numberformat":"d-mmm","text":"2-Jan","hasformula":false,"prefix":""}
+{"input":"Janua 2","kind":"number","value":"46024","numberformat":"d-mmm","text":"2-Jan","hasformula":false,"prefix":""}
+{"input":"Janary 2","kind":"text","value":"Janary 2","numberformat":"General","text":"Janary 2","hasformula":false,"prefix":""}
+{"input":"Jan 2,2026","kind":"text","value":"Jan 2,2026","numberformat":"General","text":"Jan 2,2026","hasformula":false,"prefix":""}
+{"input":"Jan 2,  2026","kind":"number","value":"46024","numberformat":"d-mmm-yy","text":"2-Jan-26","hasformula":false,"prefix":""}
+{"input":"Jan 2 , 2026","kind":"number","value":"46024","numberformat":"d-mmm-yy","text":"2-Jan-26","hasformula":false,"prefix":""}
+{"input":"Jan2,  2026","kind":"number","value":"46024","numberformat":"d-mmm-yy","text":"2-Jan-26","hasformula":false,"prefix":""}
+{"input":"2 Jan, 2026","kind":"text","value":"2 Jan, 2026","numberformat":"General","text":"2 Jan, 2026","hasformula":false,"prefix":""}
+{"input":"Jan 2, 2026 ","kind":"number","value":"46024","numberformat":"d-mmm-yy","text":"2-Jan-26","hasformula":false,"prefix":""}
+{"input":"Jan 2 1:00 PM","kind":"number","value":"46024.541666666664","numberformat":"m/d/yyyy h:mm","text":"########","hasformula":false,"prefix":""}
+{"input":"1:00 PM Jan 2","kind":"number","value":"46024.541666666664","numberformat":"m/d/yyyy h:mm","text":"########","hasformula":false,"prefix":""}
+{"input":"1:00 PM 1/2/2026","kind":"number","value":"46024.541666666664","numberformat":"m/d/yyyy h:mm","text":"########","hasformula":false,"prefix":""}
+{"input":"Jan2 1:00","kind":"number","value":"46024.041666666664","numberformat":"m/d/yyyy h:mm","text":"########","hasformula":false,"prefix":""}
+{"input":"1/2 1:00 PM","kind":"number","value":"46024.541666666664","numberformat":"m/d/yyyy h:mm","text":"########","hasformula":false,"prefix":""}
+{"input":"10/23/2026 6:00 PM","kind":"number","value":"46318.75","numberformat":"m/d/yyyy h:mm","text":"########","hasformula":false,"prefix":""}
