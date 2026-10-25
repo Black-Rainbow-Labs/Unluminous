@@ -425,8 +425,20 @@ impl<'a> Writer<'a> {
 
     /// The names, with a hidden `_xlnm._FilterDatabase` for each sheet that has a filter.
     fn defined_names(&self) -> Vec<DefinedName> {
-        let mut names: Vec<DefinedName> =
-            self.book.names.iter().filter(|n| n.name != "_xlnm._FilterDatabase").cloned().collect();
+        // A sheet with filter buttons gets its `_FilterDatabase` from the filter; one with an Advanced Filter
+        // keeps the name it was given, since nothing else says where its list is.
+        let mut names: Vec<DefinedName> = self
+            .book
+            .names
+            .iter()
+            .filter(|n| {
+                n.name != "_xlnm._FilterDatabase"
+                    || n.scope
+                        .and_then(|s| self.book.sheets.get(s))
+                        .is_none_or(|s| s.filter.is_none())
+            })
+            .cloned()
+            .collect();
         for (i, sheet) in self.book.sheets.iter().enumerate() {
             if let Some(filter) = &sheet.filter {
                 let range = filter.range;
@@ -1032,6 +1044,34 @@ pub fn number_text(n: f64) -> String {
     }
 }
 
+/// A number with up to 17 significant digits and no trailing zeros, which is how Excel writes the threshold it
+/// works out for a filter: 4.65 is `4.6500000000000004` and 7.5 is `7.5`.
+pub(crate) fn full_precision(n: f64) -> String {
+    if n == 0.0 || !n.is_finite() {
+        return number_text(n);
+    }
+    let exact = format!("{:.16e}", n);
+    let (mantissa, exponent) = exact.split_once('e').unwrap_or((&exact, "0"));
+    let exponent: i32 = exponent.parse().unwrap_or(0);
+    let negative = mantissa.starts_with('-');
+    let digits: String = mantissa.chars().filter(char::is_ascii_digit).collect();
+    let digits = digits.trim_end_matches('0');
+    let digits = if digits.is_empty() { "0" } else { digits };
+    let point = exponent + 1;
+    let body = if point <= 0 {
+        format!("0.{}{}", "0".repeat((-point) as usize), digits)
+    } else if (point as usize) >= digits.len() {
+        format!("{}{}", digits, "0".repeat(point as usize - digits.len()))
+    } else {
+        format!("{}.{}", &digits[..point as usize], &digits[point as usize..])
+    };
+    if negative {
+        format!("-{body}")
+    } else {
+        body
+    }
+}
+
 /// A shared string item from the XML a rich string was read with, which was an `si` or an `is`.
 fn rich_si(raw: &str) -> String {
     let trimmed = raw.trim();
@@ -1289,7 +1329,7 @@ pub(crate) fn sort_state_xml(sort: &SortState) -> String {
     out
 }
 
-fn auto_filter(filter: &AutoFilter) -> String {
+pub(crate) fn auto_filter(filter: &AutoFilter) -> String {
     let mut out = format!("<autoFilter ref=\"{}\"", filter.range.a1());
     if filter.columns.is_empty() && filter.sort.is_none() {
         out.push_str("/>");
@@ -1297,39 +1337,128 @@ fn auto_filter(filter: &AutoFilter) -> String {
     }
     out.push('>');
     for (col, criteria) in &filter.columns {
-        match criteria {
-            FilterCriteria::Raw(xml) => out.push_str(xml),
-            FilterCriteria::Values { values, blank } => {
-                out.push_str(&format!(
-                    "<filterColumn colId=\"{col}\"><filters{}>",
-                    if *blank { " blank=\"1\"" } else { "" }
-                ));
-                for v in values {
-                    out.push_str(&format!("<filter val=\"{}\"/>", escape(v)));
-                }
-                out.push_str("</filters></filterColumn>");
-            }
-            FilterCriteria::Custom { conditions, and } => {
-                out.push_str(&format!(
-                    "<filterColumn colId=\"{col}\"><customFilters{}>",
-                    if *and { " and=\"1\"" } else { "" }
-                ));
-                for (op, v) in conditions {
-                    out.push_str(&format!(
-                        "<customFilter operator=\"{}\" val=\"{}\"/>",
-                        escape(op),
-                        escape(v)
-                    ));
-                }
-                out.push_str("</customFilters></filterColumn>");
-            }
-        }
+        out.push_str(&filter_column_xml(*col, criteria));
     }
     if let Some(sort) = &filter.sort {
         out.push_str(&sort_state_xml(sort));
     }
     out.push_str("</autoFilter>");
     out
+}
+
+/// The `filterColumn` element for one column's criteria.
+pub(crate) fn filter_column_xml(col: u32, criteria: &FilterCriteria) -> String {
+    let number = |n: f64| full_precision(n);
+    let inner = match criteria {
+        FilterCriteria::Raw(xml) => return xml.clone(),
+        FilterCriteria::Values { values, blank } => filters_xml(values, &[], *blank, ""),
+        // A filter that names years, months or days of the date tree is written in an extension, which is
+        // where Excel keeps it.
+        FilterCriteria::Dates { values, groups, blank } => format!(
+            "<extLst><ext uri=\"{DATE_FILTER_URI}\" xmlns:xlrd2=\"{RICHDATA2_NS}\"><xlrd2:filterColumn>{}</xlrd2:filterColumn></ext></extLst>",
+            filters_xml(values, groups, *blank, "xlrd2:")
+        ),
+        // Equal to a word or equal to nothing is how Excel writes "this value or blank": a list of values.
+        FilterCriteria::Custom { conditions, and: false }
+            if conditions.len() == 2
+                && conditions.iter().all(|(op, _)| op == "equal")
+                && conditions.iter().filter(|(_, v)| v.is_empty()).count() == 1 =>
+        {
+            let values: Vec<String> = conditions.iter().filter(|(_, v)| !v.is_empty()).map(|(_, v)| v.clone()).collect();
+            filters_xml(&values, &[], true, "")
+        }
+        FilterCriteria::Custom { conditions, and } => {
+            let mut s = format!("<customFilters{}>", if *and { " and=\"1\"" } else { "" });
+            for (op, v) in conditions {
+                // Equal is the default and Excel leaves the attribute out.
+                if op == "equal" {
+                    s.push_str(&format!("<customFilter val=\"{}\"/>", escape(v)));
+                } else {
+                    s.push_str(&format!(
+                        "<customFilter operator=\"{}\" val=\"{}\"/>",
+                        escape(op),
+                        escape(v)
+                    ));
+                }
+            }
+            s.push_str("</customFilters>");
+            s
+        }
+        FilterCriteria::Top10 { top, percent, value, threshold } => {
+            let mut s = String::from("<top10");
+            if !*top {
+                s.push_str(" top=\"0\"");
+            }
+            if *percent {
+                s.push_str(" percent=\"1\"");
+            }
+            s.push_str(&format!(" val=\"{}\"", number(*value)));
+            if let Some(t) = threshold {
+                s.push_str(&format!(" filterVal=\"{}\"", number(*t)));
+            }
+            s.push_str("/>");
+            s
+        }
+        FilterCriteria::Dynamic { kind, value, max } => {
+            let mut s = format!("<dynamicFilter type=\"{}\"", escape(kind));
+            if let Some(v) = value {
+                s.push_str(&format!(" val=\"{}\"", number(*v)));
+            }
+            if let Some(m) = max {
+                s.push_str(&format!(" maxVal=\"{}\"", number(*m)));
+            }
+            s.push_str("/>");
+            s
+        }
+        FilterCriteria::Color { cell, dxf } => {
+            format!("<colorFilter dxfId=\"{dxf}\"{}/>", if *cell { "" } else { " cellColor=\"0\"" })
+        }
+        FilterCriteria::Icon { set, id } => {
+            // "No icon" has no id.
+            let id = if (*id as i64) < 0 { String::new() } else { format!(" iconId=\"{id}\"") };
+            format!("<iconFilter iconSet=\"{}\"{id}/>", escape(set))
+        }
+    };
+    format!("<filterColumn colId=\"{col}\">{inner}</filterColumn>")
+}
+
+const DATE_FILTER_URI: &str = "{1AD28BCE-077C-4C59-8B6E-1921CE8616D4}";
+pub(crate) const RICHDATA2_NS: &str =
+    "http://schemas.microsoft.com/office/spreadsheetml/2017/richdata2";
+
+fn filters_xml(values: &[String], groups: &[DateGroup], blank: bool, prefix: &str) -> String {
+    let mut s = format!("<{prefix}filters{}>", if blank { " blank=\"1\"" } else { "" });
+    // The values are in the order the filter menu lists them: numbers from the smallest, then text.
+    let mut values: Vec<&String> = values.iter().collect();
+    values.sort_by(|a, b| match (a.parse::<f64>(), b.parse::<f64>()) {
+        (Ok(x), Ok(y)) => x.partial_cmp(&y).unwrap_or(std::cmp::Ordering::Equal),
+        (Ok(_), Err(_)) => std::cmp::Ordering::Less,
+        (Err(_), Ok(_)) => std::cmp::Ordering::Greater,
+        (Err(_), Err(_)) => crate::edit::datatools::collate::compare(a, b, false),
+    });
+    for v in values {
+        s.push_str(&format!("<{prefix}filter val=\"{}\"/>", escape(v)));
+    }
+    // The newest year comes first, then the months of it, then the days of the month.
+    let mut groups: Vec<&DateGroup> = groups.iter().collect();
+    groups.sort_by_key(|g| (std::cmp::Reverse(g.year), g.month, g.day));
+    for g in groups {
+        s.push_str(&format!("<{prefix}dateGroupItem year=\"{}\"", g.year));
+        for (name, part) in [
+            ("month", g.month),
+            ("day", g.day),
+            ("hour", g.hour),
+            ("minute", g.minute),
+            ("second", g.second),
+        ] {
+            if let Some(p) = part {
+                s.push_str(&format!(" {name}=\"{p}\""));
+            }
+        }
+        s.push_str(&format!(" dateTimeGrouping=\"{}\"/>", g.grouping.name()));
+    }
+    s.push_str(&format!("</{prefix}filters>"));
+    s
 }
 
 /// The worksheet's `extLst`: the extensions that were kept, with the conditional formats' extension added.
