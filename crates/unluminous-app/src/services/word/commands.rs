@@ -1820,7 +1820,7 @@ fn properties(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
 /// `protect`: what protects the document; `protect password <password>|none` encrypts it when saved,
 /// `protect modify <password>|none` sets Password to Modify, `protect restrict <readOnly|comments|
 /// trackedChanges|forms> <password>` is Restrict Editing, and `protect stop <password>` ends it.
-fn protect(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
+pub(crate) fn protect(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
     let session = &mut doc.session;
     match arguments.first().map(String::as_str) {
         Some("password") => {

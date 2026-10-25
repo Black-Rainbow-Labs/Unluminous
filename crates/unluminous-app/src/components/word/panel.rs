@@ -1898,6 +1898,67 @@ fn review(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<
     });
 }
 
+/// Protect Document: Encrypt with Password, Password to Modify and Restrict Editing, each through the
+/// `protect` verb an agent runs, so the two cannot differ.
+fn protect_document(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
+    heading(ui, "Protect document");
+    let mut asked: Option<Vec<String>> = None;
+    let encrypted = doc.password.is_some();
+    let password = doc.view.fields.entry("protect-password").or_default();
+    ui.horizontal(|ui| {
+        ui.label("Password");
+        ui.add(egui::TextEdit::singleline(password).password(true).desired_width(150.0));
+    });
+    let password = password.clone();
+    ui.horizontal_wrapped(|ui| {
+        let encrypt = if encrypted { "Stop encrypting" } else { "Encrypt with password" };
+        if ui.button(encrypt).clicked() {
+            let value = if encrypted { "none".to_owned() } else { password.clone() };
+            asked = Some(vec!["password".into(), value]);
+        }
+        if ui.button("Password to modify").clicked() {
+            asked = Some(vec![
+                "modify".into(),
+                if password.is_empty() { "none".into() } else { password.clone() },
+            ]);
+        }
+    });
+    match doc.session.protection.clone() {
+        Some(kind) => {
+            ui.label(format!("Restrict Editing allows {kind}"));
+            if ui.button("Stop protection").clicked() {
+                asked = Some(vec!["stop".into(), password.clone()]);
+            }
+        }
+        None => {
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Restrict editing to");
+                for (label, kind) in [
+                    ("No changes", "readOnly"),
+                    ("Comments", "comments"),
+                    ("Tracked changes", "trackedChanges"),
+                    ("Filling in forms", "forms"),
+                ] {
+                    if ui.button(label).clicked() {
+                        asked = Some(vec!["restrict".into(), kind.into(), password.clone()]);
+                    }
+                }
+            });
+        }
+    }
+    if let Some(arguments) = asked {
+        if arguments.iter().skip(1).any(String::is_empty) {
+            requests.push(Request::Message("Type a password first".into()));
+            return;
+        }
+        doc.view.fields.remove("protect-password");
+        match crate::services::word::commands::protect(doc, &arguments) {
+            Ok(answer) => requests.push(Request::Message(answer.message)),
+            Err(problem) => requests.push(Request::Message(problem)),
+        }
+    }
+}
+
 fn document(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
     deeper(ui, doc, Level::Print);
     heading(ui, "Properties");
@@ -1923,6 +1984,7 @@ fn document(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
             doc.session.modified = true;
         }
     }
+    protect_document(ui, doc, requests);
     heading(ui, "Views");
     actions_row(ui, doc, requests, &["read-mode", "print-layout", "outline-view", "new-window"]);
     heading(ui, "Show");
