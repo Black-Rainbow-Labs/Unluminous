@@ -916,6 +916,42 @@ impl UnluminousApp {
         }
     }
 
+    /// Run one command line from a test the way the control channel runs a request, and hand back
+    /// the channel its answer comes down.
+    ///
+    /// `task-2364`. A command answered at once is already on the channel when this returns. A command
+    /// that holds its answer, such as `editor signature --wait` or `terminal read --wait-for`, is kept
+    /// with the requests from `unluminous-cli`, and the frames the test draws answer it when it is ready
+    /// or when its own deadline passes, so a test waits exactly as a caller over the wire does and
+    /// never depends on a thread answering inside the frame that asked.
+    pub fn start_command_line(
+        &mut self,
+        line: &str,
+        ctx: &egui::Context,
+    ) -> std::sync::mpsc::Receiver<Reply> {
+        let words = split_line(line);
+        let request = match unluminous_cli::parse::parse(&words) {
+            Ok(typed) => match typed.command {
+                Some(command) => Request::new("", &command.wire(), typed.arguments),
+                None => Request::new("", "", Map::new()),
+            },
+            Err(_) => Request::new("", "", Map::new()),
+        };
+        let (pending, answer) = Pending::for_a_test(request);
+        if pending.request.command.is_empty() {
+            // The same refusal `run_command_line` gives, so a test of a refusal reads it the same way.
+            let refusal = self.run_command_line(line, ctx);
+            pending.answer(refusal.unwrap_or_else(|| Reply::failed("", code::USAGE, "no command")));
+            return answer;
+        }
+        let outcome = self.run_cli(&pending.request, ctx);
+        self.settle(pending, outcome);
+        if !self.cli_waiting.is_empty() {
+            ctx.request_repaint();
+        }
+        answer
+    }
+
     /// Wait for the read a held `git status` is waiting on, and answer it, for a test's caller.
     ///
     /// `task-2274` made `git status` read git at the moment it is asked and hold its answer until the

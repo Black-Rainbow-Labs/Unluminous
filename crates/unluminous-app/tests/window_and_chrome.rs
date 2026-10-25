@@ -6737,15 +6737,7 @@ mod setup_dialog {
 
     /// Draw until `done` says so, for a plan or a run arriving from its thread.
     fn until(harness: &mut Harness<'static, UnluminousApp>, done: impl Fn(&UnluminousApp) -> bool) {
-        for _ in 0..400 {
-            if done(harness.state()) {
-                steady(harness);
-                return;
-            }
-            pump(harness);
-            std::thread::sleep(std::time::Duration::from_millis(10));
-        }
-        panic!("the setup dialog never got there");
+        wait_until(harness, "the setup dialog getting there", done);
     }
 
     fn opened(taken: Arc<Mutex<Vec<String>>>) -> Harness<'static, UnluminousApp> {

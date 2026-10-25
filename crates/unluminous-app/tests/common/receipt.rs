@@ -128,6 +128,35 @@ fn forget_old_receipts(folder: &std::path::Path) {
     }
 }
 
+/// Whether libtest was asked to run every test in the binary: no name to filter by, no `--skip`, and
+/// not only the ignored tests or a listing.
+///
+/// `task-2364`. A receipt says the whole binary passed, and it was written by any run of the binary,
+/// so `cargo test --test word -- one_test` left a receipt for all of `word.rs`. A filtered run writes
+/// none now. `tools/window-suite.mjs --run` runs a failed test again on its own and sets
+/// `UNLUMINOUS_RECEIPT_RETRY`, because the rest of that binary has just passed in the same run.
+fn runs_the_whole_binary(mut args: impl Iterator<Item = String>) -> bool {
+    // The options libtest reads a value after.
+    const TAKES_A_VALUE: &[&str] =
+        &["--test-threads", "--format", "--color", "--logfile", "-Z", "--shuffle-seed"];
+    while let Some(arg) = args.next() {
+        if TAKES_A_VALUE.contains(&arg.as_str()) {
+            args.next();
+            continue;
+        }
+        if arg == "--skip" || arg.starts_with("--skip=") {
+            return false;
+        }
+        if matches!(arg.as_str(), "--ignored" | "--list" | "--exact") {
+            return false;
+        }
+        if !arg.starts_with('-') {
+            return false;
+        }
+    }
+    true
+}
+
 /// Write this binary's receipt and arrange for it to be taken away again if anything panics.
 ///
 /// Called from `common::builder`, which every harness in the suite is built through, so a test file
@@ -136,6 +165,11 @@ fn forget_old_receipts(folder: &std::path::Path) {
 pub fn note_this_binary_started() {
     static ONCE: OnceLock<()> = OnceLock::new();
     ONCE.get_or_init(|| {
+        if !runs_the_whole_binary(std::env::args().skip(1))
+            && std::env::var_os("UNLUMINOUS_RECEIPT_RETRY").is_none()
+        {
+            return;
+        }
         let Some(commit) = head() else { return };
         let folder = folder();
         if std::fs::create_dir_all(&folder).is_err() {

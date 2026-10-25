@@ -525,6 +525,10 @@ fn inspect_with_password(path: &Path, password: &str) -> Value {
         }
         if started.elapsed() > INSPECT_LIMIT {
             let _ = child.kill();
+            // The Word that stopped answering is not a child of `pwsh`: COM starts it. `inspect.ps1`
+            // writes its process id beside the report, so it is stopped here rather than left to its
+            // fifteen minute watchdog, which held the next test's open for as long (task-2364).
+            stop_the_word_in(&out);
             panic!(
                 "Word gave no report on {} in {} seconds",
                 path.display(),
@@ -536,6 +540,19 @@ fn inspect_with_password(path: &Path, password: &str) -> Value {
     assert!(status.success(), "inspect.ps1 failed on {}", path.display());
     serde_json::from_str(std::fs::read_to_string(&out).unwrap().trim_start_matches('\u{feff}'))
         .unwrap()
+}
+
+/// Stop the Word `inspect.ps1` started for the report `out`, named by the process id it wrote to
+/// `<out>.pid`, and remove the file.
+fn stop_the_word_in(out: &Path) {
+    let file = PathBuf::from(format!("{}.pid", out.display()));
+    if let Ok(text) = std::fs::read_to_string(&file) {
+        let id = text.trim();
+        if !id.is_empty() && id.chars().all(|c| c.is_ascii_digit()) {
+            let _ = std::process::Command::new("taskkill").args(["/PID", id, "/F"]).output();
+        }
+    }
+    let _ = std::fs::remove_file(&file);
 }
 
 /// Round 2 (task-2359): a text box, a table style, a split table, a wrapped picture, a cross reference,

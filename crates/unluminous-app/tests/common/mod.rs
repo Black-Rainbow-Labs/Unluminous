@@ -125,8 +125,49 @@ pub fn builder_on<State>(render_state: RenderState) -> egui_kittest::HarnessBuil
 /// the folder once and everyone else waits for it and then reads a file nobody is writing.
 pub fn sample_folder() -> std::path::PathBuf {
     turn::take_the_machines_turn();
-    static FOLDER: OnceLock<std::path::PathBuf> = OnceLock::new();
-    FOLDER.get_or_init(build_sample_folder).clone()
+    static FOLDER: OnceLock<(std::path::PathBuf, Vec<String>)> = OnceLock::new();
+    let (folder, built) = FOLDER.get_or_init(|| {
+        let folder = build_sample_folder();
+        let listing = listing_of(&folder);
+        (folder, listing)
+    });
+    // **The sample folder is read only, and this is what says so (`task-2364`).** Every test in a binary
+    // shares it, so a test that writes into it changes what every other test reads: one counted 8
+    // entries against 7 and another failed to copy a file that had gone mid copy, each depending on
+    // when a test beside it wrote. A test that changes a project copies this first, with
+    // `copy_out_of_the_repository`, and a test that broke the rule is named here by its file.
+    let now = listing_of(folder);
+    if &now != built {
+        let added: Vec<&String> = now.iter().filter(|entry| !built.contains(entry)).collect();
+        let gone: Vec<&String> = built.iter().filter(|entry| !now.contains(entry)).collect();
+        panic!(
+            "a test changed the shared sample folder {}, which every test in this binary reads: added \
+             {added:?}, removed {gone:?}. A test that writes into a project works on a copy of it \
+             (`copy_out_of_the_repository`).",
+            folder.display()
+        );
+    }
+    folder.clone()
+}
+
+/// Every file and folder under `root`, as paths relative to it, sorted.
+fn listing_of(root: &std::path::Path) -> Vec<String> {
+    fn walk(root: &std::path::Path, at: &std::path::Path, into: &mut Vec<String>) {
+        let Ok(entries) = std::fs::read_dir(at) else { return };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Ok(relative) = path.strip_prefix(root) {
+                into.push(relative.to_string_lossy().replace('\\', "/"));
+            }
+            if path.is_dir() {
+                walk(root, &path, into);
+            }
+        }
+    }
+    let mut listing = Vec::new();
+    walk(root, root, &mut listing);
+    listing.sort();
+    listing
 }
 
 /// Write the sample folder out. Called once, through [`sample_folder`].
@@ -820,10 +861,13 @@ pub fn run(
     line: &str,
 ) -> unluminous_cli::protocol::Reply {
     let ctx = harness.ctx.clone();
-    let reply = harness
-        .state_mut()
-        .run_command_line(line, &ctx)
-        .unwrap_or_else(|| panic!("`{line}` was not answered on the frame it was asked"));
+    // **Answered the way a request over the wire is (`task-2364`).** A command that holds its answer
+    // until a thread replies used to have to answer on the frame it was asked, so
+    // `editor signature --wait 3000` failed whenever the language server was a frame slower than the
+    // test. The window keeps a held request and its frames answer it when it is ready or when the
+    // command's own deadline passes, so this draws frames until the answer arrives.
+    let answer = harness.state_mut().start_command_line(line, &ctx);
+    let reply = until_answered(harness, line, &answer);
     // The reply's own name rather than the line's, because the reply is what the window dispatched
     // on: a line that would not parse answers with an empty name, which [`note_a_drive`] drops.
     note_a_drive(&reply.command, reply.ok);
@@ -835,6 +879,70 @@ pub fn run(
     // rather than at each call site, and is why [`did_while_waiting`] is now the same function.
     pump(harness);
     reply
+}
+
+/// The longest a test waits for a held command beyond the command's own deadline, which the window
+/// answers with a timeout of its own. This only catches a window that stopped drawing altogether.
+const LONGEST_ANSWER: std::time::Duration = std::time::Duration::from_secs(180);
+
+/// Draw frames until the window answers a command started with `start_command_line`.
+fn until_answered(
+    harness: &mut Harness<'static, UnluminousApp>,
+    line: &str,
+    answer: &std::sync::mpsc::Receiver<unluminous_cli::protocol::Reply>,
+) -> unluminous_cli::protocol::Reply {
+    let deadline = std::time::Instant::now() + LONGEST_ANSWER;
+    loop {
+        match answer.try_recv() {
+            Ok(reply) => return reply,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                panic!("`{line}` was dropped by the window without an answer")
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {}
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "`{line}` was not answered in {} seconds",
+            LONGEST_ANSWER.as_secs()
+        );
+        harness.step();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+/// How long [`wait_until`] waits for something a thread or another process is doing.
+///
+/// A minute, because it is a deadline rather than a delay: a condition that holds returns on the
+/// frame it holds, so a generous figure costs nothing on a quiet machine and is what keeps a loaded
+/// one from failing a test that was only slow.
+pub const LONGEST_WAIT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Draw frames until `done` holds, with a short sleep between them, and panic naming `what` once
+/// [`LONGEST_WAIT`] has passed.
+///
+/// `task-2364`. The loops that waited for a thread counted frames or tries, such as `for _ in 0..800`
+/// with ten milliseconds between, which is a deadline of about eight seconds on a quiet machine and
+/// whatever the scheduler allows on a busy one. A wait is a deadline in time and a condition, and this
+/// is the one every test that waits on a thread, a language server, a kernel or a folder watch uses.
+pub fn wait_until(
+    harness: &mut Harness<'static, UnluminousApp>,
+    what: &str,
+    mut done: impl FnMut(&UnluminousApp) -> bool,
+) {
+    let deadline = std::time::Instant::now() + LONGEST_WAIT;
+    loop {
+        if done(harness.state()) {
+            steady(harness);
+            return;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "{what} did not happen in {} seconds",
+            LONGEST_WAIT.as_secs()
+        );
+        pump(harness);
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
 }
 
 /// The same, insisting it worked.

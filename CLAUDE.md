@@ -6893,6 +6893,36 @@ Tests must not read or write the settings of the person running them. `Unluminou
 released binary calls `load_settings` and a test that wants a store calls `use_store` with a folder of its
 own.
 
+### A test fails because of the code, never because of the machine (`task-2364`)
+
+`tasks/task-2364-test-strategy-tdd.md` is the design and the measurements. task-2359 lost hours to failures
+that had nothing to do with its change, and each one sent it round a 40 minute window suite or a 35 minute
+release again. The rules:
+
+- **Run the window suite with the runner**: `pwsh tools/capped.ps1 node tools/window-suite.mjs --run`. It
+  gives the run a temporary folder of its own (removed at the end), runs a failed test once more on its own,
+  and records the run. `--jobs 3` builds once and runs three binaries at a time, each in a folder of its own.
+  `--only word,git`, `--repeat N` and `--load N` (that many busy threads beside it) are for measuring.
+- **Every test writes only in a folder of its own.** `sample_folder()` is read only, and it panics naming the
+  file when a test has added or removed one. A test that changes a project copies it first
+  (`copy_out_of_the_repository`, `fixture(name)`).
+- **Nothing depends on `%TEMP%`.** `tools/test.mjs` and the runner point `TMP`, `TEMP` and `TMPDIR` at a run
+  folder under `%TEMP%\unluminous-tests`, so a test, Python and PowerShell all write there, and a run removes
+  its own folder. `node tools/clean-test-leftovers.mjs [--delete]` is for what earlier runs left.
+- **A wait is a deadline and a condition**: `common::wait_until`, a minute. Never a count of frames. A command
+  that holds its answer (`--wait`, `--wait-for`) is driven with `did()`, which waits for the window's answer
+  the way the control channel does (`UnluminousApp::start_command_line`).
+- **A test that drives another program stops it when it gives up.** `word_live` stops the Word whose process
+  id `inspect.ps1` writes, and `inspect.ps1` clears Word's Resiliency records for its folder.
+- **One `cargo test` a crate in the gate**, so one failure costs the other crates nothing, and the Word and
+  kernel tests run after the other lanes, on a quiet machine.
+- **A flake is retried once and recorded.** A test that fails and then passes on its own does not stop a
+  release, and is written to `_agent_output/test-runs/flakes.jsonl` in the main checkout. `node tools/flakes.mjs`
+  names them; the release prints it. **A test named twice in 14 days gets a ticket**, and is fixed or marked
+  `#[ignore = "quarantined: task-N <what fails>"]` until it is.
+- **A receipt is only written by a run of the whole binary**, or by the runner's retry. Other crates'
+  `tests/*.rs` do not make a receipt stale; test fixtures and `sample-diagrams/` do.
+
 ### Driving the real window must never leave a key held down
 
 Layer 4 is the one that reaches outside the process. A script that drives the real window presses a

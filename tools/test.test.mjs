@@ -7,6 +7,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { closureOf, isInput, unitHash } from './test.mjs';
+import { readLibtest, targetOf } from './test-runs.mjs';
 import { versionless, workspaceMembersInLock } from './versionless.mjs';
 
 const LOCK = [
@@ -88,4 +89,42 @@ test('a change to unluminous-core changes the hash of every crate that reads it 
   assert.notEqual(after['unluminous-lsp'], before['unluminous-lsp']);
   assert.notEqual(after['unluminous-app'], before['unluminous-app']);
   assert.equal(after['unluminous-git'], before['unluminous-git']);
+});
+
+test("another crate's integration tests are not an input of a crate that depends on it, its fixtures are", () => {
+  const folders = closureOf(byName.get('unluminous-lsp'), byName).map((crate) => crate.folder);
+  const own = 'crates/unluminous-lsp/';
+  assert.ok(!isInput('crates/unluminous-core/tests/parse.rs', folders, false, own));
+  assert.ok(isInput('crates/unluminous-core/tests/fixtures/sample.rs', folders, false, own));
+  assert.ok(isInput('crates/unluminous-core/tests/fixtures/doc.md', folders, false, own));
+  assert.ok(isInput('crates/unluminous-lsp/tests/scripted.rs', folders, false, own));
+  assert.ok(!isInput('crates/unluminous-word/tests/word_live.rs', [], true, 'crates/unluminous-app/'));
+  assert.ok(isInput('crates/unluminous-word/tests/fixtures/long.docx', [], true, 'crates/unluminous-app/'));
+});
+
+test("unluminous-app's lib and bins do not read the window suite, and its clippy does", () => {
+  assert.ok(!isInput('crates/unluminous-app/tests/word.rs', [], true, 'crates/unluminous-app/', false));
+  assert.ok(isInput('crates/unluminous-app/tests/word.rs', [], true, 'crates/unluminous-app/', true));
+  assert.ok(isInput('crates/unluminous-app/tests/fixtures/realm/space.conf', [], true, 'crates/unluminous-app/', false));
+});
+
+test('libtest output is read into binaries, their failures and a binary that never finished', () => {
+  const output = [
+    '     Running unittests src\\lib.rs (target\\debug\\deps\\unluminous_core-0123456789abcdef.exe)',
+    'test a::one ... ok',
+    'test a::two ... FAILED',
+    'test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.50s',
+    '     Running tests\\kernel.rs (target\\debug\\deps\\kernel-0123456789abcdef.exe)',
+    'test starts ... FAILED',
+    '   Doc-tests unluminous_core',
+    'test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.25s',
+  ].join('\r\n');
+  const binaries = readLibtest(output);
+  assert.equal(binaries.length, 3);
+  assert.deepEqual(binaries[0].failed, ['a::two']);
+  assert.equal(binaries[0].result.seconds, 0.5);
+  assert.deepEqual(targetOf(binaries[0]), ['--lib']);
+  assert.equal(binaries[1].crashed, true);
+  assert.deepEqual(targetOf(binaries[1]), ['--test', 'kernel']);
+  assert.equal(binaries[2].doc, true);
 });

@@ -47,12 +47,13 @@
 // Run it through `pwsh tools/capped.ps1 node tools/test.mjs` from a shell, or let `tools/release.ps1`
 // run it, so it stays on the 80% processor share.
 
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { versionless } from './versionless.mjs';
+import { appendRecord, cargoWithOutput, endRunTemp, readLibtest, recordsFolder, retryFailures, startRunTemp } from './test-runs.mjs';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const APP = 'unluminous-app';
@@ -85,7 +86,11 @@ const NEVER_READ_BY_A_BUILD = [
 // them. `unluminous-jupyter`'s `tests/kernel.rs` starts real Python and Rust kernels: measured on
 // task-2240 it was 119 s of a 168 s workspace test run, and 182 s of a 202 s one with nothing to
 // compile, with the machine at a mean of 32% to 37% the whole time.
-const WAITS_ON_OTHER_PROGRAMS = ['unluminous-jupyter'];
+//
+// `unluminous-word` joined it in `task-2364`: its `word_live` and `convert` tests drive Microsoft Word
+// through COM, one Word at a time, and under the release's parallel load one Word stopped answering and
+// hung the release for an hour, twice (task-2359).
+const WAITS_ON_OTHER_PROGRAMS = ['unluminous-jupyter', 'unluminous-word'];
 
 // What every compile reads, whichever crate it is.
 const READ_BY_EVERY_BUILD = [
@@ -195,11 +200,42 @@ function versionlessText(file, members) {
  * @param file - the path, relative to the repository
  * @param folders - the folders of the unit's crate closure
  * @param isApp - whether the unit is `unluminous-app`
+ * @param own - the folder of the unit's own crate
+ * @param ownTestsBuilt - whether the unit builds its own crate's integration tests
  */
-function isInput(file, folders, isApp) {
+function isInput(file, folders, isApp, own = null, ownTestsBuilt = true) {
   if (READ_BY_EVERY_BUILD.includes(file)) return false;
+  if (isTestCodeNotBuilt(file, own, folders, ownTestsBuilt)) return false;
   if (isApp) return !NEVER_READ_BY_A_BUILD.some((skip) => (skip.endsWith('/') ? file.startsWith(skip) : file === skip));
   return folders.some((folder) => file.startsWith(folder));
+}
+
+/**
+ * Whether a file is the Rust source of integration tests, benchmarks or examples the unit does not build.
+ *
+ * `task-2364`. Those files are compiled into that crate's own test binaries and into nothing a
+ * dependent crate builds, so a change to `crates/unluminous-word/tests/word_live.rs` cannot change
+ * what `unluminous-app`'s tests see, and it used to send them round again. Only the `.rs` files are
+ * left out: `unluminous-app`'s tests read other crates' fixtures (`unluminous-word/tests/fixtures`,
+ * `unluminous-chat/tests/streams`), and those stay inputs. `unluminous-app`'s unit runs `--lib --bins`,
+ * so its own `tests/*.rs`, which are the window suite, are not that unit's inputs either: the window
+ * suite has receipts of its own (`tools/window-suite.mjs`). Clippy builds `--all-targets`, so a clippy
+ * unit's own tests are always its inputs.
+ * @param file - the path, relative to the repository
+ * @param own - the folder of the unit's own crate, whose tests are always its inputs
+ * @param folders - the folders of the unit's crate closure, or empty for `unluminous-app`
+ * @param ownTestsBuilt - whether the unit builds its own crate's integration tests
+ */
+function isTestCodeNotBuilt(file, own, folders, ownTestsBuilt) {
+  if (!file.endsWith('.rs')) return false;
+  const match = /^(.*\/)(tests|benches|examples)\//.exec(file);
+  if (!match) return false;
+  // A source file inside a fixture is data a test reads, not a test.
+  if (/\/tests\/(fixtures|streams)\//.test(file)) return false;
+  const crate = match[1];
+  if (own && crate === own && ownTestsBuilt) return false;
+  // Only a workspace crate's folder: a crate's folder is where its `Cargo.toml` is.
+  return crate.startsWith('crates/') || crate === 'unluminous-cli/' || folders.includes(crate);
 }
 
 /**
@@ -213,7 +249,9 @@ function unitHash(unit, blobs, shared) {
   hash.update(`${unit.kind}\n${unit.command.join(' ')}\n${JSON.stringify(unit.environment)}\n`);
   hash.update(shared);
   const folders = unit.closure.map((crate) => crate.folder);
-  const files = [...blobs.keys()].filter((file) => isInput(file, folders, unit.crate === APP)).sort();
+  const own = unit.closure.find((crate) => crate.name === unit.crate)?.folder ?? null;
+  const ownTestsBuilt = !(unit.crate === APP && unit.kind === 'test');
+  const files = [...blobs.keys()].filter((file) => isInput(file, folders, unit.crate === APP, own, ownTestsBuilt)).sort();
   for (const file of files) hash.update(`${file} ${blobs.get(file)}\n`);
   return { hash: hash.digest('hex'), files: files.length };
 }
@@ -287,31 +325,21 @@ function allUnits(crates, kernelOptional = false) {
 }
 
 /**
- * Runs one cargo command with its output on this console, and resolves to its exit code.
- * @param args - the cargo arguments
- * @param environment - variables added to this process's environment
- */
-function cargo(args, environment) {
-  console.log(`\n  cargo ${args.join(' ')}`);
-  return new Promise((resolve) => {
-    const child = spawn('cargo', args, { stdio: 'inherit', env: { ...process.env, ...environment } });
-    child.on('close', (code) => resolve(code ?? 1));
-    child.on('error', () => resolve(1));
-  });
-}
-
-/**
- * The cargo commands for the units that have to run, grouped so that one cargo invocation builds
- * every selected crate together: clippy for every selected crate in one command, the tests of every
- * selected crate but `unluminous-app` in one, and `unluminous-app`'s lib and bins in one, because its
- * target filter cannot be given to the others without dropping their integration tests.
+ * The cargo commands for the units that have to run.
+ *
+ * Clippy for every selected crate is one command. The tests are a build and then **one `cargo test` a
+ * crate** (`task-2364`): every selected crate is compiled together with `--no-run`, and then each crate's
+ * tests run in a command of their own, so a test that fails in one crate leaves every other crate
+ * recorded as passed. Run as one command, one failure left all of them unrecorded, and task-2359's
+ * release ran every crate's tests again because `word_live` had hung once.
  *
  * Clippy builds into a target directory of its own, `<target>/clippy`, so it runs at the same time
  * as the test build instead of waiting for cargo's lock on the shared one. The two never share an
  * artifact: clippy writes metadata and a test build writes code. The crates in
- * `WAITS_ON_OTHER_PROGRAMS` get a third lane and `<target>/waiting`, because cargo holds its lock on a
- * target directory for the whole of `cargo test`, test run included, and their run is minutes of
- * waiting that the other two lanes can use.
+ * `WAITS_ON_OTHER_PROGRAMS` get a third lane and `<target>/waiting`: they are compiled beside the
+ * other two lanes, and their tests **run after the other lanes have finished** (`after: 'others'`),
+ * because they drive Word through COM and start real Python and Rust kernels, and under the release's
+ * parallel load a Word stopped answering and hung the release for an hour twice (task-2359).
  * @param units - the units to run
  * @param manifest - the workspace Cargo.toml
  */
@@ -322,56 +350,105 @@ function commandsFor(units, manifest) {
   const waiting = units.filter((unit) => unit.kind === 'test' && WAITS_ON_OTHER_PROGRAMS.includes(unit.crate));
   const tests = units.filter((unit) => unit.kind === 'test' && unit.crate !== APP && !waiting.includes(unit));
   const app = units.filter((unit) => unit.kind === 'test' && unit.crate === APP);
+  const testRun = (unit) => ({
+    units: [unit],
+    crate: unit.crate,
+    environment: unit.environment,
+    args: ['test', '--manifest-path', manifest, '-p', unit.crate, ...unit.command, '--no-fail-fast'],
+  });
   const groups = [];
   if (waiting.length > 0) {
     groups.push({
       name: waiting.map((unit) => unit.crate).join(', '),
-      units: waiting,
       lane: 'waiting',
-      args: ['test', '--manifest-path', manifest, ...packages(waiting), '--no-fail-fast'],
-      environment: { ...waiting[0].environment, CARGO_TARGET_DIR: path.join(target, 'waiting') },
+      after: 'others',
+      builds: [['test', '--manifest-path', manifest, ...packages(waiting), '--no-run']],
+      runs: waiting.map(testRun),
+      environment: { CARGO_TARGET_DIR: path.join(target, 'waiting') },
     });
   }
   if (clippy.length > 0) {
     groups.push({
       name: 'clippy',
-      units: clippy,
       lane: 'clippy',
-      args: ['clippy', '--manifest-path', manifest, ...packages(clippy), '--all-targets', '--', '-D', 'warnings'],
+      after: null,
+      builds: [],
+      runs: [
+        {
+          units: clippy,
+          crate: null,
+          environment: {},
+          args: ['clippy', '--manifest-path', manifest, ...packages(clippy), '--all-targets', '--', '-D', 'warnings'],
+        },
+      ],
       environment: { CARGO_TARGET_DIR: path.join(target, 'clippy') },
     });
   }
-  if (tests.length > 0) {
+  if (tests.length + app.length > 0) {
+    // `unluminous-app`'s target filter cannot be given to the others without dropping their integration
+    // tests, so its lib and bins are built by a second `--no-run`.
+    const builds = [];
+    if (tests.length > 0) builds.push(['test', '--manifest-path', manifest, ...packages(tests), '--no-run']);
+    if (app.length > 0) builds.push(['test', '--manifest-path', manifest, '-p', APP, '--lib', '--bins', '--no-run']);
     groups.push({
       name: 'tests',
-      units: tests,
       lane: 'test',
-      args: ['test', '--manifest-path', manifest, ...packages(tests), '--no-fail-fast'],
-      environment: { ...tests[0].environment, CARGO_TARGET_DIR: target },
-    });
-  }
-  if (app.length > 0) {
-    groups.push({
-      name: `${APP} lib and bins`,
-      units: app,
-      lane: 'test',
-      args: ['test', '--manifest-path', manifest, '-p', APP, '--lib', '--bins'],
-      environment: { ...app[0].environment, CARGO_TARGET_DIR: target },
+      after: null,
+      builds,
+      runs: [...tests, ...app].map(testRun),
+      environment: { CARGO_TARGET_DIR: target },
     });
   }
   return groups;
 }
 
 /**
- * Runs the groups of one lane one after another, recording each group's units when it passes.
- * @param groups - the groups in this lane
- * @param failed - the names of groups that failed, appended to
+ * Runs one lane: its builds, then, once the lanes it waits for have finished, each of its runs.
+ * A failed test is run once more on its own; one that passes then is a flake, and its crate is
+ * recorded as passed. Everything that ran is added to `context.report`.
+ * @param group - the lane's group from `commandsFor`
+ * @param context - `{ temp, log, commit, report, othersDone }`
  */
-async function runLane(groups, failed) {
-  for (const group of groups) {
-    const code = await cargo(group.args, group.environment);
-    if (code === 0) group.units.forEach(recordPass);
-    else failed.push(`${group.name} (exit ${code})`);
+async function runLane(group, context) {
+  const environment = { ...context.temp.environment, ...group.environment };
+  for (const build of group.builds) {
+    const built = await cargoWithOutput(build, environment, context.log);
+    if (built.code !== 0) {
+      context.report.failed.push(`${group.name}: the build failed (exit ${built.code})`);
+      return;
+    }
+  }
+  if (group.after === 'others') {
+    console.log(`\n  ${group.name}: built, and its tests start once the other lanes have finished.`);
+    await context.othersDone;
+  }
+  for (const run of group.runs) {
+    const started = Date.now();
+    const runEnvironment = { ...environment, ...run.environment };
+    const result = await cargoWithOutput(run.args, runEnvironment, context.log);
+    let passed = result.code === 0;
+    if (!passed && run.crate) {
+      const binaries = readLibtest(result.output);
+      const retried = await retryFailures({
+        repo,
+        crate: run.crate,
+        binaries,
+        manifest: path.join(repo, 'Cargo.toml'),
+        environment: runEnvironment,
+        log: context.log,
+        commit: context.commit,
+      });
+      context.report.flaky.push(...retried.flaky.map((test) => `${run.crate} ${test}`));
+      // No binary read at all is a command that did not get as far as running a test.
+      passed = binaries.length > 0 && retried.stillFailing.length === 0;
+      if (!passed) {
+        context.report.failed.push(...(retried.stillFailing.length > 0 ? retried.stillFailing : [`${run.crate} (exit ${result.code})`]));
+      }
+    } else if (!passed) {
+      context.report.failed.push(`${group.name} (exit ${result.code})`);
+    }
+    context.report.ran.push({ what: run.crate ?? group.name, seconds: Math.round((Date.now() - started) / 100) / 10, passed });
+    if (passed) run.units.forEach(recordPass);
   }
 }
 
@@ -432,17 +509,44 @@ async function main() {
     return;
   }
   if (dryRun) {
-    for (const group of groups) console.log(`\n  would run: cargo ${group.args.join(' ')}`);
+    for (const group of groups) {
+      for (const build of group.builds) console.log(`\n  would build: cargo ${build.join(' ')}`);
+      for (const run of group.runs) console.log(`  would run${group.after ? ' after the other lanes' : ''}: cargo ${run.args.join(' ')}`);
+    }
     return;
   }
 
   const started = Date.now();
-  const failed = [];
-  const lanes = [...new Set(groups.map((group) => group.lane))];
-  await Promise.all(lanes.map((lane) => runLane(groups.filter((group) => group.lane === lane), failed)));
-  const seconds = ((Date.now() - started) / 1000).toFixed(1);
-  if (failed.length > 0) {
-    console.error(`\nFailed after ${seconds} s: ${failed.join(', ')}`);
+  const commit = git(['rev-parse', 'HEAD']).trim();
+  // Every test and every program a test starts writes into this run's own temporary folder, which is
+  // removed when the run ends (`tools/test-runs.mjs`).
+  const temp = startRunTemp('gate');
+  fs.mkdirSync(recordsFolder(repo), { recursive: true });
+  const log = path.join(recordsFolder(repo), `gate-${new Date().toISOString().replace(/[:.]/g, '-')}.log`);
+  const report = { failed: [], flaky: [], ran: [] };
+  let othersFinished;
+  const othersDone = new Promise((resolve) => (othersFinished = resolve));
+  const context = { temp, log, commit, report, othersDone };
+  const first = groups.filter((group) => group.after !== 'others');
+  const last = groups.filter((group) => group.after === 'others');
+  try {
+    await Promise.all([
+      Promise.all(first.map((group) => runLane(group, context))).then(() => othersFinished()),
+      ...last.map((group) => runLane(group, context)),
+    ]);
+  } finally {
+    endRunTemp(temp);
+  }
+  const seconds = Number(((Date.now() - started) / 1000).toFixed(1));
+  appendRecord(repo, 'runs.jsonl', { at: new Date().toISOString(), kind: 'gate', commit, seconds, failed: report.failed, flaky: report.flaky, ran: report.ran, log });
+  for (const flake of report.flaky) console.log(`  failed and then passed on its own: ${flake}`);
+  if (report.flaky.length > 0) {
+    console.log('  Each one is recorded in _agent_output/test-runs/flakes.jsonl, and `node tools/flakes.mjs` names the tests that do this most.');
+  }
+  if (report.failed.length > 0) {
+    console.error(`\nFailed after ${seconds} s:`);
+    for (const failure of report.failed) console.error(`  ${failure}`);
+    console.error(`The whole output: ${log}`);
     process.exit(1);
   }
   console.log(`\nPassed in ${seconds} s: ${toRun.length} of ${units.length} units ran.`);

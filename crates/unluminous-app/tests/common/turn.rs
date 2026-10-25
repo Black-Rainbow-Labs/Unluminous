@@ -20,6 +20,11 @@
 // So a binary takes the machine's turn before it builds a fixture or a window, and holds it until the
 // process ends, when the operating system lets go of the lock whether the binary passed, failed or was
 // killed. A second binary waits, and says which process it is waiting for.
+//
+// **The lock is in the temporary folder the fixtures are built in (`task-2364`).** `tools/window-suite.mjs
+// --run` gives a run, and with `--jobs` each binary in it, a temporary folder of its own that nothing else
+// writes to, so there the lock is private and two runs or two binaries never wait on each other. A
+// `cargo test` typed by hand builds its fixtures in the shared `%TEMP%` and takes the lock there.
 
 use std::io::Write;
 use std::sync::OnceLock;

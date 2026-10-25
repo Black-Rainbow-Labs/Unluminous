@@ -26,10 +26,32 @@ function Send-FontChange {
     [void][WordOracle.Fonts]::SendMessageTimeout([IntPtr]0xffff, 0x001D, [IntPtr]::Zero, [IntPtr]::Zero, 2, 1000, [ref]$result)
 }
 
+# Removes the records Word keeps about documents in one folder, so a document a stopped Word had open
+# does not make the next Word ask a question about it (task-2364). A Word killed while it opens a file
+# lists the file under Resiliency\DisabledItems, and every later open of that path then waits on a dialog
+# nobody can see, which is a test that hangs. Only values whose data names a path under $Folder go.
+function Clear-WordResiliency {
+    param([Parameter(Mandatory)][string]$Folder)
+    $base = 'HKCU:\Software\Microsoft\Office\16.0\Word\Resiliency'
+    if (-not (Test-Path $base)) { return }
+    $needle = $Folder.TrimEnd('\').ToLowerInvariant()
+    foreach ($key in @(Get-ChildItem -Path $base -Recurse -ErrorAction SilentlyContinue)) {
+        foreach ($name in @($key.GetValueNames())) {
+            $value = $key.GetValue($name)
+            $text = if ($value -is [byte[]]) { [Text.Encoding]::Unicode.GetString($value) + [Text.Encoding]::Default.GetString($value) } else { "$value" }
+            if ($text.ToLowerInvariant().Contains($needle)) {
+                Remove-ItemProperty -LiteralPath $key.PSPath -Name $name -ErrorAction SilentlyContinue -Confirm:$false
+            }
+        }
+    }
+}
+
 # Starts Word hidden. Returns @{ App; Pid; Watchdog; Fonts }. Pid is the one new WINWORD process (or $null).
 # A watchdog process force-stops that one pid after $TimeoutSeconds in case a modal dialog hangs a COM call.
+# With -PidFile, the Word's process id is written there, so a caller that gives up waiting (word_live's
+# limit) stops that Word rather than leaving it to the watchdog (task-2364).
 function Start-WordApp {
-    param([int]$TimeoutSeconds = 900)
+    param([int]$TimeoutSeconds = 900, [string]$PidFile = '')
     $fonts = @(Get-CloudFonts | Where-Object { [WordOracle.Fonts]::AddFontResourceW($_) -gt 0 })
     if ($fonts.Count -gt 0) { Send-FontChange }
     $before = @(Get-Process WINWORD -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
@@ -40,6 +62,7 @@ function Start-WordApp {
     $app.DisplayAlerts = 0
     try { $app.Options.SaveNormalPrompt = $false } catch { }
     $watchdog = $null
+    if ($newPid -and $PidFile) { [IO.File]::WriteAllText($PidFile, "$newPid") }
     if ($newPid) {
         $cmd = "Start-Sleep -Seconds $TimeoutSeconds; Stop-Process -Id $newPid -Force -ErrorAction SilentlyContinue"
         $watchdog = Start-Process pwsh -ArgumentList '-NoProfile', '-Command', $cmd -PassThru -WindowStyle Hidden

@@ -370,8 +370,11 @@ $fullPath = (Resolve-Path -LiteralPath $Path).Path
 $script:AskLines = $true
 $outPath = [IO.Path]::GetFullPath($Out)
 $handle = $null
+# Records an earlier, stopped Word left about this folder would make this open wait on a hidden dialog.
+$folder = Split-Path -Parent $fullPath
+Clear-WordResiliency -Folder $folder
 try {
-    $handle = Start-WordApp
+    $handle = Start-WordApp -PidFile "$outPath.pid"
     $word = $handle.App
     try {
         # An encrypted document is opened with its password; Word ignores one given for a document with none.
@@ -389,4 +392,6 @@ try {
     finally { try { $doc.Close(0) } catch { } }
 } finally {
     Stop-WordApp $handle
+    Clear-WordResiliency -Folder $folder
+    Remove-Item -LiteralPath "$outPath.pid" -ErrorAction SilentlyContinue -Confirm:$false
 }

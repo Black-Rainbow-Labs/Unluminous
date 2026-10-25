@@ -222,17 +222,20 @@ fn a_contributed_tab_opens_in_the_editing_area_beside_the_file_tabs() {
     });
     assert_eq!(board["modified"], false, "a plugin tab is never modified");
     // And saving it writes nothing, rather than writing an empty `untitled.md` into the project.
-    let before: Vec<std::path::PathBuf> = std::fs::read_dir(sample_folder())
-        .expect("the sample folder")
+    // Counted in this window's own project (`task-2364`): it used to count `sample_folder()`, which
+    // other tests in this binary open windows on at the same time, and it failed 8 against 7 when one
+    // of them wrote there while this test was between its two counts.
+    let before: Vec<std::path::PathBuf> = std::fs::read_dir(&folder)
+        .expect("the project folder")
         .filter_map(|entry| entry.ok().map(|entry| entry.path()))
         .collect();
     did(&mut harness, "action run save");
     steady(&mut harness);
-    let after: Vec<std::path::PathBuf> = std::fs::read_dir(sample_folder())
-        .expect("the sample folder")
+    let after: Vec<std::path::PathBuf> = std::fs::read_dir(&folder)
+        .expect("the project folder")
         .filter_map(|entry| entry.ok().map(|entry| entry.path()))
         .collect();
-    assert_eq!(before.len(), after.len(), "saving a plugin tab wrote a file");
+    assert_eq!(before, after, "saving a plugin tab wrote a file");
 
     // **`--open` opens and never closes**, whatever is showing: a command named for what it does has to do
     // it. Asking again shows the one that is open rather than opening a second.
