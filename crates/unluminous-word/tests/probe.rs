@@ -98,10 +98,13 @@ fn kerning_probe() {
 #[ignore]
 fn lines_probe() {
     let fonts = common::RealFonts::new();
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/headers.docx");
+    let name = std::env::var("PROBE_FIXTURE").unwrap_or_else(|_| "headers".into());
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/fixtures/{name}.docx"));
     let document = unluminous_word::read::open(&std::fs::read(&path).unwrap()).unwrap();
     let pages = unluminous_word::layout::lay_out(&document, &fonts, Default::default());
-    let target = vec![4u32];
+    let target: Vec<u32> = std::env::var("PROBE_PATH")
+        .map(|p| p.split(',').filter_map(|n| n.parse().ok()).collect())
+        .unwrap_or_else(|_| vec![4]);
     let p = unluminous_word::position::paragraph(
         &document,
         &unluminous_word::position::StoryId::Body,
@@ -162,4 +165,22 @@ fn advances_probe() {
         map.insert(c.to_string(), serde_json::json!(fonts.advance(&c.to_string(), &style)));
     }
     println!("ADVANCES {}", serde_json::Value::Object(map));
+}
+
+/// How wide each of `PROBE_TEXT`'s `|` separated pieces is in Aptos 12 with the real fonts, laid out as
+/// a paragraph of its own on a Letter page with Word's one inch margins.
+#[test]
+#[ignore]
+fn width_probe() {
+    let fonts = common::RealFonts::new();
+    for text in std::env::var("PROBE_TEXT").unwrap().split('|') {
+        let mut session = unluminous_word::session::Session::new(unluminous_word::new::blank());
+        session.type_text(text);
+        let pages = unluminous_word::layout::lay_out(&session.document, &fonts, Default::default());
+        for line in &pages.pages[0].carets {
+            let first = line.stops.first().map_or(0.0, |s| s.1);
+            let last = line.stops.last().map_or(0.0, |s| s.1);
+            println!("{:.2} {:?}", last - first, &text[line.start..line.end.min(text.len())]);
+        }
+    }
 }

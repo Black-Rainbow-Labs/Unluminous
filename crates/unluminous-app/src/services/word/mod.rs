@@ -207,6 +207,11 @@ pub struct View {
     pub marks: bool,
     /// Field codes drawn instead of their results (Alt+F9).
     pub codes: bool,
+    /// The text of a paste waiting for the window to say what else the clipboard holds.
+    pub paste_waiting: Option<(String, unluminous_word::clipboard::PasteAs)>,
+    /// The last paste, for Paste Options: what was pasted, its text, where it started and where the
+    /// caret was left, and how it was pasted.
+    pub pasted: Option<Pasted>,
     /// Underline misspelled and repeated words.
     pub spelling: bool,
     /// The card a right click on an underlined word opens, or F7: the word, and what it could be.
@@ -226,6 +231,9 @@ pub struct View {
     pub reveal: bool,
     /// A press on the pages is selecting.
     pub dragging: bool,
+    /// A press inside the selection is carrying it: on release it moves to where the pointer is, or is
+    /// copied there with Ctrl held, as Word's drag and drop of text does (task-2359, M20).
+    pub carrying: bool,
     /// The last press, for double and triple clicks: when, where, how many.
     pub clicks: (f64, egui::Pos2, u32),
     /// What the panel's fields hold while they are typed in.
@@ -234,6 +242,98 @@ pub struct View {
     pub copied_format: Option<unluminous_word::xml::El>,
     /// The picture textures, by package part.
     pub pictures: std::collections::HashMap<String, Option<egui::TextureHandle>>,
+}
+
+/// The last paste, which Paste Options can paste again another way.
+#[derive(Debug, Clone)]
+pub struct Pasted {
+    pub paragraphs: Vec<unluminous_word::model::Paragraph>,
+    pub text: String,
+    pub at: Pos,
+    pub end: Pos,
+    pub how: unluminous_word::clipboard::PasteAs,
+}
+
+/// Remember a paste that was just made from `paragraphs`, starting at `at`, for Paste Options.
+pub fn remember_the_paste(
+    doc: &mut Doc,
+    paragraphs: Vec<unluminous_word::model::Paragraph>,
+    text: String,
+    at: Pos,
+) {
+    let end = doc.session.selection.head.clone();
+    doc.view.pasted = Some(Pasted {
+        paragraphs,
+        text,
+        at,
+        end,
+        how: unluminous_word::clipboard::PasteAs::Source,
+    });
+}
+
+/// A paste of something another program copied: ask the window for the clipboard's HTML and RTF, and
+/// paste when it answers ([`Word::answered`]).
+pub fn ask_for_the_clipboard(doc: &mut Doc, text: String, requests: &mut Vec<Request>) {
+    doc.view.paste_waiting = Some((text, unluminous_word::clipboard::PasteAs::Source));
+    requests.push(Request::ClipboardRich { id: format!("word-paste:{}", doc.key) });
+}
+
+/// Paste what the clipboard answered: its HTML, or its RTF, or the text, as `how` asks.
+pub fn paste_from(
+    doc: &mut Doc,
+    html: Option<&str>,
+    rtf: Option<&str>,
+    text: &str,
+    how: unluminous_word::clipboard::PasteAs,
+) {
+    use unluminous_word::clipboard;
+    let paragraphs = match (html, rtf) {
+        (Some(html), _) if !html.trim().is_empty() => {
+            clipboard::from_html(&mut doc.session.document, html)
+        }
+        (_, Some(rtf)) if rtf.starts_with("{\\rtf") => clipboard::from_rtf(rtf),
+        _ => text
+            .split('\n')
+            .map(|line| {
+                let mut p = unluminous_word::model::Paragraph::new();
+                if !line.is_empty() {
+                    p.runs.push(unluminous_word::model::Run::text(
+                        line,
+                        unluminous_word::model::no_props(),
+                    ));
+                }
+                p
+            })
+            .collect(),
+    };
+    let at = doc.session.selection.ordered().0.clone();
+    if how == clipboard::PasteAs::Text || paragraphs.is_empty() {
+        doc.session.type_text(text);
+    } else {
+        doc.session.paste_fragment(clipboard::apply_paste_as(paragraphs.clone(), how));
+    }
+    let end = doc.session.selection.head.clone();
+    doc.view.pasted = Some(Pasted { paragraphs, text: text.to_owned(), at, end, how });
+    doc.view.reveal = true;
+}
+
+/// Paste Options: undo the last paste and make it again `how`.
+pub fn paste_again(doc: &mut Doc, how: unluminous_word::clipboard::PasteAs) -> Result<(), String> {
+    use unluminous_word::clipboard;
+    let pasted = doc.view.pasted.clone().ok_or("there is no paste to change")?;
+    if pasted.how == how {
+        return Ok(());
+    }
+    doc.session.undo();
+    doc.session.select(pasted.at.clone(), pasted.at.clone());
+    if how == clipboard::PasteAs::Text {
+        doc.session.type_text(&pasted.text);
+    } else {
+        doc.session.paste_fragment(clipboard::apply_paste_as(pasted.paragraphs.clone(), how));
+    }
+    let end = doc.session.selection.head.clone();
+    doc.view.pasted = Some(Pasted { end, how, ..pasted });
+    Ok(())
 }
 
 /// The card for one underlined word: where it is, and the spellings the dictionary suggests.
@@ -261,6 +361,8 @@ impl View {
             scroll: 0.0,
             marks: config.marks,
             codes: false,
+            paste_waiting: None,
+            pasted: None,
             spelling: config.spelling,
             spell_menu: None,
             navigation: false,
@@ -271,6 +373,7 @@ impl View {
             goal_x: None,
             reveal: true,
             dragging: false,
+            carrying: false,
             clicks: (0.0, egui::Pos2::ZERO, 0),
             fields: Default::default(),
             copied_format: None,
@@ -590,6 +693,19 @@ impl UiProvider for Word {
                 Vec::new()
             }
         }
+    }
+
+    /// The window's answer to a paste's [`Request::ClipboardRich`]: paste the HTML, the RTF or the text
+    /// into the document that asked.
+    fn answered(&mut self, id: &str, answer: Result<serde_json::Value, String>) {
+        let Some(key) = id.strip_prefix("word-paste:") else { return };
+        let Ok(doc) = self.doc(key) else { return };
+        let Some((text, how)) = doc.view.paste_waiting.take() else { return };
+        let answer = answer.unwrap_or_default();
+        let html = answer["html"].as_str().map(str::to_owned);
+        let rtf = answer["rtf"].as_str().map(str::to_owned);
+        let text = answer["text"].as_str().map(str::to_owned).unwrap_or(text);
+        paste_from(doc, html.as_deref(), rtf.as_deref(), &text, how);
     }
 
     fn modified(&self, key: &str) -> bool {

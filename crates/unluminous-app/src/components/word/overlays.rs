@@ -15,8 +15,12 @@ const ROWS: usize = 9;
 
 /// The keys the open menu takes before the document does. Answers whether it took this one.
 pub fn takes_key(doc: &mut Doc, key: egui::Key, requests: &mut Vec<Request>) -> bool {
-    if let Some((query, chosen)) = doc.view.palette.as_mut() {
-        let found = actions::search(query, false);
+    if let Some(query) = doc.view.palette.as_ref().map(|(q, _)| q.clone()) {
+        let found = actions::search(&query, false)
+            .into_iter()
+            .filter(|a| actions::applies(a.id, doc))
+            .collect::<Vec<_>>();
+        let Some((query, chosen)) = doc.view.palette.as_mut() else { return false };
         match key {
             egui::Key::ArrowDown => *chosen = (*chosen + 1).min(found.len().saturating_sub(1)),
             egui::Key::ArrowUp => *chosen = chosen.saturating_sub(1),
@@ -37,7 +41,10 @@ pub fn takes_key(doc: &mut Doc, key: egui::Key, requests: &mut Vec<Request>) -> 
         return true;
     }
     if let Some((at, query, chosen)) = doc.view.slash.clone() {
-        let found = actions::search(&query, true);
+        let found = actions::search(&query, true)
+            .into_iter()
+            .filter(|a| actions::applies(a.id, doc))
+            .collect::<Vec<_>>();
         match key {
             egui::Key::ArrowDown => {
                 doc.view.slash = Some((at, query, (chosen + 1).min(found.len().saturating_sub(1))))
@@ -100,6 +107,8 @@ pub fn show(
         super::spelling::show_menu(ui, look, doc, area, requests);
     } else if !doc.session.selection.is_empty() && !doc.view.dragging {
         bubble(ui, look, doc, area, requests);
+    } else if doc.view.pasted.as_ref().is_some_and(|p| p.end == doc.session.selection.head) {
+        paste_options(ui, look, doc, area, requests);
     }
     if doc.view.find.is_some() {
         find_bar(ui, look, doc, area, requests);
@@ -244,7 +253,10 @@ fn palette(
         *chosen = 0;
     }
     let (query, chosen) = (query.clone(), *chosen);
-    let found = actions::search(&query, false);
+    let found = actions::search(&query, false)
+        .into_iter()
+        .filter(|a| actions::applies(a.id, doc))
+        .collect::<Vec<_>>();
     let width = (420.0 * look.scale()).min(area.width() - 32.0);
     let at = Pos2::new(area.center().x - width / 2.0, area.top() + 24.0);
     let header =
@@ -273,7 +285,10 @@ fn slash(
         doc.view.slash = None;
         return;
     }
-    let found = actions::search(&query, true);
+    let found = actions::search(&query, true)
+        .into_iter()
+        .filter(|a| actions::applies(a.id, doc))
+        .collect::<Vec<_>>();
     let place = caret_point(doc, area).unwrap_or(area.center());
     let width = 260.0 * look.scale();
     let place = Pos2::new(
@@ -302,6 +317,74 @@ fn caret_point(doc: &Doc, area: Rect) -> Option<Pos2> {
                 (line.top + line.height) * zoom,
             ),
     )
+}
+
+/// Paste Options under the caret straight after a paste: Keep Source Formatting, Merge Formatting and
+/// Keep Text Only, as Word offers them. It goes away once the caret moves.
+fn paste_options(
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    doc: &mut Doc,
+    area: Rect,
+    requests: &mut Vec<Request>,
+) {
+    use unluminous_word::clipboard::PasteAs;
+    let Some(at) = caret_point(doc, area) else { return };
+    let current = doc.view.pasted.as_ref().map_or(PasteAs::Source, |p| p.how);
+    let scale = look.scale();
+    let choices = [
+        (PasteAs::Source, "Keep Source Formatting"),
+        (PasteAs::Merge, "Merge Formatting"),
+        (PasteAs::Text, "Keep Text Only"),
+    ];
+    let row = 24.0 * scale;
+    let width = 190.0 * scale;
+    let card = Rect::from_min_size(
+        Pos2::new(at.x.clamp(area.left() + 4.0, area.right() - width - 4.0), at.y + 6.0),
+        Vec2::new(width, row * choices.len() as f32 + 8.0),
+    );
+    if card.top() > area.bottom() {
+        return;
+    }
+    remember_popup(ui, card);
+    let layer = egui::LayerId::new(egui::Order::Foreground, ui.id().with("word-paste-options"));
+    let painter = ui.ctx().layer_painter(layer);
+    painter.rect_filled(card.translate(Vec2::new(0.0, 2.0)), 8.0, Color32::from_black_alpha(70)); // any ground: the shadow under a card
+    painter.rect(
+        card,
+        8.0,
+        look.palette.menu,
+        Stroke::new(1.0, look.palette.control_border),
+        egui::StrokeKind::Inside,
+    );
+    let mut chosen = None;
+    for (n, (how, label)) in choices.iter().enumerate() {
+        let r = Rect::from_min_size(
+            card.left_top() + Vec2::new(4.0, 4.0 + row * n as f32),
+            Vec2::new(width - 8.0, row),
+        );
+        let response = ui.interact(r, ui.id().with(("word-paste-option", n)), Sense::click());
+        if *how == current || response.hovered() {
+            painter.rect_filled(r, 5.0, look.palette.selected_row);
+        }
+        painter.text(
+            r.left_center() + Vec2::new(8.0, 0.0),
+            Align2::LEFT_CENTER,
+            *label,
+            FontId::proportional(look.font_size * 0.9),
+            look.palette.text_strong,
+        );
+        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, *label));
+        if response.clicked() {
+            chosen = Some(*how);
+        }
+    }
+    if let Some(how) = chosen {
+        if let Err(problem) = crate::services::word::paste_again(doc, how) {
+            requests.push(Request::Message(problem));
+        }
+        requests.push(Request::TakeTheKeyboard(true));
+    }
 }
 
 /// The small bar over a selection: bold, italic, underline, highlight, link, comment.

@@ -51,6 +51,14 @@
           "hidden": false,
           "text": "Character formatting"
         }
+      ],
+      "lines": [
+        {
+          "text": "Character formatting",
+          "top": 90.0,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -128,6 +136,14 @@
           "allCaps": false,
           "hidden": false,
           "text": " and then plain text again."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Bold: bold words and then plain text again.",
+          "top": 122.25,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -207,6 +223,14 @@
           "hidden": false,
           "text": " and then plain text again."
         }
+      ],
+      "lines": [
+        {
+          "text": "Italic: italic words and then plain text again.",
+          "top": 147.0,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -284,6 +308,14 @@
           "allCaps": false,
           "hidden": false,
           "text": " and then plain text again."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Bold italic: both together and then plain text again.",
+          "top": 172.5,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -363,6 +395,14 @@
           "hidden": false,
           "text": " and then plain text again."
         }
+      ],
+      "lines": [
+        {
+          "text": "Underline single: single underline and then plain text again.",
+          "top": 197.25,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -440,6 +480,14 @@
           "allCaps": false,
           "hidden": false,
           "text": " and then plain text again."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Underline double: double underline and then plain text again.",
+          "top": 222.0,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -519,6 +567,14 @@
           "hidden": false,
           "text": " and then plain text again."
         }
+      ],
+      "lines": [
+        {
+          "text": "Underline thick: thick underline and then plain text again.",
+          "top": 246.75,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -596,6 +652,14 @@
           "allCaps": false,
           "hidden": false,
           "text": " and then plain text again."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Underline dotted: dotted underline and then plain text again.",
+          "top": 272.25,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -675,6 +739,14 @@
           "hidden": false,
           "text": " and then plain text again."
         }
+      ],
+      "lines": [
+        {
+          "text": "Underline dash: dashed underline and then plain text again.",
+          "top": 297.0,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -752,6 +824,14 @@
           "allCaps": false,
           "hidden": false,
           "text": " and then plain text again."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Underline wavy: wavy underline and then plain text again.",
+          "top": 321.75,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -831,6 +911,14 @@
           "hidden": false,
           "text": " and then plain text again."
         }
+      ],
+      "lines": [
+        {
+          "text": "Underline words: words only underline and then plain text again.",
+          "top": 347.25,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -908,6 +996,14 @@
           "allCaps": false,
           "hidden": false,
           "text": " and then plain text again."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Strikethrough: struck text and then plain text again.",
+          "top": 372.0,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -987,6 +1083,14 @@
           "hidden": false,
           "text": " and then plain text again."
         }
+      ],
+      "lines": [
+        {
+          "text": "Double strikethrough: double struck and then plain text again.",
+          "top": 396.75,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -1064,6 +1168,14 @@
           "allCaps": false,
           "hidden": false,
           "text": " and then plain text again."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Superscript: raised and then plain text again.",
+          "top": 422.25,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -1143,6 +1255,14 @@
           "hidden": false,
           "text": " and then plain text again."
         }
+      ],
+      "lines": [
+        {
+          "text": "Subscript: lowered and then plain text again.",
+          "top": 447.0,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -1220,6 +1340,14 @@
           "allCaps": false,
           "hidden": false,
           "text": " and then plain text again."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Small caps: small capitals and then plain text again.",
+          "top": 471.75,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -1299,6 +1427,14 @@
           "hidden": false,
           "text": " and then plain text again."
         }
+      ],
+      "lines": [
+        {
+          "text": "All caps: ALL CAPITALS and then plain text again.",
+          "top": 496.5,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -1376,6 +1512,14 @@
           "allCaps": false,
           "hidden": false,
           "text": " and then plain text again."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Hidden:  and then plain text again.",
+          "top": 522.0,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -1455,6 +1599,14 @@
           "hidden": false,
           "text": " and then plain text again."
         }
+      ],
+      "lines": [
+        {
+          "text": "Colour red: red text and then plain text again.",
+          "top": 546.75,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -1532,6 +1684,14 @@
           "allCaps": false,
           "hidden": false,
           "text": " and then plain text again."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Colour green: green text and then plain text again.",
+          "top": 571.5,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -1611,6 +1771,14 @@
           "hidden": false,
           "text": " and then plain text again."
         }
+      ],
+      "lines": [
+        {
+          "text": "Colour custom: custom colour and then plain text again.",
+          "top": 597.0,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -1688,6 +1856,14 @@
           "allCaps": false,
           "hidden": false,
           "text": " and then plain text again."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Highlight yellow: yellow and then plain text again.",
+          "top": 621.75,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -1767,6 +1943,14 @@
           "hidden": false,
           "text": " and then plain text again."
         }
+      ],
+      "lines": [
+        {
+          "text": "Highlight bright green: bright green and then plain text again.",
+          "top": 646.5,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -1844,6 +2028,14 @@
           "allCaps": false,
           "hidden": false,
           "text": " and then plain text again."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Highlight turquoise: turquoise and then plain text again.",
+          "top": 671.25,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -1923,6 +2115,14 @@
           "hidden": false,
           "text": " and then plain text again."
         }
+      ],
+      "lines": [
+        {
+          "text": "Highlight pink: pink and then plain text again.",
+          "top": 696.75,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -2000,6 +2200,14 @@
           "allCaps": false,
           "hidden": false,
           "text": " and then plain text again."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Highlight red: red and then plain text again.",
+          "top": 72.0,
+          "left": 72.0,
+          "page": 2
         }
       ]
     },
@@ -2079,6 +2287,14 @@
           "hidden": false,
           "text": " and then plain text again."
         }
+      ],
+      "lines": [
+        {
+          "text": "Font Calibri: Calibri text and then plain text again.",
+          "top": 96.75,
+          "left": 72.0,
+          "page": 2
+        }
       ]
     },
     {
@@ -2156,6 +2372,14 @@
           "allCaps": false,
           "hidden": false,
           "text": " and then plain text again."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Font Times: Times New Roman text and then plain text again.",
+          "top": 122.25,
+          "left": 72.0,
+          "page": 2
         }
       ]
     },
@@ -2235,6 +2459,14 @@
           "hidden": false,
           "text": " and then plain text again."
         }
+      ],
+      "lines": [
+        {
+          "text": "Font Arial: Arial text and then plain text again.",
+          "top": 147.0,
+          "left": 72.0,
+          "page": 2
+        }
       ]
     },
     {
@@ -2312,6 +2544,14 @@
           "allCaps": false,
           "hidden": false,
           "text": " and then plain text again."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Font Courier: Courier New text and then plain text again.",
+          "top": 171.75,
+          "left": 72.0,
+          "page": 2
         }
       ]
     },
@@ -2391,6 +2631,14 @@
           "hidden": false,
           "text": " and then plain text again."
         }
+      ],
+      "lines": [
+        {
+          "text": "Font Georgia: Georgia text and then plain text again.",
+          "top": 197.25,
+          "left": 72.0,
+          "page": 2
+        }
       ]
     },
     {
@@ -2468,6 +2716,14 @@
           "allCaps": false,
           "hidden": false,
           "text": " and then plain text again."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Size 8: eight point and then plain text again.",
+          "top": 222.0,
+          "left": 72.0,
+          "page": 2
         }
       ]
     },
@@ -2547,6 +2803,14 @@
           "hidden": false,
           "text": " and then plain text again."
         }
+      ],
+      "lines": [
+        {
+          "text": "Size 11: eleven point and then plain text again.",
+          "top": 247.5,
+          "left": 72.0,
+          "page": 2
+        }
       ]
     },
     {
@@ -2624,6 +2888,14 @@
           "allCaps": false,
           "hidden": false,
           "text": " and then plain text again."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Size 14: fourteen point and then plain text again.",
+          "top": 272.25,
+          "left": 72.0,
+          "page": 2
         }
       ]
     },
@@ -2703,6 +2975,14 @@
           "hidden": false,
           "text": " and then plain text again."
         }
+      ],
+      "lines": [
+        {
+          "text": "Size 24: twenty four and then plain text again.",
+          "top": 300.0,
+          "left": 72.0,
+          "page": 2
+        }
       ]
     },
     {
@@ -2781,6 +3061,14 @@
           "hidden": false,
           "text": " and then plain text again."
         }
+      ],
+      "lines": [
+        {
+          "text": "Size 36: thirty six and then plain text again.",
+          "top": 342.0,
+          "left": 72.0,
+          "page": 2
+        }
       ]
     },
     {
@@ -2825,6 +3113,14 @@
           "hidden": false,
           "text": "Spacing expanded: expanded by 3pt and then plain text again."
         }
+      ],
+      "lines": [
+        {
+          "text": "Spacing expanded: expanded by 3pt and then plain text again.",
+          "top": 400.5,
+          "left": 72.0,
+          "page": 2
+        }
       ]
     },
     {
@@ -2868,6 +3164,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Spacing condensed: condensed by 1.5pt and then plain text again."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Spacing condensed: condensed by 1.5pt and then plain text again.",
+          "top": 426.0,
+          "left": 72.0,
+          "page": 2
         }
       ]
     },
@@ -3049,6 +3353,14 @@
           "hidden": false,
           "text": "h."
         }
+      ],
+      "lines": [
+        {
+          "text": "Mixed run: plain, bold, italic, bold italic, and underlined in a single paragraph.",
+          "top": 450.75,
+          "left": 72.0,
+          "page": 2
+        }
       ]
     }
   ],
@@ -3070,13 +3382,25 @@
       "sectionStart": 2,
       "headers": {
         "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
         "first": "",
-        "even": ""
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
       },
       "footers": {
         "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
         "first": "",
-        "even": ""
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
       }
     }
   ],
@@ -3086,6 +3410,27 @@
   "revisions": [],
   "inlineShapes": [],
   "shapes": [],
+  "contentControls": [],
+  "oMaths": [],
+  "settings": {
+    "autoHyphenation": false,
+    "hyphenationZone": 9999999.0,
+    "consecutiveHyphensLimit": 0,
+    "compatibilityMode": 15
+  },
+  "footnoteOptions": {
+    "numberStyle": 0,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 0
+  },
+  "endnoteOptions": {
+    "numberStyle": 2,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 1
+  },
+  "footnotePages": [],
   "fields": [],
   "tablesOfContents": 0,
   "bookmarks": [],

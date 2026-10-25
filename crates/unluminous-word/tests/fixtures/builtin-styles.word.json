@@ -51,6 +51,14 @@
           "hidden": false,
           "text": "Normal paragraph"
         }
+      ],
+      "lines": [
+        {
+          "text": "Normal paragraph",
+          "top": 72.0,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -94,6 +102,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Title paragraph"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Title paragraph",
+          "top": 96.75,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -139,6 +155,14 @@
           "hidden": false,
           "text": "Subtitle paragraph"
         }
+      ],
+      "lines": [
+        {
+          "text": "Subtitle paragraph",
+          "top": 135.0,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -182,6 +206,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Heading 1 paragraph"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Heading 1 paragraph",
+          "top": 172.5,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -227,6 +259,14 @@
           "hidden": false,
           "text": "Heading 2 paragraph"
         }
+      ],
+      "lines": [
+        {
+          "text": "Heading 2 paragraph",
+          "top": 209.25,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -270,6 +310,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Heading 3 paragraph"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Heading 3 paragraph",
+          "top": 239.25,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -315,6 +363,14 @@
           "hidden": false,
           "text": "Heading 4 paragraph"
         }
+      ],
+      "lines": [
+        {
+          "text": "Heading 4 paragraph",
+          "top": 264.0,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -358,6 +414,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Heading 5 paragraph"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Heading 5 paragraph",
+          "top": 285.0,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -403,6 +467,14 @@
           "hidden": false,
           "text": "Heading 6 paragraph"
         }
+      ],
+      "lines": [
+        {
+          "text": "Heading 6 paragraph",
+          "top": 303.75,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -446,6 +518,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Heading 7 paragraph"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Heading 7 paragraph",
+          "top": 322.5,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -491,6 +571,14 @@
           "hidden": false,
           "text": "Heading 8 paragraph"
         }
+      ],
+      "lines": [
+        {
+          "text": "Heading 8 paragraph",
+          "top": 339.75,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -534,6 +622,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Heading 9 paragraph"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Heading 9 paragraph",
+          "top": 356.25,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -579,6 +675,14 @@
           "hidden": false,
           "text": "Quote paragraph"
         }
+      ],
+      "lines": [
+        {
+          "text": "Quote paragraph",
+          "top": 381.75,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -622,6 +726,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Intense Quote paragraph"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Intense Quote paragraph",
+          "top": 426.75,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -667,6 +779,14 @@
           "hidden": false,
           "text": "No Spacing paragraph"
         }
+      ],
+      "lines": [
+        {
+          "text": "No Spacing paragraph",
+          "top": 472.5,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -710,6 +830,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "List Paragraph paragraph"
+        }
+      ],
+      "lines": [
+        {
+          "text": "List Paragraph paragraph",
+          "top": 486.75,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -755,6 +883,14 @@
           "hidden": false,
           "text": "Caption paragraph"
         }
+      ],
+      "lines": [
+        {
+          "text": "Caption paragraph",
+          "top": 512.25,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -798,6 +934,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "TOC Heading paragraph"
+        }
+      ],
+      "lines": [
+        {
+          "text": "TOC Heading paragraph",
+          "top": 535.5,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -843,6 +987,14 @@
           "hidden": false,
           "text": "TOC 1 paragraph"
         }
+      ],
+      "lines": [
+        {
+          "text": "TOC 1 paragraph",
+          "top": 557.25,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -886,6 +1038,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "TOC 2 paragraph"
+        }
+      ],
+      "lines": [
+        {
+          "text": "TOC 2 paragraph",
+          "top": 579.75,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -931,6 +1091,14 @@
           "hidden": false,
           "text": "TOC 3 paragraph"
         }
+      ],
+      "lines": [
+        {
+          "text": "TOC 3 paragraph",
+          "top": 601.5,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -974,6 +1142,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Footnote Text paragraph"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Footnote Text paragraph",
+          "top": 623.25,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -1019,6 +1195,14 @@
           "hidden": false,
           "text": "Endnote Text paragraph"
         }
+      ],
+      "lines": [
+        {
+          "text": "Endnote Text paragraph",
+          "top": 636.0,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -1063,6 +1247,14 @@
           "hidden": false,
           "text": "Header paragraph"
         }
+      ],
+      "lines": [
+        {
+          "text": "Header paragraph",
+          "top": 648.0,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -1106,6 +1298,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Footer paragraph"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Footer paragraph",
+          "top": 662.25,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -1185,6 +1385,14 @@
           "hidden": false,
           "text": " text"
         }
+      ],
+      "lines": [
+        {
+          "text": "Sample Strong text",
+          "top": 677.25,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -1262,6 +1470,14 @@
           "allCaps": false,
           "hidden": false,
           "text": " text"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Sample Emphasis text",
+          "top": 702.0,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -1341,6 +1557,14 @@
           "hidden": false,
           "text": " text"
         }
+      ],
+      "lines": [
+        {
+          "text": "Sample Intense Emphasis text",
+          "top": 72.0,
+          "left": 72.0,
+          "page": 2
+        }
       ]
     },
     {
@@ -1418,6 +1642,14 @@
           "allCaps": false,
           "hidden": false,
           "text": " text"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Sample Subtle Emphasis text",
+          "top": 96.75,
+          "left": 72.0,
+          "page": 2
         }
       ]
     },
@@ -1497,6 +1729,14 @@
           "hidden": false,
           "text": " text"
         }
+      ],
+      "lines": [
+        {
+          "text": "Sample Hyperlink text",
+          "top": 122.25,
+          "left": 72.0,
+          "page": 2
+        }
       ]
     },
     {
@@ -1575,6 +1815,14 @@
           "hidden": false,
           "text": " text"
         }
+      ],
+      "lines": [
+        {
+          "text": "Sample Footnote Reference text",
+          "top": 147.0,
+          "left": 72.0,
+          "page": 2
+        }
       ]
     },
     {
@@ -1618,6 +1866,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Table Grid style:"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Table Grid style:",
+          "top": 171.75,
+          "left": 72.0,
+          "page": 2
         }
       ]
     },
@@ -1663,7 +1919,8 @@
           "hidden": false,
           "text": "G11"
         }
-      ]
+      ],
+      "lines": null
     },
     {
       "index": 34,
@@ -1707,7 +1964,8 @@
           "hidden": false,
           "text": "G12"
         }
-      ]
+      ],
+      "lines": null
     },
     {
       "index": 35,
@@ -1733,7 +1991,8 @@
       "top": 197.25,
       "left": 540.75,
       "lastTop": 197.25,
-      "runs": []
+      "runs": [],
+      "lines": null
     },
     {
       "index": 36,
@@ -1777,7 +2036,8 @@
           "hidden": false,
           "text": "G21"
         }
-      ]
+      ],
+      "lines": null
     },
     {
       "index": 37,
@@ -1821,7 +2081,8 @@
           "hidden": false,
           "text": "G22"
         }
-      ]
+      ],
+      "lines": null
     },
     {
       "index": 38,
@@ -1847,7 +2108,8 @@
       "top": 212.25,
       "left": 540.75,
       "lastTop": 212.25,
-      "runs": []
+      "runs": [],
+      "lines": null
     },
     {
       "index": 39,
@@ -1873,7 +2135,8 @@
       "top": 228.0,
       "left": 72.0,
       "lastTop": 228.0,
-      "runs": []
+      "runs": [],
+      "lines": []
     }
   ],
   "tables": [
@@ -1926,13 +2189,25 @@
       "sectionStart": 2,
       "headers": {
         "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
         "first": "",
-        "even": ""
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
       },
       "footers": {
         "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
         "first": "",
-        "even": ""
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
       }
     }
   ],
@@ -1942,6 +2217,27 @@
   "revisions": [],
   "inlineShapes": [],
   "shapes": [],
+  "contentControls": [],
+  "oMaths": [],
+  "settings": {
+    "autoHyphenation": false,
+    "hyphenationZone": 9999999.0,
+    "consecutiveHyphensLimit": 0,
+    "compatibilityMode": 15
+  },
+  "footnoteOptions": {
+    "numberStyle": 0,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 0
+  },
+  "endnoteOptions": {
+    "numberStyle": 2,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 1
+  },
+  "footnotePages": [],
   "fields": [],
   "tablesOfContents": 0,
   "bookmarks": [],

@@ -267,10 +267,71 @@ fn visible_between(
             {
                 out.push('\u{2}')
             }
+            // Word's `Range.Text` gives a positional tab as 0 and an inline picture as `/`.
+            Content::Object(el) if el.name == "w:ptab" => out.push('0'),
+            Content::Object(_)
+                if run.content.picture().is_some_and(|p| {
+                    p.elements().next().is_some_and(|f| f.name != "wp:anchor")
+                }) =>
+            {
+                out.push('/')
+            }
+            Content::ParagraphObject(el) if el.name.starts_with("m:") => {
+                out.push_str(&unluminous_word::math::plain_text(el))
+            }
             other => out.extend(other.character().filter(|c| *c != '\u{FFFC}')),
         }
     }
     out
+}
+
+/// Two paragraphs' lines are the same when each line holds the same words. A word hyphenated at a
+/// different point is the same: Word's hyphenation dictionary is its own and splits a few words in a
+/// different place from the en-US patterns (par-agraph against para-graph), and what matters is that
+/// the lines break around the same words.
+fn same_lines(ours: &[String], theirs: &[String]) -> bool {
+    let joined = |lines: &[String]| lines.join("").replace(' ', "");
+    if joined(ours) != joined(theirs) {
+        return false;
+    }
+    // A line that differs only in its last word (a word split elsewhere) or its first (the rest of it).
+    let head = |line: &str| line.rsplit_once(' ').map(|(h, _)| h.to_owned());
+    let tail = |line: &str| line.split_once(' ').map(|(_, t)| t.to_owned());
+    ours.iter().zip(theirs).all(|(a, b)| {
+        a == b
+            || (head(a).is_some() && head(a) == head(b))
+            || (tail(a).is_some() && tail(a) == tail(b))
+    })
+}
+
+/// A line's text for comparing with Word's: no column break mark, an equation's letters and minus sign
+/// as plain characters, in lower case because Word reports capitals as they are drawn.
+fn comparable(text: &str) -> String {
+    text.chars()
+        .filter(|c| *c != '\u{e}' && *c != '\r')
+        .map(|c| match c as u32 {
+            0x2212 => '-',
+            0x210E => 'h',
+            0x1D400..=0x1D6A3 => {
+                let i = ((c as u32 - 0x1D400) % 52) as u8;
+                if i < 26 {
+                    (b'A' + i) as char
+                } else {
+                    (b'a' + i - 26) as char
+                }
+            }
+            0x1D6A8..=0x1D7C9 => {
+                let i = (c as u32 - 0x1D6A8) % 58;
+                match i {
+                    26..=50 => char::from_u32(0x3B1 + i - 26).unwrap_or(c),
+                    _ => c,
+                }
+            }
+            0x1D7CE..=0x1D7FF => (b'0' + ((c as u32 - 0x1D7CE) % 10) as u8) as char,
+            _ => c,
+        })
+        .collect::<String>()
+        .to_lowercase()
 }
 
 /// Every line of every body paragraph, against the lines Word's report gives for it (`inspect.ps1` reads
@@ -305,6 +366,28 @@ fn every_line_holds_the_words_words_line_holds() {
             if word["inTable"].as_bool() == Some(true) {
                 continue;
             }
+            // Word works a date field out again when it opens the file, so its line holds the day it was
+            // inspected rather than the stored one.
+            let dated = paragraph.runs.iter().any(|r| {
+                matches!(&r.content, unluminous_word::model::Content::Instr(code)
+                    if matches!(code.split_whitespace().next(), Some("DATE" | "TIME")))
+            });
+            if dated {
+                continue;
+            }
+            // Word gives an empty paragraph no lines.
+            if word_lines.is_empty() && paragraph.visible_text().trim().is_empty() {
+                continue;
+            }
+            // Word's `left` is where the line's first character is for a left aligned paragraph with no
+            // indent and no list label; for any other it reports the margin, so only those are placed.
+            let placed =
+                !paragraph.runs.iter().any(|r| {
+                    matches!(r.content, unluminous_word::model::Content::ParagraphObject(_))
+                }) && word["alignment"].as_i64() == Some(0)
+                    && word["leftIndent"].as_f64() == Some(0.0)
+                    && word["firstLineIndent"].as_f64() == Some(0.0)
+                    && word["listString"].as_str().unwrap_or("").is_empty();
             let ours: Vec<(String, f32)> = pages
                 .pages
                 .iter()
@@ -323,10 +406,12 @@ fn every_line_holds_the_words_words_line_holds() {
                     (text.trim().to_owned(), l["left"].as_f64().unwrap_or(0.0) as f32)
                 })
                 .collect();
-            let same_words =
-                ours.len() == theirs.len() && ours.iter().zip(&theirs).all(|(a, b)| a.0 == b.0);
-            let same_place = ours.len() == theirs.len()
-                && ours.iter().zip(&theirs).all(|(a, b)| (a.1 - b.1).abs() < 1.5);
+            let ours_text: Vec<String> = ours.iter().map(|(t, _)| comparable(t)).collect();
+            let their_text: Vec<String> = theirs.iter().map(|(t, _)| comparable(t)).collect();
+            let same_words = ours.len() == theirs.len() && same_lines(&ours_text, &their_text);
+            let same_place = !placed
+                || ours.len() == theirs.len()
+                    && ours.iter().zip(&theirs).all(|(a, b)| (a.1 - b.1).abs() < 1.5);
             if !same_words || !same_place {
                 wrong += 1;
                 if wrong <= 3 {

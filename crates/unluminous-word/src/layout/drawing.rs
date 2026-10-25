@@ -80,9 +80,34 @@ pub fn read(ctx: &Ctx, el: &El) -> Option<Drawing> {
         _ => "none".into(),
     };
     let distance = |name: &str| props::emu(frame.attr(name).and_then(props::number).unwrap_or(0.0));
+    // A wrap polygon is in 21600ths of the picture's size.
+    let contour = wrap_el.and_then(|el| el.child("wp:wrapPolygon")).and_then(|polygon| {
+        let points: Vec<(f32, f32)> = polygon
+            .elements()
+            .filter_map(|p| {
+                Some((
+                    p.attr("x").and_then(props::number)? as f32,
+                    p.attr("y").and_then(props::number)? as f32,
+                ))
+            })
+            .collect();
+        if points.is_empty() {
+            return None;
+        }
+        let fold = |f: fn(f32, f32) -> f32, pick: fn(&(f32, f32)) -> f32, start: f32| {
+            points.iter().map(pick).fold(start, f) / 21600.0
+        };
+        Some((
+            fold(f32::min, |p| p.0, f32::MAX),
+            fold(f32::min, |p| p.1, f32::MAX),
+            fold(f32::max, |p| p.0, f32::MIN),
+            fold(f32::max, |p| p.1, f32::MIN),
+        ))
+    });
     let mut float = Float {
         width: w,
         height: h,
+        contour,
         horizontal: position("wp:positionH"),
         vertical: position("wp:positionV"),
         part: String::new(),
@@ -182,6 +207,7 @@ fn vml(ctx: &Ctx, el: &El) -> Drawing {
         float: Float {
             width,
             height,
+            contour: None,
             horizontal: ("column".into(), Anchor::Offset(0.0)),
             vertical: ("paragraph".into(), Anchor::Offset(0.0)),
             part,

@@ -1113,6 +1113,22 @@ pub const ACTIONS: &[Action] = &[
 ];
 
 /// The command with this id.
+/// Whether an action can be used where the caret is. One that cannot is left out of the lists rather
+/// than dimmed: a comment cannot be added in a header or footer, a link can only be removed from a link,
+/// and the table of contents can only be updated or removed when there is one.
+pub fn applies(id: &str, doc: &Doc) -> bool {
+    use unluminous_word::position::StoryId;
+    let head = &doc.session.selection.head;
+    match id {
+        "comment" => !matches!(head.story, StoryId::Header(_)),
+        "remove-link" => doc.session.hyperlink_at(head).is_some(),
+        "update-table" | "remove-table-of-contents" => {
+            !unluminous_word::references::find_tocs(&doc.session.document).is_empty()
+        }
+        _ => true,
+    }
+}
+
 pub fn find(id: &str) -> Option<&'static Action> {
     ACTIONS.iter().find(|action| action.id == id)
 }

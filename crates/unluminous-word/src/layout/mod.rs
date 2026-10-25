@@ -200,6 +200,10 @@ impl CaretLine {
 pub struct Float {
     pub width: f32,
     pub height: f32,
+    /// For tight and through wrapping, the bounds of the wrap polygon (`wp:wrapPolygon`) as fractions of
+    /// the picture: left, top, right, bottom. Text goes around these rather than the picture's box, which
+    /// is why Word's text sits 1.5 points closer to the wrapping fixture's picture (task-2359, C2).
+    pub contour: Option<(f32, f32, f32, f32)>,
     pub horizontal: (String, Anchor),
     pub vertical: (String, Anchor),
     pub part: String,
@@ -357,6 +361,26 @@ pub struct Ctx<'a> {
     pub body_pages: HashMap<Vec<u32>, (u32, u32)>,
     /// Automatic hyphenation, when the document's settings turn it on (task-2359, M9).
     pub hyphenation: Option<paragraph::Hyphenation>,
+    /// A justified line may take a word that fits once its spaces are shrunk to four fifths, which is
+    /// what Word does in its 2013 layout (compatibility mode 15 and later) (task-2359, C5).
+    pub shrink_justified: bool,
+}
+
+/// The `compatibilityMode` a document's settings name: 15 for a document Word 2013 or later made, 14
+/// for Word 2010, 12 for Word 2007, and 12 when the setting is missing, as the standard says.
+pub fn compatibility_mode(document: &Document) -> u32 {
+    document
+        .settings
+        .as_ref()
+        .and_then(|s| s.root.child("w:compat"))
+        .and_then(|compat| {
+            compat
+                .children_named("w:compatSetting")
+                .find(|c| c.attr("w:name") == Some("compatibilityMode"))
+                .and_then(|c| c.attr("w:val"))
+                .and_then(|v| v.parse().ok())
+        })
+        .unwrap_or(12)
 }
 
 /// How the layout was asked to run.
@@ -457,6 +481,7 @@ pub fn lay_out(document: &Document, metrics: &dyn FontMetrics, options: Options)
         page: None,
         body_pages: HashMap::new(),
         hyphenation: paragraph::Hyphenation::of(document),
+        shrink_justified: compatibility_mode(document) >= 15,
     };
     let sections = sections(document);
     let mut pages = flow_document(&mut ctx, &sections, &references, endnote_options.section_end);
@@ -1044,6 +1069,15 @@ impl<'a> Flow<'a> {
         }
         if float.wraps() {
             let (top, bottom, left, right) = float.distances;
+            let rect = match float.contour {
+                Some((l, t, r, b)) => Rect::new(
+                    rect.x + l * rect.w,
+                    rect.y + t * rect.h,
+                    (r - l) * rect.w,
+                    (b - t) * rect.h,
+                ),
+                None => rect,
+            };
             self.exclusions.push(Exclusion {
                 rect: Rect::new(
                     rect.x - left,

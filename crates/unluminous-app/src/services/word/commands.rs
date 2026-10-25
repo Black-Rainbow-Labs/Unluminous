@@ -160,7 +160,7 @@ fn link(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
             doc.session.remove_hyperlink()?;
             Ok(Answer::said("Link removed"))
         }
-        other => Err(format!("link takes show, edit, tip or remove, not {other}")),
+        other => Err(format!("link takes show, open, edit, tip or remove, not {other}")),
     }
 }
 
@@ -234,6 +234,17 @@ pub fn run(word: &mut Word, command: &str, arguments: &[String]) -> Result<Answe
             );
         }
         "autocorrect" => return autocorrect(word, arguments),
+        "link" if arguments.first().map(String::as_str) == Some("open") => {
+            let doc = word.current_doc()?;
+            let at = doc.session.selection.head.clone();
+            let (address, _) = doc.session.hyperlink_at(&at).ok_or("the caret is not in a link")?;
+            let mut requests = Vec::new();
+            crate::components::word::page_view::follow_link(doc, &address, &mut requests);
+            word.outbox.extend(requests);
+            return Ok(
+                Answer::said(format!("Following {address}")).with(json!({ "address": address }))
+            );
+        }
         _ => {}
     }
     let doc = word.current_doc()?;
@@ -494,6 +505,41 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
             Ok(Answer::said(format!("Cross reference to paragraph {n} added")))
         }
         "link" => link(doc, arguments),
+        "paste" => {
+            // `paste --as source|merge|text` changes the last paste, as Paste Options does;
+            // `paste --html <html>` and `paste --rtf <rtf>` paste formatted text an agent has in hand.
+            let value = |name: &str| {
+                arguments.iter().position(|a| a == name).map(|i| arguments[i + 1..].join(" "))
+            };
+            if let Some(html) = value("--html") {
+                super::paste_from(
+                    doc,
+                    Some(&html),
+                    None,
+                    "",
+                    unluminous_word::clipboard::PasteAs::Source,
+                );
+                return Ok(Answer::said("Pasted"));
+            }
+            if let Some(rtf) = value("--rtf") {
+                super::paste_from(
+                    doc,
+                    None,
+                    Some(&rtf),
+                    "",
+                    unluminous_word::clipboard::PasteAs::Source,
+                );
+                return Ok(Answer::said("Pasted"));
+            }
+            let how = arguments
+                .iter()
+                .position(|a| a == "--as")
+                .and_then(|i| arguments.get(i + 1))
+                .and_then(|n| unluminous_word::clipboard::PasteAs::parse(n))
+                .ok_or("paste takes --as source|merge|text, --html <html> or --rtf <rtf>")?;
+            super::paste_again(doc, how)?;
+            Ok(Answer::said("Paste changed"))
+        }
         "undo" => Ok(Answer::said(if session.undo() { "Undone" } else { "Nothing to undo" })),
         "redo" => Ok(Answer::said(if session.redo() { "Redone" } else { "Nothing to redo" })),
         "export" => {
@@ -993,16 +1039,29 @@ fn comment(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
             session.resolve_comment(id()?, false)?;
             Ok(Answer::said("Open again"))
         }
+        "delete" if arguments.get(1).map(String::as_str) == Some("all") => {
+            let count = session.delete_all_comments();
+            Ok(Answer::said(format!("{count} comments deleted")))
+        }
         "delete" => {
             session.delete_comment(id()?)?;
             Ok(Answer::said("Deleted"))
+        }
+        "edit" => {
+            session.edit_comment(id()?, &rest(arguments, 2))?;
+            Ok(Answer::said("Comment changed"))
+        }
+        "next" | "previous" => {
+            let found = session.go_to_comment(what == "next").ok_or("there are no comments")?;
+            doc.view.reveal = true;
+            Ok(Answer::said(format!("Comment {found}")).with(json!({ "id": found })))
         }
         "list" => {
             let comments = session.comments();
             Ok(Answer::said(format!("{} comments", comments.len())).with(json!(comments)))
         }
         other => {
-            Err(format!("comment takes add, reply, resolve, reopen, delete or list, not {other}"))
+            Err(format!("comment takes add, reply, edit, resolve, reopen, delete [all], next, previous or list, not {other}"))
         }
     }
 }

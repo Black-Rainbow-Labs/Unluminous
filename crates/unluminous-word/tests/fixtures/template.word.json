@@ -1,0 +1,368 @@
+{
+  "file": "template.dotx",
+  "opened": true,
+  "error": null,
+  "pages": 1,
+  "words": 62,
+  "characters": 325,
+  "charactersWithSpaces": 382,
+  "paragraphCount": 5,
+  "lines": 8,
+  "paragraphs": [
+    {
+      "index": 1,
+      "text": "A template",
+      "style": "Title",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 4.0,
+      "lineSpacing": 12.0,
+      "lineSpacingRule": 0,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 72.0,
+      "left": 72.0,
+      "lastTop": 72.0,
+      "runs": [
+        {
+          "font": "Aptos Display",
+          "size": 28.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "A template"
+        }
+      ],
+      "lines": [
+        {
+          "text": "A template",
+          "top": 72.0,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "text": "Section heading",
+      "style": "Heading 1",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 18.0,
+      "spaceAfter": 4.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": true,
+      "keepTogether": true,
+      "pageBreakBefore": false,
+      "outlineLevel": 1,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 124.5,
+      "left": 72.0,
+      "lastTop": 124.5,
+      "runs": [
+        {
+          "font": "Aptos Display",
+          "size": 20.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "#104862",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Section heading"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Section heading",
+          "top": 124.5,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "text": "A shows with between the through plain wraps margin the a. Careful lines reader pages text at without editor document. Scrolls of that the surprise opens and paragraph spacing while scrolls of that the.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 3,
+      "top": 156.75,
+      "left": 72.0,
+      "lastTop": 190.5,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "A shows with between the through plain wraps margin the a. Careful lines reader pages text at without editor document. Scrolls of that the surprise opens and paragraph spacing while scrolls of that the."
+        }
+      ],
+      "lines": [
+        {
+          "text": "A shows with between the through plain wraps margin the a. Careful lines reader pages text ",
+          "top": 156.75,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "at without editor document. Scrolls of that the surprise opens and paragraph spacing while ",
+          "top": 174.0,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "scrolls of that the.",
+          "top": 190.5,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "text": "Second heading",
+      "style": "Heading 2",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 8.0,
+      "spaceAfter": 4.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": true,
+      "keepTogether": true,
+      "pageBreakBefore": false,
+      "outlineLevel": 2,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 215.25,
+      "left": 72.0,
+      "lastTop": 215.25,
+      "runs": [
+        {
+          "font": "Aptos Display",
+          "size": 16.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "#104862",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Second heading"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Second heading",
+          "top": 215.25,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "text": "Lines reader pages text at without editor document each careful lines reader. Of that the surprise opens and paragraph spacing while scrolls.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 2,
+      "top": 242.25,
+      "left": 72.0,
+      "lastTop": 259.5,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Lines reader pages text at without editor document each careful lines reader. Of that the surprise opens and paragraph spacing while scrolls."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Lines reader pages text at without editor document each careful lines reader. Of that the ",
+          "top": 242.25,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "surprise opens and paragraph spacing while scrolls.",
+          "top": 259.5,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    }
+  ],
+  "tables": [],
+  "sections": [
+    {
+      "pageWidth": 612.0,
+      "pageHeight": 792.0,
+      "orientation": 0,
+      "topMargin": 72.0,
+      "bottomMargin": 72.0,
+      "leftMargin": 72.0,
+      "rightMargin": 72.0,
+      "headerDistance": 36.0,
+      "footerDistance": 36.0,
+      "columns": 1,
+      "differentFirstPage": false,
+      "oddAndEvenPages": false,
+      "sectionStart": 2,
+      "headers": {
+        "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
+        "first": "",
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
+      },
+      "footers": {
+        "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
+        "first": "",
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
+      }
+    }
+  ],
+  "footnotes": [],
+  "endnotes": [],
+  "comments": [],
+  "revisions": [],
+  "inlineShapes": [],
+  "shapes": [],
+  "contentControls": [],
+  "oMaths": [],
+  "settings": {
+    "autoHyphenation": false,
+    "hyphenationZone": 9999999.0,
+    "consecutiveHyphensLimit": 0,
+    "compatibilityMode": 15
+  },
+  "footnoteOptions": {
+    "numberStyle": 0,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 0
+  },
+  "endnoteOptions": {
+    "numberStyle": 2,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 1
+  },
+  "footnotePages": [],
+  "fields": [],
+  "tablesOfContents": 0,
+  "bookmarks": [],
+  "hyperlinks": [],
+  "properties": {
+    "title": "",
+    "subject": "",
+    "author": "Oracle",
+    "keywords": ""
+  }
+}

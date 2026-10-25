@@ -29,6 +29,8 @@ spellbook.workspace = true
 # embedded, the language spelling also checks. The code is MIT or Apache 2.0 and the pattern data is
 # under the patterns' own permissive notice, shipped as data (task-2359).
 hyphenation.workspace = true
+# Pasting HTML (task-2359, TDD 5.4).
+dom_query.workspace = true
 
 [dev-dependencies]
 # A small picture for the test that has Word open a document Unluminous wrote.

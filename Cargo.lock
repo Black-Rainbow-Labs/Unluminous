@@ -6840,6 +6840,7 @@ version = "1.14.2"
 dependencies = [
  "ab_glyph",
  "crc32fast",
+ "dom_query",
  "flate2",
  "fontdb",
  "hyphenation",

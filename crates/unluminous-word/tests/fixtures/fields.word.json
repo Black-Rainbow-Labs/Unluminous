@@ -51,6 +51,14 @@
           "hidden": false,
           "text": "Contents"
         }
+      ],
+      "lines": [
+        {
+          "text": "Contents",
+          "top": 72.0,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -94,6 +102,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "First chapter\t1"
+        }
+      ],
+      "lines": [
+        {
+          "text": "First chapter\t1",
+          "top": 96.75,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -139,6 +155,14 @@
           "hidden": false,
           "text": "A section\t1"
         }
+      ],
+      "lines": [
+        {
+          "text": "A section\t1",
+          "top": 119.25,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -182,6 +206,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "A subsection\t1"
+        }
+      ],
+      "lines": [
+        {
+          "text": "A subsection\t1",
+          "top": 141.0,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -227,6 +259,14 @@
           "hidden": false,
           "text": "Second chapter\t1"
         }
+      ],
+      "lines": [
+        {
+          "text": "Second chapter\t1",
+          "top": 162.75,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -270,6 +310,14 @@
           "allCaps": false,
           "hidden": false,
           "text": null
+        }
+      ],
+      "lines": [
+        {
+          "text": "",
+          "top": 184.5,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -315,6 +363,14 @@
           "hidden": false,
           "text": "First chapter"
         }
+      ],
+      "lines": [
+        {
+          "text": "First chapter",
+          "top": 219.75,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -358,6 +414,20 @@
           "allCaps": false,
           "hidden": false,
           "text": "The a shows with between the through plain wraps margin the a shows with. Each careful lines reader pages text at without editor document each careful."
+        }
+      ],
+      "lines": [
+        {
+          "text": "The a shows with between the through plain wraps margin the a shows with. Each careful ",
+          "top": 252.0,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "lines reader pages text at without editor document each careful.",
+          "top": 269.25,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -403,6 +473,14 @@
           "hidden": false,
           "text": "A section"
         }
+      ],
+      "lines": [
+        {
+          "text": "A section",
+          "top": 294.0,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -446,6 +524,20 @@
           "allCaps": false,
           "hidden": false,
           "text": "Careful lines reader pages text at without editor. Scrolls of that the surprise opens and paragraph spacing while scrolls of that."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Careful lines reader pages text at without editor. Scrolls of that the surprise opens and ",
+          "top": 321.0,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "paragraph spacing while scrolls of that.",
+          "top": 338.25,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -491,6 +583,14 @@
           "hidden": false,
           "text": "A subsection"
         }
+      ],
+      "lines": [
+        {
+          "text": "A subsection",
+          "top": 362.25,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -534,6 +634,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "This paragraph is the bookmark target. "
+        }
+      ],
+      "lines": [
+        {
+          "text": "This paragraph is the bookmark target. ",
+          "top": 386.25,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -579,11 +687,19 @@
           "hidden": false,
           "text": "Second chapter"
         }
+      ],
+      "lines": [
+        {
+          "text": "Second chapter",
+          "top": 420.75,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
       "index": 14,
-      "text": "Today is 2026-10-23",
+      "text": "Today is 2026-10-24",
       "style": "Normal",
       "listString": "",
       "listLevel": 0,
@@ -621,7 +737,15 @@
           "smallCaps": false,
           "allCaps": false,
           "hidden": false,
-          "text": "Today is 2026-10-23"
+          "text": "Today is 2026-10-24"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Today is 2026-10-24",
+          "top": 453.75,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -701,6 +825,14 @@
           "hidden": false,
           "text": null
         }
+      ],
+      "lines": [
+        {
+          "text": "Visit example.com",
+          "top": 478.5,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -779,6 +911,14 @@
           "hidden": false,
           "text": null
         }
+      ],
+      "lines": [
+        {
+          "text": "Jump to the bookmark target",
+          "top": 503.25,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -823,6 +963,14 @@
           "hidden": false,
           "text": "Figure 1: a captioned figure"
         }
+      ],
+      "lines": [
+        {
+          "text": "Figure 1: a captioned figure",
+          "top": 528.75,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     }
   ],
@@ -844,13 +992,25 @@
       "sectionStart": 2,
       "headers": {
         "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
         "first": "",
-        "even": ""
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
       },
       "footers": {
         "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
         "first": "",
-        "even": ""
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
       }
     }
   ],
@@ -860,6 +1020,27 @@
   "revisions": [],
   "inlineShapes": [],
   "shapes": [],
+  "contentControls": [],
+  "oMaths": [],
+  "settings": {
+    "autoHyphenation": false,
+    "hyphenationZone": 9999999.0,
+    "consecutiveHyphensLimit": 0,
+    "compatibilityMode": 15
+  },
+  "footnoteOptions": {
+    "numberStyle": 0,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 0
+  },
+  "endnoteOptions": {
+    "numberStyle": 2,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 1
+  },
+  "footnotePages": [],
   "fields": [
     {
       "type": 13,
@@ -889,7 +1070,7 @@
     {
       "type": 31,
       "code": " DATE \\@ \"yyyy-MM-dd\" ",
-      "result": "2026-10-23"
+      "result": "2026-10-24"
     },
     {
       "type": 88,

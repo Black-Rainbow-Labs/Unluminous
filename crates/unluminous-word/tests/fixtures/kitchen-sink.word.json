@@ -7,7 +7,7 @@
   "characters": 1359,
   "charactersWithSpaces": 1584,
   "paragraphCount": 37,
-  "lines": 48,
+  "lines": 49,
   "paragraphs": [
     {
       "index": 1,
@@ -50,6 +50,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Quarterly Report"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Quarterly Report",
+          "top": 72.0,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -95,6 +103,14 @@
           "hidden": false,
           "text": "Prepared for the board of directors"
         }
+      ],
+      "lines": [
+        {
+          "text": "Prepared for the board of directors",
+          "top": 110.25,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -138,6 +154,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Jason Example"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Jason Example",
+          "top": 138.0,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -183,6 +207,14 @@
           "hidden": false,
           "text": "Black Rainbow Labs"
         }
+      ],
+      "lines": [
+        {
+          "text": "Black Rainbow Labs",
+          "top": 162.75,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -226,6 +258,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "1 Example Street"
+        }
+      ],
+      "lines": [
+        {
+          "text": "1 Example Street",
+          "top": 188.25,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -271,6 +311,14 @@
           "hidden": false,
           "text": "Springfield"
         }
+      ],
+      "lines": [
+        {
+          "text": "Springfield",
+          "top": 213.0,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -315,6 +363,14 @@
           "hidden": false,
           "text": "October 23, 2026"
         }
+      ],
+      "lines": [
+        {
+          "text": "October 23, 2026",
+          "top": 237.75,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -358,6 +414,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Dear board members,"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Dear board members,",
+          "top": 262.5,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -488,6 +552,32 @@
           "hidden": false,
           "text": "\u0002"
         }
+      ],
+      "lines": [
+        {
+          "text": "This report summarises the quarter. It covers revenue, product work and the plan ahead. Of ",
+          "top": 288.0,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "that the surprise opens and paragraph spacing while. Margin the a shows with between the ",
+          "top": 305.25,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "through plain wraps margin the a shows. Document each careful lines reader pages text at ",
+          "top": 321.75,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "without editor document each.\u0002",
+          "top": 339.0,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -531,6 +621,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Highlights"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Highlights",
+          "top": 373.5,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -576,6 +674,14 @@
           "hidden": false,
           "text": "Revenue grew in every region"
         }
+      ],
+      "lines": [
+        {
+          "text": "Revenue grew in every region",
+          "top": 405.75,
+          "left": 90.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -620,6 +726,14 @@
           "hidden": false,
           "text": "The editor shipped three releases"
         }
+      ],
+      "lines": [
+        {
+          "text": "The editor shipped three releases",
+          "top": 423.75,
+          "left": 90.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -643,9 +757,9 @@
       "page": 1,
       "inTable": false,
       "lineCount": 1,
-      "top": 441.0,
+      "top": 441.75,
       "left": 90.0,
-      "lastTop": 441.0,
+      "lastTop": 441.75,
       "runs": [
         {
           "font": "Aptos",
@@ -663,6 +777,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Support response time fell by a third"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Support response time fell by a third",
+          "top": 441.75,
+          "left": 90.0,
+          "page": 1
         }
       ]
     },
@@ -687,9 +809,9 @@
       "page": 1,
       "inTable": false,
       "lineCount": 1,
-      "top": 476.25,
+      "top": 477.0,
       "left": 72.0,
-      "lastTop": 476.25,
+      "lastTop": 477.0,
       "runs": [
         {
           "font": "Aptos Display",
@@ -707,6 +829,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Results by region"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Results by region",
+          "top": 477.0,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -752,7 +882,8 @@
           "hidden": false,
           "text": "Region"
         }
-      ]
+      ],
+      "lines": null
     },
     {
       "index": 16,
@@ -796,7 +927,8 @@
           "hidden": false,
           "text": "Revenue"
         }
-      ]
+      ],
+      "lines": null
     },
     {
       "index": 17,
@@ -840,7 +972,8 @@
           "hidden": false,
           "text": "Growth"
         }
-      ]
+      ],
+      "lines": null
     },
     {
       "index": 18,
@@ -866,7 +999,8 @@
       "top": 510.0,
       "left": 540.75,
       "lastTop": 510.0,
-      "runs": []
+      "runs": [],
+      "lines": null
     },
     {
       "index": 19,
@@ -910,7 +1044,8 @@
           "hidden": false,
           "text": "North"
         }
-      ]
+      ],
+      "lines": null
     },
     {
       "index": 20,
@@ -954,7 +1089,8 @@
           "hidden": false,
           "text": "120,000"
         }
-      ]
+      ],
+      "lines": null
     },
     {
       "index": 21,
@@ -998,7 +1134,8 @@
           "hidden": false,
           "text": "12%"
         }
-      ]
+      ],
+      "lines": null
     },
     {
       "index": 22,
@@ -1024,7 +1161,8 @@
       "top": 535.5,
       "left": 540.75,
       "lastTop": 535.5,
-      "runs": []
+      "runs": [],
+      "lines": null
     },
     {
       "index": 23,
@@ -1068,7 +1206,8 @@
           "hidden": false,
           "text": "South"
         }
-      ]
+      ],
+      "lines": null
     },
     {
       "index": 24,
@@ -1112,7 +1251,8 @@
           "hidden": false,
           "text": "98,000"
         }
-      ]
+      ],
+      "lines": null
     },
     {
       "index": 25,
@@ -1156,7 +1296,8 @@
           "hidden": false,
           "text": "8%"
         }
-      ]
+      ],
+      "lines": null
     },
     {
       "index": 26,
@@ -1182,7 +1323,8 @@
       "top": 561.0,
       "left": 540.75,
       "lastTop": 561.0,
-      "runs": []
+      "runs": [],
+      "lines": null
     },
     {
       "index": 27,
@@ -1226,7 +1368,8 @@
           "hidden": false,
           "text": "West"
         }
-      ]
+      ],
+      "lines": null
     },
     {
       "index": 28,
@@ -1270,7 +1413,8 @@
           "hidden": false,
           "text": "143,000"
         }
-      ]
+      ],
+      "lines": null
     },
     {
       "index": 29,
@@ -1314,7 +1458,8 @@
           "hidden": false,
           "text": "15%"
         }
-      ]
+      ],
+      "lines": null
     },
     {
       "index": 30,
@@ -1340,7 +1485,8 @@
       "top": 586.5,
       "left": 540.75,
       "lastTop": 586.5,
-      "runs": []
+      "runs": [],
+      "lines": null
     },
     {
       "index": 31,
@@ -1383,6 +1529,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Chart"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Chart",
+          "top": 72.0,
+          "left": 72.0,
+          "page": 2
         }
       ]
     },
@@ -1428,6 +1582,14 @@
           "hidden": false,
           "text": "/"
         }
+      ],
+      "lines": [
+        {
+          "text": "/",
+          "top": 104.25,
+          "left": 72.0,
+          "page": 2
+        }
       ]
     },
     {
@@ -1471,6 +1633,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Plan"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Plan",
+          "top": 214.5,
+          "left": 72.0,
+          "page": 2
         }
       ]
     },
@@ -1516,6 +1686,14 @@
           "hidden": false,
           "text": "Finish the Word plugin"
         }
+      ],
+      "lines": [
+        {
+          "text": "Finish the Word plugin",
+          "top": 246.75,
+          "left": 90.0,
+          "page": 2
+        }
       ]
     },
     {
@@ -1559,6 +1737,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Improve pagination"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Improve pagination",
+          "top": 264.0,
+          "left": 90.0,
+          "page": 2
         }
       ]
     },
@@ -1604,6 +1790,14 @@
           "hidden": false,
           "text": "Release the next version"
         }
+      ],
+      "lines": [
+        {
+          "text": "Release the next version",
+          "top": 280.5,
+          "left": 90.0,
+          "page": 2
+        }
       ]
     },
     {
@@ -1647,6 +1841,26 @@
           "allCaps": false,
           "hidden": false,
           "text": "The a shows with between the through plain wraps margin. Each careful lines reader pages text at without. While scrolls of that the surprise opens and paragraph spacing while scrolls of. Plain wraps margin the a shows with between the through plain."
+        }
+      ],
+      "lines": [
+        {
+          "text": "The a shows with between the through plain wraps margin. Each careful lines reader pages ",
+          "top": 306.0,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "text at without. While scrolls of that the surprise opens and paragraph spacing while scrolls ",
+          "top": 323.25,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "of. Plain wraps margin the a shows with between the through plain.",
+          "top": 339.75,
+          "left": 72.0,
+          "page": 2
         }
       ]
     },
@@ -1692,6 +1906,32 @@
           "hidden": false,
           "text": "Careful lines reader pages text at without editor document each careful. Scrolls of that the surprise opens and paragraph spacing. Wraps margin the a shows with between the through plain wraps margin the a. Editor document each careful lines reader pages text at without editor document."
         }
+      ],
+      "lines": [
+        {
+          "text": "Careful lines reader pages text at without editor document each careful. Scrolls of that the ",
+          "top": 364.5,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "surprise opens and paragraph spacing. Wraps margin the a shows with between the ",
+          "top": 381.75,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "through plain wraps margin the a. Editor document each careful lines reader pages text at ",
+          "top": 398.25,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "without editor document.",
+          "top": 415.5,
+          "left": 72.0,
+          "page": 2
+        }
       ]
     },
     {
@@ -1714,10 +1954,10 @@
       "outlineLevel": 10,
       "page": 2,
       "inTable": false,
-      "lineCount": 3,
+      "lineCount": 4,
       "top": 440.25,
       "left": 72.0,
-      "lastTop": 474.0,
+      "lastTop": 491.25,
       "runs": [
         {
           "font": "Aptos",
@@ -1735,6 +1975,32 @@
           "allCaps": false,
           "hidden": false,
           "text": "Editor document each careful lines reader pages text at without editor document. Paragraph spacing while scrolls of that the surprise opens and. The through plain wraps margin the a shows. Text at without editor document each careful lines reader pages text at without."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Editor document each careful lines reader pages text at without editor document. ",
+          "top": 440.25,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "Paragraph spacing while scrolls of that the surprise opens and. The through plain wraps ",
+          "top": 457.5,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "margin the a shows. Text at without editor document each careful lines reader pages text at ",
+          "top": 474.0,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "without.",
+          "top": 491.25,
+          "left": 72.0,
+          "page": 2
         }
       ]
     },
@@ -1759,9 +2025,9 @@
       "page": 2,
       "inTable": false,
       "lineCount": 1,
-      "top": 499.5,
+      "top": 516.75,
       "left": 72.0,
-      "lastTop": 499.5,
+      "lastTop": 516.75,
       "runs": [
         {
           "font": "Aptos",
@@ -1814,6 +2080,14 @@
           "hidden": false,
           "text": "."
         }
+      ],
+      "lines": [
+        {
+          "text": "More detail is available at example.com/report.",
+          "top": 516.75,
+          "left": 72.0,
+          "page": 2
+        }
       ]
     },
     {
@@ -1837,9 +2111,9 @@
       "page": 2,
       "inTable": false,
       "lineCount": 1,
-      "top": 524.25,
+      "top": 541.5,
       "left": 72.0,
-      "lastTop": 524.25,
+      "lastTop": 541.5,
       "runs": [
         {
           "font": "Aptos",
@@ -1857,6 +2131,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Sincerely,"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Sincerely,",
+          "top": 541.5,
+          "left": 72.0,
+          "page": 2
         }
       ]
     },
@@ -1881,9 +2163,9 @@
       "page": 2,
       "inTable": false,
       "lineCount": 1,
-      "top": 549.75,
+      "top": 566.25,
       "left": 72.0,
-      "lastTop": 549.75,
+      "lastTop": 566.25,
       "runs": [
         {
           "font": "Aptos",
@@ -1901,6 +2183,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Jason"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Jason",
+          "top": 566.25,
+          "left": 72.0,
+          "page": 2
         }
       ]
     }
@@ -2003,13 +2293,25 @@
       "sectionStart": 2,
       "headers": {
         "primary": "Black Rainbow Labs - Quarterly Report",
+        "primaryPictures": 0,
+        "primaryTables": 0,
         "first": "",
-        "even": ""
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
       },
       "footers": {
         "primary": "Page 1 of 2",
+        "primaryPictures": 0,
+        "primaryTables": 0,
         "first": "",
-        "even": ""
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
       }
     }
   ],
@@ -2027,6 +2329,34 @@
     }
   ],
   "shapes": [],
+  "contentControls": [],
+  "oMaths": [],
+  "settings": {
+    "autoHyphenation": false,
+    "hyphenationZone": 9999999.0,
+    "consecutiveHyphensLimit": 0,
+    "compatibilityMode": 15
+  },
+  "footnoteOptions": {
+    "numberStyle": 0,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 0
+  },
+  "endnoteOptions": {
+    "numberStyle": 2,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 1
+  },
+  "footnotePages": [
+    {
+      "reference": 1,
+      "first": 1,
+      "last": 1,
+      "mark": "\u0002"
+    }
+  ],
   "fields": [
     {
       "type": 88,

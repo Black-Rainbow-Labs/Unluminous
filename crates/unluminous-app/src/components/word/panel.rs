@@ -979,7 +979,23 @@ fn review(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<
         doc.session.add_comment(&text);
         doc.view.fields.remove("comment");
     }
-    for comment in doc.session.comments() {
+    let comments = doc.session.comments();
+    if !comments.is_empty() {
+        ui.horizontal(|ui| {
+            if ui.button("Previous").clicked() {
+                doc.session.go_to_comment(false);
+                doc.view.reveal = true;
+            }
+            if ui.button("Next").clicked() {
+                doc.session.go_to_comment(true);
+                doc.view.reveal = true;
+            }
+            if ui.button("Delete all").clicked() {
+                doc.session.delete_all_comments();
+            }
+        });
+    }
+    for comment in comments {
         let id = comment["id"].as_i64().unwrap_or(0);
         egui::Frame::group(ui.style()).show(ui, |ui| {
             ui.set_width(ui.available_width());
@@ -995,8 +1011,34 @@ fn review(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<
             if let Some(on) = comment["on"].as_str().filter(|s| !s.is_empty()) {
                 ui.label(RichText::new(format!("“{on}”")).italics().color(look.palette.text_dim));
             }
-            ui.label(comment["text"].as_str().unwrap_or(""));
+            // The comment being edited is a text box; Save writes it back as one undo step.
+            let key = "comment-edit";
+            let editing =
+                doc.view.fields.get("comment-edit-id").and_then(|v| v.parse::<i64>().ok())
+                    == Some(id);
+            if editing {
+                let field = doc.view.fields.entry(key).or_default();
+                ui.add(
+                    egui::TextEdit::multiline(field).desired_rows(2).desired_width(f32::INFINITY),
+                );
+            } else {
+                ui.label(comment["text"].as_str().unwrap_or(""));
+            }
             ui.horizontal(|ui| {
+                if editing {
+                    if ui.button("Save").clicked() {
+                        let text = doc.view.fields.remove(key).unwrap_or_default();
+                        doc.view.fields.remove("comment-edit-id");
+                        let _ = doc.session.edit_comment(id, text.trim());
+                    }
+                    if ui.button("Cancel").clicked() {
+                        doc.view.fields.remove(key);
+                        doc.view.fields.remove("comment-edit-id");
+                    }
+                } else if ui.button("Edit").clicked() {
+                    doc.view.fields.insert("comment-edit-id", id.to_string());
+                    doc.view.fields.insert(key, comment["text"].as_str().unwrap_or("").to_owned());
+                }
                 let resolved = comment["resolved"].as_bool().unwrap_or(false);
                 if ui.button(if resolved { "Reopen" } else { "Resolve" }).clicked() {
                     let _ = doc.session.resolve_comment(id, !resolved);

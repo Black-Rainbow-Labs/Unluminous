@@ -305,8 +305,8 @@ fn a_double_press_on_the_margin_edits_the_header() {
         Default::default(),
     );
     let top = doc.pages.pages[0].body.y / 2.0;
-    assert_eq!(clickable(doc, 0, top, false), [StoryId::Body]);
-    let stories = clickable(doc, 0, top, true);
+    assert_eq!(clickable(doc, 0, 100.0, top, false), [StoryId::Body]);
+    let stories = clickable(doc, 0, 100.0, top, true);
     assert!(
         !stories.is_empty() && stories.iter().all(|s| matches!(s, StoryId::Header(_))),
         "{stories:?}"
@@ -317,7 +317,7 @@ fn a_double_press_on_the_margin_edits_the_header() {
         Pos { story: header, path: vec![0], offset: 0 },
     );
     let middle = doc.pages.pages[0].body.y + 100.0;
-    assert_eq!(clickable(doc, 0, middle, false), [StoryId::Body]);
+    assert_eq!(clickable(doc, 0, 100.0, middle, false), [StoryId::Body]);
 }
 
 /// **An agent lists the spelling errors with suggestions**, steps to the next one as F7 does, and a

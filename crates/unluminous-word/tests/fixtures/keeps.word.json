@@ -1,0 +1,3098 @@
+{
+  "file": "keeps.docx",
+  "opened": true,
+  "error": null,
+  "pages": 4,
+  "words": 1157,
+  "characters": 5987,
+  "charactersWithSpaces": 7096,
+  "paragraphCount": 48,
+  "lines": 112,
+  "paragraphs": [
+    {
+      "index": 1,
+      "text": "Lines reader pages text at without editor document. Of that the surprise opens and paragraph spacing while scrolls of that the.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 2,
+      "top": 72.0,
+      "left": 72.0,
+      "lastTop": 89.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Lines reader pages text at without editor document. Of that the surprise opens and paragraph spacing while scrolls of that the."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Lines reader pages text at without editor document. Of that the surprise opens and ",
+          "top": 72.0,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "paragraph spacing while scrolls of that the.",
+          "top": 89.25,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "text": "That the surprise opens and paragraph spacing while scrolls. The a shows with between the through plain wraps margin the a shows with. Each careful lines reader pages text at without editor document each careful.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 3,
+      "top": 114.0,
+      "left": 72.0,
+      "lastTop": 147.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "That the surprise opens and paragraph spacing while scrolls. The a shows with between the through plain wraps margin the a shows with. Each careful lines reader pages text at without editor document each careful."
+        }
+      ],
+      "lines": [
+        {
+          "text": "That the surprise opens and paragraph spacing while scrolls. The a shows with between the ",
+          "top": 114.0,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "through plain wraps margin the a shows with. Each careful lines reader pages text at ",
+          "top": 131.25,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "without editor document each careful.",
+          "top": 147.75,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "text": "While scrolls of that the surprise opens and paragraph spacing. Plain wraps margin the a shows with between. Without editor document each careful lines reader pages text at without editor document. And paragraph spacing while scrolls of that the surprise opens and.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 4,
+      "top": 172.5,
+      "left": 72.0,
+      "lastTop": 223.5,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "While scrolls of that the surprise opens and paragraph spacing. Plain wraps margin the a shows with between. Without editor document each careful lines reader pages text at without editor document. And paragraph spacing while scrolls of that the surprise opens and."
+        }
+      ],
+      "lines": [
+        {
+          "text": "While scrolls of that the surprise opens and paragraph spacing. Plain wraps margin the a ",
+          "top": 172.5,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "shows with between. Without editor document each careful lines reader pages text at ",
+          "top": 189.75,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "without editor document. And paragraph spacing while scrolls of that the surprise opens ",
+          "top": 206.25,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "and.",
+          "top": 223.5,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "text": "Heading in round 0",
+      "style": "Heading 1",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 18.0,
+      "spaceAfter": 4.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": true,
+      "keepTogether": true,
+      "pageBreakBefore": false,
+      "outlineLevel": 1,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 258.75,
+      "left": 72.0,
+      "lastTop": 258.75,
+      "runs": [
+        {
+          "font": "Aptos Display",
+          "size": 20.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "#104862",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Heading in round 0"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Heading in round 0",
+          "top": 258.75,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "text": "Wraps margin the a shows with between the through plain wraps. Editor document each careful lines reader pages text at. Paragraph spacing while scrolls of that the surprise opens and paragraph spacing while scrolls.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 3,
+      "top": 291.0,
+      "left": 72.0,
+      "lastTop": 324.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Wraps margin the a shows with between the through plain wraps. Editor document each careful lines reader pages text at. Paragraph spacing while scrolls of that the surprise opens and paragraph spacing while scrolls."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Wraps margin the a shows with between the through plain wraps. Editor document each ",
+          "top": 291.0,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "careful lines reader pages text at. Paragraph spacing while scrolls of that the surprise ",
+          "top": 308.25,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "opens and paragraph spacing while scrolls.",
+          "top": 324.75,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 6,
+      "text": "Document each careful lines reader pages text at without editor document each. Spacing while scrolls of that the surprise opens and paragraph.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 2,
+      "top": 350.25,
+      "left": 72.0,
+      "lastTop": 367.5,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Document each careful lines reader pages text at without editor document each. Spacing while scrolls of that the surprise opens and paragraph."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Document each careful lines reader pages text at without editor document each. Spacing ",
+          "top": 350.25,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "while scrolls of that the surprise opens and paragraph.",
+          "top": 367.5,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 7,
+      "text": "At without editor document each careful lines reader pages text at without editor. Opens and paragraph spacing while scrolls of that the surprise opens. With between the through plain wraps margin the a.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 3,
+      "top": 391.5,
+      "left": 72.0,
+      "lastTop": 425.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "At without editor document each careful lines reader pages text at without editor. Opens and paragraph spacing while scrolls of that the surprise opens. With between the through plain wraps margin the a."
+        }
+      ],
+      "lines": [
+        {
+          "text": "At without editor document each careful lines reader pages text at without editor. Opens ",
+          "top": 391.5,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "and paragraph spacing while scrolls of that the surprise opens. With between the through ",
+          "top": 408.75,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "plain wraps margin the a.",
+          "top": 425.25,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 8,
+      "text": "And paragraph spacing while scrolls of that the surprise opens and paragraph spacing while. Between the through plain wraps margin the a shows with between the. Pages text at without editor document each careful lines reader. The surprise opens and paragraph spacing while scrolls.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 4,
+      "top": 450.75,
+      "left": 72.0,
+      "lastTop": 501.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "And paragraph spacing while scrolls of that the surprise opens and paragraph spacing while. Between the through plain wraps margin the a shows with between the. Pages text at without editor document each careful lines reader. The surprise opens and paragraph spacing while scrolls."
+        }
+      ],
+      "lines": [
+        {
+          "text": "And paragraph spacing while scrolls of that the surprise opens and paragraph spacing ",
+          "top": 450.75,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "while. Between the through plain wraps margin the a shows with between the. Pages text at ",
+          "top": 468.0,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "without editor document each careful lines reader. The surprise opens and paragraph ",
+          "top": 484.5,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "spacing while scrolls.",
+          "top": 501.75,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 9,
+      "text": "The through plain wraps margin the a shows. Text at without editor document each careful lines reader pages text at without.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 2,
+      "top": 526.5,
+      "left": 72.0,
+      "lastTop": 543.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "The through plain wraps margin the a shows. Text at without editor document each careful lines reader pages text at without."
+        }
+      ],
+      "lines": [
+        {
+          "text": "The through plain wraps margin the a shows. Text at without editor document each careful ",
+          "top": 526.5,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "lines reader pages text at without.",
+          "top": 543.75,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 10,
+      "text": "Heading in round 1",
+      "style": "Heading 1",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 18.0,
+      "spaceAfter": 4.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": true,
+      "keepTogether": true,
+      "pageBreakBefore": false,
+      "outlineLevel": 1,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 578.25,
+      "left": 72.0,
+      "lastTop": 578.25,
+      "runs": [
+        {
+          "font": "Aptos Display",
+          "size": 20.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "#104862",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Heading in round 1"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Heading in round 1",
+          "top": 578.25,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 11,
+      "text": "Shows with between the through plain wraps margin the. Lines reader pages text at without editor document each careful lines reader pages text. Of that the surprise opens and paragraph spacing while scrolls of that.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 3,
+      "top": 610.5,
+      "left": 72.0,
+      "lastTop": 644.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Shows with between the through plain wraps margin the. Lines reader pages text at without editor document each careful lines reader pages text. Of that the surprise opens and paragraph spacing while scrolls of that."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Shows with between the through plain wraps margin the. Lines reader pages text at without ",
+          "top": 610.5,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "editor document each careful lines reader pages text. Of that the surprise opens and ",
+          "top": 627.75,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "paragraph spacing while scrolls of that.",
+          "top": 644.25,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 12,
+      "text": "Reader pages text at without editor document each careful lines. That the surprise opens and paragraph spacing while.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 2,
+      "top": 669.75,
+      "left": 72.0,
+      "lastTop": 687.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Reader pages text at without editor document each careful lines. That the surprise opens and paragraph spacing while."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Reader pages text at without editor document each careful lines. That the surprise opens ",
+          "top": 669.75,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "and paragraph spacing while.",
+          "top": 687.0,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 13,
+      "text": "The surprise opens and paragraph spacing while scrolls of that the. A shows with between the through plain wraps margin. Careful lines reader pages text at without editor document each careful lines reader pages.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 3,
+      "top": 72.0,
+      "left": 72.0,
+      "lastTop": 105.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "The surprise opens and paragraph spacing while scrolls of that the. A shows with between the through plain wraps margin. Careful lines reader pages text at without editor document each careful lines reader pages."
+        }
+      ],
+      "lines": [
+        {
+          "text": "The surprise opens and paragraph spacing while scrolls of that the. A shows with between ",
+          "top": 72.0,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "the through plain wraps margin. Careful lines reader pages text at without editor document ",
+          "top": 89.25,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "each careful lines reader pages.",
+          "top": 105.75,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 14,
+      "text": "Scrolls of that the surprise opens and paragraph spacing while scrolls of. Wraps margin the a shows with between the through plain. Editor document each careful lines reader pages text. Paragraph spacing while scrolls of that the surprise opens and paragraph spacing while.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 4,
+      "top": 131.25,
+      "left": 72.0,
+      "lastTop": 182.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Scrolls of that the surprise opens and paragraph spacing while scrolls of. Wraps margin the a shows with between the through plain. Editor document each careful lines reader pages text. Paragraph spacing while scrolls of that the surprise opens and paragraph spacing while."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Scrolls of that the surprise opens and paragraph spacing while scrolls of. Wraps margin the ",
+          "top": 131.25,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "a shows with between the through plain. Editor document each careful lines reader pages ",
+          "top": 148.5,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "text. Paragraph spacing while scrolls of that the surprise opens and paragraph spacing ",
+          "top": 165.0,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "while.",
+          "top": 182.25,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 15,
+      "text": "Margin the a shows with between the through plain wraps margin the a. Document each careful lines reader pages text at without editor document.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 2,
+      "top": 207.0,
+      "left": 72.0,
+      "lastTop": 224.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Margin the a shows with between the through plain wraps margin the a. Document each careful lines reader pages text at without editor document."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Margin the a shows with between the through plain wraps margin the a. Document each ",
+          "top": 207.0,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "careful lines reader pages text at without editor document.",
+          "top": 224.25,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 16,
+      "text": "Each careful lines reader pages text at without editor document each careful lines reader. While scrolls of that the surprise opens and paragraph spacing while scrolls. Plain wraps margin the a shows with between the through.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 3,
+      "top": 249.0,
+      "left": 72.0,
+      "lastTop": 282.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Each careful lines reader pages text at without editor document each careful lines reader. While scrolls of that the surprise opens and paragraph spacing while scrolls. Plain wraps margin the a shows with between the through."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Each careful lines reader pages text at without editor document each careful lines reader. ",
+          "top": 249.0,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "While scrolls of that the surprise opens and paragraph spacing while scrolls. Plain wraps ",
+          "top": 266.25,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "margin the a shows with between the through.",
+          "top": 282.75,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 17,
+      "text": "Heading in round 2",
+      "style": "Heading 1",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 18.0,
+      "spaceAfter": 4.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": true,
+      "keepTogether": true,
+      "pageBreakBefore": false,
+      "outlineLevel": 1,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 317.25,
+      "left": 72.0,
+      "lastTop": 317.25,
+      "runs": [
+        {
+          "font": "Aptos Display",
+          "size": 20.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "#104862",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Heading in round 2"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Heading in round 2",
+          "top": 317.25,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 18,
+      "text": "Without editor document each careful lines reader pages. And paragraph spacing while scrolls of that the surprise opens and paragraph spacing. Between the through plain wraps margin the a shows with between.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 3,
+      "top": 350.25,
+      "left": 72.0,
+      "lastTop": 384.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Without editor document each careful lines reader pages. And paragraph spacing while scrolls of that the surprise opens and paragraph spacing. Between the through plain wraps margin the a shows with between."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Without editor document each careful lines reader pages. And paragraph spacing while ",
+          "top": 350.25,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "scrolls of that the surprise opens and paragraph spacing. Between the through plain wraps ",
+          "top": 367.5,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "margin the a shows with between.",
+          "top": 384.0,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 19,
+      "text": "Paragraph spacing while scrolls of that the surprise opens. The through plain wraps margin the a shows with between the through plain wraps.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 2,
+      "top": 408.75,
+      "left": 72.0,
+      "lastTop": 426.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Paragraph spacing while scrolls of that the surprise opens. The through plain wraps margin the a shows with between the through plain wraps."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Paragraph spacing while scrolls of that the surprise opens. The through plain wraps margin ",
+          "top": 408.75,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "the a shows with between the through plain wraps.",
+          "top": 426.0,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 20,
+      "text": "Through plain wraps margin the a shows with between the. At without editor document each careful lines reader. Opens and paragraph spacing while scrolls of that the surprise opens and paragraph.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 3,
+      "top": 450.75,
+      "left": 72.0,
+      "lastTop": 484.5,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Through plain wraps margin the a shows with between the. At without editor document each careful lines reader. Opens and paragraph spacing while scrolls of that the surprise opens and paragraph."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Through plain wraps margin the a shows with between the. At without editor document ",
+          "top": 450.75,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "each careful lines reader. Opens and paragraph spacing while scrolls of that the surprise ",
+          "top": 468.0,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "opens and paragraph.",
+          "top": 484.5,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 21,
+      "text": "With between the through plain wraps margin the a shows with. Reader pages text at without editor document each careful. That the surprise opens and paragraph spacing while scrolls of that the surprise opens. The a shows with between the through plain wraps margin the a.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 4,
+      "top": 510.0,
+      "left": 72.0,
+      "lastTop": 561.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "With between the through plain wraps margin the a shows with. Reader pages text at without editor document each careful. That the surprise opens and paragraph spacing while scrolls of that the surprise opens. The a shows with between the through plain wraps margin the a."
+        }
+      ],
+      "lines": [
+        {
+          "text": "With between the through plain wraps margin the a shows with. Reader pages text at ",
+          "top": 510.0,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "without editor document each careful. That the surprise opens and paragraph spacing ",
+          "top": 527.25,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "while scrolls of that the surprise opens. The a shows with between the through plain wraps ",
+          "top": 543.75,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "margin the a.",
+          "top": 561.0,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 22,
+      "text": "Pages text at without editor document each careful lines reader pages text. The surprise opens and paragraph spacing while scrolls of that.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 2,
+      "top": 585.75,
+      "left": 72.0,
+      "lastTop": 603.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Pages text at without editor document each careful lines reader pages text. The surprise opens and paragraph spacing while scrolls of that."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Pages text at without editor document each careful lines reader pages text. The surprise ",
+          "top": 585.75,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "opens and paragraph spacing while scrolls of that.",
+          "top": 603.0,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 23,
+      "text": "Surprise opens and paragraph spacing while scrolls of that the surprise opens and. Shows with between the through plain wraps margin the a shows. Lines reader pages text at without editor document each.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 3,
+      "top": 627.75,
+      "left": 72.0,
+      "lastTop": 661.5,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Surprise opens and paragraph spacing while scrolls of that the surprise opens and. Shows with between the through plain wraps margin the a shows. Lines reader pages text at without editor document each."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Surprise opens and paragraph spacing while scrolls of that the surprise opens and. Shows ",
+          "top": 627.75,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "with between the through plain wraps margin the a shows. Lines reader pages text at ",
+          "top": 645.0,
+          "left": 72.0,
+          "page": 2
+        },
+        {
+          "text": "without editor document each.",
+          "top": 661.5,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 24,
+      "text": "Of that the surprise opens and paragraph spacing while scrolls of that the surprise. Margin the a shows with between the through plain wraps margin the. Document each careful lines reader pages text at without editor. Spacing while scrolls of that the surprise opens.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 3,
+      "inTable": false,
+      "lineCount": 3,
+      "top": 72.0,
+      "left": 72.0,
+      "lastTop": 105.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Of that the surprise opens and paragraph spacing while scrolls of that the surprise. Margin the a shows with between the through plain wraps margin the. Document each careful lines reader pages text at without editor. Spacing while scrolls of that the surprise opens."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Of that the surprise opens and paragraph spacing while scrolls of that the surprise. Margin ",
+          "top": 72.0,
+          "left": 72.0,
+          "page": 3
+        },
+        {
+          "text": "the a shows with between the through plain wraps margin the. Document each careful ",
+          "top": 89.25,
+          "left": 72.0,
+          "page": 3
+        },
+        {
+          "text": "lines reader pages text at without editor. Spacing while scrolls of that the surprise opens.",
+          "top": 105.75,
+          "left": 72.0,
+          "page": 3
+        }
+      ]
+    },
+    {
+      "index": 25,
+      "text": "Heading in round 3",
+      "style": "Heading 1",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 18.0,
+      "spaceAfter": 4.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": true,
+      "keepTogether": true,
+      "pageBreakBefore": false,
+      "outlineLevel": 1,
+      "page": 3,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 141.0,
+      "left": 72.0,
+      "lastTop": 141.0,
+      "runs": [
+        {
+          "font": "Aptos Display",
+          "size": 20.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "#104862",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Heading in round 3"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Heading in round 3",
+          "top": 141.0,
+          "left": 72.0,
+          "page": 3
+        }
+      ]
+    },
+    {
+      "index": 26,
+      "text": "The a shows with between the through plain. Each careful lines reader pages text at without editor document each careful lines. While scrolls of that the surprise opens and paragraph spacing while.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 3,
+      "inTable": false,
+      "lineCount": 3,
+      "top": 173.25,
+      "left": 72.0,
+      "lastTop": 207.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "The a shows with between the through plain. Each careful lines reader pages text at without editor document each careful lines. While scrolls of that the surprise opens and paragraph spacing while."
+        }
+      ],
+      "lines": [
+        {
+          "text": "The a shows with between the through plain. Each careful lines reader pages text at without ",
+          "top": 173.25,
+          "left": 72.0,
+          "page": 3
+        },
+        {
+          "text": "editor document each careful lines. While scrolls of that the surprise opens and paragraph ",
+          "top": 190.5,
+          "left": 72.0,
+          "page": 3
+        },
+        {
+          "text": "spacing while.",
+          "top": 207.0,
+          "left": 72.0,
+          "page": 3
+        }
+      ]
+    },
+    {
+      "index": 27,
+      "text": "Careful lines reader pages text at without editor document. Scrolls of that the surprise opens and paragraph spacing while scrolls of that the.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 3,
+      "inTable": false,
+      "lineCount": 2,
+      "top": 231.75,
+      "left": 72.0,
+      "lastTop": 249.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Careful lines reader pages text at without editor document. Scrolls of that the surprise opens and paragraph spacing while scrolls of that the."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Careful lines reader pages text at without editor document. Scrolls of that the surprise ",
+          "top": 231.75,
+          "left": 72.0,
+          "page": 3
+        },
+        {
+          "text": "opens and paragraph spacing while scrolls of that the.",
+          "top": 249.0,
+          "left": 72.0,
+          "page": 3
+        }
+      ]
+    },
+    {
+      "index": 28,
+      "text": "Editor document each careful lines reader pages text at without. Paragraph spacing while scrolls of that the surprise. The through plain wraps margin the a shows with between the through plain.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 3,
+      "inTable": false,
+      "lineCount": 3,
+      "top": 273.75,
+      "left": 72.0,
+      "lastTop": 307.5,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Editor document each careful lines reader pages text at without. Paragraph spacing while scrolls of that the surprise. The through plain wraps margin the a shows with between the through plain."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Editor document each careful lines reader pages text at without. Paragraph spacing while ",
+          "top": 273.75,
+          "left": 72.0,
+          "page": 3
+        },
+        {
+          "text": "scrolls of that the surprise. The through plain wraps margin the a shows with between the ",
+          "top": 291.0,
+          "left": 72.0,
+          "page": 3
+        },
+        {
+          "text": "through plain.",
+          "top": 307.5,
+          "left": 72.0,
+          "page": 3
+        }
+      ]
+    },
+    {
+      "index": 29,
+      "text": "Spacing while scrolls of that the surprise opens and paragraph spacing. Through plain wraps margin the a shows with between. At without editor document each careful lines reader pages text at without editor document. Opens and paragraph spacing while scrolls of that the surprise opens and.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 3,
+      "inTable": false,
+      "lineCount": 4,
+      "top": 333.0,
+      "left": 72.0,
+      "lastTop": 384.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Spacing while scrolls of that the surprise opens and paragraph spacing. Through plain wraps margin the a shows with between. At without editor document each careful lines reader pages text at without editor document. Opens and paragraph spacing while scrolls of that the surprise opens and."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Spacing while scrolls of that the surprise opens and paragraph spacing. Through plain ",
+          "top": 333.0,
+          "left": 72.0,
+          "page": 3
+        },
+        {
+          "text": "wraps margin the a shows with between. At without editor document each careful lines ",
+          "top": 350.25,
+          "left": 72.0,
+          "page": 3
+        },
+        {
+          "text": "reader pages text at without editor document. Opens and paragraph spacing while scrolls ",
+          "top": 366.75,
+          "left": 72.0,
+          "page": 3
+        },
+        {
+          "text": "of that the surprise opens and.",
+          "top": 384.0,
+          "left": 72.0,
+          "page": 3
+        }
+      ]
+    },
+    {
+      "index": 30,
+      "text": "Plain wraps margin the a shows with between the through plain wraps. Without editor document each careful lines reader pages text at.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 3,
+      "inTable": false,
+      "lineCount": 2,
+      "top": 408.75,
+      "left": 72.0,
+      "lastTop": 426.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Plain wraps margin the a shows with between the through plain wraps. Without editor document each careful lines reader pages text at."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Plain wraps margin the a shows with between the through plain wraps. Without editor ",
+          "top": 408.75,
+          "left": 72.0,
+          "page": 3
+        },
+        {
+          "text": "document each careful lines reader pages text at.",
+          "top": 426.0,
+          "left": 72.0,
+          "page": 3
+        }
+      ]
+    },
+    {
+      "index": 31,
+      "text": "Between the through plain wraps margin the a shows with between the through. Pages text at without editor document each careful lines reader pages. The surprise opens and paragraph spacing while scrolls of.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 3,
+      "inTable": false,
+      "lineCount": 3,
+      "top": 450.75,
+      "left": 72.0,
+      "lastTop": 484.5,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Between the through plain wraps margin the a shows with between the through. Pages text at without editor document each careful lines reader pages. The surprise opens and paragraph spacing while scrolls of."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Between the through plain wraps margin the a shows with between the through. Pages text ",
+          "top": 450.75,
+          "left": 72.0,
+          "page": 3
+        },
+        {
+          "text": "at without editor document each careful lines reader pages. The surprise opens and ",
+          "top": 468.0,
+          "left": 72.0,
+          "page": 3
+        },
+        {
+          "text": "paragraph spacing while scrolls of.",
+          "top": 484.5,
+          "left": 72.0,
+          "page": 3
+        }
+      ]
+    },
+    {
+      "index": 32,
+      "text": "Text at without editor document each careful lines reader pages text at without editor. Surprise opens and paragraph spacing while scrolls of that the surprise opens. Shows with between the through plain wraps margin the a. Lines reader pages text at without editor document.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 3,
+      "inTable": false,
+      "lineCount": 4,
+      "top": 510.0,
+      "left": 72.0,
+      "lastTop": 561.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Text at without editor document each careful lines reader pages text at without editor. Surprise opens and paragraph spacing while scrolls of that the surprise opens. Shows with between the through plain wraps margin the a. Lines reader pages text at without editor document."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Text at without editor document each careful lines reader pages text at without editor. ",
+          "top": 510.0,
+          "left": 72.0,
+          "page": 3
+        },
+        {
+          "text": "Surprise opens and paragraph spacing while scrolls of that the surprise opens. Shows with ",
+          "top": 527.25,
+          "left": 72.0,
+          "page": 3
+        },
+        {
+          "text": "between the through plain wraps margin the a. Lines reader pages text at without editor ",
+          "top": 543.75,
+          "left": 72.0,
+          "page": 3
+        },
+        {
+          "text": "document.",
+          "top": 561.0,
+          "left": 72.0,
+          "page": 3
+        }
+      ]
+    },
+    {
+      "index": 33,
+      "text": "Opens and paragraph spacing while scrolls of that. With between the through plain wraps margin the a shows with between the.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 3,
+      "inTable": false,
+      "lineCount": 2,
+      "top": 585.75,
+      "left": 72.0,
+      "lastTop": 603.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Opens and paragraph spacing while scrolls of that. With between the through plain wraps margin the a shows with between the."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Opens and paragraph spacing while scrolls of that. With between the through plain wraps ",
+          "top": 585.75,
+          "left": 72.0,
+          "page": 3
+        },
+        {
+          "text": "margin the a shows with between the.",
+          "top": 603.0,
+          "left": 72.0,
+          "page": 3
+        }
+      ]
+    },
+    {
+      "index": 34,
+      "text": "Heading in round 4",
+      "style": "Heading 1",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 18.0,
+      "spaceAfter": 4.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": true,
+      "keepTogether": true,
+      "pageBreakBefore": false,
+      "outlineLevel": 1,
+      "page": 3,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 637.5,
+      "left": 72.0,
+      "lastTop": 637.5,
+      "runs": [
+        {
+          "font": "Aptos Display",
+          "size": 20.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "#104862",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Heading in round 4"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Heading in round 4",
+          "top": 637.5,
+          "left": 72.0,
+          "page": 3
+        }
+      ]
+    },
+    {
+      "index": 35,
+      "text": "That the surprise opens and paragraph spacing while scrolls. The a shows with between the through plain wraps margin the a shows with. Each careful lines reader pages text at without editor document each careful.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 3,
+      "inTable": false,
+      "lineCount": 3,
+      "top": 669.75,
+      "left": 72.0,
+      "lastTop": 703.5,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "That the surprise opens and paragraph spacing while scrolls. The a shows with between the through plain wraps margin the a shows with. Each careful lines reader pages text at without editor document each careful."
+        }
+      ],
+      "lines": [
+        {
+          "text": "That the surprise opens and paragraph spacing while scrolls. The a shows with between the ",
+          "top": 669.75,
+          "left": 72.0,
+          "page": 3
+        },
+        {
+          "text": "through plain wraps margin the a shows with. Each careful lines reader pages text at ",
+          "top": 687.0,
+          "left": 72.0,
+          "page": 3
+        },
+        {
+          "text": "without editor document each careful.",
+          "top": 703.5,
+          "left": 72.0,
+          "page": 3
+        }
+      ]
+    },
+    {
+      "index": 36,
+      "text": "Kept together. A shows with between the through plain wraps margin the. Careful lines reader pages text at without editor. Scrolls of that the surprise opens and paragraph spacing while scrolls of that. Wraps margin the a shows with between the through plain wraps. Editor document each careful lines reader pages text at. Paragraph spacing while scrolls of that the surprise opens and paragraph spacing while scrolls.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": true,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 4,
+      "inTable": false,
+      "lineCount": 5,
+      "top": 72.0,
+      "left": 72.0,
+      "lastTop": 139.5,
+      "runs": null,
+      "lines": [
+        {
+          "text": "Kept together. A shows with between the through plain wraps margin the. Careful lines ",
+          "top": 72.0,
+          "left": 72.0,
+          "page": 4
+        },
+        {
+          "text": "reader pages text at without editor. Scrolls of that the surprise opens and paragraph ",
+          "top": 89.25,
+          "left": 72.0,
+          "page": 4
+        },
+        {
+          "text": "spacing while scrolls of that. Wraps margin the a shows with between the through plain ",
+          "top": 105.75,
+          "left": 72.0,
+          "page": 4
+        },
+        {
+          "text": "wraps. Editor document each careful lines reader pages text at. Paragraph spacing while ",
+          "top": 123.0,
+          "left": 72.0,
+          "page": 4
+        },
+        {
+          "text": "scrolls of that the surprise opens and paragraph spacing while scrolls.",
+          "top": 139.5,
+          "left": 72.0,
+          "page": 4
+        }
+      ]
+    },
+    {
+      "index": 37,
+      "text": "Chained 0. Lines reader pages text at without editor document each careful lines.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": true,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 4,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 165.0,
+      "left": 72.0,
+      "lastTop": 165.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Chained 0. Lines reader pages text at without editor document each careful lines."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Chained 0. Lines reader pages text at without editor document each careful lines.",
+          "top": 165.0,
+          "left": 72.0,
+          "page": 4
+        }
+      ]
+    },
+    {
+      "index": 38,
+      "text": "Chained 1. Document each careful lines reader pages text at without editor document each.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": true,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 4,
+      "inTable": false,
+      "lineCount": 2,
+      "top": 189.75,
+      "left": 72.0,
+      "lastTop": 207.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Chained 1. Document each careful lines reader pages text at without editor document each."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Chained 1. Document each careful lines reader pages text at without editor document ",
+          "top": 189.75,
+          "left": 72.0,
+          "page": 4
+        },
+        {
+          "text": "each.",
+          "top": 207.0,
+          "left": 72.0,
+          "page": 4
+        }
+      ]
+    },
+    {
+      "index": 39,
+      "text": "Chained 2. While scrolls of that the surprise opens and paragraph spacing while scrolls of.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": true,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 4,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 231.75,
+      "left": 72.0,
+      "lastTop": 231.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Chained 2. While scrolls of that the surprise opens and paragraph spacing while scrolls of."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Chained 2. While scrolls of that the surprise opens and paragraph spacing while scrolls of.",
+          "top": 231.75,
+          "left": 72.0,
+          "page": 4
+        }
+      ]
+    },
+    {
+      "index": 40,
+      "text": "Wraps margin the a shows with between the through plain wraps margin the a. Editor document each careful lines reader pages text at without editor document. Paragraph spacing while scrolls of that the surprise opens and.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 4,
+      "inTable": false,
+      "lineCount": 3,
+      "top": 256.5,
+      "left": 72.0,
+      "lastTop": 290.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Wraps margin the a shows with between the through plain wraps margin the a. Editor document each careful lines reader pages text at without editor document. Paragraph spacing while scrolls of that the surprise opens and."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Wraps margin the a shows with between the through plain wraps margin the a. Editor ",
+          "top": 256.5,
+          "left": 72.0,
+          "page": 4
+        },
+        {
+          "text": "document each careful lines reader pages text at without editor document. Paragraph ",
+          "top": 273.75,
+          "left": 72.0,
+          "page": 4
+        },
+        {
+          "text": "spacing while scrolls of that the surprise opens and.",
+          "top": 290.25,
+          "left": 72.0,
+          "page": 4
+        }
+      ]
+    },
+    {
+      "index": 41,
+      "text": "A heading before a table",
+      "style": "Heading 2",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 8.0,
+      "spaceAfter": 4.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": true,
+      "keepTogether": true,
+      "pageBreakBefore": false,
+      "outlineLevel": 2,
+      "page": 4,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 315.75,
+      "left": 72.0,
+      "lastTop": 315.75,
+      "runs": [
+        {
+          "font": "Aptos Display",
+          "size": 16.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "#104862",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "A heading before a table"
+        }
+      ],
+      "lines": [
+        {
+          "text": "A heading before a table",
+          "top": 315.75,
+          "left": 72.0,
+          "page": 4
+        }
+      ]
+    },
+    {
+      "index": 42,
+      "text": "a1\r",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 4,
+      "inTable": true,
+      "lineCount": 0,
+      "top": 342.75,
+      "left": 78.0,
+      "lastTop": 342.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "a1"
+        }
+      ],
+      "lines": [
+        {
+          "text": "a1\r",
+          "top": 342.75,
+          "left": 78.0,
+          "page": 4
+        }
+      ]
+    },
+    {
+      "index": 43,
+      "text": "b1\r",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 4,
+      "inTable": true,
+      "lineCount": 0,
+      "top": 342.75,
+      "left": 312.0,
+      "lastTop": 342.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "b1"
+        }
+      ],
+      "lines": [
+        {
+          "text": "b1\r",
+          "top": 342.75,
+          "left": 312.0,
+          "page": 4
+        }
+      ]
+    },
+    {
+      "index": 44,
+      "text": "\r",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 4,
+      "inTable": true,
+      "lineCount": 0,
+      "top": 342.75,
+      "left": 540.75,
+      "lastTop": 342.75,
+      "runs": [],
+      "lines": [
+        {
+          "text": "\r",
+          "top": 342.75,
+          "left": 540.75,
+          "page": 4
+        }
+      ]
+    },
+    {
+      "index": 45,
+      "text": "a2\r",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 4,
+      "inTable": true,
+      "lineCount": 0,
+      "top": 368.25,
+      "left": 78.0,
+      "lastTop": 368.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "a2"
+        }
+      ],
+      "lines": [
+        {
+          "text": "a2\r",
+          "top": 368.25,
+          "left": 78.0,
+          "page": 4
+        }
+      ]
+    },
+    {
+      "index": 46,
+      "text": "b2\r",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 4,
+      "inTable": true,
+      "lineCount": 0,
+      "top": 368.25,
+      "left": 312.0,
+      "lastTop": 368.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "b2"
+        }
+      ],
+      "lines": [
+        {
+          "text": "b2\r",
+          "top": 368.25,
+          "left": 312.0,
+          "page": 4
+        }
+      ]
+    },
+    {
+      "index": 47,
+      "text": "\r",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 4,
+      "inTable": true,
+      "lineCount": 0,
+      "top": 368.25,
+      "left": 540.75,
+      "lastTop": 368.25,
+      "runs": [],
+      "lines": [
+        {
+          "text": "\r",
+          "top": 368.25,
+          "left": 540.75,
+          "page": 4
+        }
+      ]
+    },
+    {
+      "index": 48,
+      "text": "a3\r",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 4,
+      "inTable": true,
+      "lineCount": 0,
+      "top": 393.75,
+      "left": 78.0,
+      "lastTop": 393.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "a3"
+        }
+      ],
+      "lines": [
+        {
+          "text": "a3\r",
+          "top": 393.75,
+          "left": 78.0,
+          "page": 4
+        }
+      ]
+    },
+    {
+      "index": 49,
+      "text": "b3\r",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 4,
+      "inTable": true,
+      "lineCount": 0,
+      "top": 393.75,
+      "left": 312.0,
+      "lastTop": 393.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "b3"
+        }
+      ],
+      "lines": [
+        {
+          "text": "b3\r",
+          "top": 393.75,
+          "left": 312.0,
+          "page": 4
+        }
+      ]
+    },
+    {
+      "index": 50,
+      "text": "\r",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 4,
+      "inTable": true,
+      "lineCount": 0,
+      "top": 393.75,
+      "left": 540.75,
+      "lastTop": 393.75,
+      "runs": [],
+      "lines": [
+        {
+          "text": "\r",
+          "top": 393.75,
+          "left": 540.75,
+          "page": 4
+        }
+      ]
+    },
+    {
+      "index": 51,
+      "text": "The through plain wraps margin the a shows. Text at without editor document each careful lines reader pages text at without.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 4,
+      "inTable": false,
+      "lineCount": 2,
+      "top": 419.25,
+      "left": 72.0,
+      "lastTop": 436.5,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "The through plain wraps margin the a shows. Text at without editor document each careful lines reader pages text at without."
+        }
+      ],
+      "lines": [
+        {
+          "text": "The through plain wraps margin the a shows. Text at without editor document each careful ",
+          "top": 419.25,
+          "left": 72.0,
+          "page": 4
+        },
+        {
+          "text": "lines reader pages text at without.",
+          "top": 436.5,
+          "left": 72.0,
+          "page": 4
+        }
+      ]
+    }
+  ],
+  "tables": [
+    {
+      "rows": 3,
+      "columns": 2,
+      "nested": 1,
+      "cells": [
+        {
+          "row": 1,
+          "column": 1,
+          "text": "a1",
+          "width": 234.0
+        },
+        {
+          "row": 1,
+          "column": 2,
+          "text": "b1",
+          "width": 234.0
+        },
+        {
+          "row": 2,
+          "column": 1,
+          "text": "a2",
+          "width": 234.0
+        },
+        {
+          "row": 2,
+          "column": 2,
+          "text": "b2",
+          "width": 234.0
+        },
+        {
+          "row": 3,
+          "column": 1,
+          "text": "a3",
+          "width": 234.0
+        },
+        {
+          "row": 3,
+          "column": 2,
+          "text": "b3",
+          "width": 234.0
+        }
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "pageWidth": 612.0,
+      "pageHeight": 792.0,
+      "orientation": 0,
+      "topMargin": 72.0,
+      "bottomMargin": 72.0,
+      "leftMargin": 72.0,
+      "rightMargin": 72.0,
+      "headerDistance": 36.0,
+      "footerDistance": 36.0,
+      "columns": 1,
+      "differentFirstPage": false,
+      "oddAndEvenPages": false,
+      "sectionStart": 2,
+      "headers": {
+        "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
+        "first": "",
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
+      },
+      "footers": {
+        "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
+        "first": "",
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
+      }
+    }
+  ],
+  "footnotes": [],
+  "endnotes": [],
+  "comments": [],
+  "revisions": [],
+  "inlineShapes": [],
+  "shapes": [],
+  "contentControls": [],
+  "oMaths": [],
+  "settings": {
+    "autoHyphenation": false,
+    "hyphenationZone": 9999999.0,
+    "consecutiveHyphensLimit": 0,
+    "compatibilityMode": 15
+  },
+  "footnoteOptions": {
+    "numberStyle": 0,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 0
+  },
+  "endnoteOptions": {
+    "numberStyle": 2,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 1
+  },
+  "footnotePages": [],
+  "fields": [],
+  "tablesOfContents": 0,
+  "bookmarks": [],
+  "hyperlinks": [],
+  "properties": {
+    "title": "",
+    "subject": "",
+    "author": "Oracle",
+    "keywords": ""
+  }
+}

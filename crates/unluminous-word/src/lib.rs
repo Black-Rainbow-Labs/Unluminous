@@ -13,6 +13,7 @@
 
 pub mod autocorrect;
 pub mod builtin;
+pub mod clipboard;
 pub mod edit;
 pub mod export;
 pub mod fields;

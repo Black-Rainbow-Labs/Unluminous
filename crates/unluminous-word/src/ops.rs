@@ -746,21 +746,28 @@ impl Session {
                 ..Run::text("", reference_props)
             };
             if let Some(t) = tracking {
+                let ins = document.next_id();
                 run.wraps.push(Wrap::new(
                     El::new("w:ins")
-                        .with("w:id", id.to_string())
+                        .with("w:id", ins.to_string())
                         .with("w:author", t.author.clone())
                         .with("w:date", t.date.clone()),
                 ));
             }
             let len = run.len();
+            let Some(p) = position::paragraph_mut(document, &at.story, &at.path) else {
+                return selection.clone();
+            };
             p.runs.insert(index, run);
             for mark in &mut p.marks {
                 if mark.offset > at.offset {
                     mark.offset += len;
                 }
             }
-            Selection::caret(at.at(at.offset + len))
+            // The caret goes into the new note, after its text, as Word's Insert Footnote leaves it.
+            let story = if endnote { StoryId::Endnote(id) } else { StoryId::Footnote(id) };
+            let end = position::paragraph(document, &story, &[0]).map_or(0, Paragraph::len);
+            Selection::caret(Pos { story, path: vec![0], offset: end })
         });
     }
 
@@ -945,6 +952,112 @@ impl Session {
         ensure_para_id(&mut self.document, parent, &parent_para);
         set_comment_extended(&mut self.document, id, Some(&parent_para), false);
         Ok(id)
+    }
+
+    /// Change a comment's text. Its first paragraph keeps the annotation mark and its id, so a reply
+    /// and the resolved state still find it; any other paragraphs it had go.
+    pub fn edit_comment(&mut self, id: i64, text: &str) -> Result<(), String> {
+        let exists = self
+            .document
+            .comments
+            .as_ref()
+            .is_some_and(|p| p.notes.iter().any(|n| n.id() == Some(id)));
+        if !exists {
+            return Err(format!("there is no comment {id}"));
+        }
+        let text = text.to_owned();
+        self.change(Scope::Whole, move |document, selection, _| {
+            let Some(part) = document.comments.as_mut() else { return selection.clone() };
+            let Some(note) = part.notes.iter_mut().find(|n| n.id() == Some(id)) else {
+                return selection.clone();
+            };
+            let first = note.blocks.iter().position(|b| matches!(b, Block::Paragraph(_)));
+            if let Some(first) = first {
+                note.blocks.truncate(first + 1);
+                if let Block::Paragraph(p) = &mut note.blocks[first] {
+                    let props = p
+                        .runs
+                        .iter()
+                        .find(|r| matches!(r.content, Content::Text(_)))
+                        .map_or_else(no_props, |r| Arc::clone(&r.props));
+                    p.runs.retain(|r| matches!(&r.content, Content::Object(el) if el.name == "w:annotationRef"));
+                    p.runs.push(Run::text(text.clone(), props));
+                    p.marks.clear();
+                }
+            }
+            part.dirty = true;
+            selection.clone()
+        });
+        Ok(())
+    }
+
+    /// Delete every comment in the document. Answers how many.
+    pub fn delete_all_comments(&mut self) -> usize {
+        let ids: Vec<i64> = self
+            .document
+            .comments
+            .as_ref()
+            .map(|p| p.notes.iter().filter_map(Story::id).filter(|id| *id >= 0).collect())
+            .unwrap_or_default();
+        if ids.is_empty() {
+            return 0;
+        }
+        self.change(Scope::Whole, |document, selection, _| {
+            let paras: Vec<String> = document
+                .comments
+                .as_ref()
+                .map(|p| p.notes.iter().filter_map(last_para_id).collect())
+                .unwrap_or_default();
+            for para in paras {
+                remove_comment_from_side_parts(document, &para);
+            }
+            for id in &ids {
+                remove_comment_pieces(&mut document.body, &id.to_string());
+            }
+            if let Some(part) = document.comments.as_mut() {
+                part.notes.retain(|n| n.id().is_none_or(|id| id < 0));
+                part.dirty = true;
+            }
+            let len = position::paragraph(document, &selection.head.story, &selection.head.path)
+                .map_or(0, Paragraph::len);
+            Selection::caret(selection.head.at(selection.head.offset.min(len)))
+        });
+        ids.len()
+    }
+
+    /// Select the next (or previous) comment's range after the caret, wrapping round. Answers its id.
+    pub fn go_to_comment(&mut self, forward: bool) -> Option<i64> {
+        let mut starts: Vec<(Pos, Pos, i64)> = Vec::new();
+        for (path, p) in position::paragraphs(&self.document.body) {
+            for mark in p.marks.iter().filter(|m| m.el.name == "w:commentRangeStart") {
+                let Some(id) = mark.el.attr("w:id").and_then(|i| i.parse().ok()) else { continue };
+                let end = position::paragraphs(&self.document.body).into_iter().find_map(
+                    |(end_path, q)| {
+                        q.marks
+                            .iter()
+                            .find(|m| {
+                                m.el.name == "w:commentRangeEnd"
+                                    && m.el.attr("w:id") == mark.el.attr("w:id")
+                            })
+                            .map(|m| Pos::new(end_path.clone(), m.offset))
+                    },
+                );
+                let start = Pos::new(path.clone(), mark.offset);
+                starts.push((start.clone(), end.unwrap_or(start), id));
+            }
+        }
+        if starts.is_empty() {
+            return None;
+        }
+        let caret = self.selection.ordered().0.clone();
+        let chosen = if forward {
+            starts.iter().find(|(s, _, _)| *s > caret).or(starts.first())
+        } else {
+            starts.iter().rev().find(|(s, _, _)| *s < caret).or(starts.last())
+        }?
+        .clone();
+        self.select(chosen.0, chosen.1);
+        Some(chosen.2)
     }
 
     /// Mark a comment resolved, or open again.

@@ -4,6 +4,7 @@
 //! Only the pages on the screen are drawn. A glyph is drawn from the window's own atlas at the size it is
 //! seen at, through `WordFonts::drawn`, which is the size the layout measured it at times the zoom.
 
+use crate::components::controls::WithHint;
 use egui::{Color32, Mesh, Pos2, Rect, Sense, Shape, Stroke, Vec2};
 use unluminous_word::layout::{CaretLine, Item, RuleKind};
 use unluminous_word::position::{Pos, Selection, StoryId};
@@ -58,8 +59,22 @@ pub fn page_point(doc: &Doc, area: Rect, at: Pos2) -> Option<(usize, f32, f32)> 
 /// The stories a press at a point may land in. A single press stays in the body, or in the header or
 /// footer being edited; a double press on a page's top or bottom margin moves into its header or footer,
 /// and a press back on the body leaves it, which is how Word keeps a click from wandering into the header.
-pub(crate) fn clickable(doc: &Doc, page: usize, y: f32, double: bool) -> Vec<StoryId> {
+pub(crate) fn clickable(doc: &Doc, page: usize, x: f32, y: f32, double: bool) -> Vec<StoryId> {
     let Some(laid) = doc.pages.pages.get(page) else { return vec![StoryId::Body] };
+    // A press on a line of a footnote, an endnote or a text box puts the caret in that story, the way a
+    // press in the body puts it in the body (task-2359, C7).
+    let inside = laid.carets.iter().find(|line| {
+        matches!(line.story, StoryId::Footnote(_) | StoryId::Endnote(_) | StoryId::TextBox(_))
+            && y >= line.top
+            && y <= line.top + line.height
+            && x >= line.stops.first().map_or(0.0, |s| s.1) - 24.0
+            && x <= line.stops.last().map_or(0.0, |s| s.1).max(laid.body.x + laid.body.w) + 4.0
+    });
+    if let Some(line) = inside {
+        if !matches!(doc.session.selection.head.story, StoryId::Header(_)) {
+            return vec![line.story.clone()];
+        }
+    }
     let in_margin = y < laid.body.y || y > laid.body.bottom();
     let headers: Vec<StoryId> = laid
         .carets
@@ -71,8 +86,8 @@ pub(crate) fn clickable(doc: &Doc, page: usize, y: f32, double: bool) -> Vec<Sto
         StoryId::Header(_) if !in_margin => vec![StoryId::Body],
         StoryId::Header(_) => headers,
         _ if double && in_margin && !headers.is_empty() => headers,
-        StoryId::Body => vec![StoryId::Body],
-        other => vec![other.clone()],
+        // A press outside the note or text box being edited goes back to the body.
+        _ => vec![StoryId::Body],
     }
 }
 
@@ -640,7 +655,7 @@ fn pointer(
     };
     let hit = |doc: &Doc| {
         page_point(doc, area, at).and_then(|(page, x, y)| {
-            doc.pages.hit(page, x, y, &clickable(doc, page, y, count == 2))
+            doc.pages.hit(page, x, y, &clickable(doc, page, x, y, count == 2))
         })
     };
     let right_pressed = ui.input(|i| i.pointer.secondary_pressed())
@@ -649,6 +664,57 @@ fn pointer(
     if right_pressed {
         if let Some(pos) = hit(doc) {
             super::spelling::right_click(doc, pos);
+        }
+        return;
+    }
+    // Over a link: its address and screen tip, and Ctrl+click follows it, as Word does (task-2359, C13).
+    let command = ui.input(|i| i.modifiers.command);
+    if response.hovered() && !doc.view.dragging {
+        if let Some((address, tip)) = hit(doc).and_then(|pos| doc.session.hyperlink_at(&pos)) {
+            if command {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            let words = match tip {
+                Some(tip) if !tip.is_empty() => format!(
+                    "{tip}
+{address}
+Ctrl+click to follow the link"
+                ),
+                _ => format!(
+                    "{address}
+Ctrl+click to follow the link"
+                ),
+            };
+            response.clone().with_hint(words);
+            if pressed && command && !shift {
+                follow_link(doc, &address, requests);
+                return;
+            }
+        }
+    }
+    if pressed && count == 1 && !shift && !doc.session.selection.is_empty() {
+        if let Some(pos) = hit(doc) {
+            let (from, to) = doc.session.selection.ordered();
+            if pos.story == from.story && pos > *from && pos < *to {
+                doc.view.carrying = true;
+                doc.view.clicks = (now, at, count);
+                return;
+            }
+        }
+    }
+    if doc.view.carrying {
+        if response.dragged() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+        }
+        if ui.input(|i| i.pointer.primary_released()) {
+            doc.view.carrying = false;
+            let moved = place.distance(at) > 4.0;
+            match hit(doc) {
+                Some(target) if moved => carry_the_selection(doc, target, command),
+                // A press and release inside the selection without moving puts the caret there.
+                Some(target) => doc.session.select(target.clone(), target),
+                None => {}
+            }
         }
         return;
     }
@@ -689,6 +755,53 @@ fn pointer(
     if ui.input(|i| i.pointer.primary_released()) {
         doc.view.dragging = false;
     }
+}
+
+/// Drop the selection at `target`: moved there, or copied with `copy`. A drop inside the selection does
+/// nothing. The text after the selection is inserted first and the selection taken out second, so
+/// neither position moves under the other.
+pub(crate) fn carry_the_selection(doc: &mut Doc, target: Pos, copy: bool) {
+    let (from, to) = {
+        let (a, b) = doc.session.selection.ordered();
+        (a.clone(), b.clone())
+    };
+    if target.story != from.story || (target >= from && target <= to) {
+        return;
+    }
+    let (_, fragment) = doc.session.copy();
+    let after = target > to;
+    if !copy && !after {
+        doc.session.backspace(unluminous_word::edit::Unit::Character);
+    }
+    doc.session.select(target.clone(), target.clone());
+    doc.session.paste_fragment(fragment);
+    if !copy && after {
+        doc.session.select(from.clone(), to.clone());
+        doc.session.backspace(unluminous_word::edit::Unit::Character);
+    }
+    doc.view.reveal = true;
+}
+
+/// Follow a link: a `#bookmark` puts the caret at the bookmark, a web address opens in the default
+/// browser through the window's own `browser open --system`.
+pub(crate) fn follow_link(doc: &mut Doc, address: &str, requests: &mut Vec<Request>) {
+    if let Some(name) = address.strip_prefix('#') {
+        if let Some((_, at)) = doc.session.bookmarks().into_iter().find(|(n, _)| n == name) {
+            doc.session.select(at.clone(), at);
+            doc.view.reveal = true;
+        } else {
+            requests.push(Request::Message(format!("There is no bookmark called {name}")));
+        }
+        return;
+    }
+    let mut arguments = serde_json::Map::new();
+    arguments.insert("address".into(), serde_json::Value::String(address.to_owned()));
+    arguments.insert("system".into(), serde_json::Value::Bool(true));
+    requests.push(Request::RunCommand {
+        id: format!("word-follow-{address}"),
+        command: "browser.open".into(),
+        arguments,
+    });
 }
 
 /// Double click: the word under the pointer.

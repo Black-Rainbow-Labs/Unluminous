@@ -77,6 +77,56 @@ fn words_text(paragraph: &Value) -> String {
 /// A paragraph's text the way Word's `Range.Text` gives it: field codes left out, deleted text kept, hidden
 /// text left out, a note reference as character 2, a picture as `/`, and a section break at the end of the
 /// paragraph that ends a section.
+/// Where a field's result is one Word works out again whenever it opens the file.
+const ANY: char = '\u{1}';
+
+fn is_a_date(code: &str) -> bool {
+    let kind = code.split_whitespace().next().unwrap_or("").to_ascii_uppercase();
+    matches!(kind.as_str(), "DATE" | "TIME")
+}
+
+/// Ours against Word's text: `ANY` in ours takes any run of characters, and an equation's structure
+/// marks (`\r` inside the paragraph) and its mathematical letters are read as the plain letters.
+fn same_text(ours: &str, words: &str) -> bool {
+    // An equation's minus sign is U+2212 in Word's text and a hyphen in the file.
+    let minus = |c: char| if c == '\u{2212}' { '-' } else { c };
+    let words: String = words.chars().filter(|c| *c != '\r').map(plain_math).map(minus).collect();
+    let ours: String = ours.chars().map(minus).collect::<String>().to_lowercase();
+    let words = words.to_lowercase();
+    match ours.split_once(ANY) {
+        Some((before, after)) => {
+            words.starts_with(before)
+                && words.ends_with(after)
+                && words.len() >= before.len() + after.len()
+        }
+        None => ours == words,
+    }
+}
+
+/// A Mathematical Alphanumeric Symbol as the letter, digit or Greek letter it is a style of.
+fn plain_math(c: char) -> char {
+    let u = c as u32;
+    if c == '\u{210E}' {
+        return 'h';
+    }
+    if (0x1D400..=0x1D6A3).contains(&u) {
+        let i = ((u - 0x1D400) % 52) as u8;
+        return if i < 26 { (b'A' + i) as char } else { (b'a' + i - 26) as char };
+    }
+    if (0x1D6A8..=0x1D7C9).contains(&u) {
+        let i = (u - 0x1D6A8) % 58;
+        return match i {
+            0..=24 => char::from_u32(0x391 + i + u32::from(i >= 17)).unwrap_or(c),
+            26..=50 => char::from_u32(0x3B1 + i - 26).unwrap_or(c),
+            _ => c,
+        };
+    }
+    if (0x1D7CE..=0x1D7FF).contains(&u) {
+        return (b'0' + ((u - 0x1D7CE) % 10) as u8) as char;
+    }
+    c
+}
+
 fn ours(paragraph: &unluminous_word::model::Paragraph, resolver: &Resolver) -> String {
     ours_on_page(paragraph, resolver, None)
 }
@@ -103,6 +153,11 @@ fn ours_on_page(
                         last.0 = false;
                         if let Some(value) = page_result(&last.1, page) {
                             out.push_str(&value);
+                            last.2 = true;
+                        } else if is_a_date(&last.1) {
+                            // Word works a date out again when it opens the file, so the report holds the
+                            // day it was inspected; the comparison takes anything there.
+                            out.push(ANY);
                             last.2 = true;
                         }
                     }
@@ -150,6 +205,11 @@ fn ours_on_page(
             Content::Object(el)
                 if matches!(el.name.as_str(), "w:commentReference" | "w:annotationRef") => {}
             Content::Object(_) if run.content.picture().is_some() => {}
+            // Word's `Range.Text` gives a positional tab as the character 0.
+            Content::Object(el) if el.name == "w:ptab" => out.push('0'),
+            Content::ParagraphObject(el) if el.name.starts_with("m:") => {
+                out.push_str(&unluminous_word::math::plain_text(el))
+            }
             other => out.extend(other.character().filter(|c| *c != '\u{FFFC}')),
         }
     }
@@ -191,7 +251,7 @@ fn every_paragraphs_text_and_style_are_what_word_reports() {
             };
             let text = ours(paragraph, &resolver);
             // Word reports text in all capitals as it is drawn.
-            if text.to_lowercase() != words_text(word).to_lowercase() {
+            if !same_text(&text, &words_text(word)) {
                 failures.push(format!(
                     "{} paragraph {index}: {text:?} against Word's {:?}",
                     file.display(),
@@ -436,9 +496,21 @@ fn every_runs_formatting_is_what_word_reports() {
             if theirs.len() != characters.len() {
                 continue;
             }
+            // A content control showing its placeholder: Word draws the placeholder in the Placeholder Text
+            // style's colour (666666 in the PDF Word exports of controls.docx), but its object model
+            // reports the colour as automatic, so that one report is not compared.
+            let placeholder = paragraph.runs.iter().any(|r| {
+                r.wraps.iter().any(|w| {
+                    w.el.name == "w:sdt"
+                        && w.el
+                            .child("w:sdtPr")
+                            .is_some_and(|p| p.child("w:showingPlcHdr").is_some())
+                })
+            });
             let mut seen: Vec<&str> = Vec::new();
             for ((c, ours), (_, word_run)) in characters.iter().zip(&theirs) {
                 let colour = match word_run["color"].as_str() {
+                    Some("auto") | None if placeholder => ours.color,
                     Some("auto") | None => None,
                     Some(hex) => Rgb::parse(hex),
                 };

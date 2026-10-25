@@ -38,11 +38,19 @@ pub fn handle(ui: &egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
                 }
             }
             Event::Paste(text) => {
-                // A paste of exactly what a Word tab copied keeps its formatting; anything else is text.
+                // A paste of exactly what a Word tab copied keeps its formatting. Anything else asks the
+                // window for the clipboard's HTML and RTF, and pastes when it answers; Ctrl+Shift+V pastes
+                // the text alone, which is what Word gives that chord.
                 let text = text.replace("\r\n", "\n");
+                let only_text = ui.input(|i| i.modifiers.shift);
                 match copied_fragment(&text) {
-                    Some(fragment) => doc.session.paste_fragment(fragment),
-                    None => doc.session.type_text(&text),
+                    Some(fragment) if !only_text => {
+                        let at = doc.session.selection.ordered().0.clone();
+                        doc.session.paste_fragment(fragment.clone());
+                        crate::services::word::remember_the_paste(doc, fragment, text, at);
+                    }
+                    _ if only_text => doc.session.type_text(&text),
+                    _ => crate::services::word::ask_for_the_clipboard(doc, text, requests),
                 }
                 doc.view.reveal = true;
             }
@@ -59,15 +67,17 @@ pub fn handle(ui: &egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
 static COPIED: std::sync::Mutex<Option<(String, Vec<unluminous_word::model::Paragraph>)>> =
     std::sync::Mutex::new(None);
 
-fn copy(doc: &Doc, requests: &mut Vec<Request>) {
+pub(crate) fn copy(doc: &Doc, requests: &mut Vec<Request>) {
     if doc.session.selection.is_empty() {
         return;
     }
     let (text, fragment) = doc.session.copy();
+    let html = unluminous_word::export::fragment_html(&doc.session.document, &fragment);
+    let rtf = unluminous_word::clipboard::to_rtf(&doc.session.document, &fragment);
     if let Ok(mut slot) = COPIED.lock() {
         *slot = Some((text.clone(), fragment));
     }
-    requests.push(Request::Copy(text));
+    requests.push(Request::CopyRich { text, html, rtf });
 }
 
 /// The paragraphs a Word tab copied, when the clipboard still holds exactly their text.

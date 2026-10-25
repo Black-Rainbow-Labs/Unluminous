@@ -487,6 +487,13 @@ pub enum Request {
     /// The clipboard is the platform's and the window owns the one handle to it, which is why a provider asks
     /// rather than reaching: two owners of a clipboard is two programs fighting over one selection.
     Copy(String),
+    /// Formatted text for the clipboard: the plain text, an HTML fragment and RTF, all three put on
+    /// the system clipboard at once (`services::rich_clipboard`), so a paste in Word or a browser keeps
+    /// the formatting (task-2359). A window a test built puts the text only, through egui.
+    CopyRich { text: String, html: String, rtf: String },
+    /// What the clipboard holds as HTML, RTF and text, answered through [`UiProvider::answered`] as
+    /// `{ "html": …, "rtf": …, "text": … }`, each null when the clipboard does not hold it.
+    ClipboardRich { id: String },
     /// Run one of Unluminous's own commands and hand the answer back through [`UiProvider::answered`].
     ///
     /// **The one path a command becomes a change is `UnluminousApp::run_cli`**, and this is how a provider

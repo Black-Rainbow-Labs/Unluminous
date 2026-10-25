@@ -216,6 +216,16 @@ fn html_escape(text: &str) -> String {
     text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
 }
 
+/// Paragraphs as an HTML fragment, in the same markup the page export writes, for the clipboard.
+pub fn fragment_html(document: &Document, paragraphs: &[crate::model::Paragraph]) -> String {
+    let resolver = Resolver::new(document);
+    let mut counters = crate::numbering::Counters::default();
+    let blocks: Vec<Block> = paragraphs.iter().cloned().map(Block::Paragraph).collect();
+    let mut out = String::new();
+    html_blocks(document, &resolver, &mut counters, &blocks, &mut out);
+    out
+}
+
 /// The document as one HTML page, with its fonts, sizes, colours and alignment inline, and pictures
 /// embedded, so it opens in a browser as it looks.
 pub fn to_html(document: &Document) -> String {

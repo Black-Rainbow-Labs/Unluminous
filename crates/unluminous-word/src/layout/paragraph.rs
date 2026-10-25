@@ -878,11 +878,15 @@ impl Hyphenation {
         if props::on_off(settings, "w:autoHyphenation") != Some(true) {
             return None;
         }
+        // Word 2013 and later (compatibility mode 15) has no hyphenation zone: it hyphenates a word
+        // whenever part of it fits, and reports the zone as undefined. Older documents keep theirs.
+        let zone = if super::compatibility_mode(document) >= 15 {
+            0.0
+        } else {
+            settings.val_of("w:hyphenationZone").and_then(props::number).map_or(18.0, props::twips)
+        };
         Some(Hyphenation {
-            zone: settings
-                .val_of("w:hyphenationZone")
-                .and_then(props::number)
-                .map_or(18.0, props::twips),
+            zone,
             limit: settings
                 .val_of("w:consecutiveHyphenLimit")
                 .and_then(|v| v.parse().ok())
@@ -1048,22 +1052,45 @@ fn next_line(
     let mut pen = left;
     let mut has_content = false;
     let mut index = from;
+    // The width of the spaces since the last tab, which a justified line may shrink.
+    let shrinks = ctx.shrink_justified && look.align == Align::Justify;
+    let mut spaces = 0.0f32;
+    // After a right, centre or decimal tab the text that follows ends at (or centres on) the stop, so it
+    // fits the line as long as it fits between the text before the tab and the right edge; the pen stays
+    // where the tab started, and the stop is where the next tab is measured from.
+    let mut aligned_to: Option<f32> = None;
     while index < atoms.len() {
         let atom = &atoms[index];
         if atom.is_special() {
             match atom.kind {
                 Kind::Tab => {
-                    let (stop, _, _) = next_tab(ctx, look, pen, first);
+                    spaces = 0.0;
+                    if let Some(stop) = aligned_to.take() {
+                        pen = pen.max(stop);
+                    }
+                    let (stop, kind, _) = next_tab(ctx, look, pen, first);
                     if stop > right + 0.01 && has_content {
                         return (line, index);
                     }
                     line.atoms.push(index);
-                    pen = stop.max(pen);
+                    match kind {
+                        TabKind::Right | TabKind::Center | TabKind::Decimal => {
+                            aligned_to = Some(stop)
+                        }
+                        _ => pen = stop.max(pen),
+                    }
                 }
                 Kind::PositionTab { align, to_indent, .. } => {
+                    spaces = 0.0;
+                    if let Some(stop) = aligned_to.take() {
+                        pen = pen.max(stop);
+                    }
                     line.atoms.push(index);
-                    let (stop, _) = position_tab(look, align, to_indent, width);
-                    pen = stop.max(pen);
+                    let (stop, kind) = position_tab(look, align, to_indent, width);
+                    match kind {
+                        TabKind::Right | TabKind::Center => aligned_to = Some(stop),
+                        _ => pen = stop.max(pen),
+                    }
                 }
                 _ => {
                     line.atoms.push(index);
@@ -1090,9 +1117,20 @@ fn next_line(
             .take_while(|a| matches!(a.kind, Kind::Space(_)))
             .map(|a| a.width)
             .sum();
-        let fits = pen + total - trailing <= right + 0.01;
+        let inner: f32 = segment
+            .iter()
+            .filter(|a| matches!(a.kind, Kind::Space(_)))
+            .map(|a| a.width)
+            .sum::<f32>()
+            - trailing;
+        // The space after the word counts too, as it does in Word: measured on the paragraphs fixture,
+        // a line Word fits needs its thirteen inner spaces 20.1% narrower.
+        let room = if shrinks { right + SHRINK * (spaces + inner + trailing) } else { right };
+        let fits = pen + total - trailing <= room + 0.01;
         if !fits && has_content {
-            if let Some(cut) = hyphenate(ctx, look, atoms, index, end, pen, right, hyphens) {
+            // The part of a hyphenated word fits the line its spaces may shrink to, as a whole word does.
+            let room = if shrinks { right + SHRINK * (spaces + inner + trailing) } else { right };
+            if let Some(cut) = hyphenate(ctx, look, atoms, index, end, pen, room, hyphens) {
                 line.atoms.extend(index..cut);
                 line.hyphen = true;
                 return (line, cut);
@@ -1116,6 +1154,9 @@ fn next_line(
             for (at, atom) in atoms.iter().enumerate().take(end).skip(index) {
                 line.atoms.push(at);
                 has_content |= atom.addressable();
+                if matches!(atom.kind, Kind::Space(_)) {
+                    spaces += atom.width;
+                }
             }
             pen += total;
         }
@@ -1123,6 +1164,11 @@ fn next_line(
     }
     (line, index)
 }
+
+/// How much of its spaces' width a justified line may give up to take another word, in Word's 2013
+/// layout. Measured on the hyphenation and paragraphs fixtures, Word fits lines whose spaces had to
+/// shrink by 16 and 17 percent; a fifth is the limit LibreOffice found for the same behaviour.
+const SHRINK: f32 = 0.2;
 
 /// Place one line: tabs, alignment, height, and what is drawn.
 #[allow(clippy::too_many_arguments)]
@@ -1208,7 +1254,10 @@ fn place_line(
                 .map(|&i| (atoms[i].look, measure(ctx, &looks[atoms[i].look], "-", false)))
         })
         .flatten();
-    let extra = (right - content_end - hyphen.map_or(0.0, |(_, w)| w)).max(0.0);
+    // A justified line may be wider than the column by what its spaces shrink, so its own extra can be
+    // below nothing; every other alignment only ever moves text right.
+    let raw = right - content_end - hyphen.map_or(0.0, |(_, w)| w);
+    let extra = raw.max(0.0);
     match look.align {
         Align::Center => xs.iter_mut().for_each(|(x, _)| *x += extra / 2.0),
         Align::Right => xs.iter_mut().for_each(|(x, _)| *x += extra),
@@ -1228,7 +1277,7 @@ fn place_line(
                 .filter(|&p| matches!(atoms[line.atoms[p]].kind, Kind::Space(_)))
                 .collect();
             if !spaces.is_empty() {
-                let per = extra / spaces.len() as f32;
+                let per = raw / spaces.len() as f32;
                 let mut shift = 0.0;
                 for (position, slot) in xs.iter_mut().enumerate() {
                     slot.0 += shift;
@@ -1253,13 +1302,16 @@ fn place_line(
     let mut above: f32 = 0.0;
     let mut below: f32 = 0.0;
     let mut measured = false;
+    // An inline picture stands on the baseline at its own height. Word does not scale it by the line
+    // spacing: measured on the pictures fixture, a line holding only a 90, 60 or 135 point picture is
+    // the picture's height and the paragraph mark's descent, at 1.16 line spacing.
+    let mut picture: f32 = 0.0;
     for &index in &line.atoms {
         let atom = &atoms[index];
         let look_of = &looks[atom.look];
         match &atom.kind {
             Kind::Picture(float) => {
-                above = above.max(float.height);
-                measured = true;
+                picture = picture.max(float.height);
             }
             Kind::Float(_) | Kind::Line | Kind::Page | Kind::Column => {}
             _ => {
@@ -1278,12 +1330,15 @@ fn place_line(
     }
     let natural = above + below;
     let (height, baseline) = match look.line {
+        LineRule::Auto(multiple) if picture + below > natural * multiple.max(0.06) => {
+            (picture + below, picture)
+        }
         LineRule::Auto(multiple) => {
             let height = natural * multiple.max(0.06);
             (height, height - below * multiple.clamp(0.06, 1.0))
         }
         LineRule::AtLeast(at_least) => {
-            let height = natural.max(at_least);
+            let height = natural.max(picture + below).max(at_least);
             (height, height - below)
         }
         LineRule::Exact(exact) => (exact, exact - below.min(exact * 0.25)),

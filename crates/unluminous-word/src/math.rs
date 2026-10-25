@@ -12,6 +12,18 @@ pub const FONT: &str = "Cambria Math";
 
 /// An equation's linear text: `m:oMath`, `m:oMathPara` (each equation on its own line) or any element
 /// inside one.
+/// The characters of an equation's text runs (`m:t`) in order, with no structure: what Word's
+/// `Range.Text` holds for it once the structure marks are taken out.
+pub fn plain_text(el: &El) -> String {
+    let mut out = String::new();
+    el.walk(&mut |node| {
+        if node.name == "m:t" {
+            out.push_str(&node.text());
+        }
+    });
+    out
+}
+
 pub fn linear_text(el: &El) -> String {
     let mut out = String::new();
     write(el, &mut out);

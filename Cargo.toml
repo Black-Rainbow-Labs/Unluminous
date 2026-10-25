@@ -34,6 +34,8 @@ roxmltree = "0.20"
 ttf-parser = "0.25"
 spellbook = "0.4.2"
 # Knuth-Liang hyphenation with the en-US TeX patterns embedded, for the Word plugin (task-2359, M9).
+# HTML on the clipboard, read the way a browser reads it: html5ever's tree builder. Already in the tree.
+dom_query = { version = "0.28", default-features = false }
 hyphenation = { version = "0.8.4", default-features = false, features = ["embed_en-us"] }
 # Speech to text for the Agent-Chat prompt: the microphone, the "Sable" wake word, the local Moonshine model
 # and an OpenAI compatible endpoint. `task-2290`.
