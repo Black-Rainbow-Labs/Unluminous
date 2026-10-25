@@ -10,6 +10,9 @@
 
 use std::collections::BTreeMap;
 
+/// A note box's left, top, width and height in points.
+type Bounds = (f64, f64, f64, f64);
+
 mod cellstyles;
 mod objects;
 mod protect;
@@ -920,7 +923,7 @@ impl Session {
                 s.notes.insert(k, note);
             }
         }
-        let placed: Vec<((u32, u32), (f64, f64, f64, f64))> = {
+        let placed: Vec<((u32, u32), Bounds)> = {
             let geometry = review::notebox::Geometry::standard(s);
             s.notes
                 .iter()
