@@ -161,6 +161,7 @@ fn object_element(
 fn sync_sheet(book: &mut Workbook, index: usize) {
     let has_drawing = book.sheets[index].raw.rels.iter().any(|r| r.kind == REL_DRAWING);
     if !has_drawing && book.sheets[index].drawing.objects.is_empty() {
+        drop_unused_media(book, index);
         return;
     }
     let (part, _) = drawing_part(book, index);
