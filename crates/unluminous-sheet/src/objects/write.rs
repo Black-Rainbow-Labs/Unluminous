@@ -150,6 +150,10 @@ fn object_element(
 
 /// Write one sheet's drawing part from its objects.
 fn sync_sheet(book: &mut Workbook, index: usize) {
+    let has_drawing = book.sheets[index].raw.rels.iter().any(|r| r.kind == REL_DRAWING);
+    if !has_drawing && book.sheets[index].drawing.objects.is_empty() {
+        return;
+    }
     let (part, _) = drawing_part(book, index);
     let rels_part = rels_path(&part);
     let mut rels = book

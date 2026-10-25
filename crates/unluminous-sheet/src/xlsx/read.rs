@@ -99,9 +99,11 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
     }
     // Dynamic array metadata: which cm index means a dynamic array.
     let mut dynamic_cm: Option<u32> = None;
+    let mut rich_metadata = false;
     if let Some(path) = target_of(REL_METADATA) {
         if let Some(xml) = text(&path) {
             let (cm, only_dynamic) = read_metadata(&xml);
+            rich_metadata = xml.contains("XLRICHVALUE");
             dynamic_cm = cm;
             if only_dynamic {
                 regenerated_parts.insert(path);
@@ -214,7 +216,7 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
         .iter()
         .filter(|r| {
             let regenerated = REGENERATED.contains(&r.kind.as_str());
-            let unused_metadata = r.kind == REL_METADATA && book.dynamic_cm.is_none();
+            let unused_metadata = r.kind == REL_METADATA && book.dynamic_cm.is_none() && !rich_metadata;
             !(regenerated || unused_metadata)
         })
         .filter(|r| {

@@ -15,6 +15,7 @@
 pub mod geometry;
 pub mod make;
 pub mod props;
+pub mod richdata;
 pub mod read;
 pub mod sparkline;
 pub mod write;

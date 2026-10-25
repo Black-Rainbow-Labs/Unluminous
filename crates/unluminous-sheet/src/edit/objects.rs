@@ -242,6 +242,33 @@ impl Session {
         })
     }
 
+    /// Place a picture in a cell (Picture > Place in Cell): the picture leaves the drawing and the cell shows it,
+    /// holding `#VALUE!` as Excel leaves it. The cell must be empty.
+    pub fn place_in_cell(&mut self, sheet: usize, id: ObjectId, at: CellRef) -> Result<(), String> {
+        self.check_sheet(sheet)?;
+        let object = self.book.sheets[sheet].drawing.find(id).ok_or(NOT_FOUND)?;
+        let picture = object.picture.clone().ok_or("Only a picture can be placed in a cell.")?;
+        let alt = object.descr.clone();
+        if picture.svg.is_some() {
+            return Err("An SVG picture cannot be placed in a cell.".to_owned());
+        }
+        let busy = self.book.sheets[sheet].cells.get(&(at.row, at.col)).is_some_and(|c| !c.value.is_empty() || c.formula.is_some());
+        if busy {
+            return Err("Place in Cell needs an empty cell.".to_owned());
+        }
+        self.remember_whole("Place picture in cell");
+        crate::objects::richdata::place(&mut self.book, sheet, at, &picture.part, &alt)?;
+        let s = &mut self.book.sheets[sheet];
+        s.drawing.objects.retain(|o| o.id != id);
+        s.drawing.changed = true;
+        Ok(())
+    }
+
+    /// The image part a cell shows when a picture was placed in it.
+    pub fn cell_image(&self, sheet: usize, at: CellRef) -> Option<String> {
+        crate::objects::richdata::cell_image(&self.book, sheet, at)
+    }
+
     // ---------------------------------------------------------------------------------------------- shapes
 
     /// Insert a shape with its frame at a rectangle (drawing units, from the top left of the sheet).

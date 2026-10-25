@@ -11,7 +11,11 @@ $ErrorActionPreference = 'Continue'
 $Paths = @($Paths | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 $sig = '[DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);'
 Add-Type -MemberDefinition $sig -Name Win -Namespace ObjProbe -ErrorAction SilentlyContinue
-$excel = New-Object -ComObject Excel.Application
+# Several scripts may start Excel at once on a shared machine; starting it is tried again when it is refused.
+$excel = $null
+for ($try = 0; $try -lt 8 -and $null -eq $excel; $try++) {
+    try { $excel = New-Object -ComObject Excel.Application } catch { Start-Sleep -Seconds (3 + $try * 2) }
+}
 $excel.DisplayAlerts = $false
 $excel.Visible = $false
 $excel.AutomationSecurity = 3
@@ -78,7 +82,8 @@ foreach ($path in $Paths) {
             $shapes = @(); foreach ($sh in $ws.Shapes) { $shapes += , (Describe-Shape $sh) }
             $groups = @(); $n = S { $ws.Cells.SparklineGroups.Count }
             for ($i = 1; $i -le [int]$n; $i++) { $groups += , (Describe-Group $ws.Cells.SparklineGroups.Item($i)) }
-            $result.sheets += , ([ordered]@{ name = $ws.Name; shapes = $shapes; sparklines = $groups })
+            $cells = @(); $n = 0; foreach ($c in $ws.UsedRange.Cells) { $n++; if ($n -gt 200) { break }; if ($null -ne $c.Value2 -or $c.HasFormula) { $cells += , ("$(A $c)|$($c.Value2)|$($c.Text)|$($c.Formula)") } }
+            $result.sheets += , ([ordered]@{ name = $ws.Name; shapes = $shapes; sparklines = $groups; cells = $cells })
         }
         try { $book.Close($false) } catch { }
     }

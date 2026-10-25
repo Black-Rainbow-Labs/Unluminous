@@ -390,6 +390,8 @@ pub struct SparklineData {
     pub first: Option<usize>,
     pub last: Option<usize>,
     pub negatives: Vec<usize>,
+    /// Where bars start: zero, held inside the axis.
+    pub baseline: f64,
 }
 
 /// The cells a data formula names, as a sheet index and a range.
@@ -423,20 +425,34 @@ fn read_values(book: &Workbook, home: usize, group: &SparklineGroup, sp: &Sparkl
     out
 }
 
-/// The axis bounds Excel picks when the group leaves them automatic: a line and a column sparkline show the
-/// data from its lowest value to its highest, and a column or win loss sparkline also shows zero.
-pub fn automatic_bounds(kind: SparklineKind, low: f64, high: f64) -> (f64, f64) {
-    let (mut lo, mut hi) = (low, high);
-    if kind != SparklineKind::Line {
-        lo = lo.min(0.0);
-        hi = hi.max(0.0);
+/// The axis bounds Excel picks when the group leaves them automatic, measured against Excel's own drawing of
+/// column and line sparklines: from the lowest value to the highest, whatever the kind. A series of one value
+/// is drawn at the top of an axis one unit tall.
+pub fn automatic_bounds(_kind: SparklineKind, low: f64, high: f64) -> (f64, f64) {
+    if low == high {
+        (low - 1.0, high)
+    } else {
+        (low, high)
     }
-    if lo == hi {
-        // A flat series is drawn in the middle of an axis one unit either side of it.
-        lo -= 1.0;
-        hi += 1.0;
+}
+
+impl SparklineData {
+    /// Where a point is down the plot: 0 at the top of the axis and 1 at the bottom.
+    pub fn fraction_down(&self, value: f64) -> f64 {
+        (self.axis_max - value) / (self.axis_max - self.axis_min)
     }
-    (lo, hi)
+
+    /// The span of a column sparkline's bar for value `index`, as fractions down the plot from the top, or
+    /// `None` for a value that is not there or is zero, which Excel draws no bar for. A bar is a bar even when
+    /// the value is the baseline, so a drawing gives it at least one pixel.
+    pub fn bar_span(&self, index: usize) -> Option<(f64, f64)> {
+        let v = (*self.values.get(index)?)?;
+        if v == 0.0 {
+            return None;
+        }
+        let (a, b) = (self.fraction_down(v), self.fraction_down(self.baseline));
+        Some((a.min(b), a.max(b)))
+    }
 }
 
 /// The numbers a drawing needs for the sparkline at `index` of group `group`, or `None` when its data cannot
@@ -496,6 +512,7 @@ pub fn sparkline_data(book: &Workbook, sheet: usize, group: usize, index: usize)
         values,
         axis_min,
         axis_max,
+        baseline: 0.0_f64.clamp(axis_min.min(axis_max), axis_max.max(axis_min)),
         first,
         last,
     })
@@ -540,8 +557,9 @@ mod tests {
     }
 
     #[test]
-    fn an_axis_includes_zero_for_columns_and_not_for_lines() {
+    fn the_automatic_axis_runs_from_the_lowest_value_to_the_highest() {
         assert_eq!(automatic_bounds(SparklineKind::Line, 5.0, 9.0), (5.0, 9.0));
-        assert_eq!(automatic_bounds(SparklineKind::Column, 5.0, 9.0), (0.0, 9.0));
+        assert_eq!(automatic_bounds(SparklineKind::Column, 5.0, 9.0), (5.0, 9.0));
+        assert_eq!(automatic_bounds(SparklineKind::Line, 2.0, 2.0), (1.0, 2.0));
     }
 }
