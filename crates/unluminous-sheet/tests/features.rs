@@ -48,10 +48,11 @@ fn excel_is_installed() -> bool {
             .is_ok_and(|o| o.status.success())
 }
 
-/// True when Excel can be asked; says so when it cannot, and fails when the run requires Excel.
+/// True when Excel is asked; says so when it is not, and fails when the run requires Excel. The Excel
+/// passes take over half an hour, so they run only when `FEATURES_EXCEL=1` is set, as the release does.
 fn excel_available(what: &str) -> bool {
-    if std::env::var("FEATURES_NO_EXCEL").is_ok() {
-        println!("FEATURES_NO_EXCEL is set, so {what} was not checked");
+    if std::env::var("FEATURES_NO_EXCEL").is_ok() || std::env::var("FEATURES_EXCEL").is_err() {
+        println!("FEATURES_EXCEL is not set, so {what} was not checked in Excel");
         return false;
     }
     if excel_is_installed() {
