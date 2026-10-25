@@ -346,13 +346,23 @@ fn vary(g: &Group) -> String {
     g.vary_colors.map(|v| bool_val("varyColors", v)).unwrap_or_default()
 }
 
+/// One of a group's line elements: as it was read, or plain when it was just switched on.
+fn line_element(g: &Group, slot: usize, on: bool, plain: &str) -> String {
+    if !on {
+        return String::new();
+    }
+    g.raw_lines[slot].clone().unwrap_or_else(|| plain.to_owned())
+}
+
 /// What follows a group's series and data labels, before its axis ids.
 fn group_tail(g: &Group) -> String {
     let mut out = String::new();
-    let lines = |out: &mut String| {
-        if g.drop_lines {
-            out.push_str("<c:dropLines/>");
-        }
+    let lines = |out: &mut String| out.push_str(&line_element(g, 0, g.drop_lines, "<c:dropLines/>"));
+    let up_down = || match g.up_down_bars {
+        Some(w) => g.raw_lines[2].clone().unwrap_or_else(|| {
+            format!("<c:upDownBars><c:gapWidth val=\"{w}\"/><c:upBars/><c:downBars/></c:upDownBars>")
+        }),
+        None => String::new(),
     };
     match g.kind {
         GroupKind::Bar => {
@@ -370,19 +380,13 @@ fn group_tail(g: &Group) -> String {
                 if let Some(o) = g.overlap {
                     out.push_str(&num_val("overlap", o));
                 }
-                if g.series_lines {
-                    out.push_str("<c:serLines/>");
-                }
+                out.push_str(&line_element(g, 3, g.series_lines, "<c:serLines/>"));
             }
         }
         GroupKind::Line => {
             lines(&mut out);
-            if g.hi_low_lines {
-                out.push_str("<c:hiLowLines/>");
-            }
-            if let Some(w) = g.up_down_bars {
-                out.push_str(&format!("<c:upDownBars><c:gapWidth val=\"{w}\"/><c:upBars/><c:downBars/></c:upDownBars>"));
-            }
+            out.push_str(&line_element(g, 1, g.hi_low_lines, "<c:hiLowLines/>"));
+            out.push_str(&up_down());
             if g.three_d {
                 if let Some(d) = g.gap_depth {
                     out.push_str(&num_val("gapDepth", d));
@@ -398,12 +402,8 @@ fn group_tail(g: &Group) -> String {
         }
         GroupKind::Stock => {
             lines(&mut out);
-            if g.hi_low_lines {
-                out.push_str("<c:hiLowLines/>");
-            }
-            if let Some(w) = g.up_down_bars {
-                out.push_str(&format!("<c:upDownBars><c:gapWidth val=\"{w}\"/><c:upBars/><c:downBars/></c:upDownBars>"));
-            }
+            out.push_str(&line_element(g, 1, g.hi_low_lines, "<c:hiLowLines/>"));
+            out.push_str(&up_down());
         }
         GroupKind::Area => {
             lines(&mut out);
@@ -443,9 +443,7 @@ fn group_tail(g: &Group) -> String {
             if let Some(size) = g.second_size {
                 out.push_str(&num_val("secondPieSize", size));
             }
-            if g.series_lines {
-                out.push_str("<c:serLines/>");
-            }
+            out.push_str(&line_element(g, 3, g.series_lines, "<c:serLines/>"));
         }
         GroupKind::Bubble => {
             if let Some(s) = g.bubble_scale {

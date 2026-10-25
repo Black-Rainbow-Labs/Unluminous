@@ -148,6 +148,15 @@ fn merge_sp_pr(old: &Option<String>, fill: Option<Option<(u8, u8, u8)>>, line: O
 }
 
 impl Session {
+    /// A chart lives on a worksheet or on a chart sheet; either is a sheet that exists.
+    fn check_object_sheet(&self, sheet: usize) -> Result<(), String> {
+        if sheet < self.book.sheets.len() {
+            Ok(())
+        } else {
+            Err("There is no such sheet.".to_owned())
+        }
+    }
+
     /// Run a change to one chart: tried on a copy first, so a refusal leaves the workbook as it was, then
     /// kept as one undo step. The chart is marked as changed so it is written from the model.
     fn change_chart<R>(
@@ -157,7 +166,7 @@ impl Session {
         index: usize,
         change: impl FnOnce(&mut Chart) -> Result<R, String>,
     ) -> Result<R, String> {
-        self.check_sheet(sheet)?;
+        self.check_object_sheet(sheet)?;
         self.allowed(sheet, Guard::Objects)?;
         let Some(chart) = self.book.sheets[sheet].charts.get(index) else {
             return Err(format!("there is no chart {} on this sheet", index + 1));
@@ -186,7 +195,7 @@ impl Session {
     /// Take a chart off a sheet. A chart read from a file leaves its parts behind in the file's package, so
     /// they are not written again.
     pub fn delete_chart(&mut self, sheet: usize, index: usize) -> Result<(), String> {
-        self.check_sheet(sheet)?;
+        self.check_object_sheet(sheet)?;
         self.allowed(sheet, Guard::Objects)?;
         let Some(chart) = self.book.sheets[sheet].charts.get(index) else {
             return Err(format!("there is no chart {} on this sheet", index + 1));
@@ -1162,7 +1171,7 @@ fn chart_sheet_of(book: &crate::model::Workbook, sheet: usize, chart: &Chart) ->
 }
 
 fn take_chart(session: &mut Session, sheet: usize, index: usize) -> Result<Chart, String> {
-    session.check_sheet(sheet)?;
+    session.check_object_sheet(sheet)?;
     session.allowed(sheet, Guard::Objects)?;
     session.book.sheets[sheet].charts.get(index).cloned().ok_or_else(|| format!("there is no chart {} on this sheet", index + 1))
 }

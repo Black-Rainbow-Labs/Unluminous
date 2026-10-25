@@ -232,3 +232,234 @@ fn excel_agrees_with_what_is_read_written_and_made() {
         assert_eq!(chart["type"], made.chart_type().excel_number(), "{:?}", made.chart_type());
     }
 }
+
+// ---------------------------------------------------------------------------------------------------
+// Making and changing charts, with no Excel.
+
+use unluminous_sheet::edit::charts::{AxisOptions, AxisSelector, LabelOptions, SeriesSource};
+
+fn first_chart(s: &Session) -> &unluminous_sheet::model::Chart {
+    &s.book.sheets[0].charts[0]
+}
+
+fn all() -> Range {
+    Range::new(CellRef::new(0, 0), CellRef::new(5, 2))
+}
+
+fn read_back(s: &Session) -> Workbook {
+    unluminous_sheet::xlsx::read(&unluminous_sheet::xlsx::write(&s.book).unwrap()).unwrap()
+}
+
+#[test]
+fn a_selection_is_laid_out_as_excel_lays_out_a_chart() {
+    let mut s = data_session();
+    s.insert_chart(0, all(), ChartType::ColumnClustered, None).unwrap();
+    let c = first_chart(&s);
+    assert_eq!(c.series.len(), 2, "two columns of numbers under text headings");
+    assert_eq!(c.series[0].name.as_deref(), Some("Sheet1!$B$1"));
+    assert_eq!(c.series[0].categories.as_deref(), Some("Sheet1!$A$2:$A$6"));
+    assert_eq!(c.series[1].values, "Sheet1!$C$2:$C$6");
+    // More columns than rows lay the series out in rows.
+    let mut wide = Session::new(Workbook::new(), 46318.5);
+    for (c, t) in ["", "a", "b", "c", "d"].iter().enumerate() {
+        wide.set_input(0, CellRef::new(0, c as u32), t).unwrap();
+    }
+    for (r, name) in ["x", "y"].iter().enumerate() {
+        wide.set_input(0, CellRef::new(r as u32 + 1, 0), name).unwrap();
+        for c in 1..=4u32 {
+            wide.set_input(0, CellRef::new(r as u32 + 1, c), &format!("{}", c * 2)).unwrap();
+        }
+    }
+    wide.insert_chart(0, Range::new(CellRef::new(0, 0), CellRef::new(2, 4)), ChartType::Line, None).unwrap();
+    let c = first_chart(&wide);
+    assert_eq!(c.series[0].values, "Sheet1!$B$2:$E$2");
+    assert_eq!(c.series[0].name.as_deref(), Some("Sheet1!$A$2"));
+    assert_eq!(c.series[0].categories.as_deref(), Some("Sheet1!$B$1:$E$1"));
+}
+
+#[test]
+fn every_chart_method_is_one_undo_step_and_undo_restores_the_chart() {
+    let mut s = data_session();
+    s.insert_chart(0, all(), ChartType::ColumnClustered, None).unwrap();
+    let before = first_chart(&s).clone();
+    type Step = Box<dyn Fn(&mut Session) -> Result<(), String>>;
+    let steps: Vec<Step> = vec![
+        Box::new(|s| s.change_chart_type(0, 0, ChartType::LineMarkers)),
+        Box::new(|s| s.change_series_type(0, 0, 1, ChartType::Line)),
+        Box::new(|s| s.set_series_secondary(0, 0, 1, true)),
+        Box::new(|s| s.set_chart_title(0, 0, Some("Sales".into()), None)),
+        Box::new(|s| s.set_legend(0, 0, Some(LegendPosition::Top), false)),
+        Box::new(|s| s.set_data_table(0, 0, Some(DataTable::default()))),
+        Box::new(|s| {
+            s.set_data_labels(0, 0, None, true, LabelOptions { show_value: Some(true), ..Default::default() })
+        }),
+        Box::new(|s| s.add_trendline(0, 0, 0, Trendline::default()).map(|_| ())),
+        Box::new(|s| s.set_error_bars(0, 0, 0, ErrorBars::default())),
+        Box::new(|s| s.apply_quick_layout(0, 0, 3)),
+        Box::new(|s| s.set_chart_style(0, 0, 10)),
+        Box::new(|s| s.filter_series(0, 0, 1, true)),
+        Box::new(|s| s.switch_row_column(0, 0)),
+        Box::new(|s| s.set_hidden_and_empty_cells(0, 0, true, Blanks::Zero)),
+        Box::new(|s| {
+            s.set_axis_options(0, 0, AxisSelector::Value, AxisOptions { minimum: Some(Some(2.0)), ..Default::default() })
+        }),
+    ];
+    for (i, step) in steps.iter().enumerate() {
+        let mut t = s.clone();
+        step(&mut t).unwrap_or_else(|e| panic!("step {i}: {e}"));
+        assert!(t.book.sheets[0].charts[0] != before, "step {i} changed the chart");
+        t.undo();
+        assert_eq!(t.book.sheets[0].charts[0], before, "step {i} is undone by one undo");
+    }
+}
+
+#[test]
+fn a_secondary_axis_series_makes_a_combination_chart_that_reads_back() {
+    let mut s = data_session();
+    s.insert_chart(0, all(), ChartType::ColumnClustered, None).unwrap();
+    s.change_series_type(0, 0, 1, ChartType::LineMarkers).unwrap();
+    s.set_series_secondary(0, 0, 1, true).unwrap();
+    let c = first_chart(&s);
+    assert_eq!(c.chart_type(), ChartType::Combo);
+    assert_eq!(c.spec.groups.len(), 2);
+    assert!(c.spec.is_secondary(1) && !c.spec.is_secondary(0));
+    assert_eq!(c.spec.axes.len(), 4);
+    let back = read_back(&s);
+    let again = &back.sheets[0].charts[0];
+    assert_eq!(again.spec.groups.len(), 2);
+    assert!(again.spec.is_secondary(1));
+    assert_eq!(again.series[1].group, 1);
+    // Taking it back to the primary axis removes the second pair of axes.
+    s.set_series_secondary(0, 0, 1, false).unwrap();
+    assert_eq!(first_chart(&s).spec.axes.len(), 2);
+}
+
+#[test]
+fn select_data_adds_edits_removes_and_refuses() {
+    let mut s = data_session();
+    s.insert_chart(0, all(), ChartType::ColumnClustered, None).unwrap();
+    let n = s
+        .add_series(
+            0,
+            0,
+            SeriesSource {
+                name: Some(Some("\"Extra\"".into())),
+                values: Some("Sheet1!$B$2:$B$6".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(n, 2);
+    s.edit_series(0, 0, 2, SeriesSource { values: Some("Sheet1!$C$2:$C$4".into()), ..Default::default() }).unwrap();
+    assert_eq!(first_chart(&s).series[2].values, "Sheet1!$C$2:$C$4");
+    assert!(s
+        .edit_series(0, 0, 2, SeriesSource { values: Some("not a range".into()), ..Default::default() })
+        .is_err());
+    s.remove_series(0, 0, 2).unwrap();
+    s.remove_series(0, 0, 1).unwrap();
+    let error = s.remove_series(0, 0, 0).unwrap_err();
+    assert!(error.contains("at least one series"), "{error}");
+    assert_eq!(first_chart(&s).series.len(), 1);
+}
+
+#[test]
+fn switching_rows_and_columns_swaps_the_series_and_the_categories() {
+    let mut s = data_session();
+    s.insert_chart(0, all(), ChartType::ColumnClustered, None).unwrap();
+    s.switch_row_column(0, 0).unwrap();
+    let c = first_chart(&s);
+    assert_eq!(c.series.len(), 5);
+    assert_eq!(c.series[0].values, "Sheet1!$B$2:$C$2");
+    assert_eq!(c.series[0].name.as_deref(), Some("Sheet1!$A$2"));
+    assert_eq!(c.series[0].categories.as_deref(), Some("Sheet1!$B$1:$C$1"));
+    s.switch_row_column(0, 0).unwrap();
+    assert_eq!(first_chart(&s).series.len(), 2);
+}
+
+#[test]
+fn a_chart_moves_and_is_written_with_its_new_anchor() {
+    let mut s = data_session();
+    s.insert_chart(0, all(), ChartType::ColumnClustered, None).unwrap();
+    s.move_chart(0, 0, (CellRef::new(10, 1), 1000, 2000), (CellRef::new(25, 9), 0, 0)).unwrap();
+    let back = read_back(&s);
+    let c = &back.sheets[0].charts[0];
+    assert_eq!((c.from.0, c.from.1, c.from.2), (CellRef::new(10, 1), 1000, 2000));
+    assert_eq!(c.to.0, CellRef::new(25, 9));
+    // A chart read from a file that is moved leaves the others in its drawing where they were.
+    let book = unluminous_sheet::xlsx::read(&fixture("14-charts.xlsx")).unwrap();
+    let sheet = book.sheet_index("Charts").unwrap();
+    let mut t = Session::new(book, 46318.5);
+    t.move_chart(sheet, 0, (CellRef::new(80, 2), 0, 0), (CellRef::new(95, 8), 0, 0)).unwrap();
+    let again = read_back(&t);
+    assert_eq!(again.sheets[sheet].charts.len(), 19);
+    assert_eq!(again.sheets[sheet].charts[0].from.0, CellRef::new(80, 2));
+    assert_eq!(again.sheets[sheet].charts[1].from.0, t.book.sheets[sheet].charts[1].from.0);
+}
+
+#[test]
+fn deleting_a_chart_from_a_file_takes_its_parts_with_it() {
+    let book = unluminous_sheet::xlsx::read(&fixture("14-charts.xlsx")).unwrap();
+    let sheet = book.sheet_index("Charts").unwrap();
+    let mut t = Session::new(book, 46318.5);
+    t.delete_chart(sheet, 0).unwrap();
+    let bytes = unluminous_sheet::xlsx::write(&t.book).unwrap();
+    let names: Vec<String> = unluminous_sheet::zip::read(&bytes).unwrap().into_iter().map(|e| e.name).collect();
+    assert!(!names.contains(&"xl/charts/chart2.xml".to_owned()), "the chart part goes");
+    let rels = unluminous_sheet::zip::read(&fixture("14-charts.xlsx")).unwrap();
+    let rels = rels.iter().find(|e| e.name == "xl/charts/_rels/chart2.xml.rels").unwrap();
+    let rels = String::from_utf8_lossy(&rels.data).into_owned();
+    assert!(rels.contains("style1.xml") && rels.contains("colors1.xml"), "{rels}");
+    assert!(!names.contains(&"xl/charts/style1.xml".to_owned()), "and its style part");
+    assert!(!names.contains(&"xl/charts/colors1.xml".to_owned()), "and its colour part");
+    assert!(!names.contains(&"xl/charts/_rels/chart2.xml.rels".to_owned()));
+    assert!(names.contains(&"xl/charts/chart3.xml".to_owned()));
+    assert_eq!(unluminous_sheet::xlsx::read(&bytes).unwrap().sheets[sheet].charts.len(), 18);
+}
+
+#[test]
+fn a_chart_moves_to_a_chart_sheet_and_back_out_to_a_sheet() {
+    let mut s = data_session();
+    s.insert_chart(0, all(), ChartType::Pie, Some("Share".into())).unwrap();
+    let at = s.move_chart_to_new_sheet(0, 0, Some("Pie sheet")).unwrap();
+    assert!(s.book.sheets[0].charts.is_empty());
+    let back = read_back(&s);
+    let sheet = &back.sheets[at];
+    assert!(sheet.kept_part.is_some(), "a chart sheet is not a worksheet");
+    assert_eq!(sheet.charts.len(), 1);
+    assert_eq!(sheet.charts[0].title.as_deref(), Some("Share"));
+    assert!(sheet.charts[0].series[0].values.starts_with("Sheet1!"), "the data is still on the first sheet");
+    s.move_chart_to_sheet(at, 0, 0).unwrap();
+    assert_eq!(s.book.sheets[0].charts.len(), 1);
+}
+
+#[test]
+fn refused_changes_leave_the_chart_alone() {
+    let mut s = data_session();
+    s.insert_chart(0, all(), ChartType::Pie, None).unwrap();
+    let before = first_chart(&s).clone();
+    assert!(s.add_trendline(0, 0, 0, Trendline::default()).is_err(), "no trendlines on a pie");
+    assert!(s.apply_quick_layout(0, 0, 99).is_err());
+    assert!(s.set_axis_options(0, 0, AxisSelector::Value, AxisOptions::default()).is_err());
+    assert!(s.change_chart_type(0, 0, ChartType::Combo).is_err());
+    assert!(s.move_chart(0, 5, (CellRef::new(0, 0), 0, 0), (CellRef::new(1, 1), 0, 0)).is_err());
+    assert_eq!(first_chart(&s), &before);
+    let mut line = data_session();
+    line.insert_chart(0, all(), ChartType::Line, None).unwrap();
+    let bad = AxisOptions { minimum: Some(Some(10.0)), maximum: Some(Some(5.0)), ..Default::default() };
+    assert!(line.set_axis_options(0, 0, AxisSelector::Value, bad).is_err());
+    let bad = Trendline { kind: TrendKind::Polynomial(9), ..Default::default() };
+    assert!(line.add_trendline(0, 0, 0, bad).is_err());
+}
+
+#[test]
+fn recommended_charts_follow_the_shape_of_the_data() {
+    let s = data_session();
+    let one = Range::new(CellRef::new(0, 1), CellRef::new(5, 1));
+    let rec = s.recommended_charts(0, one).unwrap();
+    assert_eq!(rec.len(), 5);
+    assert_eq!(rec[0], ChartType::ColumnClustered);
+    assert!(rec.contains(&ChartType::Pie));
+    let two = s.recommended_charts(0, all()).unwrap();
+    assert_eq!(two.len(), 5);
+    assert!(!two.contains(&ChartType::Pie));
+}

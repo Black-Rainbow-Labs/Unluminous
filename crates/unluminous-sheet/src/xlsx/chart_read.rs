@@ -292,6 +292,12 @@ fn read_group(
     g.first_slice_angle = number(node, "firstSliceAng");
     g.hole_size = number(node, "holeSize");
     g.labels = child(node, "dLbls").map(|d| read_labels(xml, d));
+    g.raw_lines = [
+        raw_child(xml, node, "dropLines"),
+        raw_child(xml, node, "hiLowLines"),
+        raw_child(xml, node, "upDownBars"),
+        raw_child(xml, node, "serLines"),
+    ];
     g.band_formats = raw_child(xml, node, "bandFmts");
     g.axes = children(node, "axId").filter_map(|a| a.attribute("val")?.parse().ok()).collect();
     let (ext, filtered) = split_filtered(xml, node);

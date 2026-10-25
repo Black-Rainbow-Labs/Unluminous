@@ -201,6 +201,9 @@ pub struct Group {
     pub first_slice_angle: Option<u32>,
     pub hole_size: Option<u32>,
     pub labels: Option<DataLabels>,
+    /// The drop lines, high low lines, up down bars and series lines elements as read, in that order, kept
+    /// so their formatting survives.
+    pub raw_lines: [Option<String>; 4],
     /// Band formats of a surface group, kept.
     pub band_formats: Option<String>,
     /// The ids of the axes the group is drawn against.
@@ -241,6 +244,7 @@ impl Default for Group {
             first_slice_angle: None,
             hole_size: None,
             labels: None,
+            raw_lines: [None, None, None, None],
             band_formats: None,
             axes: Vec::new(),
             ext: None,
