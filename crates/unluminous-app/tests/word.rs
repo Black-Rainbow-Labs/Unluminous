@@ -118,7 +118,11 @@ fn the_arrows_and_shift_select_and_backspace_deletes_the_selection() {
     harness.key_press(Key::Home);
     steady(&mut harness);
     type_text(&mut harness, ">");
-    assert_eq!(paragraphs(&mut harness)[0]["text"], ">One two ", "autocorrect capitalized the sentence");
+    assert_eq!(
+        paragraphs(&mut harness)[0]["text"],
+        ">One two ",
+        "autocorrect capitalized the sentence"
+    );
 }
 
 /// **The bubble over a selection takes a click.** The page under the bubble used to take the press as
@@ -257,7 +261,11 @@ fn point(value: &serde_json::Value) -> egui::Pos2 {
     egui::pos2(value["x"].as_f64().unwrap() as f32, value["y"].as_f64().unwrap() as f32)
 }
 
-fn press_at(harness: &mut Harness<'static, UnluminousApp>, at: egui::Pos2, button: egui::PointerButton) {
+fn press_at(
+    harness: &mut Harness<'static, UnluminousApp>,
+    at: egui::Pos2,
+    button: egui::PointerButton,
+) {
     harness.input_mut().events.push(egui::Event::PointerMoved(at));
     steady(harness);
     for pressed in [true, false] {
@@ -298,7 +306,10 @@ fn the_right_click_menu_offers_what_is_under_the_pointer() {
     for wanted in ["Cut", "Copy", "Paste", "Font...", "Paragraph...", "New Comment"] {
         assert!(entries.iter().any(|e| e == wanted), "{wanted} in {entries:?}");
     }
-    assert!(entries.iter().any(|e| e.starts_with("Synonyms of")), "the word's synonyms: {entries:?}");
+    assert!(
+        entries.iter().any(|e| e.starts_with("Synonyms of")),
+        "the word's synonyms: {entries:?}"
+    );
     harness.snapshot(shot("word_context_text"));
     harness.key_press(Key::Escape);
     steady(&mut harness);
@@ -345,7 +356,8 @@ fn a_picture_is_resized_by_its_handle_and_wrapped_from_its_menu() {
         "the corner made it wider: {width} then {}",
         after["width"]
     );
-    let ratio = |o: &serde_json::Value| o["width"].as_f64().unwrap() / o["height"].as_f64().unwrap();
+    let ratio =
+        |o: &serde_json::Value| o["width"].as_f64().unwrap() / o["height"].as_f64().unwrap();
     assert!((ratio(&after) - ratio(&object)).abs() < 0.02, "a corner keeps the ratio");
     let screen = rect_of(&after["screen"]);
     let middle = egui::pos2(screen[0] + screen[2] / 2.0, screen[1] + screen[3] / 2.0);
@@ -367,10 +379,18 @@ fn the_ruler_drags_an_indent_and_adds_a_tab_stop() {
     let (hang, bottom) = (marks[1], marks[4]);
     let zoom = current(&mut harness)["zoom"].as_f64().unwrap() as f32;
     harness.snapshot(shot("word_ruler"));
-    drag(&mut harness, egui::pos2(hang, bottom - 1.0), egui::pos2(hang + 36.0 * zoom, bottom - 1.0));
+    drag(
+        &mut harness,
+        egui::pos2(hang, bottom - 1.0),
+        egui::pos2(hang + 36.0 * zoom, bottom - 1.0),
+    );
     let look = did(&mut harness, "plugins run word paragraph info");
     assert!((look["indentLeft"].as_f64().unwrap() - 36.0).abs() < 5.0, "{look}");
-    press_at(&mut harness, egui::pos2(hang + 200.0 * zoom, bottom - 4.0), egui::PointerButton::Primary);
+    press_at(
+        &mut harness,
+        egui::pos2(hang + 200.0 * zoom, bottom - 4.0),
+        egui::PointerButton::Primary,
+    );
     let look = did(&mut harness, "plugins run word paragraph info");
     assert_eq!(look["tabs"].as_array().unwrap().len(), 1, "{look}");
 }
@@ -404,13 +424,17 @@ fn a_table_column_edge_is_dragged() {
     let (_, mut harness) = a_word_window("unluminous-word-columns", "blank.docx");
     did(&mut harness, "plugins run word insert table 1 2");
     steady(&mut harness);
-    let second = paragraphs(&mut harness).iter().position(|p| p["cell"]["column"] == 2).unwrap() + 1;
+    let second =
+        paragraphs(&mut harness).iter().position(|p| p["cell"]["column"] == 2).unwrap() + 1;
     let before = point(&did(&mut harness, &format!("plugins run word locate {second} 0")));
     let zoom = current(&mut harness)["zoom"].as_f64().unwrap() as f32;
     let edge = egui::pos2(before.x - 5.4 * zoom, before.y);
     drag(&mut harness, edge, edge + egui::vec2(50.0, 0.0));
     let after = point(&did(&mut harness, &format!("plugins run word locate {second} 0")));
-    assert!(after.x > before.x + 30.0, "the second column starts further right: {before:?} then {after:?}");
+    assert!(
+        after.x > before.x + 30.0,
+        "the second column starts further right: {before:?} then {after:?}"
+    );
 }
 
 /// **Read Mode, Outline view, Fit Width, the thumbnails and Print.**
@@ -428,18 +452,27 @@ fn the_views_and_print_work_from_the_window() {
     steady(&mut harness);
     assert_eq!(current(&mut harness)["mode"], "outline");
     harness.snapshot(shot("word_outline"));
-    let heading = paragraphs(&mut harness).iter().position(|p| p["style"] == "Heading 2").map(|i| i + 1);
+    let heading =
+        paragraphs(&mut harness).iter().position(|p| p["style"] == "Heading 2").map(|i| i + 1);
     if let Some(heading) = heading {
         did(&mut harness, &format!("plugins run word select {heading} 0"));
         harness.get_by_label("Promote").click();
         steady(&mut harness);
-        assert_eq!(paragraphs(&mut harness)[heading - 1]["style"], "Heading 1", "Promote made it Heading 1");
+        assert_eq!(
+            paragraphs(&mut harness)[heading - 1]["style"],
+            "Heading 1",
+            "Promote made it Heading 1"
+        );
     }
     did(&mut harness, "plugins run word view print");
     steady(&mut harness);
     let before = current(&mut harness)["zoom"].as_f64().unwrap();
     did(&mut harness, "plugins run word view fit-width");
-    assert_ne!(current(&mut harness)["zoom"].as_f64().unwrap(), before, "Fit Width changed the zoom");
+    assert_ne!(
+        current(&mut harness)["zoom"].as_f64().unwrap(),
+        before,
+        "Fit Width changed the zoom"
+    );
     did(&mut harness, "plugins run word view thumbnails");
     steady(&mut harness);
     harness.get_by_label("Page 1");
@@ -457,12 +490,19 @@ fn the_modify_style_level_changes_a_style() {
     steady(&mut harness);
     harness.get_by_label("Modify Heading 1").click();
     steady(&mut harness);
-    assert_eq!(current(&mut harness)["panel"], serde_json::json!(["Format", "Styles", "Modify style"]));
+    assert_eq!(
+        current(&mut harness)["panel"],
+        serde_json::json!(["Format", "Styles", "Modify style"])
+    );
     harness.snapshot(shot("word_modify_style"));
     harness.get_by_label("2.0").click();
     steady(&mut harness);
-    let heading = paragraphs(&mut harness).iter().position(|p| p["style"] == "Heading 1").unwrap() + 1;
+    let heading =
+        paragraphs(&mut harness).iter().position(|p| p["style"] == "Heading 1").unwrap() + 1;
     did(&mut harness, &format!("plugins run word select {heading} 0"));
     let look = did(&mut harness, "plugins run word paragraph info");
-    assert!(look["line"].as_str().unwrap().contains("2.0"), "Heading 1 is double spaced now: {look}");
+    assert!(
+        look["line"].as_str().unwrap().contains("2.0"),
+        "Heading 1 is double spaced now: {look}"
+    );
 }

@@ -47,7 +47,7 @@ enum Kind {
     Column,
     /// A picture or a shape in the line, drawn as `drawing::items` draws it.
     Picture(Box<Float>),
-    Float(Float),
+    Float(Box<Float>),
     Label(String),
     /// A footnote or endnote reference mark, with the footnote's id when it is a reference to one in the
     /// body, whose note goes at the foot of the page the line lands on.
@@ -241,7 +241,7 @@ pub fn prepare(
     for atom in &mut atoms {
         let float = match &mut atom.kind {
             Kind::Picture(float) => Some(&mut **float),
-            Kind::Float(float) => Some(float),
+            Kind::Float(float) => Some(&mut **float),
             _ => None,
         };
         if let (Some(float), true) = (float, atom.end > atom.start) {
@@ -297,7 +297,7 @@ impl Prepared {
         self.atoms
             .iter()
             .filter_map(|atom| match &atom.kind {
-                Kind::Float(float) => Some(float.clone()),
+                Kind::Float(float) => Some((**float).clone()),
                 _ => None,
             })
             .collect()
@@ -608,8 +608,6 @@ fn collect_atoms(
     }
 }
 
-/// The atoms of a stretch of text, one grapheme each.
-#[allow(clippy::too_many_arguments)]
 /// With field codes showing: a field's begin draws `{ `, its code is drawn as text, its result is left
 /// out and its end draws ` }`; a simple field draws its whole code in braces once. Answers `Some` when the
 /// run was dealt with here, `None` for a run that is drawn as usual.
@@ -680,6 +678,8 @@ fn show_code(
     }
 }
 
+/// The atoms of a stretch of text, one grapheme each.
+#[allow(clippy::too_many_arguments)]
 fn push_text(
     ctx: &Ctx,
     look: &Look,
@@ -890,7 +890,7 @@ fn object_atom(
                 Some(drawing) => atoms.push(Atom {
                     start,
                     end,
-                    kind: Kind::Float(drawing.float),
+                    kind: Kind::Float(Box::new(drawing.float)),
                     width: 0.0,
                     look: index,
                     small: false,
@@ -1510,7 +1510,7 @@ fn place_line(
     }
     for &index in &line.atoms {
         match &atoms[index].kind {
-            Kind::Float(float) => chunk.floats.push(float.clone()),
+            Kind::Float(float) => chunk.floats.push((**float).clone()),
             Kind::NoteMark(_, Some(id)) if *story == StoryId::Body => chunk.notes.push(*id),
             _ => {}
         }

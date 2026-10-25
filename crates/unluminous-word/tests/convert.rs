@@ -30,15 +30,23 @@ fn files_only_word_reads_open_with_words_paragraphs() {
         return;
     }
     let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/convert");
-    let counts: serde_json::Value =
-        serde_json::from_str(std::fs::read_to_string(fixtures.join("convert.word.json")).unwrap().trim_start_matches('\u{feff}')).unwrap();
+    let counts: serde_json::Value = serde_json::from_str(
+        std::fs::read_to_string(fixtures.join("convert.word.json"))
+            .unwrap()
+            .trim_start_matches('\u{feff}'),
+    )
+    .unwrap();
     let folder = std::env::temp_dir().join("unluminous-word-convert");
     std::fs::create_dir_all(&folder).unwrap();
     for extension in ["doc", "rtf", "odt", "html", "pdf"] {
         let target = folder.join(format!("{extension}.docx"));
         let _ = std::fs::remove_file(&target);
-        unluminous_word::convert::convert(&fixtures.join(format!("convert.{extension}")), &target, "docx")
-            .unwrap_or_else(|problem| panic!("{extension}: {problem}"));
+        unluminous_word::convert::convert(
+            &fixtures.join(format!("convert.{extension}")),
+            &target,
+            "docx",
+        )
+        .unwrap_or_else(|problem| panic!("{extension}: {problem}"));
         let document = unluminous_word::read::open(&std::fs::read(&target).unwrap()).unwrap();
         let paragraphs = unluminous_word::position::paragraphs(&document.body).len();
         assert_eq!(paragraphs as u64, counts[extension].as_u64().unwrap(), "{extension}");

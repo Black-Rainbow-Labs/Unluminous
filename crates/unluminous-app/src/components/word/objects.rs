@@ -97,7 +97,12 @@ pub fn press_column_edge(doc: &mut Doc, area: Rect, at: Pos2) -> bool {
 }
 
 /// The column edge follows the pointer, and on release the column takes its new width.
-pub fn drag_column_edge(doc: &mut Doc, area: Rect, at: Pos2, released: bool) -> Option<Result<(), String>> {
+pub fn drag_column_edge(
+    doc: &mut Doc,
+    area: Rect,
+    at: Pos2,
+    released: bool,
+) -> Option<Result<(), String>> {
     if let Some((_, x, _)) = page_point(doc, area, at) {
         if let Some(drag) = &mut doc.view.column_drag {
             drag.to = x;
@@ -113,19 +118,34 @@ pub fn drag_column_edge(doc: &mut Doc, area: Rect, at: Pos2, released: bool) -> 
     let width = {
         let blocks = unluminous_word::position::story(&doc.session.document, &drag.story)?;
         match unluminous_word::position::block(blocks, &drag.table)? {
-            unluminous_word::model::Block::Table(t) => t.columns().get(drag.column).copied()? as f32 / 20.0,
+            unluminous_word::model::Block::Table(t) => {
+                t.columns().get(drag.column).copied()? as f32 / 20.0
+            }
             _ => return None,
         }
     };
-    Some(doc.session.drag_column_edge(&drag.story, &drag.table, drag.column, width + drag.to - drag.from))
+    Some(doc.session.drag_column_edge(
+        &drag.story,
+        &drag.table,
+        drag.column,
+        width + drag.to - drag.from,
+    ))
 }
 
 /// The guide line of a column edge being dragged.
 pub fn paint_column_guide(painter: &egui::Painter, doc: &Doc, area: Rect) {
     let Some(drag) = &doc.view.column_drag else { return };
-    let rect = unluminous_word::layout::Rect { x: drag.to, y: drag.top, w: 0.0, h: drag.bottom - drag.top };
+    let rect = unluminous_word::layout::Rect {
+        x: drag.to,
+        y: drag.top,
+        w: 0.0,
+        h: drag.bottom - drag.top,
+    };
     if let Some(line) = to_screen(doc, area, drag.page, rect) {
-        painter.line_segment([line.left_top(), line.left_bottom()], Stroke::new(1.0, crate::theme::color::accent()));
+        painter.line_segment(
+            [line.left_top(), line.left_bottom()],
+            Stroke::new(1.0, crate::theme::color::accent()),
+        );
     }
 }
 
@@ -171,7 +191,12 @@ fn handles(rect: Rect) -> [(Handle, Pos2); 8] {
 }
 
 /// A page rectangle on the screen.
-pub fn to_screen(doc: &Doc, area: Rect, page: usize, rect: unluminous_word::layout::Rect) -> Option<Rect> {
+pub fn to_screen(
+    doc: &Doc,
+    area: Rect,
+    page: usize,
+    rect: unluminous_word::layout::Rect,
+) -> Option<Rect> {
     let (tops, _) = page_tops(doc, area.width());
     let top = tops.get(page)?;
     let zoom = doc.view.zoom;
@@ -188,11 +213,18 @@ pub fn to_screen(doc: &Doc, area: Rect, page: usize, rect: unluminous_word::layo
 pub fn press(doc: &mut Doc, area: Rect, at: Pos2) -> bool {
     if let Some((page, rect)) = selected(doc) {
         if let Some(screen) = to_screen(doc, area, page, rect) {
-            let handle = handles(screen).into_iter().find(|(_, p)| p.distance(at) <= GRAB).map(|(h, _)| h);
+            let handle =
+                handles(screen).into_iter().find(|(_, p)| p.distance(at) <= GRAB).map(|(h, _)| h);
             if let Some(handle) = handle {
                 let point = page_point(doc, area, at).map_or((0.0, 0.0), |(_, x, y)| (x, y));
-                doc.view.object_drag =
-                    Some(ObjectDrag { handle, page, start: rect, from: point, to: point, crop: doc.view.cropping });
+                doc.view.object_drag = Some(ObjectDrag {
+                    handle,
+                    page,
+                    start: rect,
+                    from: point,
+                    to: point,
+                    crop: doc.view.cropping,
+                });
                 return true;
             }
         }
@@ -200,13 +232,18 @@ pub fn press(doc: &mut Doc, area: Rect, at: Pos2) -> bool {
     let Some((page, x, y)) = page_point(doc, area, at) else { return false };
     let objects = on_page(doc, page);
     // The last one drawn is on top.
-    let Some((rect, pos)) = objects.into_iter().rev().find(|(r, _)| {
-        x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h
-    }) else {
+    let Some((rect, pos)) = objects
+        .into_iter()
+        .rev()
+        .find(|(r, _)| x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h)
+    else {
         return false;
     };
     let edge = 4.0 / doc.view.zoom;
-    let near_edge = x - rect.x < edge || rect.x + rect.w - x < edge || y - rect.y < edge || rect.y + rect.h - y < edge;
+    let near_edge = x - rect.x < edge
+        || rect.x + rect.w - x < edge
+        || y - rect.y < edge
+        || rect.y + rect.h - y < edge;
     if box_holds_text(doc, &pos) && !near_edge {
         return false;
     }
@@ -227,7 +264,9 @@ pub fn press(doc: &mut Doc, area: Rect, at: Pos2) -> bool {
 
 /// Whether the object at `pos` is a text box.
 fn box_holds_text(doc: &Doc, pos: &Pos) -> bool {
-    let Some(paragraph) = unluminous_word::position::paragraph(&doc.session.document, &pos.story, &pos.path) else {
+    let Some(paragraph) =
+        unluminous_word::position::paragraph(&doc.session.document, &pos.story, &pos.path)
+    else {
         return false;
     };
     let mut at = 0;
@@ -276,7 +315,10 @@ pub fn dragged_rect(drag: &ObjectDrag, free: bool) -> unluminous_word::layout::R
             bottom += dy;
         }
     }
-    let corner = matches!(drag.handle, Handle::TopLeft | Handle::TopRight | Handle::BottomLeft | Handle::BottomRight);
+    let corner = matches!(
+        drag.handle,
+        Handle::TopLeft | Handle::TopRight | Handle::BottomLeft | Handle::BottomRight
+    );
     if corner && !free && !drag.crop && r.w > 0.0 && r.h > 0.0 {
         let width = (right - left).abs().max(4.0);
         let height = width * r.h / r.w;
@@ -318,7 +360,9 @@ pub fn release(doc: &mut Doc, area: Rect, at: Pos2, free: bool) -> Option<Result
                 None => Err("there is no text there".into()),
             }
         }
-        (Handle::Move, _) => doc.session.move_object_on_page(rect.x, rect.y).map(|_| "Moved".to_owned()),
+        (Handle::Move, _) => {
+            doc.session.move_object_on_page(rect.x, rect.y).map(|_| "Moved".to_owned())
+        }
         (_, true) => {
             // A crop handle cuts by how far it moved in, as a share of the whole picture.
             let (l0, t0, r0, b0) = info.crop;
@@ -346,8 +390,15 @@ pub fn paint(painter: &egui::Painter, doc: &Doc, area: Rect, free: bool) {
         if doc.view.cropping {
             // Crop handles are black bars along the edges and corners, as Word draws them.
             let horizontal = matches!(handle, Handle::Top | Handle::Bottom);
-            let size = if horizontal { Vec2::new(14.0, 4.0) } else if matches!(handle, Handle::Left | Handle::Right) { Vec2::new(4.0, 14.0) } else { Vec2::splat(8.0) };
-            painter.rect_filled(Rect::from_center_size(point, size), 0.0, Color32::from_gray(20)); // any ground: Word's crop handles are black
+            let size = if horizontal {
+                Vec2::new(14.0, 4.0)
+            } else if matches!(handle, Handle::Left | Handle::Right) {
+                Vec2::new(4.0, 14.0)
+            } else {
+                Vec2::splat(8.0)
+            };
+            painter.rect_filled(Rect::from_center_size(point, size), 0.0, Color32::from_gray(20));
+        // any ground: Word's crop handles are black
         } else {
             painter.circle_filled(point, 4.0, Color32::WHITE); // any ground: a handle sits on the page
             painter.circle_stroke(point, 4.0, Stroke::new(1.0, accent));
@@ -355,7 +406,12 @@ pub fn paint(painter: &egui::Painter, doc: &Doc, area: Rect, free: bool) {
     }
     if let Some(drag) = &doc.view.object_drag {
         if let Some(outline) = to_screen(doc, area, drag.page, dragged_rect(drag, free)) {
-            painter.rect_stroke(outline, 0.0, Stroke::new(1.0, accent.gamma_multiply(0.7)), egui::StrokeKind::Middle);
+            painter.rect_stroke(
+                outline,
+                0.0,
+                Stroke::new(1.0, accent.gamma_multiply(0.7)),
+                egui::StrokeKind::Middle,
+            );
         }
     }
 }
@@ -367,7 +423,14 @@ mod tests {
     #[test]
     fn a_corner_keeps_the_ratio_and_an_edge_does_not() {
         let start = unluminous_word::layout::Rect { x: 10.0, y: 10.0, w: 100.0, h: 50.0 };
-        let drag = |handle, to| ObjectDrag { handle, page: 0, start, from: (110.0, 60.0), to, crop: false };
+        let drag = |handle, to| ObjectDrag {
+            handle,
+            page: 0,
+            start,
+            from: (110.0, 60.0),
+            to,
+            crop: false,
+        };
         let r = dragged_rect(&drag(Handle::BottomRight, (210.0, 60.0)), false);
         assert_eq!((r.w, r.h), (200.0, 100.0));
         let r = dragged_rect(&drag(Handle::BottomRight, (210.0, 60.0)), true);

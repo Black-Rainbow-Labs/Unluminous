@@ -744,7 +744,9 @@ impl UnluminousApp {
                 };
                 // A picture, PNG encoded, when the clipboard holds one (task-2359, TDD 5.3).
                 let picture = match self.system_clipboard {
-                    true => crate::services::picture::from_the_clipboard().ok().filter(|p| !p.is_null()),
+                    true => {
+                        crate::services::picture::from_the_clipboard().ok().filter(|p| !p.is_null())
+                    }
                     false => None,
                 };
                 if let Some(provider) = self.plugin_ui.provider(plugin) {

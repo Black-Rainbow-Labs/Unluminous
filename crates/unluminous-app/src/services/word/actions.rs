@@ -1420,7 +1420,8 @@ pub const ACTIONS: &[Action] = &[
         level: Level::Picture,
         slash: false,
         run: |d| {
-            d.view.cropping = !d.view.cropping && d.session.object_info().is_some_and(|i| i.kind == "Picture");
+            d.view.cropping =
+                !d.view.cropping && d.session.object_info().is_some_and(|i| i.kind == "Picture");
             done(if d.view.cropping { "Drag a handle to crop" } else { "" })
         },
     },
@@ -1719,13 +1720,14 @@ pub const ACTIONS: &[Action] = &[
         slash: false,
         run: |d| {
             let text = d.session.selected_text();
-            let how = if text.chars().any(char::is_lowercase) && text.chars().any(char::is_uppercase) {
-                "lower"
-            } else if text.chars().any(char::is_lowercase) {
-                "upper"
-            } else {
-                "title"
-            };
+            let how =
+                if text.chars().any(char::is_lowercase) && text.chars().any(char::is_uppercase) {
+                    "lower"
+                } else if text.chars().any(char::is_lowercase) {
+                    "upper"
+                } else {
+                    "title"
+                };
             d.session.change_case(how);
             done("")
         },
@@ -2189,16 +2191,27 @@ pub fn applies(id: &str, doc: &Doc) -> bool {
         id if id.starts_with("wrap-")
             || matches!(
                 id,
-                "bring-forward" | "send-backward" | "bring-to-front" | "send-to-back" | "picture-properties" | "alt-text"
+                "bring-forward"
+                    | "send-backward"
+                    | "bring-to-front"
+                    | "send-to-back"
+                    | "picture-properties"
+                    | "alt-text"
             ) =>
         {
             doc.session.selected_object().is_some()
         }
         "crop" | "reset-picture" => doc.session.object_info().is_some_and(|i| i.kind == "Picture"),
-        "insert-row-above" | "insert-row-below" | "insert-column-left" | "insert-column-right" | "delete-row"
-        | "delete-column" | "delete-table" | "split-cells" | "table-properties" | "borders-and-shading" => {
-            doc.session.cell_at_caret().is_some()
-        }
+        "insert-row-above"
+        | "insert-row-below"
+        | "insert-column-left"
+        | "insert-column-right"
+        | "delete-row"
+        | "delete-column"
+        | "delete-table"
+        | "split-cells"
+        | "table-properties"
+        | "borders-and-shading" => doc.session.cell_at_caret().is_some(),
         "edit-link" => doc.session.hyperlink_at(head).is_some(),
         "go-to-note" | "convert-note" => doc.session.note_at(head).is_some(),
         "remove-header" | "close-header" => matches!(head.story, StoryId::Header(_)),

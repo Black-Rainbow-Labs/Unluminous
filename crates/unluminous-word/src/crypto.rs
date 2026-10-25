@@ -29,7 +29,8 @@ pub fn is_encrypted(bytes: &[u8]) -> bool {
     if !bytes.starts_with(&[0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]) {
         return false;
     }
-    cfb::CompoundFile::open(std::io::Cursor::new(bytes)).is_ok_and(|file| file.is_stream("/EncryptionInfo"))
+    cfb::CompoundFile::open(std::io::Cursor::new(bytes))
+        .is_ok_and(|file| file.is_stream("/EncryptionInfo"))
 }
 
 fn random(length: usize) -> Result<Vec<u8>, String> {
@@ -43,7 +44,8 @@ fn password_key(password: &str, salt: &[u8], spin: u32, block: &[u8]) -> Vec<u8>
     let utf16: Vec<u8> = password.encode_utf16().flat_map(u16::to_le_bytes).collect();
     let mut hash = Sha512::new().chain_update(salt).chain_update(&utf16).finalize().to_vec();
     for round in 0..spin {
-        hash = Sha512::new().chain_update(round.to_le_bytes()).chain_update(&hash).finalize().to_vec();
+        hash =
+            Sha512::new().chain_update(round.to_le_bytes()).chain_update(&hash).finalize().to_vec();
     }
     let mut key = Sha512::new().chain_update(&hash).chain_update(block).finalize().to_vec();
     key.truncate(32);
@@ -128,16 +130,19 @@ pub fn encrypt(package: &[u8], password: &str) -> Result<Vec<u8>, String> {
     let verifier = random(16)?;
     let hmac_key = random(64)?;
     let key_for = |block: &[u8]| password_key(password, &password_salt, SPIN_COUNT, block);
-    let encrypted_verifier_input = encrypt_block(&key_for(&VERIFIER_INPUT), &password_salt, &verifier)?;
+    let encrypted_verifier_input =
+        encrypt_block(&key_for(&VERIFIER_INPUT), &password_salt, &verifier)?;
     let verifier_hash = Sha512::digest(&verifier).to_vec();
-    let encrypted_verifier_value = encrypt_block(&key_for(&VERIFIER_VALUE), &password_salt, &verifier_hash)?;
+    let encrypted_verifier_value =
+        encrypt_block(&key_for(&VERIFIER_VALUE), &password_salt, &verifier_hash)?;
     let encrypted_key_value = encrypt_block(&key_for(&KEY_VALUE), &password_salt, &key_value)?;
     let encrypted_package = encrypt_package(package, &key_value, &key_salt)?;
     let encrypted_hmac_key = encrypt_block(&key_value, &block_iv(&key_salt, &HMAC_KEY), &hmac_key)?;
     let mut mac = hmac::Hmac::<Sha512>::new_from_slice(&hmac_key).map_err(|e| e.to_string())?;
     mac.update(&encrypted_package);
     let hmac_value = mac.finalize().into_bytes().to_vec();
-    let encrypted_hmac_value = encrypt_block(&key_value, &block_iv(&key_salt, &HMAC_VALUE), &hmac_value)?;
+    let encrypted_hmac_value =
+        encrypt_block(&key_value, &block_iv(&key_salt, &HMAC_VALUE), &hmac_value)?;
     let cipher = r#"saltSize="16" blockSize="16" keyBits="256" hashSize="64" cipherAlgorithm="AES" cipherChaining="ChainingModeCBC" hashAlgorithm="SHA512""#;
     let xml = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r\n<encryption xmlns=\"http://schemas.microsoft.com/office/2006/encryption\" xmlns:p=\"http://schemas.microsoft.com/office/2006/keyEncryptor/password\" xmlns:c=\"http://schemas.microsoft.com/office/2006/keyEncryptor/certificate\"><keyData {cipher} saltValue=\"{}\"/><dataIntegrity encryptedHmacKey=\"{}\" encryptedHmacValue=\"{}\"/><keyEncryptors><keyEncryptor uri=\"http://schemas.microsoft.com/office/2006/keyEncryptor/password\"><p:encryptedKey spinCount=\"{SPIN_COUNT}\" {cipher} saltValue=\"{}\" encryptedVerifierHashInput=\"{}\" encryptedVerifierHashValue=\"{}\" encryptedKeyValue=\"{}\"/></keyEncryptor></keyEncryptors></encryption>",
@@ -177,18 +182,26 @@ pub fn encrypt(package: &[u8], password: &str) -> Result<Vec<u8>, String> {
     version.extend(versions());
     let cursor = std::io::Cursor::new(Vec::new());
     let mut file = cfb::CompoundFile::create(cursor).map_err(|e| e.to_string())?;
-    let write = |file: &mut cfb::CompoundFile<std::io::Cursor<Vec<u8>>>, path: &str, data: &[u8]| -> Result<(), String> {
+    let write = |file: &mut cfb::CompoundFile<std::io::Cursor<Vec<u8>>>,
+                 path: &str,
+                 data: &[u8]|
+     -> Result<(), String> {
         let mut stream = file.create_stream(path).map_err(|e| e.to_string())?;
         stream.write_all(data).map_err(|e| e.to_string())
     };
     file.create_storage("/\u{6}DataSpaces").map_err(|e| e.to_string())?;
     file.create_storage("/\u{6}DataSpaces/DataSpaceInfo").map_err(|e| e.to_string())?;
     file.create_storage("/\u{6}DataSpaces/TransformInfo").map_err(|e| e.to_string())?;
-    file.create_storage("/\u{6}DataSpaces/TransformInfo/StrongEncryptionTransform").map_err(|e| e.to_string())?;
+    file.create_storage("/\u{6}DataSpaces/TransformInfo/StrongEncryptionTransform")
+        .map_err(|e| e.to_string())?;
     write(&mut file, "/\u{6}DataSpaces/Version", &version)?;
     write(&mut file, "/\u{6}DataSpaces/DataSpaceMap", &map)?;
     write(&mut file, "/\u{6}DataSpaces/DataSpaceInfo/StrongEncryptionDataSpace", &space)?;
-    write(&mut file, "/\u{6}DataSpaces/TransformInfo/StrongEncryptionTransform/\u{6}Primary", &primary)?;
+    write(
+        &mut file,
+        "/\u{6}DataSpaces/TransformInfo/StrongEncryptionTransform/\u{6}Primary",
+        &primary,
+    )?;
     write(&mut file, "/EncryptionInfo", &info)?;
     write(&mut file, "/EncryptedPackage", &encrypted_package)?;
     file.flush().map_err(|e| e.to_string())?;
@@ -198,7 +211,8 @@ pub fn encrypt(package: &[u8], password: &str) -> Result<Vec<u8>, String> {
 /// Decrypt a password protected `.docx` into its package. A wrong password is refused, and so is a
 /// package whose HMAC does not match, which means it was changed after it was encrypted.
 pub fn decrypt(bytes: &[u8], password: &str) -> Result<Vec<u8>, String> {
-    let mut file = cfb::CompoundFile::open(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
+    let mut file =
+        cfb::CompoundFile::open(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
     let mut read = |path: &str| -> Result<Vec<u8>, String> {
         let mut stream = file.open_stream(path).map_err(|e| format!("{path}: {e}"))?;
         let mut data = Vec::new();
@@ -208,9 +222,13 @@ pub fn decrypt(bytes: &[u8], password: &str) -> Result<Vec<u8>, String> {
     let info = read("/EncryptionInfo")?;
     let package = read("/EncryptedPackage")?;
     if info.len() < 8 || info[0] != 4 || info[2] != 4 {
-        return Err("this document is encrypted in a way Unluminous does not read: only agile encryption".into());
+        return Err(
+            "this document is encrypted in a way Unluminous does not read: only agile encryption"
+                .into(),
+        );
     }
-    let root = crate::xml::parse(&String::from_utf8_lossy(&info[8..])).map_err(|e| format!("its encryption information: {e}"))?;
+    let root = crate::xml::parse(&String::from_utf8_lossy(&info[8..]))
+        .map_err(|e| format!("its encryption information: {e}"))?;
     let key_data = find_local(&root, "keyData").ok_or("no key data")?;
     let encrypted_key = find_local(&root, "encryptedKey").ok_or("no password key")?;
     let integrity = find_local(&root, "dataIntegrity");
@@ -220,30 +238,58 @@ pub fn decrypt(bytes: &[u8], password: &str) -> Result<Vec<u8>, String> {
     if key_data.attr("hashAlgorithm") != Some("SHA512") || key_data.attr("keyBits") != Some("256") {
         return Err("this document is encrypted with a cipher Unluminous does not read: only AES-256 with SHA-512".into());
     }
-    let spin: u32 = encrypted_key.attr("spinCount").and_then(|s| s.parse().ok()).unwrap_or(SPIN_COUNT);
+    let spin: u32 =
+        encrypted_key.attr("spinCount").and_then(|s| s.parse().ok()).unwrap_or(SPIN_COUNT);
     let password_salt = attr(encrypted_key, "saltValue")?;
     let key_salt = attr(key_data, "saltValue")?;
     let key_for = |block: &[u8]| password_key(password, &password_salt, spin, block);
-    let verifier = decrypt_block(&key_for(&VERIFIER_INPUT), &password_salt, &attr(encrypted_key, "encryptedVerifierHashInput")?)?;
-    let verifier_hash = decrypt_block(&key_for(&VERIFIER_VALUE), &password_salt, &attr(encrypted_key, "encryptedVerifierHashValue")?)?;
+    let verifier = decrypt_block(
+        &key_for(&VERIFIER_INPUT),
+        &password_salt,
+        &attr(encrypted_key, "encryptedVerifierHashInput")?,
+    )?;
+    let verifier_hash = decrypt_block(
+        &key_for(&VERIFIER_VALUE),
+        &password_salt,
+        &attr(encrypted_key, "encryptedVerifierHashValue")?,
+    )?;
     if Sha512::digest(&verifier[..16]).as_slice() != &verifier_hash[..64] {
         return Err("the password is not right".into());
     }
-    let key_value = decrypt_block(&key_for(&KEY_VALUE), &password_salt, &attr(encrypted_key, "encryptedKeyValue")?)?;
+    let key_value = decrypt_block(
+        &key_for(&KEY_VALUE),
+        &password_salt,
+        &attr(encrypted_key, "encryptedKeyValue")?,
+    )?;
     let key_value = &key_value[..32];
     if let Some(integrity) = integrity {
-        let hmac_key = decrypt_block(key_value, &block_iv(&key_salt, &HMAC_KEY), &attr(integrity, "encryptedHmacKey")?)?;
-        let expected = decrypt_block(key_value, &block_iv(&key_salt, &HMAC_VALUE), &attr(integrity, "encryptedHmacValue")?)?;
-        let mut mac = hmac::Hmac::<Sha512>::new_from_slice(&hmac_key[..64]).map_err(|e| e.to_string())?;
+        let hmac_key = decrypt_block(
+            key_value,
+            &block_iv(&key_salt, &HMAC_KEY),
+            &attr(integrity, "encryptedHmacKey")?,
+        )?;
+        let expected = decrypt_block(
+            key_value,
+            &block_iv(&key_salt, &HMAC_VALUE),
+            &attr(integrity, "encryptedHmacValue")?,
+        )?;
+        let mut mac =
+            hmac::Hmac::<Sha512>::new_from_slice(&hmac_key[..64]).map_err(|e| e.to_string())?;
         mac.update(&package);
         if mac.finalize().into_bytes().as_slice() != &expected[..64] {
             return Err("the encrypted document was changed after it was encrypted".into());
         }
     }
-    let size = u64::from_le_bytes(package.get(..8).ok_or("the encrypted package is empty")?.try_into().expect("eight bytes")) as usize;
+    let size = u64::from_le_bytes(
+        package.get(..8).ok_or("the encrypted package is empty")?.try_into().expect("eight bytes"),
+    ) as usize;
     let mut out = Vec::with_capacity(size);
     for (index, segment) in package[8..].chunks(SEGMENT).enumerate() {
-        out.extend(decrypt_block(key_value, &block_iv(&key_salt, &(index as u32).to_le_bytes()), segment)?);
+        out.extend(decrypt_block(
+            key_value,
+            &block_iv(&key_salt, &(index as u32).to_le_bytes()),
+            segment,
+        )?);
     }
     out.truncate(size);
     Ok(out)

@@ -453,7 +453,12 @@ fn table_style_at(
     unluminous_word::position::cell_of(&document.body, path).and_then(|(table, row, cell)| {
         match unluminous_word::position::block(&document.body, &table) {
             Some(unluminous_word::model::Block::Table(t)) => {
-                unluminous_word::layout::table::cell_style_of(resolver, t, row as usize, cell as usize)
+                unluminous_word::layout::table::cell_style_of(
+                    resolver,
+                    t,
+                    row as usize,
+                    cell as usize,
+                )
             }
             _ => None,
         }

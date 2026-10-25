@@ -75,7 +75,7 @@ fn updating_a_table_of_contents_picks_up_a_new_heading_and_keeps_its_levels() {
     session.type_text("Discussion");
     session.apply_style("Heading1").expect("a style");
     let laid = pages(&session);
-    assert_eq!(session.update_fields(&laid) >= 1, true);
+    assert!(session.update_fields(&laid) >= 1);
     let place = &find_tocs(&session.document)[0];
     let Some(Block::Sdt(control)) =
         position::block(&session.document.body, place.sdt.as_ref().unwrap())
@@ -193,7 +193,9 @@ fn every_field_code_and_switch_gives_words_result() {
     let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
     let bytes = std::fs::read(folder.join("field-codes.docx")).unwrap();
     let report: serde_json::Value = serde_json::from_str(
-        std::fs::read_to_string(folder.join("field-codes.word.json")).unwrap().trim_start_matches('\u{feff}'),
+        std::fs::read_to_string(folder.join("field-codes.word.json"))
+            .unwrap()
+            .trim_start_matches('\u{feff}'),
     )
     .unwrap();
     let mut session = Session::new(unluminous_word::read::open(&bytes).unwrap());
@@ -213,7 +215,10 @@ fn every_field_code_and_switch_gives_words_result() {
     assert_eq!(ours.len(), words.len(), "the same fields: ours {ours:?}");
     let mut wrong = Vec::new();
     for ((code, result), (word_code, word_result)) in ours.iter().zip(&words) {
-        assert_eq!(code.split_whitespace().collect::<Vec<_>>(), word_code.split_whitespace().collect::<Vec<_>>());
+        assert_eq!(
+            code.split_whitespace().collect::<Vec<_>>(),
+            word_code.split_whitespace().collect::<Vec<_>>()
+        );
         match result {
             Some(result) if result.trim() == word_result.trim() => {}
             Some(result) => wrong.push(format!("{code}: ours {result:?}, Word's {word_result:?}")),

@@ -683,7 +683,9 @@ fn ink(color: Color32, dark: bool) -> Color32 {
     if !dark {
         return color;
     }
-    let luminance = 0.2126 * f32::from(color.r()) + 0.7152 * f32::from(color.g()) + 0.0722 * f32::from(color.b());
+    let luminance = 0.2126 * f32::from(color.r())
+        + 0.7152 * f32::from(color.g())
+        + 0.0722 * f32::from(color.b());
     if luminance >= 110.0 {
         return color;
     }
@@ -693,7 +695,13 @@ fn ink(color: Color32, dark: bool) -> Color32 {
 
 /// The drawing grid: a line every line pitch of the section's `w:docGrid` (18 points when it names
 /// none), across the text column.
-fn paint_gridlines(painter: &egui::Painter, doc: &Doc, page: &unluminous_word::layout::Page, origin: Pos2, zoom: f32) {
+fn paint_gridlines(
+    painter: &egui::Painter,
+    doc: &Doc,
+    page: &unluminous_word::layout::Page,
+    origin: Pos2,
+    zoom: f32,
+) {
     let pitch = doc
         .session
         .document
@@ -704,7 +712,8 @@ fn paint_gridlines(painter: &egui::Painter, doc: &Doc, page: &unluminous_word::l
         .map_or(18.0, |twips| twips / 20.0)
         .max(4.0);
     let stroke = Stroke::new(0.5, Color32::from_rgba_unmultiplied(80, 120, 200, 70)); // any ground: a faint blue grid on paper
-    let (left, right) = (origin.x + page.body.x * zoom, origin.x + (page.body.x + page.body.w) * zoom);
+    let (left, right) =
+        (origin.x + page.body.x * zoom, origin.x + (page.body.x + page.body.w) * zoom);
     let mut y = page.body.y;
     while y <= page.body.y + page.body.h {
         let sy = origin.y + y * zoom;
@@ -837,7 +846,10 @@ Ctrl+click to follow the link"
     if doc.view.column_drag.is_some() {
         let released = ui.input(|i| i.pointer.primary_released());
         if let Some(Err(error)) = super::objects::drag_column_edge(doc, area, at, released) {
-            requests.push(Request::Notice { text: error, kind: crate::components::toast::Kind::Problem });
+            requests.push(Request::Notice {
+                text: error,
+                kind: crate::components::toast::Kind::Problem,
+            });
         }
         return;
     }
@@ -850,7 +862,10 @@ Ctrl+click to follow the link"
         super::objects::drag(doc, area, at);
         if ui.input(|i| i.pointer.primary_released()) {
             if let Some(Err(error)) = super::objects::release(doc, area, at, shift) {
-                requests.push(Request::Notice { text: error, kind: crate::components::toast::Kind::Problem });
+                requests.push(Request::Notice {
+                    text: error,
+                    kind: crate::components::toast::Kind::Problem,
+                });
             }
         }
         return;

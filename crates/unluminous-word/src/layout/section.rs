@@ -114,7 +114,10 @@ impl Geometry {
                     return None;
                 }
                 let width = top.attr("w:sz").and_then(number).map_or(0.5, |s| s as f32 / 8.0);
-                let colour = top.attr("w:color").and_then(crate::props::Rgb::parse).unwrap_or(crate::props::Rgb::BLACK);
+                let colour = top
+                    .attr("w:color")
+                    .and_then(crate::props::Rgb::parse)
+                    .unwrap_or(crate::props::Rgb::BLACK);
                 let space = top.attr("w:space").and_then(number).map_or(24.0, |s| s as f32);
                 Some((width, colour, space, b.attr("w:offsetFrom") == Some("text")))
             }),
@@ -124,7 +127,7 @@ impl Geometry {
                     read("w:countBy").map_or(1, |n| n as u32).max(1),
                     read("w:start").map_or(1, |n| n as u32 + 1),
                     l.attr("w:restart").unwrap_or("newPage").to_owned(),
-                    read("w:distance").map_or(18.0, |d| twips(d)),
+                    read("w:distance").map_or(18.0, twips),
                 )
             }),
             separator: sect

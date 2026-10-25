@@ -40,7 +40,10 @@ fn entries(doc: &Doc, at: &Pos) -> Vec<MenuEntry> {
             out.push(entry("Reset Picture", "reset-picture"));
         }
         out.push(entry("Edit Alt Text...", "alt-text"));
-        out.extend([entry("Bring Forward", "bring-forward"), entry("Send Backward", "send-backward")]);
+        out.extend([
+            entry("Bring Forward", "bring-forward"),
+            entry("Send Backward", "send-backward"),
+        ]);
         return out;
     }
     out.extend([entry("Cut", "cut"), entry("Copy", "copy"), entry("Paste", "paste")]);
@@ -49,7 +52,10 @@ fn entries(doc: &Doc, at: &Pos) -> Vec<MenuEntry> {
     }
     out.push(line());
     if let StoryId::Header(_) = at.story {
-        out.extend([entry("Remove Header or Footer", "remove-header"), entry("Page Number", "page-number")]);
+        out.extend([
+            entry("Remove Header or Footer", "remove-header"),
+            entry("Page Number", "page-number"),
+        ]);
         out.push(entry("Close Header and Footer", "close-header"));
         out.push(line());
     }
@@ -64,7 +70,10 @@ fn entries(doc: &Doc, at: &Pos) -> Vec<MenuEntry> {
     if doc.session.note_at(at).is_some() {
         let endnote = matches!(doc.session.note_at(at), Some(StoryId::Endnote(_)));
         out.push(entry(if endnote { "Go to Endnote" } else { "Go to Footnote" }, "go-to-note"));
-        out.push(entry(if endnote { "Convert to Footnote" } else { "Convert to Endnote" }, "convert-note"));
+        out.push(entry(
+            if endnote { "Convert to Footnote" } else { "Convert to Endnote" },
+            "convert-note",
+        ));
         out.push(line());
     }
     if doc.session.cell_at_caret().is_some() {
@@ -88,7 +97,11 @@ fn entries(doc: &Doc, at: &Pos) -> Vec<MenuEntry> {
         out.push(line());
     }
     out.extend([entry("Font...", "font-dialog"), entry("Paragraph...", "paragraph-dialog")]);
-    out.extend([entry("Bullets", "bullets"), entry("Numbering", "numbering"), entry("Styles", "styles-level")]);
+    out.extend([
+        entry("Bullets", "bullets"),
+        entry("Numbering", "numbering"),
+        entry("Styles", "styles-level"),
+    ]);
     match doc.session.hyperlink_at(at) {
         Some(_) => out.extend([
             entry("Edit Hyperlink...", "edit-link"),
@@ -110,7 +123,10 @@ fn entries(doc: &Doc, at: &Pos) -> Vec<MenuEntry> {
             out.push(line());
             out.push(entry(&format!("Synonyms of {word}"), ""));
             for synonym in synonyms.into_iter().take(8) {
-                out.push(MenuEntry { label: format!("    {synonym}"), id: format!("synonym:{synonym}") });
+                out.push(MenuEntry {
+                    label: format!("    {synonym}"),
+                    id: format!("synonym:{synonym}"),
+                });
             }
         }
     }
@@ -119,14 +135,18 @@ fn entries(doc: &Doc, at: &Pos) -> Vec<MenuEntry> {
 
 /// Whether `at` is inside a field: between a field's begin and end, or in a simple field.
 fn field_at(doc: &Doc, at: &Pos) -> bool {
-    let Some(paragraph) = position::paragraph(&doc.session.document, &at.story, &at.path) else { return false };
+    let Some(paragraph) = position::paragraph(&doc.session.document, &at.story, &at.path) else {
+        return false;
+    };
     let mut depth = 0i32;
     let mut offset = 0;
     for run in &paragraph.runs {
         if offset >= at.offset && depth > 0 {
             return true;
         }
-        if offset < at.offset + 1 && offset + run.len() >= at.offset && run.wraps.iter().any(|w| w.el.name == "w:fldSimple")
+        if offset < at.offset + 1
+            && offset + run.len() >= at.offset
+            && run.wraps.iter().any(|w| w.el.name == "w:fldSimple")
         {
             return true;
         }
@@ -145,12 +165,22 @@ fn field_at(doc: &Doc, at: &Pos) -> bool {
 
 /// The word around `at`, letters only.
 fn word_at(doc: &Doc, at: &Pos) -> String {
-    let Some(paragraph) = position::paragraph(&doc.session.document, &at.story, &at.path) else { return String::new() };
+    let Some(paragraph) = position::paragraph(&doc.session.document, &at.story, &at.path) else {
+        return String::new();
+    };
     let text = paragraph.flat_text();
     let offset = at.offset.min(text.len());
     let is_letter = |c: char| c.is_alphabetic() || c == '\'';
-    let start = text[..offset].char_indices().rev().take_while(|(_, c)| is_letter(*c)).last().map_or(offset, |(i, _)| i);
-    let end = text[offset..].char_indices().find(|(_, c)| !is_letter(*c)).map_or(text.len(), |(i, _)| offset + i);
+    let start = text[..offset]
+        .char_indices()
+        .rev()
+        .take_while(|(_, c)| is_letter(*c))
+        .last()
+        .map_or(offset, |(i, _)| i);
+    let end = text[offset..]
+        .char_indices()
+        .find(|(_, c)| !is_letter(*c))
+        .map_or(text.len(), |(i, _)| offset + i);
     text[start..end].to_owned()
 }
 
@@ -167,7 +197,8 @@ pub fn open(doc: &mut Doc, screen: Pos2, at: Pos) {
         }
     }
     let entries = entries(doc, &at);
-    doc.view.context_menu = Some(ContextMenu { at: screen, entries, word: word_at(doc, &at), pos: at });
+    doc.view.context_menu =
+        Some(ContextMenu { at: screen, entries, word: word_at(doc, &at), pos: at });
 }
 
 /// `Shift+F10` and the menu key: the menu at the caret.
@@ -178,11 +209,18 @@ pub fn open_at_caret(doc: &mut Doc, area: Rect) {
 }
 
 /// Draw the menu when it is open, and run what is chosen.
-pub fn show(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, area: Rect, requests: &mut Vec<Request>) {
+pub fn show(
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    doc: &mut Doc,
+    area: Rect,
+    requests: &mut Vec<Request>,
+) {
     let Some(menu) = doc.view.context_menu.clone() else { return };
     let row = 24.0 * look.scale();
     let width = 250.0 * look.scale();
-    let height = menu.entries.iter().map(|e| if e.label == "-" { 7.0 } else { row }).sum::<f32>() + 8.0;
+    let height =
+        menu.entries.iter().map(|e| if e.label == "-" { 7.0 } else { row }).sum::<f32>() + 8.0;
     let mut at = menu.at;
     at.x = at.x.min(area.right() - width - 4.0).max(area.left());
     at.y = at.y.min(area.bottom() - height - 4.0).max(area.top());
@@ -202,15 +240,20 @@ pub fn show(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, area: Rect, reque
                         continue;
                     }
                     if entry.id.is_empty() {
-                        ui.label(egui::RichText::new(&entry.label).weak().size(look.font_size * 0.9));
+                        ui.label(
+                            egui::RichText::new(&entry.label).weak().size(look.font_size * 0.9),
+                        );
                         continue;
                     }
                     let enabled = enabled(doc, &entry.id);
-                    let button = egui::Button::new(egui::RichText::new(&entry.label).size(look.font_size))
-                        .frame(false)
-                        .min_size(Vec2::new(width - 16.0, row));
+                    let button =
+                        egui::Button::new(egui::RichText::new(&entry.label).size(look.font_size))
+                            .frame(false)
+                            .min_size(Vec2::new(width - 16.0, row));
                     let response = ui.add_enabled(enabled, button);
-                    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, &entry.label));
+                    response.widget_info(|| {
+                        egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, &entry.label)
+                    });
                     if response.clicked() {
                         chosen = Some(entry.id.clone());
                     }
@@ -256,11 +299,16 @@ pub fn run(doc: &mut Doc, id: &str, menu: &ContextMenu, requests: &mut Vec<Reque
         }
         "copy-link" => {
             if let Some((address, _)) = doc.session.hyperlink_at(&menu.pos) {
-                requests.push(Request::CopyRich { text: address.clone(), html: String::new(), rtf: String::new() });
+                requests.push(Request::CopyRich {
+                    text: address.clone(),
+                    html: String::new(),
+                    rtf: String::new(),
+                });
             }
         }
         "paste-text-only" => {
-            let _ = crate::services::word::paste_again(doc, unluminous_word::clipboard::PasteAs::Text);
+            let _ =
+                crate::services::word::paste_again(doc, unluminous_word::clipboard::PasteAs::Text);
         }
         id if id.starts_with("synonym:") => {
             let synonym = id.trim_start_matches("synonym:").to_owned();
@@ -272,10 +320,14 @@ pub fn run(doc: &mut Doc, id: &str, menu: &ContextMenu, requests: &mut Vec<Reque
 
 /// Put `with` in place of the word `word` round `at`.
 fn replace_word(doc: &mut Doc, at: &Pos, word: &str, with: &str) {
-    let Some(paragraph) = position::paragraph(&doc.session.document, &at.story, &at.path) else { return };
+    let Some(paragraph) = position::paragraph(&doc.session.document, &at.story, &at.path) else {
+        return;
+    };
     let text = paragraph.flat_text();
     let offset = at.offset.min(text.len());
-    let start = (0..=offset).rev().find(|&i| text.is_char_boundary(i) && text[i..].starts_with(word) && i + word.len() >= offset);
+    let start = (0..=offset).rev().find(|&i| {
+        text.is_char_boundary(i) && text[i..].starts_with(word) && i + word.len() >= offset
+    });
     if let Some(start) = start {
         doc.session.select(at.at(start), at.at(start + word.len()));
         doc.session.type_text(with);

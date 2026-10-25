@@ -32,11 +32,14 @@ pub fn convert(source: &Path, target: &Path, format: &str) -> Result<(), String>
 }
 
 fn convert_unless(off: bool, source: &Path, target: &Path, format: &str) -> Result<(), String> {
-    let name = source.file_name().map_or_else(|| source.display().to_string(), |n| n.to_string_lossy().into_owned());
+    let name = source
+        .file_name()
+        .map_or_else(|| source.display().to_string(), |n| n.to_string_lossy().into_owned());
     if off {
         return Err(format!("{name} needs Microsoft Word to be converted, and Word is not installed on this machine"));
     }
-    let source = std::fs::canonicalize(source).map_err(|e| format!("{} could not be read: {e}", source.display()))?;
+    let source = std::fs::canonicalize(source)
+        .map_err(|e| format!("{} could not be read: {e}", source.display()))?;
     let source = plain(&source);
     let target = match target.is_absolute() {
         true => target.to_path_buf(),
@@ -45,11 +48,15 @@ fn convert_unless(off: bool, source: &Path, target: &Path, format: &str) -> Resu
     let folder = std::env::temp_dir().join(format!(
         "unluminous-convert-{}-{}",
         std::process::id(),
-        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos())
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos())
     ));
-    std::fs::create_dir_all(&folder).map_err(|e| format!("{} could not be made: {e}", folder.display()))?;
+    std::fs::create_dir_all(&folder)
+        .map_err(|e| format!("{} could not be made: {e}", folder.display()))?;
     let script = folder.join("convert.ps1");
-    std::fs::write(&script, SCRIPT).map_err(|e| format!("{} could not be written: {e}", script.display()))?;
+    std::fs::write(&script, SCRIPT)
+        .map_err(|e| format!("{} could not be written: {e}", script.display()))?;
     let answer = run(&script, &source, &target, format);
     let _ = std::fs::remove_file(&script);
     let _ = std::fs::remove_dir(&folder);
@@ -120,9 +127,14 @@ mod tests {
 
     #[test]
     fn a_machine_without_word_is_told_what_is_needed() {
-        let refused = convert_unless(true, Path::new("old.doc"), Path::new("out.docx"), "docx").unwrap_err();
+        let refused =
+            convert_unless(true, Path::new("old.doc"), Path::new("out.docx"), "docx").unwrap_err();
         assert!(refused.contains("needs Microsoft Word"), "{refused}");
-        assert!(opened_through_word("PDF") && opened_through_word("doc") && !opened_through_word("docx"));
+        assert!(
+            opened_through_word("PDF")
+                && opened_through_word("doc")
+                && !opened_through_word("docx")
+        );
         assert!(saved_through_word("odt") && !saved_through_word("txt"));
     }
 }

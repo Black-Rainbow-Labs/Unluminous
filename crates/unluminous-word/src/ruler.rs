@@ -29,7 +29,16 @@ impl Session {
     pub fn set_indents(&mut self, left: f32, right: f32, first: f32) {
         self.format_paragraphs(move |ppr| {
             let ind = ppr.child_or_insert("w:ind");
-            for name in ["w:start", "w:end", "w:firstLine", "w:hanging", "w:startChars", "w:endChars", "w:firstLineChars", "w:hangingChars"] {
+            for name in [
+                "w:start",
+                "w:end",
+                "w:firstLine",
+                "w:hanging",
+                "w:startChars",
+                "w:endChars",
+                "w:firstLineChars",
+                "w:hangingChars",
+            ] {
                 ind.remove_attr(name);
             }
             ind.set_attr("w:left", twips(left.max(-1584.0)));
@@ -47,8 +56,11 @@ impl Session {
         let pos = twips(position);
         self.format_paragraphs(move |ppr| {
             let tabs = ppr.child_or_insert("w:tabs");
-            tabs.children.retain(|n| !matches!(n, Node::El(e) if e.attr("w:pos") == Some(pos.as_str())));
-            tabs.children.push(Node::El(El::new("w:tab").with("w:val", kind_name(kind)).with("w:pos", pos.clone())));
+            tabs.children
+                .retain(|n| !matches!(n, Node::El(e) if e.attr("w:pos") == Some(pos.as_str())));
+            tabs.children.push(Node::El(
+                El::new("w:tab").with("w:val", kind_name(kind)).with("w:pos", pos.clone()),
+            ));
             sort_tabs(tabs);
         });
     }
@@ -62,15 +74,22 @@ impl Session {
             crate::position::paragraph(&self.document, &head.story, &head.path).is_some_and(|p| {
                 let mut bare = p.props.clone();
                 bare.remove_children("w:tabs");
-                resolver.paragraph(&bare, None).tabs.iter().any(|t| (t.position - position).abs() < 0.5)
+                resolver
+                    .paragraph(&bare, None)
+                    .tabs
+                    .iter()
+                    .any(|t| (t.position - position).abs() < 0.5)
             })
         };
         let pos = twips(position);
         self.format_paragraphs(move |ppr| {
             let tabs = ppr.child_or_insert("w:tabs");
-            tabs.children.retain(|n| !matches!(n, Node::El(e) if e.attr("w:pos") == Some(pos.as_str())));
+            tabs.children
+                .retain(|n| !matches!(n, Node::El(e) if e.attr("w:pos") == Some(pos.as_str())));
             if from_style {
-                tabs.children.push(Node::El(El::new("w:tab").with("w:val", "clear").with("w:pos", pos.clone())));
+                tabs.children.push(Node::El(
+                    El::new("w:tab").with("w:val", "clear").with("w:pos", pos.clone()),
+                ));
                 sort_tabs(tabs);
             }
             if tabs.children.is_empty() {
@@ -82,7 +101,9 @@ impl Session {
     /// Move the tab stop at `from` to `to` points, keeping its kind and leader.
     pub fn move_tab_stop(&mut self, from: f32, to: f32) {
         let look = self.paragraph_at_caret();
-        let Some(stop) = look.tabs.iter().find(|t| (t.position - from).abs() < 0.5).cloned() else { return };
+        let Some(stop) = look.tabs.iter().find(|t| (t.position - from).abs() < 0.5).cloned() else {
+            return;
+        };
         let (from_pos, to_pos) = (twips(from), twips(to));
         let leader = stop.leader;
         self.format_paragraphs(move |ppr| {
@@ -126,7 +147,8 @@ mod tests {
         assert_eq!((look.indent_left, look.indent_right, look.indent_first), (36.0, 18.0, -18.0));
         session.add_tab_stop(144.0, TabKind::Right);
         session.add_tab_stop(72.0, TabKind::Left);
-        let positions: Vec<f32> = session.paragraph_at_caret().tabs.iter().map(|t| t.position).collect();
+        let positions: Vec<f32> =
+            session.paragraph_at_caret().tabs.iter().map(|t| t.position).collect();
         assert_eq!(positions, vec![72.0, 144.0]);
         session.move_tab_stop(144.0, 216.0);
         let look = session.paragraph_at_caret();

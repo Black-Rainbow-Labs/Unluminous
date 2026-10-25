@@ -49,12 +49,22 @@ fn on(text: Option<&String>) -> Option<bool> {
 
 /// The story `--story <kind> [n]` names, and the words after it: `body`, `header <n>`, `footer <n>`
 /// (the nth header or footer part), `footnote <id>`, `endnote <id>`, `comment <id>` or `textbox <n>`.
-fn story_from(document: &unluminous_word::model::Document, arguments: &[String]) -> Result<(StoryId, Vec<String>), String> {
+fn story_from(
+    document: &unluminous_word::model::Document,
+    arguments: &[String],
+) -> Result<(StoryId, Vec<String>), String> {
     let at = arguments.iter().position(|a| a == "--story").ok_or("--story names a story")?;
-    let kind = arguments.get(at + 1).ok_or("--story takes body, header, footer, footnote, endnote, comment or textbox")?;
+    let kind = arguments
+        .get(at + 1)
+        .ok_or("--story takes body, header, footer, footnote, endnote, comment or textbox")?;
     let number = arguments.get(at + 2).and_then(|n| n.parse::<i64>().ok());
     let used = if number.is_some() { 3 } else { 2 };
-    let rest: Vec<String> = arguments.iter().enumerate().filter(|(i, a)| (*i < at || *i >= at + used) && a.as_str() != "--runs").map(|(_, a)| a.clone()).collect();
+    let rest: Vec<String> = arguments
+        .iter()
+        .enumerate()
+        .filter(|(i, a)| (*i < at || *i >= at + used) && a.as_str() != "--runs")
+        .map(|(_, a)| a.clone())
+        .collect();
     let n = number.unwrap_or(1);
     let story = match kind.as_str() {
         "body" => StoryId::Body,
@@ -253,11 +263,17 @@ pub fn run(word: &mut Word, command: &str, arguments: &[String]) -> Result<Answe
         }
         "new" => {
             // new [path] [--template <file>]
-            let template = arguments.iter().position(|a| a == "--template").and_then(|i| arguments.get(i + 1)).map(PathBuf::from);
+            let template = arguments
+                .iter()
+                .position(|a| a == "--template")
+                .and_then(|i| arguments.get(i + 1))
+                .map(PathBuf::from);
             let path = arguments
                 .iter()
                 .enumerate()
-                .find(|(i, a)| !a.starts_with("--") && (*i == 0 || arguments[i - 1] != "--template"))
+                .find(|(i, a)| {
+                    !a.starts_with("--") && (*i == 0 || arguments[i - 1] != "--template")
+                })
                 .map(|(_, a)| PathBuf::from(a));
             let key = word.new_from(path.as_deref(), template.as_deref())?;
             let label = word.doc(&key)?.label();
@@ -269,7 +285,13 @@ pub fn run(word: &mut Word, command: &str, arguments: &[String]) -> Result<Answe
             let chosen = rfd::FileDialog::new()
                 .set_title("Open as Document")
                 .set_directory(word.project.clone().unwrap_or_default())
-                .add_filter("Documents", &["docx", "dotx", "docm", "dotm", "doc", "rtf", "odt", "wps", "pdf", "txt", "md", "html", "htm"])
+                .add_filter(
+                    "Documents",
+                    &[
+                        "docx", "dotx", "docm", "dotm", "doc", "rtf", "odt", "wps", "pdf", "txt",
+                        "md", "html", "htm",
+                    ],
+                )
                 .pick_file()
                 .ok_or("Nothing was opened")?;
             let words = vec!["--as-document".to_owned(), chosen.display().to_string()];
@@ -283,7 +305,8 @@ pub fn run(word: &mut Word, command: &str, arguments: &[String]) -> Result<Answe
         "open" => {
             // open [--as-document] <path>: a .txt, .md, .html or .pdf opens as a Word document with the flag.
             let as_document = flag(arguments, "--as-document");
-            let words: Vec<String> = arguments.iter().filter(|a| *a != "--as-document").cloned().collect();
+            let words: Vec<String> =
+                arguments.iter().filter(|a| *a != "--as-document").cloned().collect();
             let path = PathBuf::from(rest(&words, 0));
             let path = match (path.is_relative(), &word.project) {
                 (true, Some(project)) => project.join(path),
@@ -297,7 +320,8 @@ pub fn run(word: &mut Word, command: &str, arguments: &[String]) -> Result<Answe
                 word.load(&key, &path)?;
                 let label = super::files::name_of(&path);
                 word.outbox.push(Request::OpenKeyedTab { key: key.clone(), label });
-                return Ok(Answer::said(format!("Opening {} as a document", path.display())).with(json!({ "key": key })));
+                return Ok(Answer::said(format!("Opening {} as a document", path.display()))
+                    .with(json!({ "key": key })));
             }
             word.outbox.push(Request::OpenFile(path.clone()));
             return Ok(Answer::said(format!("Opening {}", path.display()))
@@ -310,7 +334,11 @@ pub fn run(word: &mut Word, command: &str, arguments: &[String]) -> Result<Answe
                 .map(|d| json!({ "key": d.key, "path": d.path, "convertedFrom": d.converted_from, "encrypted": d.password.is_some(), "modified": d.modified(), "pages": d.pages.pages.len(), "current": word.current.as_deref() == Some(d.key.as_str()) }))
                 .collect();
             // A tab still waiting for Word, or for a password, is listed with what it is waiting for.
-            docs.extend(word.waiting.iter().map(|(key, waiting)| json!({ "key": key, "waiting": waiting.sentence() })));
+            docs.extend(
+                word.waiting
+                    .iter()
+                    .map(|(key, waiting)| json!({ "key": key, "waiting": waiting.sentence() })),
+            );
             return Ok(Answer::said(format!("{} documents open", docs.len())).with(json!(docs)));
         }
         "use" => {
@@ -359,16 +387,22 @@ pub fn run(word: &mut Word, command: &str, arguments: &[String]) -> Result<Answe
         }
         "autosave" | "autorecover" => {
             let value = on(arguments.first());
-            let slot = if command == "autosave" { &mut word.config.autosave } else { &mut word.config.autorecover };
+            let slot = if command == "autosave" {
+                &mut word.config.autosave
+            } else {
+                &mut word.config.autorecover
+            };
             if let Some(value) = value {
                 *slot = value;
                 if let Some(folder) = &word.folder {
                     word.config.write(folder)?;
                 }
             }
-            let now = if command == "autosave" { word.config.autosave } else { word.config.autorecover };
+            let now =
+                if command == "autosave" { word.config.autosave } else { word.config.autorecover };
             let name = if command == "autosave" { "AutoSave" } else { "AutoRecover" };
-            return Ok(Answer::said(format!("{name} is {}", if now { "on" } else { "off" })).with(json!({ "on": now })));
+            return Ok(Answer::said(format!("{name} is {}", if now { "on" } else { "off" }))
+                .with(json!({ "on": now })));
         }
         "link" if arguments.first().map(String::as_str) == Some("open") => {
             let doc = word.current_doc()?;
@@ -422,10 +456,26 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
             let (story, rest) = story_from(&session.document, arguments)?;
             let numbers: Vec<usize> = rest.iter().filter_map(|a| a.parse().ok()).collect();
             let from = numbers.first().copied().unwrap_or(1);
-            let to = numbers.get(1).copied().unwrap_or(if numbers.is_empty() { usize::MAX } else { from });
-            let blocks = position::story(&session.document, &story).ok_or("there is no such story")?;
-            let paragraphs = unluminous_word::export::paragraphs_value_in(&session.document, blocks, from, to, flag(arguments, "--runs"));
-            Ok(Answer::said(format!("{} paragraphs in {}", paragraphs.len(), super::story_name(&story))).with(json!(paragraphs)))
+            let to = numbers.get(1).copied().unwrap_or(if numbers.is_empty() {
+                usize::MAX
+            } else {
+                from
+            });
+            let blocks =
+                position::story(&session.document, &story).ok_or("there is no such story")?;
+            let paragraphs = unluminous_word::export::paragraphs_value_in(
+                &session.document,
+                blocks,
+                from,
+                to,
+                flag(arguments, "--runs"),
+            );
+            Ok(Answer::said(format!(
+                "{} paragraphs in {}",
+                paragraphs.len(),
+                super::story_name(&story)
+            ))
+            .with(json!(paragraphs)))
         }
         "locate" => {
             // locate <paragraph> [offset] [--story <kind> [n]]: where that place is drawn in the window, for
@@ -436,10 +486,14 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
                 (StoryId::Body, arguments.to_vec())
             };
             let numbers: Vec<usize> = rest.iter().filter_map(|a| a.parse().ok()).collect();
-            let blocks = position::story(&session.document, &story).ok_or("there is no such story")?;
+            let blocks =
+                position::story(&session.document, &story).ok_or("there is no such story")?;
             let all = position::paragraphs(blocks);
-            let (path, _) = all.get(numbers.first().copied().unwrap_or(1).saturating_sub(1)).ok_or("there is no such paragraph")?;
-            let at = Pos { story, path: path.clone(), offset: numbers.get(1).copied().unwrap_or(0) };
+            let (path, _) = all
+                .get(numbers.first().copied().unwrap_or(1).saturating_sub(1))
+                .ok_or("there is no such paragraph")?;
+            let at =
+                Pos { story, path: path.clone(), offset: numbers.get(1).copied().unwrap_or(0) };
             let area = doc.view.pages_rect;
             let (tops, _) = crate::components::word::page_view::page_tops(doc, area.width());
             let (index, line) = doc.pages.find(&at).ok_or("that place is not on a page yet")?;
@@ -448,7 +502,8 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
             let x = origin.x + line.x_of(at.offset) * zoom;
             let y = origin.y + (line.top + line.height / 2.0) * zoom;
             let (x, y) = (x * doc.view.window_zoom, y * doc.view.window_zoom);
-            Ok(Answer::said(format!("{x:.0}, {y:.0}")).with(json!({ "x": x, "y": y, "page": index + 1 })))
+            Ok(Answer::said(format!("{x:.0}, {y:.0}"))
+                .with(json!({ "x": x, "y": y, "page": index + 1 })))
         }
         "stories" => {
             // Every story an agent can read: the body, each header and footer, each note, comment and text box.
@@ -457,7 +512,11 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
             for (n, header) in document.headers.iter().enumerate() {
                 out.push(json!({ "story": if header.footer { "footer" } else { "header" }, "n": n + 1, "id": header.id }));
             }
-            for (kind, part) in [("footnote", &document.footnotes), ("endnote", &document.endnotes), ("comment", &document.comments)] {
+            for (kind, part) in [
+                ("footnote", &document.footnotes),
+                ("endnote", &document.endnotes),
+                ("comment", &document.comments),
+            ] {
                 if let Some(part) = part {
                     for note in &part.notes {
                         if let Some(id) = note.id().filter(|id| kind == "comment" || *id > 0) {
@@ -961,10 +1020,13 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
         }
         "print" => {
             // print [pages] [--copies n] [--odd|--even] [--per-sheet 2|4] [--to <file>]
-            let value = |name: &str| arguments.iter().position(|a| a == name).and_then(|i| arguments.get(i + 1)).cloned();
+            let value = |name: &str| {
+                arguments.iter().position(|a| a == name).and_then(|i| arguments.get(i + 1)).cloned()
+            };
             doc.ensure_pages();
             let count = doc.pages.pages.len();
-            let range = arguments.first().filter(|a| !a.starts_with("--")).cloned().unwrap_or_default();
+            let range =
+                arguments.first().filter(|a| !a.starts_with("--")).cloned().unwrap_or_default();
             let options = super::print::PrintOptions {
                 pages: super::print::parse_range(&range, count)?,
                 parity: if flag(arguments, "--odd") {
@@ -981,8 +1043,10 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
                 Some(to) => {
                     let sheets = super::print::sheets(&doc.pages, &options);
                     let bytes = pdf_bytes(doc, &sheets);
-                    crate::services::store::write_atomically(Path::new(&to), &bytes).map_err(|e| format!("{to} could not be written: {e}"))?;
-                    Ok(Answer::said(format!("{} sheets written to {to}", sheets.pages.len())).with(json!({ "sheets": sheets.pages.len(), "path": to })))
+                    crate::services::store::write_atomically(Path::new(&to), &bytes)
+                        .map_err(|e| format!("{to} could not be written: {e}"))?;
+                    Ok(Answer::said(format!("{} sheets written to {to}", sheets.pages.len()))
+                        .with(json!({ "sheets": sheets.pages.len(), "path": to })))
                 }
                 None => super::print::print(doc, &options).map(Answer::said),
             }
@@ -1017,7 +1081,9 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
                 Ok(Answer::said("Kept the file and threw the recovered copy away"))
             }
             _ => Ok(Answer::said(match &doc.timing.offer {
-                Some((_, when)) => format!("A recovered copy from {when} is offered: recover restore or recover discard"),
+                Some((_, when)) => format!(
+                    "A recovered copy from {when} is offered: recover restore or recover discard"
+                ),
                 None => "There is no recovered copy".into(),
             })
             .with(json!({ "offered": doc.timing.offer.is_some() }))),
@@ -1127,10 +1193,13 @@ fn select(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
     if arguments.iter().any(|a| a == "--story") {
         let (story, rest) = story_from(&doc.session.document, arguments)?;
         let numbers: Vec<usize> = rest.iter().filter_map(|a| a.parse().ok()).collect();
-        let blocks = position::story(&doc.session.document, &story).ok_or("there is no such story")?;
+        let blocks =
+            position::story(&doc.session.document, &story).ok_or("there is no such story")?;
         let all = position::paragraphs(blocks);
         let n = numbers.first().copied().unwrap_or(1);
-        let (path, paragraph) = all.get(n.saturating_sub(1)).ok_or_else(|| format!("the story has {} paragraphs", all.len()))?;
+        let (path, paragraph) = all
+            .get(n.saturating_sub(1))
+            .ok_or_else(|| format!("the story has {} paragraphs", all.len()))?;
         let len = paragraph.len();
         let from = numbers.get(1).copied().unwrap_or(0).min(len);
         let to = numbers.get(2).copied().unwrap_or(from).min(len);
@@ -1138,7 +1207,8 @@ fn select(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
         let head = Pos { story, path: path.clone(), offset: to };
         doc.session.select(anchor, head);
         doc.view.reveal = true;
-        return Ok(Answer::said(doc.session.selected_text()).with(json!({ "selection": selection_value(&doc.session.selection) })));
+        return Ok(Answer::said(doc.session.selected_text())
+            .with(json!({ "selection": selection_value(&doc.session.selection) })));
     }
     match arguments.first().map(String::as_str) {
         Some("all") => doc.session.select_all(),
@@ -1191,14 +1261,20 @@ fn select(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
 fn picture(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
     let chosen = match arguments.first().map(String::as_str) {
         Some("select") => {
-            let paragraph: usize = arguments.get(1).and_then(|n| n.parse().ok()).ok_or("picture select takes a paragraph number and an offset")?;
+            let paragraph: usize = arguments
+                .get(1)
+                .and_then(|n| n.parse().ok())
+                .ok_or("picture select takes a paragraph number and an offset")?;
             Some(paragraph_path(doc, paragraph)?)
         }
         _ => None,
     };
     let session = &mut doc.session;
     let number = |i: usize| -> Result<f32, String> {
-        arguments.get(i).and_then(|n| n.trim_end_matches("pt").trim_end_matches('%').parse().ok()).ok_or_else(|| format!("picture {} takes numbers", arguments[0]))
+        arguments
+            .get(i)
+            .and_then(|n| n.trim_end_matches("pt").trim_end_matches('%').parse().ok())
+            .ok_or_else(|| format!("picture {} takes numbers", arguments[0]))
     };
     let said = match arguments.first().map_or("info", String::as_str) {
         "info" => "",
@@ -1249,7 +1325,11 @@ fn picture(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
         "vertical": { "from": info.vertical.0, "offset": info.vertical.1 },
         "alt": info.alt, "crop": [info.crop.0, info.crop.1, info.crop.2, info.crop.3],
     });
-    let said = if said.is_empty() { format!("{} {} by {} points, {}", info.kind, info.width, info.height, info.wrap) } else { said.to_owned() };
+    let said = if said.is_empty() {
+        format!("{} {} by {} points, {}", info.kind, info.width, info.height, info.wrap)
+    } else {
+        said.to_owned()
+    };
     Ok(Answer::said(said).with(value))
 }
 
@@ -1540,7 +1620,8 @@ fn table(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
     match what {
         "width" if arguments.len() >= 3 => {
             // table width <column> <pt>: the column from 1, the next column giving or taking the difference.
-            let column: usize = arguments[1].parse().map_err(|_| "table width takes a column number and points")?;
+            let column: usize =
+                arguments[1].parse().map_err(|_| "table width takes a column number and points")?;
             let width = points(arguments.get(2))?;
             let (table, _, _) = session.cell_at_caret().ok_or("the caret is not in a table")?;
             let story = session.selection.head.story.clone();
@@ -1656,7 +1737,12 @@ fn properties(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
                 .iter()
                 .filter(|(_, p)| !p.flat_text().trim().is_empty())
                 .count();
-            let lines: usize = doc.pages.pages.iter().map(|p| p.carets.iter().filter(|l| l.story == StoryId::Body).count()).sum();
+            let lines: usize = doc
+                .pages
+                .pages
+                .iter()
+                .map(|p| p.carets.iter().filter(|l| l.story == StoryId::Body).count())
+                .sum();
             let property = |name: &str| unluminous_word::new::property(document, name);
             let value = json!({
                 "created": property("dcterms:created"),
@@ -1743,13 +1829,21 @@ fn protect(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
             doc.password = (!off).then_some(password);
             session.revision += 1;
             session.modified = true;
-            Ok(Answer::said(if off { "The document is not encrypted when it is saved" } else { "The document is encrypted with the password when it is saved" }))
+            Ok(Answer::said(if off {
+                "The document is not encrypted when it is saved"
+            } else {
+                "The document is encrypted with the password when it is saved"
+            }))
         }
         Some("modify") => {
             let password = rest(arguments, 1);
             let password = if password == "none" { String::new() } else { password };
             session.set_password_to_modify(&password);
-            Ok(Answer::said(if password.is_empty() { "Password to Modify is off" } else { "Opening the document to change it needs the password" }))
+            Ok(Answer::said(if password.is_empty() {
+                "Password to Modify is off"
+            } else {
+                "Opening the document to change it needs the password"
+            }))
         }
         Some("restrict") => {
             let kind = arguments.get(1).ok_or("protect restrict takes readOnly, comments, trackedChanges or forms, and a password")?;
@@ -1760,9 +1854,15 @@ fn protect(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
             session.stop_protection(&rest(arguments, 1))?;
             Ok(Answer::said("Restrict Editing is off"))
         }
-        Some(other) => Err(format!("protect takes password, modify, restrict or stop, not {other}")),
+        Some(other) => {
+            Err(format!("protect takes password, modify, restrict or stop, not {other}"))
+        }
         None => {
-            let modify = session.document.settings.as_ref().is_some_and(|s| s.root.child("w:writeProtection").is_some());
+            let modify = session
+                .document
+                .settings
+                .as_ref()
+                .is_some_and(|s| s.root.child("w:writeProtection").is_some());
             let value = json!({
                 "encrypted": doc.password.is_some(),
                 "passwordToModify": modify,
@@ -1990,10 +2090,16 @@ pub struct PdfHow {
 
 /// The bytes of a PDF of `pages` with the document's information, and its outline, tags and PDF/A
 /// metadata as `how` asks (task-2359, TDD 5.6).
-pub(crate) fn pdf_bytes_with(doc: &Doc, pages: &unluminous_word::layout::Pages, how: PdfHow) -> Vec<u8> {
+pub(crate) fn pdf_bytes_with(
+    doc: &Doc,
+    pages: &unluminous_word::layout::Pages,
+    how: PdfHow,
+) -> Vec<u8> {
     let document = &doc.session.document;
     let property = |name: &str| unluminous_word::new::property(document, name).unwrap_or_default();
-    let title = unluminous_word::new::property(document, "dc:title").filter(|t| !t.is_empty()).unwrap_or_else(|| doc.label());
+    let title = unluminous_word::new::property(document, "dc:title")
+        .filter(|t| !t.is_empty())
+        .unwrap_or_else(|| doc.label());
     let outline = if how.outline {
         doc.session
             .toc_entries(6, pages)
@@ -2013,17 +2119,25 @@ pub(crate) fn pdf_bytes_with(doc: &Doc, pages: &unluminous_word::layout::Pages, 
         keywords: property("cp:keywords"),
         lang: doc.session.language_tag(),
         outline,
-        structure: (how.tagged || how.pdfa).then(|| unluminous_word::pdf::structure(document, pages)),
+        structure: (how.tagged || how.pdfa)
+            .then(|| unluminous_word::pdf::structure(document, pages)),
         pdfa: how.pdfa,
     };
-    unluminous_word::pdf::write_with(pages, &options, &|style| pdf_face(style), &|part| pdf_picture(document, part))
+    unluminous_word::pdf::write_with(pages, &options, &|style| pdf_face(style), &|part| {
+        pdf_picture(document, part)
+    })
 }
 
 pub fn export_to(doc: &mut Doc, kind: &str, to: Option<&Path>) -> Result<String, String> {
     export_with(doc, kind, to, PdfHow { tagged: true, outline: true, pdfa: false })
 }
 
-pub fn export_with(doc: &mut Doc, kind: &str, to: Option<&Path>, how: PdfHow) -> Result<String, String> {
+pub fn export_with(
+    doc: &mut Doc,
+    kind: &str,
+    to: Option<&Path>,
+    how: PdfHow,
+) -> Result<String, String> {
     let path = to
         .map(Path::to_path_buf)
         .or_else(|| Word::export_path(doc, kind))

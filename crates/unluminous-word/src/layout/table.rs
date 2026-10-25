@@ -659,11 +659,19 @@ pub fn cell_kinds(table: &Table, style: Option<&El>, row: usize, cell: usize) ->
     let is_last_col = last_col && cell + 1 == cells && cells > 1;
     if !no_v_band && !is_first_col && !is_last_col {
         let data = if first_col { cell.saturating_sub(1) } else { cell };
-        kinds.push(if (data / band("w:tblStyleColBandSize")) % 2 == 0 { "band1Vert" } else { "band2Vert" });
+        kinds.push(if (data / band("w:tblStyleColBandSize")) % 2 == 0 {
+            "band1Vert"
+        } else {
+            "band2Vert"
+        });
     }
     if !no_h_band && !is_first_row && !is_last_row {
         let data = if first_row { row.saturating_sub(1) } else { row };
-        kinds.push(if (data / band("w:tblStyleRowBandSize")) % 2 == 0 { "band1Horz" } else { "band2Horz" });
+        kinds.push(if (data / band("w:tblStyleRowBandSize")) % 2 == 0 {
+            "band1Horz"
+        } else {
+            "band2Horz"
+        });
     }
     if is_first_col {
         kinds.push("firstCol");
@@ -689,7 +697,12 @@ pub fn cell_kinds(table: &Table, style: Option<&El>, row: usize, cell: usize) ->
 
 /// The table style a paragraph in cell `cell` of row `row` is resolved against, with that cell's
 /// conditional formats ([`crate::styles::cell_style`]).
-pub fn cell_style_of(resolver: &crate::styles::Resolver, table: &Table, row: usize, cell: usize) -> Option<String> {
+pub fn cell_style_of(
+    resolver: &crate::styles::Resolver,
+    table: &Table,
+    row: usize,
+    cell: usize,
+) -> Option<String> {
     let id = resolver.table_style_id(&table.props)?;
     let kinds = cell_kinds(table, resolver.style(id), row, cell);
     Some(crate::styles::cell_style(id, &kinds))
@@ -703,8 +716,11 @@ fn conditional_shading(style: Option<&El>, kinds: &[&str]) -> Option<Rgb> {
         if !kinds.contains(&kind) {
             continue;
         }
-        for el in style.children_named("w:tblStylePr").filter(|el| el.attr("w:type") == Some(kind)) {
-            if let Some(shading) = el.child("w:tcPr").and_then(|tc| tc.child("w:shd")).and_then(props::shading) {
+        for el in style.children_named("w:tblStylePr").filter(|el| el.attr("w:type") == Some(kind))
+        {
+            if let Some(shading) =
+                el.child("w:tcPr").and_then(|tc| tc.child("w:shd")).and_then(props::shading)
+            {
                 found = Some(shading);
             }
         }

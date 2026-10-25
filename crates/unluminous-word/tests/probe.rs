@@ -214,11 +214,15 @@ fn tops_probe() {
     let document = unluminous_word::read::open(&std::fs::read(&path).unwrap()).unwrap();
     let pages = unluminous_word::layout::lay_out(&document, &fonts, Default::default());
     let report: serde_json::Value = serde_json::from_str(
-        std::fs::read_to_string(path.with_extension("word.json")).unwrap().trim_start_matches('\u{feff}'),
+        std::fs::read_to_string(path.with_extension("word.json"))
+            .unwrap()
+            .trim_start_matches('\u{feff}'),
     )
     .unwrap();
     let words = report["paragraphs"].as_array().unwrap();
-    for (index, (path, p)) in unluminous_word::position::paragraphs(&document.body).iter().enumerate() {
+    for (index, (path, p)) in
+        unluminous_word::position::paragraphs(&document.body).iter().enumerate()
+    {
         let found = pages.pages.iter().enumerate().find_map(|(n, page)| {
             page.carets.iter().find(|l| &l.path == path).map(|l| (n + 1, l.top))
         });
@@ -256,14 +260,18 @@ fn crypto_probe() {
     if let Ok(out) = std::env::var("PROBE_OUT") {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/kitchen-sink.docx");
         let package = std::fs::read(path).unwrap();
-        std::fs::write(&out, unluminous_word::crypto::encrypt(&package, "s3cret").unwrap()).unwrap();
+        std::fs::write(&out, unluminous_word::crypto::encrypt(&package, "s3cret").unwrap())
+            .unwrap();
         println!("wrote {out}");
     }
     if let Ok(input) = std::env::var("PROBE_IN") {
         let bytes = std::fs::read(&input).unwrap();
         let package = unluminous_word::crypto::decrypt(&bytes, "s3cret").unwrap();
         let document = unluminous_word::read::open(&package).unwrap();
-        println!("decrypted {} paragraphs", unluminous_word::position::paragraphs(&document.body).len());
+        println!(
+            "decrypted {} paragraphs",
+            unluminous_word::position::paragraphs(&document.body).len()
+        );
     }
 }
 
@@ -286,9 +294,17 @@ fn modify_probe() {
     let mut session = unluminous_word::session::Session::new(unluminous_word::new::blank());
     session.type_text("Text");
     session.set_password_to_modify("s3cret");
-    std::fs::write(std::env::var("PROBE_OUT").unwrap(), unluminous_word::write::save(&session.document).unwrap()).unwrap();
+    std::fs::write(
+        std::env::var("PROBE_OUT").unwrap(),
+        unluminous_word::write::save(&session.document).unwrap(),
+    )
+    .unwrap();
     let mut session = unluminous_word::session::Session::new(unluminous_word::new::blank());
     session.type_text("Text");
     session.restrict_editing("readOnly", "s3cret").unwrap();
-    std::fs::write(std::env::var("PROBE_OUT2").unwrap(), unluminous_word::write::save(&session.document).unwrap()).unwrap();
+    std::fs::write(
+        std::env::var("PROBE_OUT2").unwrap(),
+        unluminous_word::write::save(&session.document).unwrap(),
+    )
+    .unwrap();
 }

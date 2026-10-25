@@ -143,8 +143,13 @@ pub fn write_pdf(doc: &mut Doc, options: &PrintOptions) -> Result<PathBuf, Strin
         return Err("no page is chosen to print".into());
     }
     let folder = std::env::temp_dir().join("unluminous-print");
-    std::fs::create_dir_all(&folder).map_err(|e| format!("{} could not be made: {e}", folder.display()))?;
-    let name: String = doc.label().chars().map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' { c } else { '_' }).collect();
+    std::fs::create_dir_all(&folder)
+        .map_err(|e| format!("{} could not be made: {e}", folder.display()))?;
+    let name: String = doc
+        .label()
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' { c } else { '_' })
+        .collect();
     let path = folder.join(format!("{}.pdf", name.trim_end_matches(".docx").trim()));
     let bytes = super::commands::pdf_bytes(doc, &printed);
     crate::services::store::write_atomically(&path, &bytes)
@@ -171,7 +176,14 @@ fn hand_over(path: &std::path::Path) -> Result<(), String> {
     let file = wide(&path.display().to_string());
     // Safe: every pointer is null or into a buffer that outlives the call.
     let result = unsafe {
-        ShellExecuteW(std::ptr::null_mut(), verb.as_ptr(), file.as_ptr(), std::ptr::null(), std::ptr::null(), SW_SHOWNORMAL)
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            verb.as_ptr(),
+            file.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            SW_SHOWNORMAL,
+        )
     };
     match result as isize > 32 {
         true => Ok(()),
@@ -200,17 +212,23 @@ mod tests {
     fn odd_pages_copies_and_two_a_sheet() {
         let mut pages = unluminous_word::layout::Pages::default();
         for number in 1..=5 {
-            let mut page = unluminous_word::layout::Page::default();
-            page.width = 612.0;
-            page.height = 792.0;
-            page.number = number;
-            pages.pages.push(page);
+            pages.pages.push(unluminous_word::layout::Page {
+                width: 612.0,
+                height: 792.0,
+                number,
+                ..Default::default()
+            });
         }
-        let odd = sheets(&pages, &PrintOptions { parity: Parity::Odd, copies: 2, ..Default::default() });
+        let odd =
+            sheets(&pages, &PrintOptions { parity: Parity::Odd, copies: 2, ..Default::default() });
         let numbers: Vec<u32> = odd.pages.iter().map(|p| p.number).collect();
         assert_eq!(numbers, vec![1, 3, 5, 1, 3, 5], "collated copies of the odd pages");
         let two = sheets(&pages, &PrintOptions { per_sheet: 2, ..Default::default() });
         assert_eq!(two.pages.len(), 3);
-        assert_eq!((two.pages[0].width, two.pages[0].height), (792.0, 612.0), "two a sheet is landscape");
+        assert_eq!(
+            (two.pages[0].width, two.pages[0].height),
+            (792.0, 612.0),
+            "two a sheet is landscape"
+        );
     }
 }

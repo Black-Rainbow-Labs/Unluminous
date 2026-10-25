@@ -19,35 +19,111 @@ fn twips(points: f32) -> String {
 
 /// The order Word writes `w:settings` in (ECMA-376 CT_Settings), for the children this module adds.
 pub const SETTINGS: &[&str] = &[
-    "writeProtection", "view", "zoom", "removePersonalInformation", "removeDateAndTime",
-    "doNotDisplayPageBoundaries", "displayBackgroundShape", "printPostScriptOverText",
-    "printFractionalCharacterWidth", "printFormsData", "embedTrueTypeFonts", "embedSystemFonts",
-    "saveSubsetFonts", "saveFormsData", "mirrorMargins", "alignBordersAndEdges",
-    "bordersDoNotSurroundHeader", "bordersDoNotSurroundFooter", "gutterAtTop", "hideSpellingErrors",
-    "hideGrammaticalErrors", "activeWritingStyle", "proofState", "formsDesign", "attachedTemplate",
-    "linkStyles", "stylePaneFormatFilter", "stylePaneSortMethod", "documentType", "mailMerge",
-    "revisionView", "trackRevisions", "doNotTrackMoves", "doNotTrackFormatting", "documentProtection",
-    "autoFormatOverride", "styleLockTheme", "styleLockQFSet", "defaultTabStop", "autoHyphenation",
-    "consecutiveHyphenLimit", "hyphenationZone", "doNotHyphenateCaps", "showEnvelope", "summaryLength",
-    "clickAndTypeStyle", "defaultTableStyle", "evenAndOddHeaders", "bookFoldRevPrinting",
-    "bookFoldPrinting", "bookFoldPrintingSheets", "drawingGridHorizontalSpacing",
-    "drawingGridVerticalSpacing", "displayHorizontalDrawingGridEvery", "displayVerticalDrawingGridEvery",
-    "doNotUseMarginsForDrawingGridOrigin", "drawingGridHorizontalOrigin", "drawingGridVerticalOrigin",
-    "doNotShadeFormData", "noPunctuationKerning", "characterSpacingControl", "printTwoOnOne",
-    "strictFirstAndLastChars", "noLineBreaksAfter", "noLineBreaksBefore", "savePreviewPicture",
-    "doNotValidateAgainstSchema", "saveInvalidXml", "ignoreMixedContent", "alwaysShowPlaceholderText",
-    "doNotDemarcateInvalidXml", "saveXmlDataOnly", "useXSLTWhenSaving", "saveThroughXslt", "showXMLTags",
-    "alwaysMergeEmptyNamespace", "updateFields", "hdrShapeDefaults", "footnotePr", "endnotePr", "compat",
-    "docVars", "rsids", "mathPr", "attachedSchema", "themeFontLang", "clrSchemeMapping",
-    "doNotIncludeSubdocsInStats", "doNotAutoCompressPictures", "forceUpgrade", "captions",
-    "readModeInkLockDown", "smartTagType", "schemaLibrary", "shapeDefaults", "doNotEmbedSmartTags",
-    "decimalSymbol", "listSeparator",
+    "writeProtection",
+    "view",
+    "zoom",
+    "removePersonalInformation",
+    "removeDateAndTime",
+    "doNotDisplayPageBoundaries",
+    "displayBackgroundShape",
+    "printPostScriptOverText",
+    "printFractionalCharacterWidth",
+    "printFormsData",
+    "embedTrueTypeFonts",
+    "embedSystemFonts",
+    "saveSubsetFonts",
+    "saveFormsData",
+    "mirrorMargins",
+    "alignBordersAndEdges",
+    "bordersDoNotSurroundHeader",
+    "bordersDoNotSurroundFooter",
+    "gutterAtTop",
+    "hideSpellingErrors",
+    "hideGrammaticalErrors",
+    "activeWritingStyle",
+    "proofState",
+    "formsDesign",
+    "attachedTemplate",
+    "linkStyles",
+    "stylePaneFormatFilter",
+    "stylePaneSortMethod",
+    "documentType",
+    "mailMerge",
+    "revisionView",
+    "trackRevisions",
+    "doNotTrackMoves",
+    "doNotTrackFormatting",
+    "documentProtection",
+    "autoFormatOverride",
+    "styleLockTheme",
+    "styleLockQFSet",
+    "defaultTabStop",
+    "autoHyphenation",
+    "consecutiveHyphenLimit",
+    "hyphenationZone",
+    "doNotHyphenateCaps",
+    "showEnvelope",
+    "summaryLength",
+    "clickAndTypeStyle",
+    "defaultTableStyle",
+    "evenAndOddHeaders",
+    "bookFoldRevPrinting",
+    "bookFoldPrinting",
+    "bookFoldPrintingSheets",
+    "drawingGridHorizontalSpacing",
+    "drawingGridVerticalSpacing",
+    "displayHorizontalDrawingGridEvery",
+    "displayVerticalDrawingGridEvery",
+    "doNotUseMarginsForDrawingGridOrigin",
+    "drawingGridHorizontalOrigin",
+    "drawingGridVerticalOrigin",
+    "doNotShadeFormData",
+    "noPunctuationKerning",
+    "characterSpacingControl",
+    "printTwoOnOne",
+    "strictFirstAndLastChars",
+    "noLineBreaksAfter",
+    "noLineBreaksBefore",
+    "savePreviewPicture",
+    "doNotValidateAgainstSchema",
+    "saveInvalidXml",
+    "ignoreMixedContent",
+    "alwaysShowPlaceholderText",
+    "doNotDemarcateInvalidXml",
+    "saveXmlDataOnly",
+    "useXSLTWhenSaving",
+    "saveThroughXslt",
+    "showXMLTags",
+    "alwaysMergeEmptyNamespace",
+    "updateFields",
+    "hdrShapeDefaults",
+    "footnotePr",
+    "endnotePr",
+    "compat",
+    "docVars",
+    "rsids",
+    "mathPr",
+    "attachedSchema",
+    "themeFontLang",
+    "clrSchemeMapping",
+    "doNotIncludeSubdocsInStats",
+    "doNotAutoCompressPictures",
+    "forceUpgrade",
+    "captions",
+    "readModeInkLockDown",
+    "smartTagType",
+    "schemaLibrary",
+    "shapeDefaults",
+    "doNotEmbedSmartTags",
+    "decimalSymbol",
+    "listSeparator",
 ];
 
 /// Put a settings part's children in the schema's order: a child it does not name stays after the one
 /// before it.
 pub(crate) fn sort_settings(root: &mut El) {
-    let rank = |el: &El| el.name.strip_prefix("w:").and_then(|l| SETTINGS.iter().position(|k| *k == l));
+    let rank =
+        |el: &El| el.name.strip_prefix("w:").and_then(|l| SETTINGS.iter().position(|k| *k == l));
     let mut last = 0usize;
     let mut keyed: Vec<(usize, usize, Node)> = Vec::new();
     for (index, node) in std::mem::take(&mut root.children).into_iter().enumerate() {
@@ -115,7 +191,9 @@ impl Session {
 
     /// Mirrored margins: the inside and outside margins swap on even pages, as for a bound book.
     pub fn set_mirror_margins(&mut self, on: bool) {
-        self.change_settings(move |root| props::set_on_off(root, "w:mirrorMargins", on.then_some(true)));
+        self.change_settings(move |root| {
+            props::set_on_off(root, "w:mirrorMargins", on.then_some(true))
+        });
     }
 
     /// The paper of the caret's section: `width` by `height` points.
@@ -139,7 +217,11 @@ impl Session {
         let align = match align {
             "top" | "center" | "both" | "bottom" => align.to_owned(),
             "justified" => "both".to_owned(),
-            other => return Err(format!("vertical alignment is top, center, justified or bottom, not {other}")),
+            other => {
+                return Err(format!(
+                    "vertical alignment is top, center, justified or bottom, not {other}"
+                ))
+            }
         };
         self.change_section(move |sect| {
             if align == "top" {
@@ -175,7 +257,9 @@ impl Session {
 
     /// Automatic hyphenation for the whole document.
     pub fn set_auto_hyphenation(&mut self, on: bool) {
-        self.change_settings(move |root| props::set_on_off(root, "w:autoHyphenation", on.then_some(true)));
+        self.change_settings(move |root| {
+            props::set_on_off(root, "w:autoHyphenation", on.then_some(true))
+        });
     }
 
     /// A box round every page of the caret's section, `width` points of line in `colour`, or none.
@@ -213,7 +297,9 @@ impl Session {
 
     /// Different headers and footers on odd and even pages, for the whole document.
     pub fn set_different_odd_even(&mut self, on: bool) {
-        self.change_settings(move |root| props::set_on_off(root, "w:evenAndOddHeaders", on.then_some(true)));
+        self.change_settings(move |root| {
+            props::set_on_off(root, "w:evenAndOddHeaders", on.then_some(true))
+        });
     }
 
     /// How the caret's section numbers its pages: `decimal`, `lowerRoman`, `upperRoman`, `lowerLetter`
@@ -244,7 +330,10 @@ impl Session {
         let reference = if footer { "w:footerReference" } else { "w:headerReference" };
         let kind = kind.to_owned();
         let sect = self.section_at_caret().unwrap_or_default();
-        let own = sect.children_named(reference).find(|r| r.attr("w:type").unwrap_or("default") == kind).is_some();
+        let own = sect
+            .children_named(reference)
+            .find(|r| r.attr("w:type").unwrap_or("default") == kind)
+            .is_some();
         if link && !own {
             return Err("this section already shows the header of the section before it".into());
         }
@@ -273,7 +362,11 @@ impl Session {
             if *sect == caret_section {
                 break;
             }
-            if let Some(id) = sect.children_named(reference).find(|r| r.attr("w:type").unwrap_or("default") == kind).and_then(|r| r.attr("r:id")) {
+            if let Some(id) = sect
+                .children_named(reference)
+                .find(|r| r.attr("w:type").unwrap_or("default") == kind)
+                .and_then(|r| r.attr("r:id"))
+            {
                 found = Some(id.to_owned());
             }
         }
@@ -289,16 +382,33 @@ impl Session {
     /// Footnote or endnote options: the number format, the first number, when numbering restarts
     /// (`continuous`, `eachSect` or `eachPage`, footnotes only) and where the notes go (`pageBottom` or
     /// `beneathText` for footnotes, `docEnd` or `sectEnd` for endnotes).
-    pub fn set_note_options(&mut self, endnote: bool, format: &str, start: u32, restart: &str, place: &str) {
-        let (name, format, restart, place) =
-            (if endnote { "w:endnotePr" } else { "w:footnotePr" }, format.to_owned(), restart.to_owned(), place.to_owned());
+    pub fn set_note_options(
+        &mut self,
+        endnote: bool,
+        format: &str,
+        start: u32,
+        restart: &str,
+        place: &str,
+    ) {
+        let (name, format, restart, place) = (
+            if endnote { "w:endnotePr" } else { "w:footnotePr" },
+            format.to_owned(),
+            restart.to_owned(),
+            place.to_owned(),
+        );
         self.change_settings(move |root| {
             let pr = root.child_or_insert(name);
-            let keep: Vec<Node> = pr.children.iter().filter(|n| matches!(n, Node::El(e) if e.name.ends_with("note"))).cloned().collect();
+            let keep: Vec<Node> = pr
+                .children
+                .iter()
+                .filter(|n| matches!(n, Node::El(e) if e.name.ends_with("note")))
+                .cloned()
+                .collect();
             pr.children = Vec::new();
             pr.children.push(Node::El(El::new("w:pos").with("w:val", place.clone())));
             pr.children.push(Node::El(El::new("w:numFmt").with("w:val", format.clone())));
-            pr.children.push(Node::El(El::new("w:numStart").with("w:val", start.max(1).to_string())));
+            pr.children
+                .push(Node::El(El::new("w:numStart").with("w:val", start.max(1).to_string())));
             if !endnote || restart != "eachPage" {
                 pr.children.push(Node::El(El::new("w:numRestart").with("w:val", restart.clone())));
             }
@@ -325,7 +435,10 @@ mod tests {
         session.set_note_options(false, "lowerLetter", 1, "eachPage", "pageBottom");
         let sect = session.section_at_caret().unwrap();
         let geometry = crate::layout::section::Geometry::of(&sect);
-        assert_eq!((geometry.top, geometry.left, geometry.gutter, geometry.header), (36.0, 54.0, 18.0, 24.0));
+        assert_eq!(
+            (geometry.top, geometry.left, geometry.gutter, geometry.header),
+            (36.0, 54.0, 18.0, 24.0)
+        );
         assert!(geometry.vertical_center);
         assert_eq!(sect.child("w:lnNumType").and_then(|l| l.attr("w:countBy")), Some("5"));
         assert_eq!(sect.child("w:pgNumType").and_then(|l| l.attr("w:fmt")), Some("lowerRoman"));
@@ -333,7 +446,10 @@ mod tests {
         let root = &session.document.settings.as_ref().unwrap().root;
         let names: Vec<&str> = root.elements().map(|e| e.name.as_str()).collect();
         let at = |n: &str| names.iter().position(|x| *x == n).unwrap();
-        assert!(at("w:mirrorMargins") < at("w:autoHyphenation"), "the settings are in the schema's order");
+        assert!(
+            at("w:mirrorMargins") < at("w:autoHyphenation"),
+            "the settings are in the schema's order"
+        );
         assert!(at("w:autoHyphenation") < at("w:footnotePr"));
         // The file Word reads back has them.
         let saved = crate::write::save(&session.document).unwrap();

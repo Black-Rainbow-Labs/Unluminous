@@ -209,7 +209,9 @@ impl Session {
     /// `trackedChanges` or `forms`), until `password` stops it, as Word's Restrict Editing pane does.
     pub fn restrict_editing(&mut self, kind: &str, password: &str) -> Result<(), String> {
         if !matches!(kind, "readOnly" | "comments" | "trackedChanges" | "forms") {
-            return Err(format!("Restrict Editing is readOnly, comments, trackedChanges or forms, not {kind}"));
+            return Err(format!(
+                "Restrict Editing is readOnly, comments, trackedChanges or forms, not {kind}"
+            ));
         }
         let protection = protection_element(kind, password);
         self.permit = true;
@@ -282,15 +284,24 @@ impl Session {
 
     /// Open a document that has a password to modify for changing, with that password.
     pub fn unlock_for_editing(&mut self, password: &str) -> Result<(), String> {
-        let Some(w) = self.document.settings.as_ref().and_then(|s| s.root.child("w:writeProtection")) else {
+        let Some(w) =
+            self.document.settings.as_ref().and_then(|s| s.root.child("w:writeProtection"))
+        else {
             self.read_only = false;
             return Ok(());
         };
-        let (Some(salt), Some(hash)) = (w.attr("w:salt").or(w.attr("w:saltValue")), w.attr("w:hash").or(w.attr("w:hashValue"))) else {
+        let (Some(salt), Some(hash)) = (
+            w.attr("w:salt").or(w.attr("w:saltValue")),
+            w.attr("w:hash").or(w.attr("w:hashValue")),
+        ) else {
             self.read_only = false;
             return Ok(());
         };
-        let spins = w.attr("w:cryptSpinCount").or(w.attr("w:spinCount")).and_then(|v| v.parse().ok()).unwrap_or(100_000);
+        let spins = w
+            .attr("w:cryptSpinCount")
+            .or(w.attr("w:spinCount"))
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(100_000);
         let salt = base64_decode(salt).ok_or("the document's password is not readable")?;
         if base64(&password_hash(password, &salt, spins)) != hash {
             return Err("the password is not right".into());
@@ -367,7 +378,15 @@ impl Session {
         self.document
             .styles
             .as_ref()
-            .and_then(|s| s.root.child("w:docDefaults")?.child("w:rPrDefault")?.child("w:rPr")?.child("w:lang")?.attr("w:val").map(str::to_owned))
+            .and_then(|s| {
+                s.root
+                    .child("w:docDefaults")?
+                    .child("w:rPrDefault")?
+                    .child("w:rPr")?
+                    .child("w:lang")?
+                    .attr("w:val")
+                    .map(str::to_owned)
+            })
             .unwrap_or_else(|| "en-US".into())
     }
 
@@ -377,22 +396,22 @@ impl Session {
         let head = &self.selection.head;
         let resolver = crate::styles::Resolver::new(&self.document);
         let mut tag: Option<String> = None;
-        if let Some(paragraph) = crate::position::paragraph(&self.document, &head.story, &head.path) {
+        if let Some(paragraph) = crate::position::paragraph(&self.document, &head.story, &head.path)
+        {
             let (props, _) = crate::edit::props_at(paragraph, head.offset);
             tag = props.child("w:lang").and_then(|l| l.attr("w:val")).map(str::to_owned);
             if tag.is_none() {
                 if let Some(style) = resolver.paragraph_style_id(&paragraph.props) {
-                    tag = resolver
-                        .chain(style)
-                        .into_iter()
-                        .rev()
-                        .find_map(|s| s.child("w:rPr")?.child("w:lang")?.attr("w:val").map(str::to_owned));
+                    tag = resolver.chain(style).into_iter().rev().find_map(|s| {
+                        s.child("w:rPr")?.child("w:lang")?.attr("w:val").map(str::to_owned)
+                    });
                 }
             }
         }
         let tag = tag.or_else(|| {
             let styles = self.document.styles.as_ref()?;
-            let defaults = styles.root.child("w:docDefaults")?.child("w:rPrDefault")?.child("w:rPr")?;
+            let defaults =
+                styles.root.child("w:docDefaults")?.child("w:rPrDefault")?.child("w:rPr")?;
             defaults.child("w:lang")?.attr("w:val").map(str::to_owned)
         });
         let tag = tag.unwrap_or_else(|| "en-US".into());
@@ -426,7 +445,7 @@ impl Session {
             .document
             .settings
             .as_ref()
-            .and_then(|_| self.document.background.as_ref())
+            .and(self.document.background.as_ref())
             .and_then(|b| b.attr("w:color"))
             .and_then(props::Rgb::parse)
             .unwrap_or(props::Rgb(255, 255, 255));
@@ -719,7 +738,11 @@ mod tests {
         assert!(crate::export::to_text(&session.document).contains("more"));
         session.restrict_editing("comments", "x").unwrap();
         session.add_comment("allowed");
-        assert_eq!(session.document.comments.as_ref().map(|c| c.notes.len()), Some(1), "a comment is allowed");
+        assert_eq!(
+            session.document.comments.as_ref().map(|c| c.notes.len()),
+            Some(1),
+            "a comment is allowed"
+        );
         session.type_text("not allowed");
         assert!(!crate::export::to_text(&session.document).contains("not allowed"));
         // Password to modify: read only until the password is given, after reading the saved file again.

@@ -210,7 +210,11 @@ impl<'a> Resolver<'a> {
         let mut levels = vec![style];
         for kind in CONDITION_ORDER {
             if kinds.contains(&kind) {
-                levels.extend(style.children_named("w:tblStylePr").filter(|el| el.attr("w:type") == Some(kind)));
+                levels.extend(
+                    style
+                        .children_named("w:tblStylePr")
+                        .filter(|el| el.attr("w:type") == Some(kind)),
+                );
             }
         }
         levels
@@ -222,7 +226,12 @@ impl<'a> Resolver<'a> {
     pub fn frame_of(&self, ppr: &El) -> Option<El> {
         let mut frames: Vec<&El> = self
             .paragraph_style_id(ppr)
-            .map(|style| self.chain(style).into_iter().filter_map(|el| el.child("w:pPr")?.child("w:framePr")).collect())
+            .map(|style| {
+                self.chain(style)
+                    .into_iter()
+                    .filter_map(|el| el.child("w:pPr")?.child("w:framePr"))
+                    .collect()
+            })
             .unwrap_or_default();
         frames.extend(ppr.child("w:framePr"));
         let mut merged: Option<El> = None;

@@ -100,7 +100,8 @@ pub const CHORDS: &[(&str, &str)] = &[
 ];
 
 /// The chords in force: the table with the person's moves applied.
-static IN_FORCE: std::sync::RwLock<Vec<(crate::app::actions::Shortcut, String)>> = std::sync::RwLock::new(Vec::new());
+static IN_FORCE: std::sync::RwLock<Vec<(crate::app::actions::Shortcut, String)>> =
+    std::sync::RwLock::new(Vec::new());
 
 /// Read the chord table and a person's moves into the chords in force.
 pub fn set_chords(moved: &[(String, String)]) {
@@ -142,7 +143,10 @@ pub fn claims(key: Key, modifiers: &Modifiers) -> bool {
         return true;
     }
     if !modifiers.command {
-        return matches!(key, Key::Tab | Key::F4 | Key::F7 | Key::F9 | Key::F10 | Key::F11 | Key::Escape);
+        return matches!(
+            key,
+            Key::Tab | Key::F4 | Key::F7 | Key::F9 | Key::F10 | Key::F11 | Key::Escape
+        );
     }
     // Saving, closing a tab, quitting and switching tabs stay the window's.
     !matches!(key, Key::S | Key::W | Key::Q | Key::O | Key::N | Key::Tab | Key::P | Key::Comma)
@@ -511,7 +515,9 @@ fn run_view_chord(doc: &mut Doc, id: &str, requests: &mut Vec<Request>) -> bool 
             }
         }
         // Paste Special: the clipboard pasted, and its Paste Options shown under it to choose another way.
-        "paste-special" => crate::services::word::ask_for_the_clipboard(doc, String::new(), requests),
+        "paste-special" => {
+            crate::services::word::ask_for_the_clipboard(doc, String::new(), requests)
+        }
         _ => return false,
     }
     true
@@ -519,7 +525,9 @@ fn run_view_chord(doc: &mut Doc, id: &str, requests: &mut Vec<Request>) -> bool 
 
 /// The sentence round `at`: from after the last `.`, `!` or `?` before it to the next one, inclusive.
 fn select_sentence(doc: &mut Doc, at: &Pos) {
-    let Some(paragraph) = position::paragraph(&doc.session.document, &at.story, &at.path) else { return };
+    let Some(paragraph) = position::paragraph(&doc.session.document, &at.story, &at.path) else {
+        return;
+    };
     let text = paragraph.flat_text();
     let offset = at.offset.min(text.len());
     let ends = |c: char| matches!(c, '.' | '!' | '?');
@@ -539,12 +547,19 @@ fn window_edge(doc: &Doc, bottom: bool) -> Option<Pos> {
         for line in page.carets.iter().filter(|l| l.story == doc.session.selection.head.story) {
             let y = top.y + line.top * zoom;
             if y >= from && y + line.height * zoom <= to {
-                lines.push((y, Pos { story: line.story.clone(), path: line.path.clone(), offset: line.start }));
+                lines.push((
+                    y,
+                    Pos { story: line.story.clone(), path: line.path.clone(), offset: line.start },
+                ));
             }
         }
     }
     lines.sort_by(|a, b| a.0.total_cmp(&b.0));
-    if bottom { lines.pop().map(|l| l.1) } else { lines.into_iter().next().map(|l| l.1) }
+    if bottom {
+        lines.pop().map(|l| l.1)
+    } else {
+        lines.into_iter().next().map(|l| l.1)
+    }
 }
 
 /// Put the caret at `to`, or extend the selection to it with Shift. A move with nothing selected and no
@@ -786,16 +801,24 @@ fn next_cell(doc: &mut Doc, table: Vec<u32>, row: u32, cell: u32, forward: bool)
 mod chord_tests {
     use super::*;
 
-    const VIEW_CHORDS: [&str; 6] =
-        ["redo-or-repeat", "go-back", "extend-selection", "window-top", "window-bottom", "paste-special"];
+    const VIEW_CHORDS: [&str; 6] = [
+        "redo-or-repeat",
+        "go-back",
+        "extend-selection",
+        "window-top",
+        "window-bottom",
+        "paste-special",
+    ];
 
     #[test]
     fn every_chord_parses_runs_an_action_and_is_held_by_one_action() {
         let mut seen: Vec<(crate::app::actions::Shortcut, &str)> = Vec::new();
         for (chord, action) in CHORDS {
-            let shortcut = crate::services::keymap::parse(chord).unwrap_or_else(|e| panic!("{chord}: {e}"));
+            let shortcut =
+                crate::services::keymap::parse(chord).unwrap_or_else(|e| panic!("{chord}: {e}"));
             assert!(
-                crate::services::word::actions::find(action).is_some() || VIEW_CHORDS.contains(action),
+                crate::services::word::actions::find(action).is_some()
+                    || VIEW_CHORDS.contains(action),
                 "{chord} runs {action}, which is not an action"
             );
             if let Some((_, other)) = seen.iter().find(|(s, _)| *s == shortcut) {
@@ -816,7 +839,15 @@ mod chord_tests {
         set_chords(&[]);
         assert_eq!(chord_action(Key::B, &ctrl).as_deref(), Some("bold"));
         let alt = Modifiers { alt: true, ..ctrl };
-        assert_eq!(chord_action(Key::Num1, &alt).as_deref(), Some("heading-1"), "Ctrl+Alt+1 is Heading 1");
-        assert_eq!(chord_action(Key::Num1, &ctrl).as_deref(), Some("line-single"), "and Ctrl+1 single spacing");
+        assert_eq!(
+            chord_action(Key::Num1, &alt).as_deref(),
+            Some("heading-1"),
+            "Ctrl+Alt+1 is Heading 1"
+        );
+        assert_eq!(
+            chord_action(Key::Num1, &ctrl).as_deref(),
+            Some("line-single"),
+            "and Ctrl+1 single spacing"
+        );
     }
 }

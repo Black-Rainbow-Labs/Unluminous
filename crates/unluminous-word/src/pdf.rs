@@ -53,8 +53,11 @@ pub struct Structure {
     /// For each page, its lines' tops and bottoms with the element they belong to.
     pub lines: Vec<Vec<(f32, f32, usize)>>,
     /// For each page, its pictures' rectangles (x, y, w, h) with their figure element.
-    pub figures: Vec<Vec<((f32, f32, f32, f32), usize)>>,
+    pub figures: Vec<Vec<Figure>>,
 }
+
+/// A picture's rectangle on its page (x, y, width, height) and the figure element it belongs to.
+pub type Figure = ((f32, f32, f32, f32), usize);
 
 /// The structure of laid out pages: a heading for each heading paragraph, a list item for each list
 /// paragraph, a cell for each paragraph in a table, a paragraph for the rest, and a figure for each
@@ -71,21 +74,22 @@ pub fn structure(document: &crate::model::Document, pages: &Pages) -> Structure 
             let element = match element_of.get(&key) {
                 Some(e) => *e,
                 None => {
-                    let role = match crate::position::paragraph(document, &StoryId::Body, &line.path) {
-                        Some(p) => {
-                            let look = resolver.paragraph(&p.props, None);
-                            if line.path.len() > 1 {
-                                "TD".to_owned()
-                            } else if let Some(level) = look.outline_level {
-                                format!("H{}", (level + 1).min(6))
-                            } else if look.numbering.is_some() {
-                                "LI".to_owned()
-                            } else {
-                                "P".to_owned()
+                    let role =
+                        match crate::position::paragraph(document, &StoryId::Body, &line.path) {
+                            Some(p) => {
+                                let look = resolver.paragraph(&p.props, None);
+                                if line.path.len() > 1 {
+                                    "TD".to_owned()
+                                } else if let Some(level) = look.outline_level {
+                                    format!("H{}", (level + 1).min(6))
+                                } else if look.numbering.is_some() {
+                                    "LI".to_owned()
+                                } else {
+                                    "P".to_owned()
+                                }
                             }
-                        }
-                        None => "P".to_owned(),
-                    };
+                            None => "P".to_owned(),
+                        };
                     out.elements.push((role, None));
                     element_of.insert(key, out.elements.len() - 1);
                     out.elements.len() - 1
@@ -103,7 +107,9 @@ pub fn structure(document: &crate::model::Document, pages: &Pages) -> Structure 
                         at += run.len();
                         match (&run.content, here) {
                             (crate::model::Content::Object(el), true) => {
-                                crate::read::descendant(el, "wp:docPr").and_then(|d| d.attr("descr")).map(str::to_owned)
+                                crate::read::descendant(el, "wp:docPr")
+                                    .and_then(|d| d.attr("descr"))
+                                    .map(str::to_owned)
                             }
                             _ => None,
                         }
@@ -121,7 +127,12 @@ pub fn structure(document: &crate::model::Document, pages: &Pages) -> Structure 
 
 /// The element a text item at `baseline` on `page` belongs to.
 fn element_at(structure: &Structure, page: usize, baseline: f32) -> Option<usize> {
-    structure.lines.get(page)?.iter().find(|(top, bottom, _)| baseline >= *top - 0.5 && baseline <= *bottom + 0.5).map(|l| l.2)
+    structure
+        .lines
+        .get(page)?
+        .iter()
+        .find(|(top, bottom, _)| baseline >= *top - 0.5 && baseline <= *bottom + 0.5)
+        .map(|l| l.2)
 }
 
 /// The figure element of a picture drawn at `rect` on `page`.
@@ -130,7 +141,12 @@ fn figure_at(structure: &Structure, page: usize, rect: &crate::layout::Rect) -> 
         .figures
         .get(page)?
         .iter()
-        .find(|((x, y, w, h), _)| (x - rect.x).abs() < 0.5 && (y - rect.y).abs() < 0.5 && (w - rect.w).abs() < 0.5 && (h - rect.h).abs() < 0.5)
+        .find(|((x, y, w, h), _)| {
+            (x - rect.x).abs() < 0.5
+                && (y - rect.y).abs() < 0.5
+                && (w - rect.w).abs() < 0.5
+                && (h - rect.h).abs() < 0.5
+        })
         .map(|f| f.1)
 }
 
@@ -186,7 +202,7 @@ pub fn write_with(
             let tagged = options.structure.is_some();
             if let (true, Some(element)) = (tagged, element) {
                 let role = &options.structure.as_ref().expect("tagged").elements[element].0;
-                let _ = write!(c, "/{role} <</MCID {}>> BDC\n", mcids.len());
+                let _ = writeln!(c, "/{role} <</MCID {}>> BDC", mcids.len());
                 mcids.push(element);
             } else if tagged {
                 c.push_str("/Artifact BMC\n");
@@ -438,7 +454,14 @@ fn assemble(
     if !options.outline.is_empty() {
         let root = next;
         next += 1;
-        let ids: Vec<usize> = options.outline.iter().map(|_| { next += 1; next - 1 }).collect();
+        let ids: Vec<usize> = options
+            .outline
+            .iter()
+            .map(|_| {
+                next += 1;
+                next - 1
+            })
+            .collect();
         let parent_of: Vec<Option<usize>> = (0..options.outline.len())
             .map(|i| (0..i).rev().find(|j| options.outline[*j].0 < options.outline[i].0))
             .collect();
@@ -446,13 +469,26 @@ fn assemble(
             (0..options.outline.len()).filter(|i| parent_of[*i] == parent).collect()
         };
         let top = children(None);
-        objects.push((root, format!("<< /Type /Outlines /First {} 0 R /Last {} 0 R /Count {} >>", ids[top[0]], ids[*top.last().expect("one")], top.len()).into_bytes()));
+        objects.push((
+            root,
+            format!(
+                "<< /Type /Outlines /First {} 0 R /Last {} 0 R /Count {} >>",
+                ids[top[0]],
+                ids[*top.last().expect("one")],
+                top.len()
+            )
+            .into_bytes(),
+        ));
         for i in 0..options.outline.len() {
             let (_, words, page, y) = &options.outline[i];
             let siblings = children(parent_of[i]);
             let at = siblings.iter().position(|s| *s == i).expect("among its siblings");
             let mine = children(Some(i));
-            let mut item = format!("<< /Title ({}) /Parent {} 0 R", pdf_string(words), parent_of[i].map_or(root, |p| ids[p]));
+            let mut item = format!(
+                "<< /Title ({}) /Parent {} 0 R",
+                pdf_string(words),
+                parent_of[i].map_or(root, |p| ids[p])
+            );
             if at > 0 {
                 item.push_str(&format!(" /Prev {} 0 R", ids[siblings[at - 1]]));
             }
@@ -460,7 +496,12 @@ fn assemble(
                 item.push_str(&format!(" /Next {} 0 R", ids[*next_sibling]));
             }
             if !mine.is_empty() {
-                item.push_str(&format!(" /First {} 0 R /Last {} 0 R /Count {}", ids[mine[0]], ids[*mine.last().expect("one")], mine.len()));
+                item.push_str(&format!(
+                    " /First {} 0 R /Last {} 0 R /Count {}",
+                    ids[mine[0]],
+                    ids[*mine.last().expect("one")],
+                    mine.len()
+                ));
             }
             let page_id = page_ids.get(*page).copied().unwrap_or(page_ids[0]);
             let height = pages.pages.get(*page).map_or(792.0, |p| p.height);
@@ -476,7 +517,14 @@ fn assemble(
         let root = next;
         let parent_tree = next + 1;
         next += 2;
-        let element_ids: Vec<usize> = structure.elements.iter().map(|_| { next += 1; next - 1 }).collect();
+        let element_ids: Vec<usize> = structure
+            .elements
+            .iter()
+            .map(|_| {
+                next += 1;
+                next - 1
+            })
+            .collect();
         let mut kids_of: Vec<Vec<(usize, usize)>> = vec![Vec::new(); structure.elements.len()];
         for (page, mcids) in marked.iter().enumerate() {
             for (mcid, element) in mcids.iter().enumerate() {
@@ -484,18 +532,42 @@ fn assemble(
             }
         }
         for (index, (role, alt)) in structure.elements.iter().enumerate() {
-            let kids: Vec<String> = kids_of[index].iter().map(|(page, mcid)| format!("<< /Type /MCR /Pg {} 0 R /MCID {mcid} >>", page_ids[*page])).collect();
-            let alt = alt.as_ref().map(|a| format!(" /Alt ({})", pdf_string(a))).unwrap_or_default();
-            objects.push((element_ids[index], format!("<< /Type /StructElem /S /{role} /P {root} 0 R /K [{}]{alt} >>", kids.join(" ")).into_bytes()));
+            let kids: Vec<String> = kids_of[index]
+                .iter()
+                .map(|(page, mcid)| {
+                    format!("<< /Type /MCR /Pg {} 0 R /MCID {mcid} >>", page_ids[*page])
+                })
+                .collect();
+            let alt =
+                alt.as_ref().map(|a| format!(" /Alt ({})", pdf_string(a))).unwrap_or_default();
+            objects.push((
+                element_ids[index],
+                format!(
+                    "<< /Type /StructElem /S /{role} /P {root} 0 R /K [{}]{alt} >>",
+                    kids.join(" ")
+                )
+                .into_bytes(),
+            ));
         }
-        let used: Vec<String> = (0..structure.elements.len()).filter(|i| !kids_of[*i].is_empty()).map(|i| format!("{} 0 R", element_ids[i])).collect();
-        objects.push((root, format!("<< /Type /StructTreeRoot /K [{}] /ParentTree {parent_tree} 0 R >>", used.join(" ")).into_bytes()));
+        let used: Vec<String> = (0..structure.elements.len())
+            .filter(|i| !kids_of[*i].is_empty())
+            .map(|i| format!("{} 0 R", element_ids[i]))
+            .collect();
+        objects.push((
+            root,
+            format!(
+                "<< /Type /StructTreeRoot /K [{}] /ParentTree {parent_tree} 0 R >>",
+                used.join(" ")
+            )
+            .into_bytes(),
+        ));
         let nums: Vec<String> = marked
             .iter()
             .enumerate()
             .map(|(page, mcids)| {
                 struct_parents[page] = Some(page);
-                let refs: Vec<String> = mcids.iter().map(|e| format!("{} 0 R", element_ids[*e])).collect();
+                let refs: Vec<String> =
+                    mcids.iter().map(|e| format!("{} 0 R", element_ids[*e])).collect();
                 format!("{page} [{}]", refs.join(" "))
             })
             .collect();
@@ -529,7 +601,9 @@ fn assemble(
             xml_text(title),
             xml_text(&options.author),
         );
-        let mut stream = format!("<< /Type /Metadata /Subtype /XML /Length {} >>\nstream\n", xmp.len()).into_bytes();
+        let mut stream =
+            format!("<< /Type /Metadata /Subtype /XML /Length {} >>\nstream\n", xmp.len())
+                .into_bytes();
         stream.extend(xmp.as_bytes());
         stream.extend(b"\nendstream");
         objects.push((metadata, stream));
@@ -549,7 +623,11 @@ fn assemble(
             .into_bytes(),
     ));
     let mut info = format!("<< /Title ({}) /Producer (Unluminous)", pdf_string(title));
-    for (key, value) in [("Author", &options.author), ("Subject", &options.subject), ("Keywords", &options.keywords)] {
+    for (key, value) in [
+        ("Author", &options.author),
+        ("Subject", &options.subject),
+        ("Keywords", &options.keywords),
+    ] {
         if !value.is_empty() {
             info.push_str(&format!(" /{key} ({})", pdf_string(value)));
         }
@@ -627,8 +705,12 @@ fn assemble(
         .map(|(i, id)| format!("/Im{i} {id} 0 R"))
         .collect::<Vec<_>>()
         .join(" ");
-    for (index, ((page, id), content)) in pages.pages.iter().zip(&page_ids).zip(contents).enumerate() {
-        let parents = struct_parents[index].map(|n| format!(" /StructParents {n} /Tabs /S")).unwrap_or_default();
+    for (index, ((page, id), content)) in
+        pages.pages.iter().zip(&page_ids).zip(contents).enumerate()
+    {
+        let parents = struct_parents[index]
+            .map(|n| format!(" /StructParents {n} /Tabs /S"))
+            .unwrap_or_default();
         objects.push((*id, format!(
             "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {:.2} {:.2}] /Resources << /Font << {font_resources} >> /XObject << {image_resources} >> >> /Contents {} 0 R{parents} >>",
             page.width, page.height, id + 1
@@ -779,11 +861,18 @@ mod tests {
     #[test]
     fn a_pdf_carries_its_outline_its_structure_and_pdfa_metadata() {
         let mut session = crate::session::Session::new(crate::new::blank());
-        session.type_text("A heading
-A paragraph under it");
-        session.select(crate::position::Pos::new(vec![0], 0), crate::position::Pos::new(vec![0], 0));
+        session.type_text(
+            "A heading
+A paragraph under it",
+        );
+        session
+            .select(crate::position::Pos::new(vec![0], 0), crate::position::Pos::new(vec![0], 0));
         session.apply_style("Heading1").unwrap();
-        let pages = crate::layout::lay_out(&session.document, &unluminous_core::FixedMetrics::default(), Default::default());
+        let pages = crate::layout::lay_out(
+            &session.document,
+            &unluminous_core::FixedMetrics::default(),
+            Default::default(),
+        );
         let options = PdfOptions {
             title: "Report".into(),
             author: "Jason".into(),
@@ -795,11 +884,27 @@ A paragraph under it");
         };
         let pdf = write_with(&pages, &options, &|_| None, &|_| None);
         let text = String::from_utf8_lossy(&pdf);
-        for wanted in ["/Outlines", "/Title (A heading)", "/StructTreeRoot", "/S /H1", "/S /P", "/MCID 0", "/MarkInfo", "/Lang (en-US)", "pdfaid:part", "/OutputIntents", "/ID [<", "/Author (Jason)"] {
+        for wanted in [
+            "/Outlines",
+            "/Title (A heading)",
+            "/StructTreeRoot",
+            "/S /H1",
+            "/S /P",
+            "/MCID 0",
+            "/MarkInfo",
+            "/Lang (en-US)",
+            "pdfaid:part",
+            "/OutputIntents",
+            "/ID [<",
+            "/Author (Jason)",
+        ] {
             assert!(text.contains(wanted), "{wanted}");
         }
         // Every marked content sequence is closed.
-        assert_eq!(text.matches(" BDC").count() + text.matches(" BMC").count(), text.matches("EMC").count());
+        assert_eq!(
+            text.matches(" BDC").count() + text.matches(" BMC").count(),
+            text.matches("EMC").count()
+        );
     }
 
     #[test]

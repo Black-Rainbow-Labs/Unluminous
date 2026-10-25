@@ -38,7 +38,8 @@ pub struct RulerDrag {
 }
 
 /// The tab kinds the selector cycles through, in Word's order.
-const KINDS: [TabKind; 5] = [TabKind::Left, TabKind::Center, TabKind::Right, TabKind::Decimal, TabKind::Bar];
+const KINDS: [TabKind; 5] =
+    [TabKind::Left, TabKind::Center, TabKind::Right, TabKind::Decimal, TabKind::Bar];
 
 fn kind_label(kind: TabKind) -> &'static str {
     match kind {
@@ -77,12 +78,28 @@ fn tab_mark(painter: &egui::Painter, x: f32, base: f32, kind: TabKind, ink: Colo
 pub fn ruler(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, rect: Rect, pages: Rect) {
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 0.0, look.ground(look.palette.panel));
-    painter.line_segment([rect.left_bottom(), rect.right_bottom()], Stroke::new(1.0, look.palette.divider));
+    painter.line_segment(
+        [rect.left_bottom(), rect.right_bottom()],
+        Stroke::new(1.0, look.palette.divider),
+    );
     // The tab selector, at the ruler's left, cycling through the kinds a press adds.
-    let selector = Rect::from_min_size(rect.min + Vec2::new(4.0, 3.0), Vec2::splat(rect.height() - 6.0));
-    let response = ui.interact(selector, ui.id().with(("word-ruler-kind", &doc.key)), Sense::click());
-    painter.rect_stroke(selector, 3.0, Stroke::new(1.0, look.palette.divider), egui::StrokeKind::Inside);
-    tab_mark(&painter, selector.center().x - 1.0, selector.center().y + 4.0, doc.view.ruler_tab, look.palette.text_strong);
+    let selector =
+        Rect::from_min_size(rect.min + Vec2::new(4.0, 3.0), Vec2::splat(rect.height() - 6.0));
+    let response =
+        ui.interact(selector, ui.id().with(("word-ruler-kind", &doc.key)), Sense::click());
+    painter.rect_stroke(
+        selector,
+        3.0,
+        Stroke::new(1.0, look.palette.divider),
+        egui::StrokeKind::Inside,
+    );
+    tab_mark(
+        &painter,
+        selector.center().x - 1.0,
+        selector.center().y + 4.0,
+        doc.view.ruler_tab,
+        look.palette.text_strong,
+    );
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Tab kind"));
     let kind_now = doc.view.ruler_tab;
     if response.with_hint(format!("{}: press to change", kind_label(kind_now))).clicked() {
@@ -98,10 +115,17 @@ pub fn ruler(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, rect: Rect, page
     let column_left = page_left + page.body.x * zoom;
     let column_right = page_left + (page.body.x + page.body.w) * zoom;
     // The page as a light band, the margins as darker ones beside it.
-    let band = Rect::from_x_y_ranges(page_left..=page_left + page.width * zoom, rect.top() + 5.0..=rect.bottom() - 5.0);
+    let band = Rect::from_x_y_ranges(
+        page_left..=page_left + page.width * zoom,
+        rect.top() + 5.0..=rect.bottom() - 5.0,
+    );
     let paper = crate::theme::color::word_paper();
     painter.rect_filled(band, 1.0, paper.gamma_multiply(0.55));
-    painter.rect_filled(Rect::from_x_y_ranges(column_left..=column_right, band.y_range()), 0.0, paper);
+    painter.rect_filled(
+        Rect::from_x_y_ranges(column_left..=column_right, band.y_range()),
+        0.0,
+        paper,
+    );
     // Ticks every eighth of an inch from the left margin, numbered every inch.
     let ink = Color32::from_gray(90); // any ground: drawn on the paper band
     let inch = 72.0 * zoom;
@@ -112,11 +136,29 @@ pub fn ruler(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, rect: Rect, page
             break;
         }
         if x >= page_left {
-            let tall = if n % 8 == 0 { 0.0 } else if n % 4 == 0 { 5.0 } else { 3.0 };
+            let tall = if n % 8 == 0 {
+                0.0
+            } else if n % 4 == 0 {
+                5.0
+            } else {
+                3.0
+            };
             if n % 8 == 0 && n != 0 {
-                painter.text(Pos2::new(x, band.center().y), Align2::CENTER_CENTER, (n / 8).abs().to_string(), FontId::proportional(9.0), ink);
+                painter.text(
+                    Pos2::new(x, band.center().y),
+                    Align2::CENTER_CENTER,
+                    (n / 8).abs().to_string(),
+                    FontId::proportional(9.0),
+                    ink,
+                );
             } else if tall > 0.0 {
-                painter.line_segment([Pos2::new(x, band.center().y - tall / 2.0), Pos2::new(x, band.center().y + tall / 2.0)], Stroke::new(1.0, ink));
+                painter.line_segment(
+                    [
+                        Pos2::new(x, band.center().y - tall / 2.0),
+                        Pos2::new(x, band.center().y + tall / 2.0),
+                    ],
+                    Stroke::new(1.0, ink),
+                );
             }
         }
         n += 1;
@@ -140,28 +182,48 @@ pub fn ruler(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, rect: Rect, page
     // box under it. Right: one pointing up at the right.
     let triangle = |x: f32, down: bool| {
         let (a, b) = if down { (y_top, y_top + 6.0) } else { (y_bottom - 2.0, y_bottom - 8.0) };
-        Shape::convex_polygon(vec![Pos2::new(x - 4.5, a), Pos2::new(x + 4.5, a), Pos2::new(x, b)], paper, Stroke::new(1.0, accent))
+        Shape::convex_polygon(
+            vec![Pos2::new(x - 4.5, a), Pos2::new(x + 4.5, a), Pos2::new(x, b)],
+            paper,
+            Stroke::new(1.0, accent),
+        )
     };
     painter.add(triangle(first_x, true));
     painter.add(triangle(hang_x, false));
-    painter.rect(Rect::from_center_size(Pos2::new(hang_x, y_bottom + 1.0), Vec2::new(9.0, 4.0)), 0.0, paper, Stroke::new(1.0, accent), egui::StrokeKind::Middle);
+    painter.rect(
+        Rect::from_center_size(Pos2::new(hang_x, y_bottom + 1.0), Vec2::new(9.0, 4.0)),
+        0.0,
+        paper,
+        Stroke::new(1.0, accent),
+        egui::StrokeKind::Middle,
+    );
     painter.add(triangle(right_x, false));
     for stop in &look_now.tabs {
         let x = to_x(match &dragging {
-            Some(RulerDrag { grip: RulerGrip::Tab(p), at, .. }) if (*p - stop.position).abs() < 0.5 => *at,
+            Some(RulerDrag { grip: RulerGrip::Tab(p), at, .. })
+                if (*p - stop.position).abs() < 0.5 =>
+            {
+                *at
+            }
             _ => stop.position,
         });
-        if !matches!(&dragging, Some(RulerDrag { grip: RulerGrip::Tab(p), off: true, .. }) if (*p - stop.position).abs() < 0.5) {
+        if !matches!(&dragging, Some(RulerDrag { grip: RulerGrip::Tab(p), off: true, .. }) if (*p - stop.position).abs() < 0.5)
+        {
             tab_mark(&painter, x, y_bottom - 2.0, stop.kind, accent);
         }
     }
     // The pointer.
     let strip = Rect::from_x_y_ranges(page_left..=page_left + page.width * zoom, rect.y_range());
-    let response = ui.interact(strip, ui.id().with(("word-ruler", &doc.key)), Sense::click_and_drag());
+    let response =
+        ui.interact(strip, ui.id().with(("word-ruler", &doc.key)), Sense::click_and_drag());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Slider, true, "Ruler"));
     let Some(pointer) = ui.input(|i| i.pointer.interact_pos()) else { return };
     let snap = |points: f32| (points / 4.5).round() * 4.5;
-    if response.drag_started() || response.is_pointer_button_down_on() && doc.view.ruler_drag.is_none() && ui.input(|i| i.pointer.primary_pressed()) {
+    if response.drag_started()
+        || response.is_pointer_button_down_on()
+            && doc.view.ruler_drag.is_none()
+            && ui.input(|i| i.pointer.primary_pressed())
+    {
         let grips = [
             (RulerGrip::First, first_x, pointer.y < band.center().y),
             (RulerGrip::Left, hang_x, pointer.y > y_bottom - 2.0),
@@ -173,7 +235,11 @@ pub fn ruler(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, rect: Rect, page
             .find(|(_, x, side)| (pointer.x - x).abs() <= 6.0 && *side)
             .map(|(g, _, _)| g.clone())
             .or_else(|| {
-                look_now.tabs.iter().find(|t| (to_x(t.position) - pointer.x).abs() <= 5.0).map(|t| RulerGrip::Tab(t.position))
+                look_now
+                    .tabs
+                    .iter()
+                    .find(|t| (to_x(t.position) - pointer.x).abs() <= 5.0)
+                    .map(|t| RulerGrip::Tab(t.position))
             });
         if let Some(grip) = grip {
             doc.view.ruler_drag = Some(RulerDrag { grip, at: to_points(pointer.x), off: false });
@@ -198,7 +264,11 @@ pub fn ruler(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, rect: Rect, page
 }
 
 /// The left, right and first line indents a drag on an indent mark leaves, in points.
-pub fn after_drag(drag: &RulerDrag, look: &unluminous_word::props::ParaLook, column: f32) -> (f32, f32, f32) {
+pub fn after_drag(
+    drag: &RulerDrag,
+    look: &unluminous_word::props::ParaLook,
+    column: f32,
+) -> (f32, f32, f32) {
     let (left, right, first) = (look.indent_left, look.indent_right, look.indent_first);
     match &drag.grip {
         // The first line alone: the left indent stays, so the first line's offset from it changes.
@@ -213,7 +283,12 @@ pub fn after_drag(drag: &RulerDrag, look: &unluminous_word::props::ParaLook, col
 }
 
 /// Make the change a drag on the ruler describes.
-fn finish_drag(doc: &mut Doc, drag: &RulerDrag, look: &unluminous_word::props::ParaLook, column: f32) {
+fn finish_drag(
+    doc: &mut Doc,
+    drag: &RulerDrag,
+    look: &unluminous_word::props::ParaLook,
+    column: f32,
+) {
     match &drag.grip {
         RulerGrip::Tab(position) if drag.off => doc.session.remove_tab_stop(*position),
         RulerGrip::Tab(position) => doc.session.move_tab_stop(*position, drag.at.max(0.0)),
@@ -225,11 +300,22 @@ fn finish_drag(doc: &mut Doc, drag: &RulerDrag, look: &unluminous_word::props::P
 }
 
 /// The status area: page, words, language, track changes, the three views and the zoom.
-pub fn status(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, rect: Rect, requests: &mut Vec<Request>) {
+pub fn status(
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    doc: &mut Doc,
+    rect: Rect,
+    requests: &mut Vec<Request>,
+) {
     let _ = requests;
     ui.painter().rect_filled(rect, 0.0, look.ground(look.palette.panel));
-    ui.painter().line_segment([rect.left_top(), rect.right_top()], Stroke::new(1.0, look.palette.divider));
-    let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(Vec2::new(10.0, 2.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
+    ui.painter()
+        .line_segment([rect.left_top(), rect.right_top()], Stroke::new(1.0, look.palette.divider));
+    let mut inner = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(rect.shrink2(Vec2::new(10.0, 2.0)))
+            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+    );
     inner.set_clip_rect(rect);
     let size = look.font_size * 0.88;
     let page = doc.pages.find(&doc.session.selection.head).map_or(1, |(i, _)| i + 1);
@@ -272,12 +358,18 @@ pub fn status(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, rect: Rect, req
             doc.view.zoom = zoom;
         }
         ui.add_space(8.0);
-        for (mode, label) in [(Mode::Outline, "Outline"), (Mode::Print, "Print Layout"), (Mode::Read, "Read Mode")] {
+        for (mode, label) in
+            [(Mode::Outline, "Outline"), (Mode::Print, "Print Layout"), (Mode::Read, "Read Mode")]
+        {
             let chosen = doc.view.mode == mode;
-            let button = egui::Button::new(egui::RichText::new(label).size(size)).selected(chosen).frame(chosen);
+            let button = egui::Button::new(egui::RichText::new(label).size(size))
+                .selected(chosen)
+                .frame(chosen);
             let response = ui.add(button);
             let name = format!("View: {label}");
-            response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, chosen, &name));
+            response.widget_info(|| {
+                egui::WidgetInfo::selected(egui::WidgetType::Button, true, chosen, &name)
+            });
             if response.clicked() {
                 doc.view.mode = mode;
                 doc.laid = u64::MAX;

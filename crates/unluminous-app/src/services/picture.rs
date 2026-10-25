@@ -348,24 +348,38 @@ pub fn is_vector(bytes: &[u8]) -> bool {
 /// Draw an SVG, EMF or WMF picture into pixels (task-2359, TDD 5.3): an EMF or a WMF is turned into SVG
 /// by `emf-core` first, and the SVG is drawn by `resvg` with its longest side [`VECTOR_SIDE`] pixels.
 pub fn decode_vector(bytes: &[u8]) -> Result<egui::ColorImage, String> {
-    let svg = if bytes.get(40..44) == Some(b" EMF") || !String::from_utf8_lossy(&bytes[..bytes.len().min(512)]).contains("<svg") {
+    let svg = if bytes.get(40..44) == Some(b" EMF")
+        || !String::from_utf8_lossy(&bytes[..bytes.len().min(512)]).contains("<svg")
+    {
         emf_core::converter::convert_to_svg(bytes).map_err(|problem| format!("{problem}"))?
     } else {
         bytes.to_vec()
     };
     let options = resvg::usvg::Options { fontdb: system_fonts(), ..Default::default() };
-    let tree = resvg::usvg::Tree::from_data(&svg, &options).map_err(|problem| format!("{problem}"))?;
+    let tree =
+        resvg::usvg::Tree::from_data(&svg, &options).map_err(|problem| format!("{problem}"))?;
     let size = tree.size();
     let scale = VECTOR_SIDE / size.width().max(size.height()).max(1.0);
-    let (w, h) = ((size.width() * scale).ceil().max(1.0) as u32, (size.height() * scale).ceil().max(1.0) as u32);
+    let (w, h) = (
+        (size.width() * scale).ceil().max(1.0) as u32,
+        (size.height() * scale).ceil().max(1.0) as u32,
+    );
     let mut pixmap = resvg::tiny_skia::Pixmap::new(w, h).ok_or("the picture has no size")?;
-    resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(scale, scale), &mut pixmap.as_mut());
+    resvg::render(
+        &tree,
+        resvg::tiny_skia::Transform::from_scale(scale, scale),
+        &mut pixmap.as_mut(),
+    );
     let pixels = pixmap
         .data()
         .chunks_exact(4)
         .map(|p| egui::Color32::from_rgba_premultiplied(p[0], p[1], p[2], p[3]))
         .collect();
-    Ok(egui::ColorImage { size: [w as usize, h as usize], pixels, source_size: egui::vec2(w as f32, h as f32) })
+    Ok(egui::ColorImage {
+        size: [w as usize, h as usize],
+        pixels,
+        source_size: egui::vec2(w as f32, h as f32),
+    })
 }
 
 /// A bitmap, or a vector picture drawn by [`decode_vector`].
@@ -378,7 +392,8 @@ pub fn decode_any(bytes: &[u8]) -> Result<egui::ColorImage, String> {
 
 /// The machine's fonts, read once, for the words in a vector picture.
 fn system_fonts() -> std::sync::Arc<resvg::usvg::fontdb::Database> {
-    static FONTS: std::sync::OnceLock<std::sync::Arc<resvg::usvg::fontdb::Database>> = std::sync::OnceLock::new();
+    static FONTS: std::sync::OnceLock<std::sync::Arc<resvg::usvg::fontdb::Database>> =
+        std::sync::OnceLock::new();
     FONTS
         .get_or_init(|| {
             let mut fonts = resvg::usvg::fontdb::Database::new();
@@ -465,7 +480,10 @@ mod tests {
         emf[total_at..total_at + 4].copy_from_slice(&total.to_le_bytes());
         assert!(is_vector(&emf));
         let image = decode_any(&emf).expect("an EMF is drawn");
-        assert!(image.pixels.iter().any(|p| p.r() > 200 && p.g() < 60), "the red rectangle is in the picture");
+        assert!(
+            image.pixels.iter().any(|p| p.r() > 200 && p.g() < 60),
+            "the red rectangle is in the picture"
+        );
     }
 
     /// A four by two PNG, written out so the decoder has something real to read.

@@ -32,7 +32,12 @@ fn a_cached_layout_is_the_layout() {
         let second = layout::lay_out_cached(&document, &fonts, Options::default(), &cache, 1);
         assert!(first == fresh, "{} laid out with an empty cache differs", path.display());
         assert!(second == fresh, "{} laid out from the cache differs", path.display());
-        assert_eq!(cache.borrow().misses, 0, "{}: the second layout took every paragraph again", path.display());
+        assert_eq!(
+            cache.borrow().misses,
+            0,
+            "{}: the second layout took every paragraph again",
+            path.display()
+        );
     }
 }
 
@@ -51,9 +56,14 @@ fn a_keystroke_lays_out_only_its_paragraph_and_is_quick() {
     let pages = layout::lay_out_cached(&session.document, &fonts, Options::default(), &cache, 1);
     let took = started.elapsed();
     let (hits, misses) = (cache.borrow().hits, cache.borrow().misses);
-    println!("a keystroke on long.docx: {took:?}, {hits} paragraphs from the cache, {misses} laid out");
+    println!(
+        "a keystroke on long.docx: {took:?}, {hits} paragraphs from the cache, {misses} laid out"
+    );
     assert!(misses <= 2, "only the changed paragraph is laid out again: {misses}");
-    assert!(pages == layout::lay_out(&session.document, &fonts, Options::default()), "and the pages are right");
+    assert!(
+        pages == layout::lay_out(&session.document, &fonts, Options::default()),
+        "and the pages are right"
+    );
     // The budget is a frame, measured in an optimised build; a debug build is several times slower.
     if !cfg!(debug_assertions) {
         assert!(took.as_millis() < 16, "a keystroke took {took:?}");

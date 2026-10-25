@@ -460,7 +460,9 @@ impl LayoutCache {
 /// What a document's paragraphs depend on besides themselves.
 fn document_key(document: &Document, options: &Options, metrics_tag: u64) -> u64 {
     use std::hash::{Hash, Hasher};
-    let xml = |part: &Option<crate::model::XmlPart>| part.as_ref().map(|p| p.root.to_xml()).unwrap_or_default();
+    let xml = |part: &Option<crate::model::XmlPart>| {
+        part.as_ref().map(|p| p.root.to_xml()).unwrap_or_default()
+    };
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     xml(&document.styles).hash(&mut hasher);
     xml(&document.numbering).hash(&mut hasher);
@@ -480,7 +482,9 @@ fn cacheable(paragraph: &crate::model::Paragraph) -> bool {
     paragraph.runs.iter().all(|run| {
         let plain = match &run.content {
             Content::Text(_) | Content::Tab | Content::Break(_) => true,
-            Content::Object(el) => matches!(el.name.as_str(), "w:sym" | "w:noBreakHyphen" | "w:softHyphen" | "w:ptab"),
+            Content::Object(el) => {
+                matches!(el.name.as_str(), "w:sym" | "w:noBreakHyphen" | "w:softHyphen" | "w:ptab")
+            }
             Content::FieldChar(_) | Content::Instr(_) | Content::ParagraphObject(_) => false,
         };
         plain && !run.wraps.iter().any(|w| w.el.name == "w:fldSimple")
@@ -488,7 +492,12 @@ fn cacheable(paragraph: &crate::model::Paragraph) -> bool {
 }
 
 /// A body paragraph's own identity: its properties, its runs and their wrappers, and its marks.
-fn paragraph_key(paragraph: &crate::model::Paragraph, width: f32, label: &str, document: u64) -> u64 {
+fn paragraph_key(
+    paragraph: &crate::model::Paragraph,
+    width: f32,
+    label: &str,
+    document: u64,
+) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     document.hash(&mut hasher);
@@ -862,7 +871,8 @@ fn flow_block(flow: &mut Flow, ctx: &Ctx, counters: &mut Counters, block: &Block
             // A framed paragraph is out of the flow: it is placed where its frame says, and the text
             // goes round it (task-2359, measured on builtin-styles.docx's Envelope Address).
             if let Some(frame) = ctx.resolver.frame_of(&paragraph.props) {
-                let float = frame_float(ctx, counters, paragraph, &path, &frame, flow.column_width());
+                let float =
+                    frame_float(ctx, counters, paragraph, &path, &frame, flow.column_width());
                 let top = flow.y;
                 flow.register_float(&float, top);
                 return;
@@ -897,7 +907,15 @@ fn flow_block(flow: &mut Flow, ctx: &Ctx, counters: &mut Counters, block: &Block
                         flow.place_paragraph(laid);
                         return;
                     }
-                    let prepared = paragraph::prepare(ctx, counters, paragraph, &StoryId::Body, &path, width, None);
+                    let prepared = paragraph::prepare(
+                        ctx,
+                        counters,
+                        paragraph,
+                        &StoryId::Body,
+                        &path,
+                        width,
+                        None,
+                    );
                     let laid = prepared.laid(ctx);
                     let mut cache = cache.borrow_mut();
                     cache.entries.insert(key, (path.clone(), laid.clone()));
@@ -935,8 +953,16 @@ fn flow_block(flow: &mut Flow, ctx: &Ctx, counters: &mut Counters, block: &Block
 /// A framed paragraph (`w:framePr`) as a float: its lines laid out at the frame's width, its height the
 /// frame's exact or least height or its lines', placed from the page, the margin or the column by an
 /// offset or an alignment, with text going round it unless the frame says otherwise.
-fn frame_float(ctx: &Ctx, counters: &mut Counters, paragraph: &crate::model::Paragraph, path: &Path, frame: &crate::xml::El, column: f32) -> Float {
-    let twips_of = |name: &str| frame.attr(name).and_then(crate::props::number).map(crate::props::twips);
+fn frame_float(
+    ctx: &Ctx,
+    counters: &mut Counters,
+    paragraph: &crate::model::Paragraph,
+    path: &Path,
+    frame: &crate::xml::El,
+    column: f32,
+) -> Float {
+    let twips_of =
+        |name: &str| frame.attr(name).and_then(crate::props::number).map(crate::props::twips);
     let width = twips_of("w:w").filter(|w| *w > 0.0).unwrap_or(column);
     let laid = paragraph::lay_out(ctx, counters, paragraph, &StoryId::Body, path, width, None);
     let mut chunks = laid.lines;
@@ -955,15 +981,24 @@ fn frame_float(ctx: &Ctx, counters: &mut Counters, paragraph: &crate::model::Par
         let relative = match frame.attr(anchor).unwrap_or(default) {
             "page" => "page",
             "margin" => "margin",
-            _ => if anchor == "w:hAnchor" { "column" } else { "paragraph" },
+            _ => {
+                if anchor == "w:hAnchor" {
+                    "column"
+                } else {
+                    "paragraph"
+                }
+            }
         };
         let place = match (frame.attr(align), twips_of(offset)) {
-            (Some(a), _) => Anchor::Align(match a {
-                "center" => "center",
-                "right" | "outside" => "right",
-                "bottom" => "bottom",
-                _ => "left",
-            }.into()),
+            (Some(a), _) => Anchor::Align(
+                match a {
+                    "center" => "center",
+                    "right" | "outside" => "right",
+                    "bottom" => "bottom",
+                    _ => "left",
+                }
+                .into(),
+            ),
             (None, Some(o)) => Anchor::Offset(o),
             (None, None) => Anchor::Offset(0.0),
         };
@@ -1673,7 +1708,7 @@ impl<'a> Flow<'a> {
         };
         // The last of those lines may hang its line spacing into the bottom margin.
         laid.lines.iter().take(lines).map(|l| l.height).sum::<f32>()
-            - laid.lines.iter().take(lines).last().map_or(0.0, |l| l.slack)
+            - laid.lines.iter().take(lines).next_back().map_or(0.0, |l| l.slack)
     }
 
     /// Place a paragraph. One with keep with next waits for the block after it, so the two can be put on
@@ -1744,7 +1779,7 @@ impl<'a> Flow<'a> {
         let count = laid.lines.len();
         let first_count = if laid.widow_control { 2 } else { 1 };
         let first_lines: f32 = laid.lines.iter().take(first_count).map(|l| l.height).sum::<f32>()
-            - laid.lines.iter().take(first_count).last().map_or(0.0, |l| l.slack);
+            - laid.lines.iter().take(first_count).next_back().map_or(0.0, |l| l.slack);
         let whole: f32 = laid.lines.iter().map(|l| l.height).sum::<f32>()
             - laid.lines.last().map_or(0.0, |l| l.slack);
         // Keep the whole paragraph together when asked, and at least its first two lines when widow
@@ -2086,7 +2121,9 @@ fn decorate_pages(
         let section = page.section;
         let geometry =
             &sections.get(section).map_or_else(|| sections[0].1.clone(), |(_, g)| g.clone());
-        if !first_of_section.contains_key(&section) && geometry.line_numbers.as_ref().is_some_and(|l| l.2 == "newSection") {
+        if !first_of_section.contains_key(&section)
+            && geometry.line_numbers.as_ref().is_some_and(|l| l.2 == "newSection")
+        {
             line_number = 0;
         }
         place_vertically(page, geometry);
@@ -2195,7 +2232,8 @@ fn number_lines(page: &mut Page, ctx: &Ctx, geometry: &Geometry, line_number: &m
         color: unluminous_core::Color::rgb(0, 0, 0),
     };
     let mut items = Vec::new();
-    let mut lines: Vec<&CaretLine> = page.carets.iter().filter(|l| l.story == StoryId::Body && l.path.len() == 1).collect();
+    let mut lines: Vec<&CaretLine> =
+        page.carets.iter().filter(|l| l.story == StoryId::Body && l.path.len() == 1).collect();
     lines.sort_by(|a, b| a.top.total_cmp(&b.top));
     for line in lines {
         *line_number += 1;
@@ -2204,7 +2242,8 @@ fn number_lines(page: &mut Page, ctx: &Ctx, geometry: &Geometry, line_number: &m
             continue;
         }
         let text = n.to_string();
-        let widths: Vec<f32> = text.chars().map(|c| ctx.metrics.advance(&c.to_string(), &style)).collect();
+        let widths: Vec<f32> =
+            text.chars().map(|c| ctx.metrics.advance(&c.to_string(), &style)).collect();
         let total: f32 = widths.iter().sum();
         let mut x = page.body.x - distance - total;
         let mut xs = Vec::with_capacity(widths.len());
@@ -2212,7 +2251,12 @@ fn number_lines(page: &mut Page, ctx: &Ctx, geometry: &Geometry, line_number: &m
             xs.push(x);
             x += w;
         }
-        items.push(Item::Text(TextItem { baseline: line.baseline, style: style.clone(), text, xs }));
+        items.push(Item::Text(TextItem {
+            baseline: line.baseline,
+            style: style.clone(),
+            text,
+            xs,
+        }));
     }
     page.items.extend(items);
 }
@@ -2221,11 +2265,24 @@ fn number_lines(page: &mut Page, ctx: &Ctx, geometry: &Geometry, line_number: &m
 fn draw_page_border(page: &mut Page, geometry: &Geometry) {
     let Some((width, colour, space, from_text)) = geometry.page_border else { return };
     let (x0, y0, x1, y1) = if from_text {
-        (page.body.x - space, page.body.y - space, page.body.x + page.body.w + space, page.body.y + page.body.h + space)
+        (
+            page.body.x - space,
+            page.body.y - space,
+            page.body.x + page.body.w + space,
+            page.body.y + page.body.h + space,
+        )
     } else {
         (space, space, page.width - space, page.height - space)
     };
-    let rule = |x0: f32, y0: f32, x1: f32, y1: f32| Item::Rule { x0, y0, x1, y1, width, color: colour, kind: RuleKind::Solid };
+    let rule = |x0: f32, y0: f32, x1: f32, y1: f32| Item::Rule {
+        x0,
+        y0,
+        x1,
+        y1,
+        width,
+        color: colour,
+        kind: RuleKind::Solid,
+    };
     page.items.push(rule(x0, y0, x1, y0));
     page.items.push(rule(x0, y1, x1, y1));
     page.items.push(rule(x0, y0, x0, y1));

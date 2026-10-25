@@ -18,7 +18,8 @@ use crate::session::{Scope, Session};
 use crate::xml::{El, Node};
 
 /// The wrap kinds Word offers, by the name the agent and the panel use.
-pub const WRAPS: [&str; 7] = ["inline", "square", "tight", "through", "top-and-bottom", "behind", "front"];
+pub const WRAPS: [&str; 7] =
+    ["inline", "square", "tight", "through", "top-and-bottom", "behind", "front"];
 
 /// The preset shapes Insert offers (`a:prstGeom`).
 pub const SHAPES: [&str; 11] = [
@@ -143,7 +144,13 @@ impl Session {
 
     /// Cut the selected picture: the percent of each side cut off, measured on the whole picture. The
     /// drawn size shrinks with the crop, as Word's crop handles do.
-    pub fn crop_object(&mut self, left: f32, top: f32, right: f32, bottom: f32) -> Result<(), String> {
+    pub fn crop_object(
+        &mut self,
+        left: f32,
+        top: f32,
+        right: f32,
+        bottom: f32,
+    ) -> Result<(), String> {
         let info = self.object_info().ok_or("the selection is not on a picture")?;
         if info.kind != "Picture" {
             return Err("only a picture can be cropped".into());
@@ -162,8 +169,15 @@ impl Session {
             fill.remove_children("a:srcRect");
             if [l, t, r, b].iter().any(|f| *f > 0.0) {
                 let per = |f: f32| ((f * 100_000.0).round() as i64).to_string();
-                let rect = El::new("a:srcRect").with("l", per(l)).with("t", per(t)).with("r", per(r)).with("b", per(b));
-                let at = fill.children.iter().position(|n| matches!(n, Node::El(e) if e.name == "a:blip"));
+                let rect = El::new("a:srcRect")
+                    .with("l", per(l))
+                    .with("t", per(t))
+                    .with("r", per(r))
+                    .with("b", per(b));
+                let at = fill
+                    .children
+                    .iter()
+                    .position(|n| matches!(n, Node::El(e) if e.name == "a:blip"));
                 fill.children.insert(at.map_or(0, |i| i + 1), Node::El(rect));
             }
             Ok(())
@@ -174,7 +188,9 @@ impl Session {
     pub fn set_object_alt_text(&mut self, text: &str) -> Result<(), String> {
         let text = text.to_owned();
         self.change_object(move |frame| {
-            let doc_pr = frame.child_mut("wp:docPr").ok_or("this object has no properties to hold alt text")?;
+            let doc_pr = frame
+                .child_mut("wp:docPr")
+                .ok_or("this object has no properties to hold alt text")?;
             if text.is_empty() {
                 doc_pr.remove_attr("descr");
             } else {
@@ -189,7 +205,8 @@ impl Session {
         let at = self.selected_object().ok_or("the selection is not on a picture")?;
         let part = picture_part(&self.document, &at).ok_or("only a picture can be reset")?;
         let bytes = self.document.package.part(&part).ok_or("the picture's part is missing")?;
-        let (w, h) = crate::media::picture_size(bytes).ok_or("the picture's size cannot be read")?;
+        let (w, h) =
+            crate::media::picture_size(bytes).ok_or("the picture's size cannot be read")?;
         let (w, h) = (w as f32 * 0.75, h as f32 * 0.75);
         self.change_object(move |frame| {
             if let Some(fill) = find_mut(frame, "pic:blipFill") {
@@ -209,7 +226,9 @@ impl Session {
         let how = how.to_owned();
         self.change_object(move |frame| {
             if frame.name != "wp:anchor" {
-                return Err("an inline picture is in the line; float it before changing its order".into());
+                return Err(
+                    "an inline picture is in the line; float it before changing its order".into()
+                );
             }
             let now: i64 = frame.attr("relativeHeight").and_then(|h| h.parse().ok()).unwrap_or(top);
             let next = match how.as_str() {
@@ -217,7 +236,11 @@ impl Session {
                 "backward" | "send-backward" => (now - 1024).max(0),
                 "front" | "bring-to-front" => top + 1024,
                 "back" | "send-to-back" => (bottom - 1024).max(0),
-                other => return Err(format!("order takes forward, backward, front or back, not {other}")),
+                other => {
+                    return Err(format!(
+                        "order takes forward, backward, front or back, not {other}"
+                    ))
+                }
             };
             frame.set_attr("relativeHeight", next.to_string());
             if how.contains("front") || how.contains("back") && !how.contains("backward") {
@@ -250,7 +273,9 @@ impl Session {
             let Some(paragraph) = position::paragraph_mut(document, &at.story, &at.path) else {
                 return selection.clone();
             };
-            let Some((start, len)) = object_run(paragraph, at.offset) else { return selection.clone() };
+            let Some((start, len)) = object_run(paragraph, at.offset) else {
+                return selection.clone();
+            };
             let run = paragraph.runs.remove(start);
             for mark in &mut paragraph.marks {
                 if mark.offset > at.offset {
@@ -285,15 +310,18 @@ impl Session {
         let id = next_doc_pr(&self.document);
         let mut wsp = shape_el("rect", width, height, false);
         wsp.children.push(Node::El(
-            El::new("wps:txbx").with_child(
-                El::new("w:txbxContent").with_child(El::new("w:p")),
-            ),
+            El::new("wps:txbx").with_child(El::new("w:txbxContent").with_child(El::new("w:p"))),
         ));
         wsp.children.push(Node::El(body_pr(true)));
         let drawing = anchored(wsp, id, "Text Box", width, height, true);
         self.insert_object(drawing)?;
-        self.document.textboxes.push(TextBox { id: id as i64, blocks: vec![Block::Paragraph(Paragraph::new())], dirty: true });
-        self.selection = Selection::caret(Pos { story: StoryId::TextBox(id as i64), path: vec![0], offset: 0 });
+        self.document.textboxes.push(TextBox {
+            id: id as i64,
+            blocks: vec![Block::Paragraph(Paragraph::new())],
+            dirty: true,
+        });
+        self.selection =
+            Selection::caret(Pos { story: StoryId::TextBox(id as i64), path: vec![0], offset: 0 });
         Ok(())
     }
 
@@ -302,7 +330,9 @@ impl Session {
     pub fn insert_shape(&mut self, preset: &str, width: f32, height: f32) -> Result<(), String> {
         let preset = SHAPES
             .iter()
-            .find(|s| s.eq_ignore_ascii_case(preset) || preset.eq_ignore_ascii_case(&s.replace("1", "")))
+            .find(|s| {
+                s.eq_ignore_ascii_case(preset) || preset.eq_ignore_ascii_case(&s.replace("1", ""))
+            })
             .ok_or_else(|| format!("shape takes {}, not {preset}", SHAPES.join(", ")))?;
         let id = next_doc_pr(&self.document);
         let line = preset == &"line" || preset == &"straightConnector1";
@@ -326,7 +356,12 @@ impl Session {
                 return selection.clone();
             };
             let index = paragraph.split_at(at.offset);
-            let run = Run { props: Arc::clone(&props), content: Content::Object(drawing), wraps, attrs: Arc::default() };
+            let run = Run {
+                props: Arc::clone(&props),
+                content: Content::Object(drawing),
+                wraps,
+                attrs: Arc::default(),
+            };
             let len = run.len();
             paragraph.runs.insert(index, run);
             for mark in &mut paragraph.marks {
@@ -347,7 +382,8 @@ impl Session {
         let at = self.selected_object().ok_or("the selection is not on a picture or shape")?;
         // Try the change on a copy first, so a refusal leaves no undo step behind.
         let mut el = object_el(&self.document, &at).cloned().ok_or("the object has gone")?;
-        let el = choice_drawing(&el).unwrap_or_else(|| std::mem::replace(&mut el, El::new("w:drawing")));
+        let el =
+            choice_drawing(&el).unwrap_or_else(|| std::mem::replace(&mut el, El::new("w:drawing")));
         let mut changed = el;
         change(frame_mut(&mut changed).ok_or("the object has no frame")?)?;
         self.change(Scope::Story, move |document, selection, _| {
@@ -376,8 +412,9 @@ fn object_el<'a>(document: &'a Document, at: &Pos) -> Option<&'a El> {
 fn object_run(paragraph: &Paragraph, offset: usize) -> Option<(usize, usize)> {
     let mut at = 0;
     for (index, run) in paragraph.runs.iter().enumerate() {
-        if at == offset && run.len() > 0 {
-            return matches!(&run.content, Content::Object(el) if frame(el).is_some()).then(|| (index, run.len()));
+        if at == offset && !run.is_empty() {
+            return matches!(&run.content, Content::Object(el) if frame(el).is_some())
+                .then(|| (index, run.len()));
         }
         at += run.len();
         if at > offset {
@@ -449,7 +486,9 @@ fn info_of(frame: &El, at: Pos) -> ObjectInfo {
         "Shape"
     };
     let crop = crate::read::descendant(frame, "a:srcRect").map_or((0.0, 0.0, 0.0, 0.0), |r| {
-        let f = |name: &str| r.attr(name).and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0) / 100_000.0;
+        let f = |name: &str| {
+            r.attr(name).and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0) / 100_000.0
+        };
         (f("l"), f("t"), f("r"), f("b"))
     });
     ObjectInfo {
@@ -471,7 +510,8 @@ pub fn wrap_of(frame: &El) -> String {
     if frame.name == "wp:inline" {
         return "inline".into();
     }
-    let wrap = frame.elements().find(|c| c.local().starts_with("wrap")).map(|c| c.local().to_owned());
+    let wrap =
+        frame.elements().find(|c| c.local().starts_with("wrap")).map(|c| c.local().to_owned());
     match wrap.as_deref() {
         Some("wrapSquare") => "square",
         Some("wrapTight") => "tight",
@@ -612,7 +652,8 @@ fn set_axis(frame: &mut El, name: &str, relative: &str, offset: f32) {
         Some(axis) => *axis = new,
         None => {
             let after = if name == "wp:positionH" { "wp:simplePos" } else { "wp:positionH" };
-            let at = frame.children.iter().position(|n| matches!(n, Node::El(e) if e.name == after));
+            let at =
+                frame.children.iter().position(|n| matches!(n, Node::El(e) if e.name == after));
             frame.children.insert(at.map_or(0, |i| i + 1), Node::El(new));
         }
     }
@@ -626,7 +667,11 @@ fn horizontal_relative(name: &str) -> Result<&'static str, String> {
         "character" => "character",
         "left-margin" | "leftMargin" => "leftMargin",
         "right-margin" | "rightMargin" => "rightMargin",
-        other => return Err(format!("a horizontal position is from page, margin, column or character, not {other}")),
+        other => {
+            return Err(format!(
+                "a horizontal position is from page, margin, column or character, not {other}"
+            ))
+        }
     })
 }
 
@@ -638,7 +683,11 @@ fn vertical_relative(name: &str) -> Result<&'static str, String> {
         "line" => "line",
         "top-margin" | "topMargin" => "topMargin",
         "bottom-margin" | "bottomMargin" => "bottomMargin",
-        other => return Err(format!("a vertical position is from page, margin, paragraph or line, not {other}")),
+        other => {
+            return Err(format!(
+                "a vertical position is from page, margin, paragraph or line, not {other}"
+            ))
+        }
     })
 }
 
@@ -670,7 +719,8 @@ fn next_doc_pr(document: &Document) -> u32 {
                 if let Content::Object(el) = &run.content {
                     el.walk(&mut |node| {
                         if node.name == "wp:docPr" {
-                            if let Some(id) = node.attr("id").and_then(|id| id.parse::<u32>().ok()) {
+                            if let Some(id) = node.attr("id").and_then(|id| id.parse::<u32>().ok())
+                            {
                                 largest = largest.max(id);
                             }
                         }
@@ -692,12 +742,15 @@ fn next_doc_pr(document: &Document) -> u32 {
 /// A `wps:wsp` with the preset geometry, Word's default blue fill and a darker outline. A line has
 /// no fill.
 fn shape_el(preset: &str, width: f32, height: f32, line: bool) -> El {
-    let solid = |hex: &str| El::new("a:solidFill").with_child(El::new("a:srgbClr").with("val", hex));
+    let solid =
+        |hex: &str| El::new("a:solidFill").with_child(El::new("a:srgbClr").with("val", hex));
     let mut sp_pr = El::new("wps:spPr")
         .with_child(
             El::new("a:xfrm")
                 .with_child(El::new("a:off").with("x", "0").with("y", "0"))
-                .with_child(El::new("a:ext").with("cx", emu_text(width)).with("cy", emu_text(height))),
+                .with_child(
+                    El::new("a:ext").with("cx", emu_text(width)).with("cy", emu_text(height)),
+                ),
         )
         .with_child(El::new("a:prstGeom").with("prst", preset).with_child(El::new("a:avLst")));
     let fill = if line { El::new("a:noFill") } else { solid("156082") };
@@ -734,13 +787,18 @@ fn body_pr(textbox: bool) -> El {
 fn anchored(wsp: El, id: u32, name: &str, width: f32, height: f32, textbox: bool) -> El {
     let mut frame = El::new("wp:inline")
         .with_child(El::new("wp:extent").with("cx", emu_text(width)).with("cy", emu_text(height)))
-        .with_child(El::new("wp:effectExtent").with("l", "0").with("t", "0").with("r", "0").with("b", "0"))
+        .with_child(
+            El::new("wp:effectExtent").with("l", "0").with("t", "0").with("r", "0").with("b", "0"),
+        )
         .with_child(El::new("wp:docPr").with("id", id.to_string()).with("name", name))
         .with_child(El::new("wp:cNvGraphicFramePr"))
         .with_child(
             El::new("a:graphic").with_child(
                 El::new("a:graphicData")
-                    .with("uri", "http://schemas.microsoft.com/office/word/2010/wordprocessingShape")
+                    .with(
+                        "uri",
+                        "http://schemas.microsoft.com/office/word/2010/wordprocessingShape",
+                    )
                     .with_child(wsp),
             ),
         );
@@ -762,8 +820,8 @@ mod tests {
         );
         // A one pixel PNG.
         let png: &[u8] = &[
-            0x89, b'P', b'N', b'G', 13, 10, 26, 10, 0, 0, 0, 13, b'I', b'H', b'D', b'R', 0, 0, 0, 40, 0, 0, 0,
-            20, 8, 6, 0, 0, 0,
+            0x89, b'P', b'N', b'G', 13, 10, 26, 10, 0, 0, 0, 13, b'I', b'H', b'D', b'R', 0, 0, 0,
+            40, 0, 0, 0, 20, 8, 6, 0, 0, 0,
         ];
         crate::media::insert_picture(&mut session, png, "png", 100.0, 50.0, "Picture 1").unwrap();
         session.select_object(Pos { story: StoryId::Body, path: vec![0], offset: 7 });
@@ -794,13 +852,20 @@ mod tests {
         assert_eq!(session.object_info().unwrap().wrap, "inline");
         session.reset_object().unwrap();
         let info = session.object_info().unwrap();
-        assert_eq!((info.width, info.height, info.crop.0), (30.0, 15.0, 0.0), "40 by 20 pixels at 96 an inch");
+        assert_eq!(
+            (info.width, info.height, info.crop.0),
+            (30.0, 15.0, 0.0),
+            "40 by 20 pixels at 96 an inch"
+        );
         // Each of the seven changes was one undo step.
         for _ in 0..7 {
             assert!(session.undo());
         }
         let info = session.object_info().unwrap();
-        assert_eq!((info.width, info.height, info.wrap.as_str(), info.alt.as_str()), (100.0, 50.0, "inline", "Picture 1"));
+        assert_eq!(
+            (info.width, info.height, info.wrap.as_str(), info.alt.as_str()),
+            (100.0, 50.0, "inline", "Picture 1")
+        );
     }
 
     #[test]
@@ -812,7 +877,10 @@ mod tests {
         let saved = crate::write::save(&session.document).unwrap();
         let back = crate::read::open(&saved).unwrap();
         assert_eq!(back.textboxes.len(), 1);
-        let text: String = position::paragraphs(&back.textboxes[0].blocks).iter().map(|(_, p)| p.flat_text()).collect();
+        let text: String = position::paragraphs(&back.textboxes[0].blocks)
+            .iter()
+            .map(|(_, p)| p.flat_text())
+            .collect();
         assert_eq!(text, "inside");
         let mut session = Session::new(crate::new::blank());
         session.insert_shape("ellipse", 72.0, 72.0).unwrap();

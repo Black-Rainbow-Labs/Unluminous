@@ -549,7 +549,8 @@ fn a_document_using_round_two_features_opens_in_word_as_written() {
     s.type_text("Top");
     s.apply_table_style("GridTable4-Accent1", None).unwrap();
     let rows = unluminous_word::position::paragraphs(&s.document.body);
-    let in_table = rows.iter().find(|(path, _)| path.len() > 1).map(|(path, _)| path.clone()).unwrap();
+    let in_table =
+        rows.iter().find(|(path, _)| path.len() > 1).map(|(path, _)| path.clone()).unwrap();
     let mut second_row = in_table.clone();
     second_row[1] = 1;
     s.selection = Selection::caret(Pos::new(second_row, 0));
@@ -557,7 +558,8 @@ fn a_document_using_round_two_features_opens_in_word_as_written() {
     // A picture wrapped square, and a text box with words in it.
     select(&mut s, "A paragraph");
     s.selection = Selection::caret(s.selection.anchor.clone());
-    unluminous_word::media::insert_picture(&mut s, &png(), "png", 60.0, 30.0, "wrapped.png").unwrap();
+    unluminous_word::media::insert_picture(&mut s, &png(), "png", 60.0, 30.0, "wrapped.png")
+        .unwrap();
     let at = s.selection.head.clone();
     s.select_object(Pos::new(at.path.clone(), at.offset.saturating_sub('\u{FFFC}'.len_utf8())));
     s.set_object_wrap("square").unwrap();
@@ -566,7 +568,11 @@ fn a_document_using_round_two_features_opens_in_word_as_written() {
     s.insert_textbox(144.0, 72.0).unwrap();
     s.type_text("Words in a box");
     // A cross reference to the heading, a caption, and a table of contents with hyphen leaders.
-    let pages = unluminous_word::layout::lay_out(&s.document, &unluminous_core::FixedMetrics::default(), Default::default());
+    let pages = unluminous_word::layout::lay_out(
+        &s.document,
+        &unluminous_core::FixedMetrics::default(),
+        Default::default(),
+    );
     select(&mut s, "refers to the summary");
     s.selection = Selection::caret(s.selection.head.clone());
     let heading = s.find("Summary", true, true)[0].anchor.path.clone();
@@ -575,10 +581,15 @@ fn a_document_using_round_two_features_opens_in_word_as_written() {
     s.insert_caption("Figure", " The report", true, &pages);
     select(&mut s, "Report");
     s.selection = Selection::caret(s.selection.anchor.clone());
-    let options = unluminous_word::references::TocOptions { levels: 2, leader: "hyphen".into(), ..Default::default() };
+    let options = unluminous_word::references::TocOptions {
+        levels: 2,
+        leader: "hyphen".into(),
+        ..Default::default()
+    };
     s.insert_toc_with(&options, &pages);
     // An equation, copied from the equations fixture.
-    let equations = unluminous_word::read::open(&std::fs::read(fixture("equations")).unwrap()).unwrap();
+    let equations =
+        unluminous_word::read::open(&std::fs::read(fixture("equations")).unwrap()).unwrap();
     let equation = equations
         .body
         .iter()
@@ -599,24 +610,47 @@ fn a_document_using_round_two_features_opens_in_word_as_written() {
     let report = inspect(&path);
     assert_eq!(report["opened"], true, "Word did not open it: {}", report["error"]);
     let shapes = report["shapes"].as_array().unwrap();
-    assert!(shapes.iter().any(|sh| sh["text"].as_str().unwrap_or("").contains("Words in a box")), "the text box: {shapes:?}");
+    assert!(
+        shapes.iter().any(|sh| sh["text"].as_str().unwrap_or("").contains("Words in a box")),
+        "the text box: {shapes:?}"
+    );
     assert!(shapes.iter().any(|sh| sh["wrap"] == 0), "the picture is wrapped square: {shapes:?}");
     let tables = report["tableStyles"].as_array().unwrap();
     assert_eq!(tables.len(), 2, "the table was split in two: {tables:?}");
-    assert!(tables.iter().all(|t| t.as_str().unwrap_or("").starts_with("Grid Table 4")), "{tables:?}");
+    assert!(
+        tables.iter().all(|t| t.as_str().unwrap_or("").starts_with("Grid Table 4")),
+        "{tables:?}"
+    );
     let fields = report["fields"].as_array().unwrap();
-    let has_code = |code: &str| fields.iter().any(|f| f["code"].as_str().unwrap_or("").trim_start().starts_with(code));
+    let has_code = |code: &str| {
+        fields.iter().any(|f| f["code"].as_str().unwrap_or("").trim_start().starts_with(code))
+    };
     assert!(has_code("REF _Ref"), "the cross reference: {fields:?}");
     assert!(has_code("SEQ Figure"), "the caption: {fields:?}");
-    assert!(fields.iter().any(|f| f["code"].as_str().unwrap_or("").contains("TOC") && f["code"].as_str().unwrap_or("").contains("\\o \"1-2\"")), "the custom contents: {fields:?}");
+    assert!(
+        fields.iter().any(|f| f["code"].as_str().unwrap_or("").contains("TOC")
+            && f["code"].as_str().unwrap_or("").contains("\\o \"1-2\"")),
+        "the custom contents: {fields:?}"
+    );
     assert_eq!(report["tablesOfContents"], 1);
     assert_eq!(report["oMaths"].as_array().unwrap().len(), 1, "the equation");
     assert_eq!(report["heading1"]["font"], "Arial");
     assert_eq!(report["heading1"]["size"], 20.0);
-    assert!(report["revisions"].as_array().unwrap().iter().any(|r| r["type"] == 3), "the formatting change is a property revision: {}", report["revisions"]);
-    assert_eq!(report["protection"]["type"], 0, "Word sees tracked changes locked (wdAllowOnlyRevisions)");
+    assert!(
+        report["revisions"].as_array().unwrap().iter().any(|r| r["type"] == 3),
+        "the formatting change is a property revision: {}",
+        report["revisions"]
+    );
+    assert_eq!(
+        report["protection"]["type"], 0,
+        "Word sees tracked changes locked (wdAllowOnlyRevisions)"
+    );
     assert_eq!(report["protection"]["trackRevisions"], true);
-    assert!(report["customProperties"].as_array().unwrap().iter().any(|p| p["name"] == "Reviewer" && p["value"] == "Jason"));
+    assert!(report["customProperties"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|p| p["name"] == "Reviewer" && p["value"] == "Jason"));
     assert_eq!(report["properties"]["company"], "Black Rainbow Labs");
 }
 

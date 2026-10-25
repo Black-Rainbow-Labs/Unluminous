@@ -776,20 +776,26 @@ impl Session {
     /// reference mark change kind, and the reference in the text names it.
     pub fn convert_note(&mut self) -> Result<(), String> {
         let at = self.selection.ordered().0.clone();
-        let paragraph = position::paragraph(&self.document, &at.story, &at.path).ok_or("the caret is not in text")?;
+        let paragraph = position::paragraph(&self.document, &at.story, &at.path)
+            .ok_or("the caret is not in text")?;
         let mut offset = 0;
         let mut found = None;
         for run in &paragraph.runs {
             if (offset == at.offset || offset + run.len() == at.offset) && found.is_none() {
                 if let Content::Object(el) = &run.content {
                     if matches!(el.name.as_str(), "w:footnoteReference" | "w:endnoteReference") {
-                        found = Some((el.name == "w:endnoteReference", el.attr("w:id").and_then(|i| i.parse::<i64>().ok())));
+                        found = Some((
+                            el.name == "w:endnoteReference",
+                            el.attr("w:id").and_then(|i| i.parse::<i64>().ok()),
+                        ));
                     }
                 }
             }
             offset += run.len();
         }
-        let (from_endnote, Some(old_id)) = found.ok_or("the caret is not at a footnote or endnote reference")? else {
+        let (from_endnote, Some(old_id)) =
+            found.ok_or("the caret is not at a footnote or endnote reference")?
+        else {
             return Err("the note has no number".into());
         };
         for style in ["FootnoteText", "FootnoteReference", "EndnoteText", "EndnoteReference"] {
@@ -797,9 +803,12 @@ impl Session {
         }
         self.change(Scope::Whole, move |document, selection, _| {
             let to_endnote = !from_endnote;
-            let source = if from_endnote { document.endnotes.as_mut() } else { document.footnotes.as_mut() };
+            let source =
+                if from_endnote { document.endnotes.as_mut() } else { document.footnotes.as_mut() };
             let Some(source) = source else { return selection.clone() };
-            let Some(index) = source.notes.iter().position(|n| n.id() == Some(old_id)) else { return selection.clone() };
+            let Some(index) = source.notes.iter().position(|n| n.id() == Some(old_id)) else {
+                return selection.clone();
+            };
             let mut note = source.notes.remove(index);
             source.dirty = true;
             let new_id = ensure_notes_part(document, to_endnote);
@@ -810,8 +819,11 @@ impl Session {
             };
             note.el.name = kind.into();
             note.el.set_attr("w:id", new_id.to_string());
-            let (old_text, old_reference) =
-                if from_endnote { ("EndnoteText", "EndnoteReference") } else { ("FootnoteText", "FootnoteReference") };
+            let (old_text, old_reference) = if from_endnote {
+                ("EndnoteText", "EndnoteReference")
+            } else {
+                ("FootnoteText", "FootnoteReference")
+            };
             for block in &mut note.blocks {
                 let Block::Paragraph(p) = block else { continue };
                 if p.props.val_of("w:pStyle") == Some(old_text) {
@@ -830,7 +842,8 @@ impl Session {
                     }
                 }
             }
-            let target = if to_endnote { document.endnotes.as_mut() } else { document.footnotes.as_mut() };
+            let target =
+                if to_endnote { document.endnotes.as_mut() } else { document.footnotes.as_mut() };
             if let Some(target) = target {
                 target.notes.push(note);
                 target.dirty = true;
@@ -838,9 +851,15 @@ impl Session {
             if let Some(p) = position::paragraph_mut(document, &at.story, &at.path) {
                 for run in &mut p.runs {
                     if let Content::Object(el) = &mut run.content {
-                        let name = if from_endnote { "w:endnoteReference" } else { "w:footnoteReference" };
+                        let name =
+                            if from_endnote { "w:endnoteReference" } else { "w:footnoteReference" };
                         if el.name == name && el.attr("w:id") == Some(old_id.to_string().as_str()) {
-                            el.name = if to_endnote { "w:endnoteReference" } else { "w:footnoteReference" }.into();
+                            el.name = if to_endnote {
+                                "w:endnoteReference"
+                            } else {
+                                "w:footnoteReference"
+                            }
+                            .into();
                             el.set_attr("w:id", new_id.to_string());
                             if run.props.val_of("w:rStyle") == Some(old_reference) {
                                 let mut props = (*run.props).clone();
@@ -884,7 +903,11 @@ impl Session {
         };
         self.change(Scope::Story, move |document, selection, _| {
             if let Some(blocks) = position::story_mut(document, &StoryId::Header(rid.clone())) {
-                let props = blocks.iter().find_map(|b| b.as_paragraph()).map(|p| p.props.clone()).unwrap_or_default();
+                let props = blocks
+                    .iter()
+                    .find_map(|b| b.as_paragraph())
+                    .map(|p| p.props.clone())
+                    .unwrap_or_default();
                 let mut paragraph = Paragraph::new();
                 paragraph.props = props;
                 *blocks = vec![Block::Paragraph(paragraph)];

@@ -132,7 +132,12 @@ pub(super) fn heading(ui: &mut egui::Ui, text: &str) {
 }
 
 /// A row of buttons that each run an action from the shared list.
-pub(super) fn actions_row(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>, ids: &[&str]) {
+pub(super) fn actions_row(
+    ui: &mut egui::Ui,
+    doc: &mut Doc,
+    requests: &mut Vec<Request>,
+    ids: &[&str],
+) {
     ui.horizontal_wrapped(|ui| {
         for id in ids {
             let Some(action) = crate::services::word::actions::find(id) else { continue };
@@ -226,7 +231,9 @@ fn text(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<Re
         }
     });
     ui.horizontal(|ui| {
-        let mut colour = run.color.map_or(crate::theme::color::word_ink(), |c| egui::Color32::from_rgb(c.0, c.1, c.2));
+        let mut colour = run
+            .color
+            .map_or(crate::theme::color::word_ink(), |c| egui::Color32::from_rgb(c.0, c.1, c.2));
         ui.label("More colours");
         if ui.color_edit_button_srgba(&mut colour).changed() {
             let hex = format!("{:02X}{:02X}{:02X}", colour.r(), colour.g(), colour.b());
@@ -238,15 +245,28 @@ fn text(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<Re
     });
     ui.horizontal_wrapped(|ui| {
         ui.label("Theme");
-        for theme in ["text1", "text2", "accent1", "accent2", "accent3", "accent4", "accent5", "accent6"] {
-            let rgb = unluminous_word::styles::Resolver::new(&doc.session.document).theme.colour(theme);
-            let colour = rgb.map_or(crate::theme::color::word_ink(), |c| egui::Color32::from_rgb(c.0, c.1, c.2));
-            let button = egui::Button::new(RichText::new("■").color(colour).size(18.0)).frame(false);
+        for theme in
+            ["text1", "text2", "accent1", "accent2", "accent3", "accent4", "accent5", "accent6"]
+        {
+            let rgb =
+                unluminous_word::styles::Resolver::new(&doc.session.document).theme.colour(theme);
+            let colour = rgb.map_or(crate::theme::color::word_ink(), |c| {
+                egui::Color32::from_rgb(c.0, c.1, c.2)
+            });
+            let button =
+                egui::Button::new(RichText::new("■").color(colour).size(18.0)).frame(false);
             if ui.add(button).with_hint(theme).clicked() {
-                let hex = rgb.map_or_else(|| "000000".to_owned(), |c| format!("{:02X}{:02X}{:02X}", c.0, c.1, c.2));
+                let hex = rgb.map_or_else(
+                    || "000000".to_owned(),
+                    |c| format!("{:02X}{:02X}{:02X}", c.0, c.1, c.2),
+                );
                 let theme = theme.to_owned();
                 doc.session.format(move |rpr| {
-                    rpr.put(unluminous_word::xml::El::new("w:color").with("w:val", hex.clone()).with("w:themeColor", theme.clone()));
+                    rpr.put(
+                        unluminous_word::xml::El::new("w:color")
+                            .with("w:val", hex.clone())
+                            .with("w:themeColor", theme.clone()),
+                    );
                 });
             }
         }
@@ -282,15 +302,30 @@ fn text(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<Re
     ui.horizontal(|ui| {
         let mut scale = run.scale * 100.0;
         ui.label("Scale");
-        if ui.add(egui::DragValue::new(&mut scale).range(1.0..=600.0).speed(1.0).suffix("%")).changed() {
+        if ui
+            .add(egui::DragValue::new(&mut scale).range(1.0..=600.0).speed(1.0).suffix("%"))
+            .changed()
+        {
             let value = (scale.round() as i64).to_string();
-            doc.session.format(move |rpr| props::set_val(rpr, "w:w", (value != "100").then_some(value.as_str())));
+            doc.session.format(move |rpr| {
+                props::set_val(rpr, "w:w", (value != "100").then_some(value.as_str()))
+            });
         }
         let mut position = run.position;
         ui.label("Raise");
-        if ui.add(egui::DragValue::new(&mut position).range(-1584.0..=1584.0).speed(0.5).suffix(" pt")).changed() {
+        if ui
+            .add(
+                egui::DragValue::new(&mut position)
+                    .range(-1584.0..=1584.0)
+                    .speed(0.5)
+                    .suffix(" pt"),
+            )
+            .changed()
+        {
             let half = ((position * 2.0).round() as i64).to_string();
-            doc.session.format(move |rpr| props::set_val(rpr, "w:position", (half != "0").then_some(half.as_str())));
+            doc.session.format(move |rpr| {
+                props::set_val(rpr, "w:position", (half != "0").then_some(half.as_str()))
+            });
         }
     });
     ui.horizontal(|ui| {
@@ -303,7 +338,10 @@ fn text(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<Re
         if ui.checkbox(&mut on, "Ligatures").changed() {
             doc.session.format(move |rpr| {
                 if on {
-                    rpr.put(unluminous_word::xml::El::new("w14:ligatures").with("w14:val", "standardContextual"));
+                    rpr.put(
+                        unluminous_word::xml::El::new("w14:ligatures")
+                            .with("w14:val", "standardContextual"),
+                    );
                 } else {
                     rpr.remove_children("w14:ligatures");
                 }
@@ -319,7 +357,8 @@ fn text(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<Re
             ("Engrave", "w:imprint", run.imprint),
         ] {
             if ui.selectable_label(on, label).clicked() {
-                doc.session.format(move |rpr| props::set_on_off(rpr, element, (!on).then_some(true)));
+                doc.session
+                    .format(move |rpr| props::set_on_off(rpr, element, (!on).then_some(true)));
             }
         }
     });
@@ -430,14 +469,23 @@ fn paragraph(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut V
         });
     }
     let mut contextual = p.contextual;
-    if ui.checkbox(&mut contextual, "Don't add space between paragraphs of the same style").changed() {
-        doc.session.format_paragraphs(move |ppr| props::set_on_off(ppr, "w:contextualSpacing", contextual.then_some(true)));
+    if ui
+        .checkbox(&mut contextual, "Don't add space between paragraphs of the same style")
+        .changed()
+    {
+        doc.session.format_paragraphs(move |ppr| {
+            props::set_on_off(ppr, "w:contextualSpacing", contextual.then_some(true))
+        });
     }
     ui.horizontal(|ui| {
         ui.label("Outline level");
         let mut level = p.outline_level.map_or(10u8, |l| l + 1);
         egui::ComboBox::from_id_salt(("word-outline-level-of", &doc.key))
-            .selected_text(if level >= 10 { "Body text".to_owned() } else { format!("Level {level}") })
+            .selected_text(if level >= 10 {
+                "Body text".to_owned()
+            } else {
+                format!("Level {level}")
+            })
             .show_ui(ui, |ui| {
                 crate::components::controls::set_in_the_list_size(ui);
                 for n in 1..=9u8 {
@@ -447,7 +495,9 @@ fn paragraph(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut V
             });
         if level != p.outline_level.map_or(10u8, |l| l + 1) {
             let value = (level.min(10) - 1).to_string();
-            doc.session.format_paragraphs(move |ppr| props::set_val(ppr, "w:outlineLvl", Some(value.as_str())));
+            doc.session.format_paragraphs(move |ppr| {
+                props::set_val(ppr, "w:outlineLvl", Some(value.as_str()))
+            });
         }
     });
     heading(ui, "Pagination");
@@ -507,9 +557,12 @@ fn paragraph(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut V
         ui.label("Border on");
         for side in ["top", "bottom", "left", "right", "between"] {
             if ui.button(side).clicked() {
-                let style = doc.view.fields.get("border-style").cloned().unwrap_or_else(|| "single".into());
-                let size = doc.view.fields.get("border-width").cloned().unwrap_or_else(|| "4".into());
-                let colour = doc.view.fields.get("border-colour").cloned().unwrap_or_else(|| "auto".into());
+                let style =
+                    doc.view.fields.get("border-style").cloned().unwrap_or_else(|| "single".into());
+                let size =
+                    doc.view.fields.get("border-width").cloned().unwrap_or_else(|| "4".into());
+                let colour =
+                    doc.view.fields.get("border-colour").cloned().unwrap_or_else(|| "auto".into());
                 doc.session.format_paragraphs(move |ppr| {
                     let borders = ppr.child_or_insert("w:pBdr");
                     borders.put(
@@ -525,28 +578,48 @@ fn paragraph(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut V
         }
     });
     ui.horizontal(|ui| {
-        let mut style = doc.view.fields.get("border-style").cloned().unwrap_or_else(|| "single".into());
-        egui::ComboBox::from_id_salt(("word-border-style", &doc.key)).selected_text(&style).show_ui(ui, |ui| {
-            crate::components::controls::set_in_the_list_size(ui);
-            for name in ["single", "double", "dotted", "dashed", "thick", "wave"] {
-                ui.selectable_value(&mut style, name.to_owned(), name);
-            }
-        });
+        let mut style =
+            doc.view.fields.get("border-style").cloned().unwrap_or_else(|| "single".into());
+        egui::ComboBox::from_id_salt(("word-border-style", &doc.key))
+            .selected_text(&style)
+            .show_ui(ui, |ui| {
+                crate::components::controls::set_in_the_list_size(ui);
+                for name in ["single", "double", "dotted", "dashed", "thick", "wave"] {
+                    ui.selectable_value(&mut style, name.to_owned(), name);
+                }
+            });
         doc.view.fields.insert("border-style", style);
-        let mut width = doc.view.fields.get("border-width").and_then(|w| w.parse::<f32>().ok()).map_or(0.5, |w| w / 8.0);
-        if ui.add(egui::DragValue::new(&mut width).range(0.25..=6.0).speed(0.05).suffix(" pt")).changed() {
+        let mut width = doc
+            .view
+            .fields
+            .get("border-width")
+            .and_then(|w| w.parse::<f32>().ok())
+            .map_or(0.5, |w| w / 8.0);
+        if ui
+            .add(egui::DragValue::new(&mut width).range(0.25..=6.0).speed(0.05).suffix(" pt"))
+            .changed()
+        {
             doc.view.fields.insert("border-width", ((width * 8.0).round() as i64).to_string());
         }
         let mut colour = egui::Color32::BLACK; // any ground: a border colour, not a surface
         if ui.color_edit_button_srgba(&mut colour).changed() {
-            doc.view.fields.insert("border-colour", format!("{:02X}{:02X}{:02X}", colour.r(), colour.g(), colour.b()));
+            doc.view.fields.insert(
+                "border-colour",
+                format!("{:02X}{:02X}{:02X}", colour.r(), colour.g(), colour.b()),
+            );
         }
-        let mut shade = p.shading.map_or(egui::Color32::WHITE, |c| egui::Color32::from_rgb(c.0, c.1, c.2)); // any ground: a shading colour
+        let mut shade =
+            p.shading.map_or(egui::Color32::WHITE, |c| egui::Color32::from_rgb(c.0, c.1, c.2)); // any ground: a shading colour
         ui.label("Shading");
         if ui.color_edit_button_srgba(&mut shade).changed() {
             let hex = format!("{:02X}{:02X}{:02X}", shade.r(), shade.g(), shade.b());
             doc.session.format_paragraphs(move |ppr| {
-                ppr.put(unluminous_word::xml::El::new("w:shd").with("w:val", "clear").with("w:color", "auto").with("w:fill", hex.clone()));
+                ppr.put(
+                    unluminous_word::xml::El::new("w:shd")
+                        .with("w:val", "clear")
+                        .with("w:color", "auto")
+                        .with("w:fill", hex.clone()),
+                );
                 unluminous_word::order::sort(ppr);
             });
         }
@@ -574,9 +647,13 @@ fn paragraph(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut V
                 ))
                 .desired_width(90.0),
         );
-        for (label, kind) in
-            [("Left", "left"), ("Center", "center"), ("Right", "right"), ("Decimal", "decimal"), ("Bar", "bar")]
-        {
+        for (label, kind) in [
+            ("Left", "left"),
+            ("Center", "center"),
+            ("Right", "right"),
+            ("Decimal", "decimal"),
+            ("Bar", "bar"),
+        ] {
             if ui.button(label).clicked() {
                 add = field.trim().parse::<f32>().ok().map(|p| (p, kind));
             }
@@ -585,7 +662,9 @@ fn paragraph(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut V
     let mut leader = doc.view.fields.get("tab-leader").cloned().unwrap_or_else(|| "none".into());
     ui.horizontal(|ui| {
         ui.label("Leader");
-        for (label, value) in [("None", "none"), ("....", "dot"), ("----", "hyphen"), ("____", "underscore")] {
+        for (label, value) in
+            [("None", "none"), ("....", "dot"), ("----", "hyphen"), ("____", "underscore")]
+        {
             if ui.selectable_label(leader == value, label).clicked() {
                 leader = value.to_owned();
             }
@@ -596,7 +675,9 @@ fn paragraph(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut V
         let pos = twips(points);
         doc.session.format_paragraphs(move |ppr| {
             let tabs = ppr.child_or_insert("w:tabs");
-            let mut tab = unluminous_word::xml::El::new("w:tab").with("w:val", kind).with("w:pos", pos.clone());
+            let mut tab = unluminous_word::xml::El::new("w:tab")
+                .with("w:val", kind)
+                .with("w:pos", pos.clone());
             if leader != "none" {
                 tab.set_attr("w:leader", leader.clone());
             }
@@ -617,13 +698,18 @@ fn styles(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<
     let listed = unluminous_word::styles::Resolver::new(&doc.session.document).listed("paragraph");
     for (id, name) in listed {
         ui.horizontal(|ui| {
-            if ui.selectable_label(current == id, RichText::new(&name).size(look.font_size)).clicked() {
+            if ui
+                .selectable_label(current == id, RichText::new(&name).size(look.font_size))
+                .clicked()
+            {
                 if let Err(problem) = doc.session.apply_style(&id) {
                     requests.push(Request::Message(problem));
                 }
             }
             let modify = ui.small_button("Modify");
-            modify.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Modify {name}")));
+            modify.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Modify {name}"))
+            });
             if modify.clicked() {
                 doc.view.modify_style = Some(id.clone());
                 doc.view.panel.push(Level::ModifyStyle);
@@ -858,17 +944,37 @@ fn insert(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
     actions_row(ui, doc, requests, &["blank-page", "cover-page"]);
     heading(ui, "Date and time");
     ui.horizontal_wrapped(|ui| {
-        for format in ["M/d/yyyy", "dddd, MMMM d, yyyy", "MMMM d, yyyy", "d MMMM yyyy", "yyyy-MM-dd", "h:mm am/pm", "M/d/yyyy h:mm am/pm"] {
+        for format in [
+            "M/d/yyyy",
+            "dddd, MMMM d, yyyy",
+            "MMMM d, yyyy",
+            "d MMMM yyyy",
+            "yyyy-MM-dd",
+            "h:mm am/pm",
+            "M/d/yyyy h:mm am/pm",
+        ] {
             if ui.button(format).clicked() {
                 let code = format!("DATE \\@ \"{format}\"");
-                let shown = unluminous_word::fields::format_date(&unluminous_word::session::now_iso(), Some(format), format.contains('h'));
+                let shown = unluminous_word::fields::format_date(
+                    &unluminous_word::session::now_iso(),
+                    Some(format),
+                    format.contains('h'),
+                );
                 doc.session.insert_field(&code, &shown);
             }
         }
     });
     heading(ui, "Document property");
     ui.horizontal_wrapped(|ui| {
-        for (label, code) in [("Title", "TITLE"), ("Author", "AUTHOR"), ("Subject", "SUBJECT"), ("Keywords", "KEYWORDS"), ("File name", "FILENAME"), ("Pages", "NUMPAGES"), ("Words", "NUMWORDS")] {
+        for (label, code) in [
+            ("Title", "TITLE"),
+            ("Author", "AUTHOR"),
+            ("Subject", "SUBJECT"),
+            ("Keywords", "KEYWORDS"),
+            ("File name", "FILENAME"),
+            ("Pages", "NUMPAGES"),
+            ("Words", "NUMWORDS"),
+        ] {
             if ui.button(label).clicked() {
                 doc.session.insert_field(code, "");
                 let pages = doc.pages.clone();
@@ -1121,17 +1227,27 @@ fn references(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
     deeper(ui, doc, Level::NoteOptions);
     heading(ui, "Cross reference");
     let targets = doc.session.cross_reference_targets();
-    let mut target: usize = doc.view.fields.get("xref-target").and_then(|t| t.parse().ok()).unwrap_or(usize::MAX);
-    let shown = targets.get(target).map_or_else(|| "Choose a heading, caption or bookmark".to_owned(), |t| t.1.clone());
-    egui::ComboBox::from_id_salt(("word-xref", &doc.key)).selected_text(shown).width(ui.available_width() - 20.0).show_ui(ui, |ui| {
-        crate::components::controls::set_in_the_list_size(ui);
-        for (index, (_, label)) in targets.iter().enumerate() {
-            ui.selectable_value(&mut target, index, label);
-        }
-    });
+    let mut target: usize =
+        doc.view.fields.get("xref-target").and_then(|t| t.parse().ok()).unwrap_or(usize::MAX);
+    let shown = targets
+        .get(target)
+        .map_or_else(|| "Choose a heading, caption or bookmark".to_owned(), |t| t.1.clone());
+    egui::ComboBox::from_id_salt(("word-xref", &doc.key))
+        .selected_text(shown)
+        .width(ui.available_width() - 20.0)
+        .show_ui(ui, |ui| {
+            crate::components::controls::set_in_the_list_size(ui);
+            for (index, (_, label)) in targets.iter().enumerate() {
+                ui.selectable_value(&mut target, index, label);
+            }
+        });
     doc.view.fields.insert("xref-target", target.to_string());
     ui.horizontal_wrapped(|ui| {
-        for (label, what) in [("Insert its text", "text"), ("Its page number", "page"), ("Above or below", "above-below")] {
+        for (label, what) in [
+            ("Insert its text", "text"),
+            ("Its page number", "page"),
+            ("Above or below", "above-below"),
+        ] {
             if ui.button(label).clicked() {
                 if let Some((path, _)) = targets.get(target) {
                     let pages = doc.pages.clone();
@@ -1208,7 +1324,8 @@ fn print(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
     ui.horizontal(|ui| {
         ui.label("Pages per sheet");
         for value in ["1", "2", "4"] {
-            let chosen = doc.view.fields.get("print-per-sheet").map_or("1", String::as_str) == value;
+            let chosen =
+                doc.view.fields.get("print-per-sheet").map_or("1", String::as_str) == value;
             if ui.selectable_label(chosen, value).clicked() {
                 doc.view.fields.insert("print-per-sheet", value.to_owned());
             }
@@ -1233,7 +1350,10 @@ fn print(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
         });
         match result {
             Ok(said) => requests.push(Request::Message(said)),
-            Err(problem) => requests.push(Request::Notice { text: problem, kind: crate::components::toast::Kind::Problem }),
+            Err(problem) => requests.push(Request::Notice {
+                text: problem,
+                kind: crate::components::toast::Kind::Problem,
+            }),
         }
     }
     ui.label(
@@ -1261,7 +1381,7 @@ fn picture(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
         doc.view.fields.insert("picture-x", offset(info.horizontal.1));
         doc.view.fields.insert("picture-y", offset(info.vertical.1));
     }
-    let mut locked = !doc.view.fields.get("picture-free").is_some_and(|v| v == "1");
+    let mut locked = doc.view.fields.get("picture-free").is_none_or(|v| v != "1");
     let mut apply = false;
     ui.horizontal(|ui| {
         ui.label("Width");
@@ -1276,14 +1396,17 @@ fn picture(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
         doc.view.fields.insert("picture-free", if locked { "0" } else { "1" }.to_owned());
     }
     if apply {
-        let read = |name: &str| doc.view.fields.get(name).and_then(|v| v.trim().parse::<f32>().ok());
+        let read =
+            |name: &str| doc.view.fields.get(name).and_then(|v| v.trim().parse::<f32>().ok());
         if let (Some(w), Some(h)) = (read("picture-width"), read("picture-height")) {
             let width_moved = (w - info.width).abs() > 0.05;
             let height_moved = (h - info.height).abs() > 0.05;
             result = match (locked, width_moved, height_moved) {
                 (_, false, false) => Ok(()),
                 (true, true, _) => doc.session.set_object_size(w, None),
-                (true, false, true) => doc.session.set_object_size(info.width * h / info.height.max(0.01), Some(h)),
+                (true, false, true) => {
+                    doc.session.set_object_size(info.width * h / info.height.max(0.01), Some(h))
+                }
                 (false, _, _) => doc.session.set_object_size(w, Some(h)),
             };
         }
@@ -1308,11 +1431,21 @@ fn picture(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
         heading(ui, "Position");
         let mut chosen =
             doc.view.fields.entry("picture-relative").or_insert_with(|| "page".to_owned()).clone();
-        egui::ComboBox::from_id_salt("word-picture-relative").selected_text(&chosen).show_ui(ui, |ui| {
-            for name in ["page", "margin", "column", "page/paragraph", "margin/paragraph", "column/paragraph"] {
-                ui.selectable_value(&mut chosen, name.to_owned(), name);
-            }
-        });
+        egui::ComboBox::from_id_salt("word-picture-relative").selected_text(&chosen).show_ui(
+            ui,
+            |ui| {
+                for name in [
+                    "page",
+                    "margin",
+                    "column",
+                    "page/paragraph",
+                    "margin/paragraph",
+                    "column/paragraph",
+                ] {
+                    ui.selectable_value(&mut chosen, name.to_owned(), name);
+                }
+            },
+        );
         doc.view.fields.insert("picture-relative", chosen.clone());
         let mut place = false;
         ui.horizontal(|ui| {
@@ -1324,7 +1457,9 @@ fn picture(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
             ui.add(egui::TextEdit::singleline(y).desired_width(48.0));
             place = ui.button("Set").clicked();
         });
-        ui.label(RichText::new(format!("From {} and {}", info.horizontal.0, info.vertical.0)).weak());
+        ui.label(
+            RichText::new(format!("From {} and {}", info.horizontal.0, info.vertical.0)).weak(),
+        );
         if place {
             let read = |name: &str| {
                 doc.view.fields.get(name).and_then(|v| v.trim().parse::<f32>().ok()).unwrap_or(0.0)
@@ -1332,7 +1467,12 @@ fn picture(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
             result = doc.session.set_object_position(&chosen, read("picture-x"), read("picture-y"));
         }
         heading(ui, "Order");
-        actions_row(ui, doc, requests, &["bring-forward", "send-backward", "bring-to-front", "send-to-back"]);
+        actions_row(
+            ui,
+            doc,
+            requests,
+            &["bring-forward", "send-backward", "bring-to-front", "send-to-back"],
+        );
     }
     if info.kind == "Picture" {
         heading(ui, "Crop");
@@ -1356,14 +1496,13 @@ fn picture(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
     {
         let alt = doc.view.fields.entry("picture-alt").or_default();
         ui.add(
-            egui::TextEdit::multiline(alt)
-                .desired_rows(2)
-                .desired_width(f32::INFINITY)
-                .hint_text(crate::components::controls::placeholder(
+            egui::TextEdit::multiline(alt).desired_rows(2).desired_width(f32::INFINITY).hint_text(
+                crate::components::controls::placeholder(
                     "Describe it for a reader who cannot see it",
                     &egui::TextStyle::Body.resolve(ui.style()),
                     crate::theme::color::text_faint(),
-                )),
+                ),
+            ),
         );
     }
     ui.horizontal(|ui| {
@@ -1787,11 +1926,26 @@ fn document(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
     heading(ui, "Views");
     actions_row(ui, doc, requests, &["read-mode", "print-layout", "outline-view", "new-window"]);
     heading(ui, "Show");
-    actions_row(ui, doc, requests, &["ruler", "gridlines", "formatting-marks", "navigation", "field-codes"]);
+    actions_row(
+        ui,
+        doc,
+        requests,
+        &["ruler", "gridlines", "formatting-marks", "navigation", "field-codes"],
+    );
     heading(ui, "Field shading");
-    actions_row(ui, doc, requests, &["field-shading-always", "field-shading-selected", "field-shading-never"]);
+    actions_row(
+        ui,
+        doc,
+        requests,
+        &["field-shading-always", "field-shading-selected", "field-shading-never"],
+    );
     heading(ui, "Zoom");
-    let mut percent = doc.view.fields.get("zoom").cloned().unwrap_or_else(|| format!("{:.0}", doc.view.zoom * 100.0));
+    let mut percent = doc
+        .view
+        .fields
+        .get("zoom")
+        .cloned()
+        .unwrap_or_else(|| format!("{:.0}", doc.view.zoom * 100.0));
     let mut set = false;
     ui.horizontal(|ui| {
         ui.label("Percent");
@@ -1814,7 +1968,12 @@ fn document(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
             }
         }
     });
-    actions_row(ui, doc, requests, &["fit-width", "fit-page", "multiple-pages", "zoom-out", "zoom-in"]);
+    actions_row(
+        ui,
+        doc,
+        requests,
+        &["fit-width", "fit-page", "multiple-pages", "zoom-out", "zoom-in"],
+    );
     heading(ui, "Find");
     actions_row(ui, doc, requests, &["find", "replace"]);
     heading(ui, "Export");

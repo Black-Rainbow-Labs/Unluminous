@@ -437,16 +437,28 @@ fn linked_boxes(ctx: &Ctx, chain: i64) -> Vec<(usize, i64, f32, f32, El)> {
             }
             let Some(shape) = crate::read::descendant(node, "wps:wsp") else { return };
             let place = match (shape.child("wps:txbx"), shape.child("wps:linkedTxbx")) {
-                (Some(txbx), _) if txbx.attr("id").and_then(|c| c.parse::<i64>().ok()) == Some(chain) => Some(0),
-                (_, Some(link)) if link.attr("id").and_then(|c| c.parse::<i64>().ok()) == Some(chain) => {
+                (Some(txbx), _)
+                    if txbx.attr("id").and_then(|c| c.parse::<i64>().ok()) == Some(chain) =>
+                {
+                    Some(0)
+                }
+                (_, Some(link))
+                    if link.attr("id").and_then(|c| c.parse::<i64>().ok()) == Some(chain) =>
+                {
                     link.attr("seq").and_then(|c| c.parse::<usize>().ok())
                 }
                 _ => None,
             };
             let Some(place) = place else { return };
             let extent = node.child("wp:extent");
-            let size = |name: &str| props::emu(extent.and_then(|e| e.attr(name)).and_then(props::number).unwrap_or(0.0));
-            let id = node.child("wp:docPr").and_then(|d| d.attr("id")).and_then(|i| i.parse().ok()).unwrap_or(0);
+            let size = |name: &str| {
+                props::emu(extent.and_then(|e| e.attr(name)).and_then(props::number).unwrap_or(0.0))
+            };
+            let id = node
+                .child("wp:docPr")
+                .and_then(|d| d.attr("id"))
+                .and_then(|i| i.parse().ok())
+                .unwrap_or(0);
             let body = shape.child("wps:bodyPr").cloned().unwrap_or_default();
             if !found.iter().any(|(p, ..): &(usize, i64, f32, f32, El)| *p == place) {
                 found.push((place, id, size("cx"), size("cy"), body));
@@ -466,7 +478,9 @@ fn linked_boxes(ctx: &Ctx, chain: i64) -> Vec<(usize, i64, f32, f32, El)> {
 
 /// The height a text box's text has, inside its top and bottom insets.
 fn box_room(body: &El, h: f32) -> f32 {
-    let inset = |name: &str, fallback: f64| props::emu(body.attr(name).and_then(props::number).unwrap_or(fallback));
+    let inset = |name: &str, fallback: f64| {
+        props::emu(body.attr(name).and_then(props::number).unwrap_or(fallback))
+    };
     (h - inset("tIns", 45_720.0) - inset("bIns", 45_720.0)).max(0.0)
 }
 
@@ -479,7 +493,10 @@ pub fn split_into_boxes(chunks: Vec<Chunk>, capacities: &[f32]) -> Vec<Vec<Chunk
     let mut used = 0.0;
     let mut placed = 0.0;
     for mut chunk in chunks {
-        while which < capacities.len() && used + chunk.height > capacities[which] + 0.01 && used > 0.0 {
+        while which < capacities.len()
+            && used + chunk.height > capacities[which] + 0.01
+            && used > 0.0
+        {
             which += 1;
             used = 0.0;
         }
@@ -495,7 +512,9 @@ pub fn split_into_boxes(chunks: Vec<Chunk>, capacities: &[f32]) -> Vec<Vec<Chunk
 /// The lines of a chain of linked text boxes that land in box `seq`, at its insets and anchored at its top.
 fn linked_inside(ctx: &Ctx, chain: i64, seq: usize, body: &El, h: f32) -> Vec<Chunk> {
     let boxes = linked_boxes(ctx, chain);
-    let Some((_, first_id, first_w, first_h, first_body)) = boxes.first().cloned() else { return Vec::new() };
+    let Some((_, first_id, first_w, first_h, first_body)) = boxes.first().cloned() else {
+        return Vec::new();
+    };
     let chunks = text_inside(ctx, first_id, &first_body, first_w, first_h.max(1.0e6));
     let mut capacities: Vec<f32> = Vec::new();
     for (place, _, _, height, body) in &boxes {
@@ -518,7 +537,12 @@ fn linked_inside(ctx: &Ctx, chain: i64, seq: usize, body: &El, h: f32) -> Vec<Ch
 pub fn items(float: &Float, rect: Rect) -> Vec<Item> {
     let mut items = Vec::new();
     if let Some((story, path, offset)) = &float.source {
-        items.push(Item::Object { rect, story: story.clone(), path: path.clone(), offset: *offset });
+        items.push(Item::Object {
+            rect,
+            story: story.clone(),
+            path: path.clone(),
+            offset: *offset,
+        });
     }
     match &float.preset {
         Some(preset) if preset != "rect" => items.push(Item::Shape {

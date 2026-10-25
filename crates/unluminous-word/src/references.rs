@@ -347,8 +347,10 @@ impl Session {
     /// Field do; every other field keeps its result. `SEQ` still counts from the top of the document.
     pub fn update_selected_fields(&mut self, pages: &Pages) -> usize {
         let (from, to) = (self.selection.ordered().0.clone(), self.selection.ordered().1.clone());
-        let paths: Vec<Path> =
-            crate::edit::covered(&self.document, &from, &to).into_iter().map(|(path, _, _)| path).collect();
+        let paths: Vec<Path> = crate::edit::covered(&self.document, &from, &to)
+            .into_iter()
+            .map(|(path, _, _)| path)
+            .collect();
         self.update_fields_where(pages, Some((from.story, paths)))
     }
 
@@ -374,7 +376,9 @@ impl Session {
                         if field.locked {
                             continue;
                         }
-                        let wanted = only.as_ref().is_none_or(|(s, paths)| *s == story && paths.contains(&path));
+                        let wanted = only
+                            .as_ref()
+                            .is_none_or(|(s, paths)| *s == story && paths.contains(&path));
                         if let Some(result) = fields::evaluate(&field.code, &mut env) {
                             if result != field.result && wanted {
                                 results.push((story.clone(), path.clone(), index, result));

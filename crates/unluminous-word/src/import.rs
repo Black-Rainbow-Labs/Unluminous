@@ -50,7 +50,9 @@ fn inline(text: &str) -> String {
             i += 2;
             continue;
         }
-        if (chars[i] == '*' || chars[i] == '_') && (italic || chars.get(i + 1).is_some_and(|c| !c.is_whitespace())) {
+        if (chars[i] == '*' || chars[i] == '_')
+            && (italic || chars.get(i + 1).is_some_and(|c| !c.is_whitespace()))
+        {
             out.push_str(if italic { "</i>" } else { "<i>" });
             italic = !italic;
             i += 1;
@@ -74,9 +76,17 @@ fn inline(text: &str) -> String {
                         let words: String = chars[start + 1..close].iter().collect();
                         let address: String = chars[close + 2..close + 2 + end].iter().collect();
                         if picture {
-                            out.push_str(&format!("<img alt=\"{}\" src=\"{}\">", escape(&words), escape(&address)));
+                            out.push_str(&format!(
+                                "<img alt=\"{}\" src=\"{}\">",
+                                escape(&words),
+                                escape(&address)
+                            ));
                         } else {
-                            out.push_str(&format!("<a href=\"{}\">{}</a>", escape(&address), escape(&words)));
+                            out.push_str(&format!(
+                                "<a href=\"{}\">{}</a>",
+                                escape(&address),
+                                escape(&words)
+                            ));
                         }
                         i = close + 3 + end;
                         continue;
@@ -149,8 +159,14 @@ pub fn markdown_to_html(text: &str) -> String {
             out.push_str("<hr>");
             continue;
         }
-        let bullet = trimmed.strip_prefix("- ").or_else(|| trimmed.strip_prefix("* ")).or_else(|| trimmed.strip_prefix("+ "));
-        let number = trimmed.split_once(". ").filter(|(n, _)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit())).map(|(_, rest)| rest);
+        let bullet = trimmed
+            .strip_prefix("- ")
+            .or_else(|| trimmed.strip_prefix("* "))
+            .or_else(|| trimmed.strip_prefix("+ "));
+        let number = trimmed
+            .split_once(". ")
+            .filter(|(n, _)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+            .map(|(_, rest)| rest);
         if let Some((kind, item)) = bullet.map(|b| ("ul", b)).or(number.map(|n| ("ol", n))) {
             flush(&mut out, &mut paragraph);
             if list != Some(kind) {
@@ -173,7 +189,8 @@ pub fn markdown_to_html(text: &str) -> String {
             if trimmed.chars().all(|c| matches!(c, '|' | '-' | ':' | ' ')) {
                 continue;
             }
-            let cells: Vec<String> = trimmed.trim_matches('|').split('|').map(|c| inline(c.trim())).collect();
+            let cells: Vec<String> =
+                trimmed.trim_matches('|').split('|').map(|c| inline(c.trim())).collect();
             out.push_str(&format!("<p>{}</p>", cells.join("&#9;")));
             continue;
         }
@@ -183,7 +200,10 @@ pub fn markdown_to_html(text: &str) -> String {
     flush(&mut out, &mut paragraph);
     end_list(&mut out, &mut list);
     if let Some(lines) = code {
-        out.push_str(&format!("<pre>{}</pre>", lines.iter().map(|l| escape(l)).collect::<Vec<_>>().join("<br>")));
+        out.push_str(&format!(
+            "<pre>{}</pre>",
+            lines.iter().map(|l| escape(l)).collect::<Vec<_>>().join("<br>")
+        ));
     }
     out.push_str("</body></html>");
     out
@@ -242,7 +262,10 @@ mod tests {
             &mut document,
             "# A title\n\nSome **bold** and *italic* text with [a link](https://example.com).\n\n- one\n- two\n\n1. first\n\n> quoted\n\n```\nlet x = 1;\n```\n",
         );
-        let styles: Vec<String> = paragraphs.iter().map(|p| p.props.val_of("w:pStyle").unwrap_or("Normal").to_owned()).collect();
+        let styles: Vec<String> = paragraphs
+            .iter()
+            .map(|p| p.props.val_of("w:pStyle").unwrap_or("Normal").to_owned())
+            .collect();
         let texts: Vec<String> = paragraphs.iter().map(|p| p.visible_text()).collect();
         assert_eq!(texts[0], "A title");
         assert_eq!(styles[0], "Heading1");

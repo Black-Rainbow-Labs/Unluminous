@@ -71,8 +71,14 @@ fn pages(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc) {
             for (index, page) in doc.pages.pages.iter().enumerate() {
                 let scale = width / page.width.max(1.0);
                 let height = page.height * scale;
-                let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), height + 22.0), egui::Sense::click());
-                let sheet = Rect::from_min_size(egui::pos2(rect.center().x - width / 2.0, rect.top()), Vec2::new(width, height));
+                let (rect, response) = ui.allocate_exact_size(
+                    Vec2::new(ui.available_width(), height + 22.0),
+                    egui::Sense::click(),
+                );
+                let sheet = Rect::from_min_size(
+                    egui::pos2(rect.center().x - width / 2.0, rect.top()),
+                    Vec2::new(width, height),
+                );
                 if ui.is_rect_visible(sheet) {
                     paint_thumbnail(ui.painter(), page, sheet, scale, current == Some(index));
                 }
@@ -83,7 +89,13 @@ fn pages(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc) {
                     egui::FontId::proportional(look.font_size * 0.85),
                     look.palette.text_dim,
                 );
-                response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Page {}", page.number)));
+                response.widget_info(|| {
+                    egui::WidgetInfo::labeled(
+                        egui::WidgetType::Button,
+                        true,
+                        format!("Page {}", page.number),
+                    )
+                });
                 if response.clicked() {
                     chosen = page.first.clone().or(Some(Pos::new(vec![0], 0)));
                 }
@@ -98,10 +110,20 @@ fn pages(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc) {
 
 /// One page drawn small: the sheet, a grey line for each run of text, a box for each picture and shape,
 /// and the rules.
-fn paint_thumbnail(painter: &egui::Painter, page: &unluminous_word::layout::Page, sheet: Rect, scale: f32, here: bool) {
+fn paint_thumbnail(
+    painter: &egui::Painter,
+    page: &unluminous_word::layout::Page,
+    sheet: Rect,
+    scale: f32,
+    here: bool,
+) {
     use unluminous_word::layout::Item;
     let paper = crate::theme::color::word_paper();
-    painter.rect_filled(sheet.translate(Vec2::new(0.0, 1.5)), 1.0, egui::Color32::from_black_alpha(60)); // any ground: the sheet's shadow
+    painter.rect_filled(
+        sheet.translate(Vec2::new(0.0, 1.5)),
+        1.0,
+        egui::Color32::from_black_alpha(60),
+    ); // any ground: the sheet's shadow
     painter.rect_filled(sheet, 0.0, paper);
     let at = |x: f32, y: f32| sheet.min + Vec2::new(x * scale, y * scale);
     let grey = egui::Color32::from_gray(150); // any ground: text drawn on the white sheet
@@ -113,14 +135,30 @@ fn paint_thumbnail(painter: &egui::Painter, page: &unluminous_word::layout::Page
                 let y = text.baseline - text.style.size * 0.35;
                 let width = (last - first + text.style.size * 0.5).max(1.0);
                 let color = if text.style.bold { egui::Color32::from_gray(110) } else { grey }; // any ground: on the sheet
-                painter.rect_filled(Rect::from_min_size(at(*first, y), Vec2::new(width * scale, size)), 0.0, color);
+                painter.rect_filled(
+                    Rect::from_min_size(at(*first, y), Vec2::new(width * scale, size)),
+                    0.0,
+                    color,
+                );
             }
-            Item::Picture { rect, .. } | Item::Shape { rect, .. } | Item::Placeholder { rect, .. } => {
-                painter.rect_filled(Rect::from_min_size(at(rect.x, rect.y), Vec2::new(rect.w * scale, rect.h * scale)), 0.0, egui::Color32::from_gray(205)); // any ground: on the sheet
+            Item::Picture { rect, .. }
+            | Item::Shape { rect, .. }
+            | Item::Placeholder { rect, .. } => {
+                painter.rect_filled(
+                    Rect::from_min_size(
+                        at(rect.x, rect.y),
+                        Vec2::new(rect.w * scale, rect.h * scale),
+                    ),
+                    0.0,
+                    egui::Color32::from_gray(205),
+                ); // any ground: on the sheet
             }
             Item::Fill { rect, color } => {
                 painter.rect_filled(
-                    Rect::from_min_size(at(rect.x, rect.y), Vec2::new(rect.w * scale, rect.h * scale)),
+                    Rect::from_min_size(
+                        at(rect.x, rect.y),
+                        Vec2::new(rect.w * scale, rect.h * scale),
+                    ),
                     0.0,
                     egui::Color32::from_rgb(color.0, color.1, color.2),
                 );
@@ -132,7 +170,12 @@ fn paint_thumbnail(painter: &egui::Painter, page: &unluminous_word::layout::Page
         }
     }
     if here {
-        painter.rect_stroke(sheet.expand(2.0), 2.0, Stroke::new(2.0, crate::theme::color::accent()), egui::StrokeKind::Outside);
+        painter.rect_stroke(
+            sheet.expand(2.0),
+            2.0,
+            Stroke::new(2.0, crate::theme::color::accent()),
+            egui::StrokeKind::Outside,
+        );
     }
 }
 

@@ -829,21 +829,17 @@ pub fn from_rtf(rtf: &str) -> Vec<Paragraph> {
                     "qj" => align = Some("both"),
                     "ql" => align = None,
                     "par" | "sect" | "page" => end_paragraph(&mut out, &mut paragraph, align),
-                    "line" => {
-                        if !state.skip {
-                            paragraph.runs.push(Run {
-                                content: Content::Break(El::new("w:br")),
-                                ..Run::text("", state.format.props())
-                            });
-                        }
+                    "line" if !state.skip => {
+                        paragraph.runs.push(Run {
+                            content: Content::Break(El::new("w:br")),
+                            ..Run::text("", state.format.props())
+                        });
                     }
-                    "tab" => {
-                        if !state.skip {
-                            paragraph.runs.push(Run {
-                                content: Content::Tab,
-                                ..Run::text("", state.format.props())
-                            });
-                        }
+                    "tab" if !state.skip => {
+                        paragraph.runs.push(Run {
+                            content: Content::Tab,
+                            ..Run::text("", state.format.props())
+                        });
                     }
                     "cell" => push_text(&mut paragraph, &state, "\t"),
                     "row" => end_paragraph(&mut out, &mut paragraph, align),
@@ -1013,7 +1009,7 @@ mod tests {
             .find(|r| matches!(&r.content, Content::Text(t) if t.contains("red")))
             .unwrap();
         assert_eq!(red.props.val_of("w:color"), Some("FF0000"));
-        assert_eq!(red.props.val_of("w:rFonts").is_none(), true);
+        assert!(red.props.val_of("w:rFonts").is_none());
         assert_eq!(red.props.child("w:rFonts").and_then(|f| f.attr("w:ascii")), Some("Arial"));
     }
 

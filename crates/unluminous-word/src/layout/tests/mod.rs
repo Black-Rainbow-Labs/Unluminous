@@ -17,7 +17,7 @@ mod wrapping;
 
 use unluminous_core::FixedMetrics;
 
-use crate::layout::{CaretLine, Item, Options, Page, Pages, TextItem, lay_out};
+use crate::layout::{lay_out, CaretLine, Item, Options, Page, Pages, TextItem};
 use crate::model::Document;
 
 const W_NS: &str = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -177,12 +177,7 @@ pub fn cell(width: u32, props: &str, content: &str) -> String {
 
 /// The lines of the paragraphs in the cell `(row, column)` of the table at body block `index`, with the
 /// page of each.
-pub fn cell_lines<'a>(
-    pages: &'a Pages,
-    index: u32,
-    row: u32,
-    column: u32,
-) -> Vec<(usize, &'a CaretLine)> {
+pub fn cell_lines(pages: &Pages, index: u32, row: u32, column: u32) -> Vec<(usize, &CaretLine)> {
     let mut out = Vec::new();
     for (page_index, page) in pages.pages.iter().enumerate() {
         for line in &page.carets {

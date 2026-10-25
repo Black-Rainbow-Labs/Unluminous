@@ -11,11 +11,11 @@ pub mod format_bar;
 pub mod keys;
 pub mod navigation;
 pub mod objects;
+pub mod outline;
 pub mod overlays;
 pub mod page_view;
 pub mod panel;
 pub mod panel_setup;
-pub mod outline;
 pub mod settings_page;
 pub mod spelling;
 pub mod views;
@@ -45,13 +45,23 @@ pub fn show(doc: &mut Doc, config: &Config, ui: &mut egui::Ui, look: &Look<'_>) 
     let navigation_width =
         if doc.view.navigation { (NAVIGATION * scale).min(area.width() * 0.3) } else { 0.0 };
     let status_height = views::STATUS * scale;
-    let status = Rect::from_min_max(egui::pos2(area.left(), area.bottom() - status_height), area.max);
+    let status =
+        Rect::from_min_max(egui::pos2(area.left(), area.bottom() - status_height), area.max);
     // A document opened read only, or with a recovered copy to offer, has a strip under the bar.
     let banner_height = if banner::wanted(doc) { banner::HEIGHT * scale } else { 0.0 };
-    let banner = Rect::from_min_size(egui::pos2(area.left(), bar.bottom()), Vec2::new(area.width(), banner_height));
-    let body = Rect::from_min_max(egui::pos2(area.left(), banner.bottom()), egui::pos2(area.right(), status.top()));
-    let ruler_height =
-        if doc.view.ruler && doc.view.mode == crate::services::word::Mode::Print { views::RULER * scale } else { 0.0 };
+    let banner = Rect::from_min_size(
+        egui::pos2(area.left(), bar.bottom()),
+        Vec2::new(area.width(), banner_height),
+    );
+    let body = Rect::from_min_max(
+        egui::pos2(area.left(), banner.bottom()),
+        egui::pos2(area.right(), status.top()),
+    );
+    let ruler_height = if doc.view.ruler && doc.view.mode == crate::services::word::Mode::Print {
+        views::RULER * scale
+    } else {
+        0.0
+    };
     let ruler = Rect::from_min_max(
         egui::pos2(body.left() + navigation_width, body.top()),
         egui::pos2(body.right() - panel_width, body.top() + ruler_height),
@@ -67,7 +77,10 @@ pub fn show(doc: &mut Doc, config: &Config, ui: &mut egui::Ui, look: &Look<'_>) 
     }
     if std::mem::take(&mut doc.view.new_window) {
         let n = doc.windows.len() + 2;
-        requests.push(Request::OpenKeyedTab { key: format!("{}#{n}", doc.key), label: format!("{}:{n}", doc.label()) });
+        requests.push(Request::OpenKeyedTab {
+            key: format!("{}#{n}", doc.key),
+            label: format!("{}:{n}", doc.label()),
+        });
     }
     // Keys first, against the layout the person is looking at, then lay out what they changed.
     // A field of the panel or the find bar takes typing for itself; the window keeps egui's own focus on a
@@ -83,7 +96,8 @@ pub fn show(doc: &mut Doc, config: &Config, ui: &mut egui::Ui, look: &Look<'_>) 
     }
     // An edit the document's protection refused says why.
     if let Some(refused) = doc.session.refused.take() {
-        requests.push(Request::Notice { text: refused, kind: crate::components::toast::Kind::Problem });
+        requests
+            .push(Request::Notice { text: refused, kind: crate::components::toast::Kind::Problem });
     }
     doc.lay_out(look.renderer);
     match doc.view.mode {
@@ -123,8 +137,13 @@ fn read_keys(ui: &egui::Ui, doc: &mut Doc) {
     for event in ui.input(|i| i.events.clone()) {
         if let egui::Event::Key { key, pressed: true, .. } = event {
             match key {
-                egui::Key::PageDown | egui::Key::ArrowDown | egui::Key::ArrowRight | egui::Key::Space => doc.view.scroll += step,
-                egui::Key::PageUp | egui::Key::ArrowUp | egui::Key::ArrowLeft => doc.view.scroll = (doc.view.scroll - step).max(0.0),
+                egui::Key::PageDown
+                | egui::Key::ArrowDown
+                | egui::Key::ArrowRight
+                | egui::Key::Space => doc.view.scroll += step,
+                egui::Key::PageUp | egui::Key::ArrowUp | egui::Key::ArrowLeft => {
+                    doc.view.scroll = (doc.view.scroll - step).max(0.0)
+                }
                 egui::Key::Escape => {
                     doc.view.mode = crate::services::word::Mode::Print;
                     doc.laid = u64::MAX;

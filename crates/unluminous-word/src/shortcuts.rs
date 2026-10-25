@@ -39,7 +39,9 @@ pub fn field_ranges(document: &Document, story: &crate::position::StoryId) -> Ve
             }
             let wrap = run.wraps.iter().find(|w| w.el.name == "w:fldSimple").map(|w| w.id);
             match (wrap, simple) {
-                (Some(id), Some((open_id, start, _))) if id == open_id => simple = Some((id, start, offset + run.len())),
+                (Some(id), Some((open_id, start, _))) if id == open_id => {
+                    simple = Some((id, start, offset + run.len()))
+                }
                 (wrap, previous) => {
                     if let Some((_, start, end)) = previous {
                         fields.push((at(start), at(end)));
@@ -62,7 +64,9 @@ impl Session {
     pub fn hanging_indent(&mut self, more: bool) {
         self.format_paragraphs(move |ppr| {
             let ind = ppr.child_or_insert("w:ind");
-            let read = |el: &El, name: &str| el.attr(name).and_then(|v| v.parse::<i64>().ok()).unwrap_or(0);
+            let read = |el: &El, name: &str| {
+                el.attr(name).and_then(|v| v.parse::<i64>().ok()).unwrap_or(0)
+            };
             let left = read(ind, "w:left").max(read(ind, "w:start"));
             let hanging = read(ind, "w:hanging");
             let (left, hanging) = if more {
@@ -85,7 +89,9 @@ impl Session {
     pub fn reset_paragraph(&mut self) {
         self.format_paragraphs(|ppr| {
             let keep = ["w:pStyle", "w:numPr", "w:sectPr", "w:rPr", "w:pPrChange"];
-            ppr.children.retain(|n| matches!(n, crate::xml::Node::El(e) if keep.contains(&e.name.as_str())));
+            ppr.children.retain(
+                |n| matches!(n, crate::xml::Node::El(e) if keep.contains(&e.name.as_str())),
+            );
         });
     }
 
@@ -142,16 +148,26 @@ impl Session {
         let check = {
             let mut copy = self.document.clone();
             let blocks = position::story_mut(&mut copy, &at.story).ok_or("the story has gone")?;
-            let (container, _) = position::container_mut(blocks, &at.path).ok_or("the caret is not in a paragraph")?;
+            let (container, _) = position::container_mut(blocks, &at.path)
+                .ok_or("the caret is not in a paragraph")?;
             let other = if up { index.checked_sub(1) } else { Some(index + 1) };
             other.filter(|o| *o < container.len()).is_some()
         };
         if !check {
-            return Err(if up { "this is the first paragraph here" } else { "this is the last paragraph here" }.into());
+            return Err(if up {
+                "this is the first paragraph here"
+            } else {
+                "this is the last paragraph here"
+            }
+            .into());
         }
         self.change(Scope::Story, move |document, selection, _| {
-            let Some(blocks) = position::story_mut(document, &at.story) else { return selection.clone() };
-            let Some((container, _)) = position::container_mut(blocks, &at.path) else { return selection.clone() };
+            let Some(blocks) = position::story_mut(document, &at.story) else {
+                return selection.clone();
+            };
+            let Some((container, _)) = position::container_mut(blocks, &at.path) else {
+                return selection.clone();
+            };
             let other = if up { index - 1 } else { index + 1 };
             container.swap(index, other);
             let moved = |p: &Pos| {
@@ -180,16 +196,21 @@ impl Session {
             .body
             .iter()
             .map(|block| match block {
-                Block::Paragraph(p) => resolver.paragraph(&p.props, None).outline_level.map_or(10, |l| l + 1),
+                Block::Paragraph(p) => {
+                    resolver.paragraph(&p.props, None).outline_level.map_or(10, |l| l + 1)
+                }
                 _ => 10,
             })
             .collect();
         let i = head.path[0] as usize;
         let level = levels[i];
-        let end_of = |from: usize| (from + 1..levels.len()).find(|k| levels[*k] <= level).unwrap_or(levels.len());
+        let end_of = |from: usize| {
+            (from + 1..levels.len()).find(|k| levels[*k] <= level).unwrap_or(levels.len())
+        };
         let j = end_of(i);
         let (start, middle, end) = if up {
-            let p = (0..i).rev().find(|k| levels[*k] <= level).ok_or("this is the first section")?;
+            let p =
+                (0..i).rev().find(|k| levels[*k] <= level).ok_or("this is the first section")?;
             if levels[p] < level {
                 return Err("the heading above is a higher level".into());
             }
@@ -205,7 +226,8 @@ impl Session {
             document.body[start..end].rotate_left(middle - start);
             // The moved heading is now at `start` when it went up, and after the other section when down.
             let at = if up { start } else { start + (end - middle) };
-            let moved = |p: &Pos| Pos { story: p.story.clone(), path: vec![at as u32], offset: p.offset };
+            let moved =
+                |p: &Pos| Pos { story: p.story.clone(), path: vec![at as u32], offset: p.offset };
             Selection { anchor: moved(&selection.anchor), head: moved(&selection.head) }
         });
         Ok(())
@@ -215,22 +237,37 @@ impl Session {
     /// as Home's Sort does for paragraphs. Numbers sort by value when every paragraph starts with one.
     pub fn sort_paragraphs(&mut self, ascending: bool) -> Result<(), String> {
         let (from, to) = (self.selection.ordered().0.clone(), self.selection.ordered().1.clone());
-        if from.story != to.story || from.path.len() != to.path.len() || from.path[..from.path.len() - 1] != to.path[..to.path.len() - 1] {
+        if from.story != to.story
+            || from.path.len() != to.path.len()
+            || from.path[..from.path.len() - 1] != to.path[..to.path.len() - 1]
+        {
             return Err("select paragraphs next to each other to sort them".into());
         }
-        let (first, last) = (*from.path.last().expect("a path") as usize, *to.path.last().expect("a path") as usize);
+        let (first, last) = (
+            *from.path.last().expect("a path") as usize,
+            *to.path.last().expect("a path") as usize,
+        );
         if last <= first {
             return Err("select two paragraphs or more to sort them".into());
         }
         self.change(Scope::Story, move |document, selection, _| {
-            let Some(blocks) = position::story_mut(document, &from.story) else { return selection.clone() };
-            let Some((container, _)) = position::container_mut(blocks, &from.path) else { return selection.clone() };
+            let Some(blocks) = position::story_mut(document, &from.story) else {
+                return selection.clone();
+            };
+            let Some((container, _)) = position::container_mut(blocks, &from.path) else {
+                return selection.clone();
+            };
             let range = first..(last + 1).min(container.len());
             if !container[range.clone()].iter().all(|b| matches!(b, Block::Paragraph(_))) {
                 return selection.clone();
             }
             let text = |b: &Block| b.as_paragraph().map(|p| p.visible_text()).unwrap_or_default();
-            let number = |t: &str| t.trim().split(|c: char| !c.is_ascii_digit() && c != '.').next().and_then(|n| n.parse::<f64>().ok());
+            let number = |t: &str| {
+                t.trim()
+                    .split(|c: char| !c.is_ascii_digit() && c != '.')
+                    .next()
+                    .and_then(|n| n.parse::<f64>().ok())
+            };
             let numeric = container[range.clone()].iter().all(|b| number(&text(b)).is_some());
             let mut part: Vec<Block> = container.drain(range.clone()).collect();
             part.sort_by(|a, b| {
@@ -239,7 +276,11 @@ impl Session {
                 } else {
                     text(a).to_lowercase().cmp(&text(b).to_lowercase())
                 };
-                if ascending { order } else { order.reverse() }
+                if ascending {
+                    order
+                } else {
+                    order.reverse()
+                }
             });
             for (i, block) in part.into_iter().enumerate() {
                 container.insert(first + i, block);
@@ -282,7 +323,12 @@ impl Session {
 
     /// A cover page at the top of the document: the title in Title, the subtitle in Subtitle, the
     /// author and the date, then a page break, as Word's plainest cover page has them.
-    pub fn insert_cover_page(&mut self, title: &str, subtitle: &str, author: &str) -> Result<(), String> {
+    pub fn insert_cover_page(
+        &mut self,
+        title: &str,
+        subtitle: &str,
+        author: &str,
+    ) -> Result<(), String> {
         for style in ["Title", "Subtitle"] {
             crate::builtin::ensure_style(&mut self.document, style)?;
         }
@@ -290,7 +336,10 @@ impl Session {
             (Some("Title"), title.to_owned()),
             (Some("Subtitle"), subtitle.to_owned()),
             (None, author.to_owned()),
-            (None, crate::fields::format_date(&crate::session::now_iso(), Some("MMMM d, yyyy"), false)),
+            (
+                None,
+                crate::fields::format_date(&crate::session::now_iso(), Some("MMMM d, yyyy"), false),
+            ),
         ];
         self.change(Scope::Story, move |document, selection, _| {
             let mut blocks: Vec<Block> = Vec::new();
@@ -305,7 +354,10 @@ impl Session {
                 blocks.push(Block::Paragraph(paragraph));
             }
             let mut breaker = Paragraph::new();
-            breaker.runs.push(Run { content: Content::Break(El::new("w:br").with("w:type", "page")), ..Run::text("", no_props()) });
+            breaker.runs.push(Run {
+                content: Content::Break(El::new("w:br").with("w:type", "page")),
+                ..Run::text("", no_props())
+            });
             blocks.push(Block::Paragraph(breaker));
             for (i, block) in blocks.into_iter().enumerate() {
                 document.body.insert(i, block);
@@ -336,14 +388,16 @@ impl Session {
     /// the caret turned into its code, as Word does. A selection is converted whole.
     pub fn toggle_unicode(&mut self) -> Result<(), String> {
         let (from, to) = (self.selection.ordered().0.clone(), self.selection.ordered().1.clone());
-        let paragraph = position::paragraph(&self.document, &to.story, &to.path).ok_or("the caret is not in text")?;
+        let paragraph = position::paragraph(&self.document, &to.story, &to.path)
+            .ok_or("the caret is not in text")?;
         let text = paragraph.flat_text();
         let end = to.offset.min(text.len());
         let start = if from.path == to.path && from.offset < to.offset {
             from.offset
         } else {
             // Up to six hexadecimal digits before the caret, after an optional U+.
-            let digits = text[..end].chars().rev().take_while(|c| c.is_ascii_hexdigit()).take(6).count();
+            let digits =
+                text[..end].chars().rev().take_while(|c| c.is_ascii_hexdigit()).take(6).count();
             let mut start = end - digits;
             if digits > 0 && text[..start].ends_with("U+") {
                 start -= 2;
@@ -356,7 +410,9 @@ impl Session {
         let chosen = &text[start..end];
         let hex = chosen.trim_start_matches("U+");
         let replacement = match u32::from_str_radix(hex, 16).ok().and_then(char::from_u32) {
-            Some(c) if !hex.is_empty() && hex.chars().all(|c| c.is_ascii_hexdigit()) => c.to_string(),
+            Some(c) if !hex.is_empty() && hex.chars().all(|c| c.is_ascii_hexdigit()) => {
+                c.to_string()
+            }
             _ => chosen.chars().map(|c| format!("{:04X}", c as u32)).collect(),
         };
         if replacement.is_empty() {
@@ -380,7 +436,12 @@ impl Session {
                 return selection.clone();
             };
             let index = paragraph.split_at(at.offset);
-            let run = Run { props: Arc::clone(&props), content: Content::Object(el), wraps, attrs: Arc::default() };
+            let run = Run {
+                props: Arc::clone(&props),
+                content: Content::Object(el),
+                wraps,
+                attrs: Arc::default(),
+            };
             let len = run.len();
             paragraph.runs.insert(index, run);
             for mark in &mut paragraph.marks {
@@ -420,7 +481,10 @@ mod tests {
         let fields = field_ranges(&session.document, &StoryId::Body);
         assert_eq!(fields.len(), 2);
         let text = position::paragraphs(&session.document.body)[0].1.flat_text();
-        assert!(fields[0].0.offset >= "Page ".len() && fields[0].1.offset < fields[1].0.offset, "{fields:?} in {text:?}");
+        assert!(
+            fields[0].0.offset >= "Page ".len() && fields[0].1.offset < fields[1].0.offset,
+            "{fields:?} in {text:?}"
+        );
         session.selection = crate::position::Selection::caret(Pos::new(vec![0], 0));
         session.select_next_field(true).unwrap();
         assert_eq!(session.selection.ordered().0.offset, fields[0].0.offset);
@@ -433,7 +497,9 @@ mod tests {
     }
 
     fn text_of(session: &Session, n: u32) -> String {
-        position::paragraph(&session.document, &StoryId::Body, &[n]).map(|p| p.flat_text()).unwrap_or_default()
+        position::paragraph(&session.document, &StoryId::Body, &[n])
+            .map(|p| p.flat_text())
+            .unwrap_or_default()
     }
 
     #[test]
@@ -475,10 +541,12 @@ mod tests {
 
     #[test]
     fn a_section_moves_with_its_heading() {
-        let mut session = typed("One
+        let mut session = typed(
+            "One
 under one
 Two
-under two");
+under two",
+        );
         for (n, style) in [(0, "Heading1"), (2, "Heading1")] {
             session.select(Pos::new(vec![n], 0), Pos::new(vec![n], 0));
             session.apply_style(style).unwrap();

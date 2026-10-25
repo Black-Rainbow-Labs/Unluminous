@@ -394,7 +394,8 @@ fn a_right_click_on_a_misspelled_word_opens_its_card() {
 
 /// A folder of its own for one test, under the temporary folder.
 fn scratch_folder(name: &str) -> PathBuf {
-    let folder = std::env::temp_dir().join(format!("unluminous-word-files-{name}-{}", std::process::id()));
+    let folder =
+        std::env::temp_dir().join(format!("unluminous-word-files-{name}-{}", std::process::id()));
     std::fs::create_dir_all(&folder).unwrap();
     folder
 }
@@ -524,7 +525,10 @@ fn autorecover_and_autosave_keep_a_changed_document() {
     let settings = folder.join("settings");
     let path = folder.join("draft.docx");
     std::fs::copy(fixture("blank.docx"), &path).unwrap();
-    let context = crate::services::plugin_ui::Context { folder: Some(settings.clone()), ..Default::default() };
+    let context = crate::services::plugin_ui::Context {
+        folder: Some(settings.clone()),
+        ..Default::default()
+    };
     let mut word = Word::new();
     word.open(&context).unwrap();
     let key = tab_key(&path);
@@ -571,9 +575,13 @@ fn a_new_document_from_a_template_is_a_document() {
     word.open(&crate::services::plugin_ui::Context::default()).unwrap();
     let answer = run(&mut word, &format!("new --template {}", fixture("template.dotx").display()));
     assert!(answer.value["key"].as_str().unwrap().starts_with("word:Untitled"));
-    let template = unluminous_word::read::open(&std::fs::read(fixture("template.dotx")).unwrap()).unwrap();
+    let template =
+        unluminous_word::read::open(&std::fs::read(fixture("template.dotx")).unwrap()).unwrap();
     let read = run(&mut word, "read");
-    assert_eq!(read.value.as_array().unwrap().len(), unluminous_word::position::paragraphs(&template.body).len());
+    assert_eq!(
+        read.value.as_array().unwrap().len(),
+        unluminous_word::position::paragraphs(&template.body).len()
+    );
     let path = folder.join("from-template.docx");
     run(&mut word, &format!("save {}", path.display()));
     let saved = unluminous_word::read::open(&std::fs::read(&path).unwrap()).unwrap();

@@ -285,8 +285,8 @@ fn assertion_holds(a: Assert, s: &Subject, p: usize) -> bool {
     let after = s.chars.get(p).copied();
     match a {
         Assert::ParagraphEnd => p == s.chars.len(),
-        Assert::WordStart => before.map_or(true, |c| !is_word(c)) && after.is_some_and(is_word),
-        Assert::WordEnd => before.is_some_and(is_word) && after.map_or(true, |c| !is_word(c)),
+        Assert::WordStart => before.is_none_or(|c| !is_word(c)) && after.is_some_and(is_word),
+        Assert::WordEnd => before.is_some_and(is_word) && after.is_none_or(|c| !is_word(c)),
     }
 }
 
@@ -378,8 +378,8 @@ pub fn find_all(query: &Query, text: &str) -> Result<Vec<Found>, String> {
         };
         let empty = end == start;
         let edge_ok = !whole_word
-            || (start.checked_sub(1).map_or(true, |q| !is_word(chars[q]))
-                && chars.get(end).map_or(true, |&c| !is_word(c)));
+            || (start.checked_sub(1).is_none_or(|q| !is_word(chars[q]))
+                && chars.get(end).is_none_or(|&c| !is_word(c)));
         if (empty && !pattern.has_paragraph_end) || !edge_ok {
             start += 1;
             continue;

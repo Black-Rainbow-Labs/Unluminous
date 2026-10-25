@@ -106,7 +106,9 @@ impl Session {
             .and_then(|p| p.attr("w:edit"))
             .filter(|e| *e != "none")
             .map(str::to_owned);
-        let read_only = settings.and_then(|s| s.child("w:writeProtection")).is_some_and(|w| w.attr("w:hash").is_some() || w.attr("w:hashValue").is_some());
+        let read_only = settings
+            .and_then(|s| s.child("w:writeProtection"))
+            .is_some_and(|w| w.attr("w:hash").is_some() || w.attr("w:hashValue").is_some());
         Session {
             document,
             selection: Selection::caret(Pos::new(first, 0)),
@@ -159,10 +161,17 @@ impl Session {
         } else {
             match self.protection.as_deref() {
                 Some("readOnly") => Some("Restrict Editing allows no changes to this document"),
-                Some("comments") if !matches!(self.selection.head.story, crate::position::StoryId::Comment(_)) => {
+                Some("comments")
+                    if !matches!(
+                        self.selection.head.story,
+                        crate::position::StoryId::Comment(_)
+                    ) =>
+                {
                     Some("Restrict Editing allows only comments in this document")
                 }
-                Some("forms") if !self.in_a_form_field() => Some("Restrict Editing allows only filling in forms in this document"),
+                Some("forms") if !self.in_a_form_field() => {
+                    Some("Restrict Editing allows only filling in forms in this document")
+                }
                 _ => None,
             }
         };
@@ -174,10 +183,15 @@ impl Session {
     /// type in.
     fn in_a_form_field(&self) -> bool {
         let head = &self.selection.head;
-        let Some(paragraph) = position::paragraph(&self.document, &head.story, &head.path) else { return false };
+        let Some(paragraph) = position::paragraph(&self.document, &head.story, &head.path) else {
+            return false;
+        };
         let (_, wraps) = edit::props_at(paragraph, head.offset);
         wraps.iter().any(|w| w.el.name == "w:sdt")
-            || matches!(position::block(&self.document.body, &head.path[..1]), Some(crate::model::Block::Sdt(_)))
+            || matches!(
+                position::block(&self.document.body, &head.path[..1]),
+                Some(crate::model::Block::Sdt(_))
+            )
     }
 
     /// Run a change, recording what it needs for undo.

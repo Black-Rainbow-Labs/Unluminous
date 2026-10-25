@@ -32,7 +32,13 @@ impl Session {
     /// or taking the difference so the table keeps its width, as dragging a column's edge in Word does;
     /// the last column's edge makes the table wider or narrower instead. Cells that start in a changed
     /// column take the new widths.
-    pub fn drag_column_edge(&mut self, story: &StoryId, table: &Path, column: usize, width: f32) -> Result<(), String> {
+    pub fn drag_column_edge(
+        &mut self,
+        story: &StoryId,
+        table: &Path,
+        column: usize,
+        width: f32,
+    ) -> Result<(), String> {
         let found = table_at(&self.document, story, table)?;
         let mut grid = found.columns();
         if column >= grid.len() {
@@ -50,19 +56,34 @@ impl Session {
         let (story, table) = (story.clone(), table.to_vec());
         let saved_table = table.clone();
         self.change(Scope::Story, move |document, selection, _| {
-            let Some(blocks) = position::story_mut(document, &story) else { return selection.clone() };
-            let Some(Block::Table(t)) = position::block_mut(blocks, &saved_table) else { return selection.clone() };
+            let Some(blocks) = position::story_mut(document, &story) else {
+                return selection.clone();
+            };
+            let Some(Block::Table(t)) = position::block_mut(blocks, &saved_table) else {
+                return selection.clone();
+            };
             t.grid.children = grid
                 .iter()
                 .map(|w| Node::El(El::new("w:gridCol").with("w:w", w.to_string())))
                 .collect();
             for row in &mut t.rows {
-                let mut at = row.props.child("w:gridBefore").and_then(|g| g.attr("w:val")).and_then(|v| v.parse::<usize>().ok()).unwrap_or(0);
+                let mut at = row
+                    .props
+                    .child("w:gridBefore")
+                    .and_then(|g| g.attr("w:val"))
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(0);
                 for cell in &mut row.cells {
-                    let span = cell.props.child("w:gridSpan").and_then(|g| g.attr("w:val")).and_then(|v| v.parse::<usize>().ok()).unwrap_or(1);
+                    let span = cell
+                        .props
+                        .child("w:gridSpan")
+                        .and_then(|g| g.attr("w:val"))
+                        .and_then(|v| v.parse::<usize>().ok())
+                        .unwrap_or(1);
                     let w: i64 = grid.iter().skip(at).take(span).sum();
                     if at <= column + 1 && at + span > column {
-                        cell.props.put(El::new("w:tcW").with("w:w", w.to_string()).with("w:type", "dxa"));
+                        cell.props
+                            .put(El::new("w:tcW").with("w:w", w.to_string()).with("w:type", "dxa"));
                         crate::order::sort(&mut cell.props);
                     }
                     at += span;
@@ -707,7 +728,7 @@ fn cell_end(document: &Document, story: &StoryId, table: &[u32], row: usize, cel
     let mut path = table.to_vec();
     path.extend([row as u32, cell as u32]);
     let blocks = position::story(document, story)
-        .and_then(|b| position::block(b, &table[..]))
+        .and_then(|b| position::block(b, table))
         .and_then(|b| match b {
             Block::Table(t) => {
                 t.rows.get(row).and_then(|r| r.cells.get(cell)).map(|c| c.blocks.len())

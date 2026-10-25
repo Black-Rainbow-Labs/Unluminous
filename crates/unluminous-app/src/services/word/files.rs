@@ -34,7 +34,9 @@ impl Waiting {
                     None => format!("{name} is encrypted. Type its password to open it, or run plugins run word password <password>."),
                 }
             }
-            Waiting::Converting { path, .. } => format!("Word is converting {} into a document.", name_of(path)),
+            Waiting::Converting { path, .. } => {
+                format!("Word is converting {} into a document.", name_of(path))
+            }
             Waiting::Failed { problem, .. } => problem.clone(),
         }
     }
@@ -42,7 +44,8 @@ impl Waiting {
 
 /// The file name of a path, for a sentence.
 pub fn name_of(path: &Path) -> String {
-    path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned())
+    path.file_name()
+        .map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned())
 }
 
 /// Start Word converting `path` into a `.docx`, on a thread.
@@ -53,7 +56,9 @@ pub fn start_converting(path: &Path) -> Waiting {
         let target = std::env::temp_dir().join(format!(
             "unluminous-converted-{}-{}.docx",
             std::process::id(),
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos())
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
         ));
         let result = unluminous_word::convert::convert(&source, &target, "docx").and_then(|()| {
             std::fs::read(&target).map_err(|e| format!("Word's conversion could not be read: {e}"))
@@ -69,9 +74,12 @@ pub fn save_through_word(bytes: &[u8], path: &Path, format: &str) -> Result<(), 
     let source = std::env::temp_dir().join(format!(
         "unluminous-save-{}-{}.docx",
         std::process::id(),
-        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos())
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos())
     ));
-    std::fs::write(&source, bytes).map_err(|e| format!("{} could not be written: {e}", source.display()))?;
+    std::fs::write(&source, bytes)
+        .map_err(|e| format!("{} could not be written: {e}", source.display()))?;
     let result = unluminous_word::convert::convert(&source, path, format);
     let _ = std::fs::remove_file(&source);
     result
@@ -91,7 +99,8 @@ pub fn office_template() -> Option<PathBuf> {
     if !OFFICE_TEMPLATE.load(Ordering::Relaxed) {
         return None;
     }
-    let folder = std::env::var_os("APPDATA").map(PathBuf::from)?.join("Microsoft").join("Templates");
+    let folder =
+        std::env::var_os("APPDATA").map(PathBuf::from)?.join("Microsoft").join("Templates");
     let normal = folder.join("Normal.dotm");
     normal.is_file().then_some(normal)
 }
@@ -117,7 +126,10 @@ pub fn machine_locale() -> Option<String> {
         let mut buffer = [0u16; 85];
         // SAFETY: the buffer is the size the call is told, and the call writes at most that many units.
         let written = unsafe {
-            windows_sys::Win32::Globalization::GetUserDefaultLocaleName(buffer.as_mut_ptr(), buffer.len() as i32)
+            windows_sys::Win32::Globalization::GetUserDefaultLocaleName(
+                buffer.as_mut_ptr(),
+                buffer.len() as i32,
+            )
         };
         if written > 1 {
             return Some(String::from_utf16_lossy(&buffer[..written as usize - 1]));
@@ -134,12 +146,18 @@ pub const AUTOSAVE_AFTER: Duration = Duration::from_secs(5);
 /// The AutoRecover copy of the document under `key` in the plugin's settings folder.
 pub fn recovery_path(folder: &Path, key: &str) -> PathBuf {
     // FNV-1a, so the name is the same in every build.
-    let hash = key.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| (hash ^ u64::from(byte)).wrapping_mul(0x100_0000_01b3));
+    let hash = key.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x100_0000_01b3)
+    });
     folder.join("recovery").join(format!("{hash:016x}.asd"))
 }
 
 /// The AutoRecover copy for `key` when it is newer than the file it recovers, with when it was written.
-pub fn recovery_for(folder: &Path, key: &str, file: Option<&Path>) -> Option<(PathBuf, std::time::SystemTime)> {
+pub fn recovery_for(
+    folder: &Path,
+    key: &str,
+    file: Option<&Path>,
+) -> Option<(PathBuf, std::time::SystemTime)> {
     let copy = recovery_path(folder, key);
     let written = std::fs::metadata(&copy).ok()?.modified().ok()?;
     let saved = file.and_then(|f| std::fs::metadata(f).ok()).and_then(|m| m.modified().ok());
@@ -193,7 +211,8 @@ impl super::Doc {
     /// Put the AutoRecover copy the document was opened with in its place, as a change to save.
     pub fn restore_recovery(&mut self) -> Result<(), String> {
         let (copy, _) = self.timing.offer.take().ok_or("there is no recovered copy to restore")?;
-        let mut bytes = std::fs::read(&copy).map_err(|e| format!("{} could not be read: {e}", copy.display()))?;
+        let mut bytes = std::fs::read(&copy)
+            .map_err(|e| format!("{} could not be read: {e}", copy.display()))?;
         if unluminous_word::crypto::is_encrypted(&bytes) {
             let password = self.password.clone().unwrap_or_default();
             bytes = unluminous_word::crypto::decrypt(&bytes, &password)?;
@@ -251,7 +270,9 @@ impl super::Word {
             if autosave && doc.path.is_some() && quiet >= AUTOSAVE_AFTER {
                 match doc.save(None) {
                     Ok(_) => continue,
-                    Err(problem) => said.push(format!("AutoSave could not save {}: {problem}", doc.label())),
+                    Err(problem) => {
+                        said.push(format!("AutoSave could not save {}: {problem}", doc.label()))
+                    }
                 }
             }
             let (true, Some(folder)) = (autorecover, &folder) else { continue };
@@ -260,9 +281,13 @@ impl super::Word {
                 continue;
             }
             doc.timing.recovered = Some(now);
-            let written = unluminous_word::write::save(&doc.session.document).and_then(|bytes| match doc.password.as_deref() {
-                Some(password) if !password.is_empty() => unluminous_word::crypto::encrypt(&bytes, password),
-                _ => Ok(bytes),
+            let written = unluminous_word::write::save(&doc.session.document).and_then(|bytes| {
+                match doc.password.as_deref() {
+                    Some(password) if !password.is_empty() => {
+                        unluminous_word::crypto::encrypt(&bytes, password)
+                    }
+                    _ => Ok(bytes),
+                }
             });
             let copy = recovery_path(folder, &doc.key);
             if let Ok(bytes) = written {
@@ -278,14 +303,23 @@ impl super::Word {
             self.config.autosave = false;
         }
         for text in said {
-            self.outbox.push(super::Request::Notice { text, kind: crate::components::toast::Kind::Problem });
+            self.outbox.push(super::Request::Notice {
+                text,
+                kind: crate::components::toast::Kind::Problem,
+            });
         }
         !converting.is_empty()
     }
 
     /// What a tab whose document is not ready draws: the sentence, and the password field when it is
     /// waiting for one.
-    pub fn draw_waiting(&mut self, key: &str, sentence: &str, ui: &mut egui::Ui, look: &super::Look<'_>) -> Vec<super::Request> {
+    pub fn draw_waiting(
+        &mut self,
+        key: &str,
+        sentence: &str,
+        ui: &mut egui::Ui,
+        look: &super::Look<'_>,
+    ) -> Vec<super::Request> {
         let mut requests = Vec::new();
         let area = ui.max_rect().shrink(24.0);
         let waiting = self.waiting.iter().find(|(k, _)| k == key).map(|(_, w)| match w {
@@ -295,7 +329,9 @@ impl super::Word {
         });
         let mut give = None;
         ui.scope_builder(egui::UiBuilder::new().max_rect(area), |ui| {
-            ui.label(egui::RichText::new(sentence).size(look.font_size).color(look.palette.text_dim));
+            ui.label(
+                egui::RichText::new(sentence).size(look.font_size).color(look.palette.text_dim),
+            );
             match waiting {
                 Some(1) => {
                     ui.add_space(8.0);
@@ -306,10 +342,19 @@ impl super::Word {
                                 .id(egui::Id::new(("word-open-password", key)))
                                 .desired_width(220.0),
                         );
-                        field.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Password"));
-                        let pressed = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                        field.widget_info(|| {
+                            egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Password")
+                        });
+                        let pressed =
+                            field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                         let open = ui.button("Open");
-                        open.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Open with password"));
+                        open.widget_info(|| {
+                            egui::WidgetInfo::labeled(
+                                egui::WidgetType::Button,
+                                true,
+                                "Open with password",
+                            )
+                        });
                         if open.clicked() || pressed {
                             give = Some(self.password_field.clone());
                         }
@@ -346,7 +391,8 @@ mod tests {
 
     #[test]
     fn a_recovery_copy_older_than_the_file_is_not_offered() {
-        let folder = std::env::temp_dir().join(format!("unluminous-recovery-test-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-recovery-test-{}", std::process::id()));
         let copy = recovery_path(&folder, "word:a.docx");
         std::fs::create_dir_all(copy.parent().unwrap()).unwrap();
         std::fs::write(&copy, b"copy").unwrap();

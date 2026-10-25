@@ -34,15 +34,20 @@ pub fn extended(document: &Document, name: &str) -> Option<String> {
 
 /// Set a property of `docProps/app.xml`, making the part when the document has none.
 pub fn set_extended(document: &mut Document, name: &str, value: &str) {
-    let mut root = part_root(document, APP).unwrap_or_else(|| {
-        El::new("Properties")
-    });
+    let mut root = part_root(document, APP).unwrap_or_else(|| El::new("Properties"));
     let existing = root.elements_mut().find(|e| e.local() == name);
     match existing {
         Some(el) => el.children = vec![Node::Text(value.to_owned())],
         None => root.children.push(Node::El(El::new(name).with_text(value))),
     }
-    write_part(document, APP, &root, APP_NS, "application/vnd.openxmlformats-officedocument.extended-properties+xml", "extended-properties");
+    write_part(
+        document,
+        APP,
+        &root,
+        APP_NS,
+        "application/vnd.openxmlformats-officedocument.extended-properties+xml",
+        "extended-properties",
+    );
 }
 
 /// Every custom property.
@@ -69,7 +74,12 @@ pub fn custom(document: &Document) -> Vec<Custom> {
 
 /// Set a custom property, `kind` being `text`, `number`, `date` (as `2026-10-24` or a full time) or
 /// `yes or no` (`yes` or `no`).
-pub fn set_custom(document: &mut Document, name: &str, kind: &str, value: &str) -> Result<(), String> {
+pub fn set_custom(
+    document: &mut Document,
+    name: &str,
+    kind: &str,
+    value: &str,
+) -> Result<(), String> {
     let (element, value) = match kind {
         "text" => ("vt:lpwstr", value.to_owned()),
         "number" => {
@@ -80,7 +90,10 @@ pub fn set_custom(document: &mut Document, name: &str, kind: &str, value: &str) 
                 ("vt:r8", value.to_owned())
             }
         }
-        "date" => ("vt:filetime", if value.len() == 10 { format!("{value}T00:00:00Z") } else { value.to_owned() }),
+        "date" => (
+            "vt:filetime",
+            if value.len() == 10 { format!("{value}T00:00:00Z") } else { value.to_owned() },
+        ),
         "yes or no" | "bool" | "boolean" => (
             "vt:bool",
             match value.to_ascii_lowercase().as_str() {
@@ -88,11 +101,13 @@ pub fn set_custom(document: &mut Document, name: &str, kind: &str, value: &str) 
                 _ => "false".to_owned(),
             },
         ),
-        other => return Err(format!("a custom property is text, number, date or yes or no, not {other}")),
+        other => {
+            return Err(format!(
+                "a custom property is text, number, date or yes or no, not {other}"
+            ))
+        }
     };
-    let mut root = part_root(document, CUSTOM).unwrap_or_else(|| {
-        El::new("Properties")
-    });
+    let mut root = part_root(document, CUSTOM).unwrap_or_else(|| El::new("Properties"));
     root.children.retain(|n| !matches!(n, Node::El(e) if e.attr("name") == Some(name)));
     let next = root
         .elements()
@@ -106,26 +121,49 @@ pub fn set_custom(document: &mut Document, name: &str, kind: &str, value: &str) 
             .with("name", name)
             .with_child(El::new(element).with_text(value)),
     ));
-    write_part(document, CUSTOM, &root, CUSTOM_NS, "application/vnd.openxmlformats-officedocument.custom-properties+xml", "custom-properties");
+    write_part(
+        document,
+        CUSTOM,
+        &root,
+        CUSTOM_NS,
+        "application/vnd.openxmlformats-officedocument.custom-properties+xml",
+        "custom-properties",
+    );
     Ok(())
 }
 
 /// Take a custom property away.
 pub fn remove_custom(document: &mut Document, name: &str) -> Result<(), String> {
-    let mut root = part_root(document, CUSTOM).ok_or_else(|| format!("there is no custom property {name}"))?;
+    let mut root =
+        part_root(document, CUSTOM).ok_or_else(|| format!("there is no custom property {name}"))?;
     let before = root.children.len();
     root.children.retain(|n| !matches!(n, Node::El(e) if e.attr("name") == Some(name)));
     if root.children.len() == before {
         return Err(format!("there is no custom property {name}"));
     }
-    write_part(document, CUSTOM, &root, CUSTOM_NS, "application/vnd.openxmlformats-officedocument.custom-properties+xml", "custom-properties");
+    write_part(
+        document,
+        CUSTOM,
+        &root,
+        CUSTOM_NS,
+        "application/vnd.openxmlformats-officedocument.custom-properties+xml",
+        "custom-properties",
+    );
     Ok(())
 }
 
 /// Write a properties part with its declaration, its content type and the package's relationship to it.
 /// The parser keeps no default namespace, so the part's own (`namespace`) and `vt` are declared here.
-fn write_part(document: &mut Document, name: &str, root: &El, namespace: &str, content_type: &str, kind: &str) {
-    let mut text = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r\n");
+fn write_part(
+    document: &mut Document,
+    name: &str,
+    root: &El,
+    namespace: &str,
+    content_type: &str,
+    kind: &str,
+) {
+    let mut text =
+        String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r\n");
     text.push_str(&format!("<Properties xmlns=\"{namespace}\" xmlns:vt=\"{VT_NS}\">"));
     for child in root.elements() {
         child.write(&mut text);
@@ -153,7 +191,10 @@ mod tests {
         let again = crate::read::open(&crate::write::save(&document).unwrap()).unwrap();
         let custom = custom(&again);
         assert_eq!(custom.len(), 3);
-        assert_eq!(custom[0], Custom { name: "Project".into(), kind: "text".into(), value: "Unluminous".into() });
+        assert_eq!(
+            custom[0],
+            Custom { name: "Project".into(), kind: "text".into(), value: "Unluminous".into() }
+        );
         assert_eq!(custom[1].value, "12");
         assert_eq!(custom[2].value, "true");
         assert_eq!(extended(&again, "Company").as_deref(), Some("Black Rainbow Labs"));
