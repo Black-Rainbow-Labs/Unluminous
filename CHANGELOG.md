@@ -6,6 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.15.1 — 2026-10-25
+
+- The Word status area fits its strip: its words are sized to the strip, the view buttons and zoom are laid out first, and an item that does not fit the room left is left out rather than drawn over them (`task-2359`)
+- The right click menu is sized as the window's menus are rather than by the document's font, its Synonyms are the word's most common meaning only, and Read Mode offers no formatting bubble (`task-2359`)
+- The right click menu's accepted picture at its new size (`task-2359`)
+
 ## 1.15.0 — 2026-10-25
 
 - Spreadsheet round 2 parity gap TDD (`task-2357`)
