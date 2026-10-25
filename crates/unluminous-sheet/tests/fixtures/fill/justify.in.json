@@ -157,5 +157,221 @@
   "dump": [
    "A1:B12"
   ]
+ },
+ {
+  "name": "justify_w7",
+  "formats": false,
+  "cells": {
+   "A1": "Mary had a little lamb whose fleece was white as snow, and everywhere that Mary went the lamb was sure to go."
+  },
+  "widths": {
+   "A": 7
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A3"
+   }
+  ],
+  "dump": [
+   "A1:B40"
+  ]
+ },
+ {
+  "name": "justify_w9",
+  "formats": false,
+  "cells": {
+   "A1": "WIDE MMMM wide Wiggle WWW narrow iiii llll jjj fill ill-will 12345 67890 (parens) [brackets] {braces} @at #hash $dollar %percent"
+  },
+  "widths": {
+   "A": 9
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A3"
+   }
+  ],
+  "dump": [
+   "A1:B40"
+  ]
+ },
+ {
+  "name": "justify_w15",
+  "formats": false,
+  "cells": {
+   "A1": "It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness 1,234,567.89 units."
+  },
+  "widths": {
+   "A": 15
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A3"
+   }
+  ],
+  "dump": [
+   "A1:B40"
+  ]
+ },
+ {
+  "name": "justify_w22",
+  "formats": false,
+  "cells": {
+   "A1": "Quantity: 1000 units @ $12.50 each = $12,500.00 total (incl. 8.25% tax); ship by 2024-12-31 to ACME Corp., Dept. #42."
+  },
+  "widths": {
+   "A": 22
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A3"
+   }
+  ],
+  "dump": [
+   "A1:B40"
+  ]
+ },
+ {
+  "name": "justify_w30",
+  "formats": false,
+  "cells": {
+   "A1": "Mary had a little lamb whose fleece was white as snow, and everywhere that Mary went the lamb was sure to go."
+  },
+  "widths": {
+   "A": 30
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A3"
+   }
+  ],
+  "dump": [
+   "A1:B40"
+  ]
+ },
+ {
+  "name": "justify_w37",
+  "formats": false,
+  "cells": {
+   "A1": "WIDE MMMM wide Wiggle WWW narrow iiii llll jjj fill ill-will 12345 67890 (parens) [brackets] {braces} @at #hash $dollar %percent"
+  },
+  "widths": {
+   "A": 37
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A3"
+   }
+  ],
+  "dump": [
+   "A1:B40"
+  ]
+ },
+ {
+  "name": "justify_w50",
+  "formats": false,
+  "cells": {
+   "A1": "It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness 1,234,567.89 units."
+  },
+  "widths": {
+   "A": 50
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A3"
+   }
+  ],
+  "dump": [
+   "A1:B40"
+  ]
+ },
+ {
+  "name": "justify_w64",
+  "formats": false,
+  "cells": {
+   "A1": "Quantity: 1000 units @ $12.50 each = $12,500.00 total (incl. 8.25% tax); ship by 2024-12-31 to ACME Corp., Dept. #42."
+  },
+  "widths": {
+   "A": 64
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A3"
+   }
+  ],
+  "dump": [
+   "A1:B40"
+  ]
+ },
+ {
+  "name": "justify_paragraphs",
+  "formats": false,
+  "cells": {
+   "A1": "Mary had a little lamb whose fleece was white as snow, and everywhere that Mary went the lamb was sure to go.",
+   "A2": "and a second line",
+   "A4": "It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness 1,234,567.89 units."
+  },
+  "widths": {
+   "A": 25
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A6"
+   }
+  ],
+  "dump": [
+   "A1:B40"
+  ]
+ },
+ {
+  "name": "justify_bold",
+  "formats": false,
+  "cells": {
+   "A1": {
+    "v": "Mary had a little lamb whose fleece was white as snow, and everywhere that Mary went the lamb was sure to go.",
+    "bold": true
+   }
+  },
+  "widths": {
+   "A": 25
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A3"
+   }
+  ],
+  "dump": [
+   "A1:B40"
+  ]
+ },
+ {
+  "name": "justify_three_columns",
+  "formats": false,
+  "cells": {
+   "A1": "Mary had a little lamb whose fleece was white as snow, and everywhere that Mary went the lamb was sure to go."
+  },
+  "widths": {
+   "A": 8,
+   "B": 8,
+   "C": 12
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:C3"
+   }
+  ],
+  "dump": [
+   "A1:D40"
+  ]
  }
 ]

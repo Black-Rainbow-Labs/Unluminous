@@ -4,7 +4,7 @@
 use super::extras::{moved_rules_in, moved_validation_in, subtract_all};
 use super::lists::CustomLists;
 use super::paste::Plan;
-use super::series::{add_months, add_weekdays, plan, value_at, Context, DateShape, Seed};
+use super::series::{add_months, add_weekdays, plan, value_at, Context, DateShape, Run, Seed};
 use super::trend::{growth_fit, linear_fit, round15};
 use super::{PasteKind, PasteSpecial};
 use crate::coord::{CellRef, Range, MAX_COLS, MAX_ROWS};
@@ -167,7 +167,12 @@ struct Line {
 
 impl Session {
     /// Extend a block of cells into a larger range the way dragging the fill handle does.
-    pub fn fill_series(&mut self, sheet: usize, source: Range, target: Range) -> Result<(), String> {
+    pub fn fill_series(
+        &mut self,
+        sheet: usize,
+        source: Range,
+        target: Range,
+    ) -> Result<(), String> {
         self.fill_series_with(sheet, source, target, FillKind::Default, &CustomLists::default())
     }
 
@@ -181,6 +186,30 @@ impl Session {
         target: Range,
         kind: FillKind,
         lists: &CustomLists,
+    ) -> Result<(), String> {
+        self.drag_fill(sheet, source, target, kind, lists, false)
+    }
+
+    /// Drag the fill handle with Ctrl held, which does the opposite of a plain drag: cells that count on are
+    /// copied, and a single number counts on instead of being copied.
+    pub fn fill_series_with_control(
+        &mut self,
+        sheet: usize,
+        source: Range,
+        target: Range,
+        lists: &CustomLists,
+    ) -> Result<(), String> {
+        self.drag_fill(sheet, source, target, FillKind::Default, lists, true)
+    }
+
+    fn drag_fill(
+        &mut self,
+        sheet: usize,
+        source: Range,
+        target: Range,
+        kind: FillKind,
+        lists: &CustomLists,
+        control: bool,
     ) -> Result<(), String> {
         self.check_sheet(sheet)?;
         if !target.contains(source.first) || !target.contains(source.last) {
@@ -198,6 +227,7 @@ impl Session {
         self.refuse_locked(sheet, target)?;
         self.remember_whole("Fill series");
         for line in lines_of_drag(source, target, vertical) {
+            let kind = if control { self.opposite_of_default(sheet, &line, lists) } else { kind };
             self.fill_line(sheet, &line, kind, lists);
         }
         if kind.takes_formats() {
@@ -207,11 +237,35 @@ impl Session {
         Ok(())
     }
 
+    /// What Ctrl+drag does to a line of seeds: a series where a plain drag copies (a single plain number),
+    /// and a copy where a plain drag continues.
+    fn opposite_of_default(&self, sheet: usize, line: &Line, lists: &CustomLists) -> FillKind {
+        let seeds: Vec<Seed> = line
+            .seeds
+            .iter()
+            .map(|at| self.seed_of(&self.book.sheets[sheet].cell(*at).cloned().unwrap_or_default()))
+            .collect();
+        let ctx = Context {
+            kind: FillKind::Default,
+            lists,
+            date1904: self.book.date1904,
+            single_cell: seeds.len() == 1,
+        };
+        let continues = plan(&seeds, &ctx).iter().any(|p| !matches!(p.run, Run::Copy));
+        if continues {
+            FillKind::Copy
+        } else {
+            FillKind::Series
+        }
+    }
+
     /// The range a double click on the fill handle fills: down to the last row of the data beside the
     /// source, or across to the last column of the data above it, `None` when nothing is beside it.
     pub fn fill_handle_extent(&self, sheet: usize, source: Range) -> Option<Range> {
         let s = self.book.sheets.get(sheet)?;
-        let filled = |r: u32, c: u32| s.cells.get(&(r, c)).is_some_and(|x| !x.value.is_empty() || x.formula.is_some());
+        let filled = |r: u32, c: u32| {
+            s.cells.get(&(r, c)).is_some_and(|x| !x.value.is_empty() || x.formula.is_some())
+        };
         let below = source.last.row + 1;
         let neighbours: Vec<u32> = [source.first.col.checked_sub(1), Some(source.last.col + 1)]
             .into_iter()
@@ -239,13 +293,16 @@ impl Session {
             .map(|at| self.book.sheets[sheet].cell(*at).cloned().unwrap_or_default())
             .collect();
         let infos: Vec<Seed> = seeds.iter().map(|c| self.seed_of(c)).collect();
-        let ctx = Context { kind, lists, date1904: self.book.date1904, single_cell: seeds.len() == 1 };
+        let ctx =
+            Context { kind, lists, date1904: self.book.date1904, single_cell: seeds.len() == 1 };
         let pieces = plan(&infos, &ctx);
         let length = seeds.len() as i64;
         for (k, at) in line.targets.iter().enumerate() {
             let place = if line.backwards { -(k as i64 + 1) } else { length + k as i64 };
             let (cycle, i) = (place.div_euclid(length), place.rem_euclid(length) as usize);
-            let Some(piece) = pieces.iter().find(|p| i >= p.start && i < p.start + p.len) else { continue };
+            let Some(piece) = pieces.iter().find(|p| i >= p.start && i < p.start + p.len) else {
+                continue;
+            };
             let offset = i - piece.start;
             let index = cycle * piece.len as i64 + offset as i64;
             let value = value_at(&piece.run, index, cycle, offset, &ctx);
@@ -301,7 +358,13 @@ impl Session {
     }
 
     /// Data validation and conditional formats go on to the cells filled, as the formats do.
-    fn fill_validation_and_rules(&mut self, sheet: usize, source: Range, target: Range, vertical: bool) {
+    fn fill_validation_and_rules(
+        &mut self,
+        sheet: usize,
+        source: Range,
+        target: Range,
+        vertical: bool,
+    ) {
         let clip = self.build_clip(sheet, source, false);
         let new_cells = filled_blocks(source, target, vertical);
         let s = &mut self.book.sheets[sheet];
@@ -310,10 +373,12 @@ impl Session {
         }
         s.validations.retain(|v| !v.ranges.is_empty());
         for cf in &mut s.conditional {
-            cf.ranges = subtract_all(&cf.ranges, &new_cells.iter().map(|b| b.1).collect::<Vec<_>>());
+            cf.ranges =
+                subtract_all(&cf.ranges, &new_cells.iter().map(|b| b.1).collect::<Vec<_>>());
         }
         s.conditional.retain(|cf| !cf.ranges.is_empty());
-        let mut priority = s.conditional.iter().flat_map(|c| &c.rules).map(|r| r.priority).max().unwrap_or(0);
+        let mut priority =
+            s.conditional.iter().flat_map(|c| &c.rules).map(|r| r.priority).max().unwrap_or(0);
         for (origin, limit) in new_cells {
             let (dr, dc) = (origin.0 - source.first.row as i64, origin.1 - source.first.col as i64);
             for (rel, validation) in &clip.extras.validations {
@@ -339,7 +404,12 @@ impl Session {
     // The Series dialog.
 
     /// The Series dialog on a range: each column (or row) is a series started by its first cell.
-    pub fn data_series(&mut self, sheet: usize, range: Range, spec: &SeriesSpec) -> Result<(), String> {
+    pub fn data_series(
+        &mut self,
+        sheet: usize,
+        range: Range,
+        spec: &SeriesSpec,
+    ) -> Result<(), String> {
         self.check_sheet(sheet)?;
         self.refuse_array_member(sheet, range)?;
         self.refuse_locked(sheet, range)?;
@@ -380,19 +450,32 @@ impl Session {
         let filled = cells
             .iter()
             .take_while(|at| {
-                self.book.sheets[sheet].cell(**at).is_some_and(|c| !c.value.is_empty() || c.formula.is_some())
+                self.book.sheets[sheet]
+                    .cell(**at)
+                    .is_some_and(|c| !c.value.is_empty() || c.formula.is_some())
             })
             .count();
         if filled == 0 || filled == cells.len() {
             return;
         }
-        let line = Line { seeds: cells[..filled].to_vec(), targets: cells[filled..].to_vec(), backwards: false };
+        let line = Line {
+            seeds: cells[..filled].to_vec(),
+            targets: cells[filled..].to_vec(),
+            backwards: false,
+        };
         self.fill_line(sheet, &line, FillKind::Default, &CustomLists::default());
     }
 
     /// The best fit line (or curve) through the numbers at the start of the line, which replaces them and
     /// fills the rest.
-    fn series_by_trend(&mut self, sheet: usize, cells: &[CellRef], seeds: &[f64], spec: &SeriesSpec, style: u32) {
+    fn series_by_trend(
+        &mut self,
+        sheet: usize,
+        cells: &[CellRef],
+        seeds: &[f64],
+        spec: &SeriesSpec,
+        style: u32,
+    ) {
         let growth = spec.kind == SeriesKind::Growth;
         let values: Vec<f64> = if growth {
             let Some((c, m)) = growth_fit(seeds) else { return };
@@ -446,15 +529,27 @@ impl Session {
 }
 
 /// The next value of a series, `step_number` steps from the start.
-fn next_in_series(start: f64, value: f64, step_number: i64, spec: &SeriesSpec, date1904: bool) -> f64 {
+fn next_in_series(
+    start: f64,
+    value: f64,
+    step_number: i64,
+    spec: &SeriesSpec,
+    date1904: bool,
+) -> f64 {
     match spec.kind {
         SeriesKind::Linear => value + spec.step,
         SeriesKind::Growth => value * spec.step,
         SeriesKind::Date(unit) => match unit {
             SeriesDate::Day => start + spec.step * step_number as f64,
-            SeriesDate::Weekday => add_weekdays(start, (spec.step * step_number as f64) as i64, date1904),
-            SeriesDate::Month => add_months(start, (spec.step * step_number as f64) as i64, false, date1904),
-            SeriesDate::Year => add_months(start, (spec.step * 12.0 * step_number as f64) as i64, false, date1904),
+            SeriesDate::Weekday => {
+                add_weekdays(start, (spec.step * step_number as f64) as i64, date1904)
+            }
+            SeriesDate::Month => {
+                add_months(start, (spec.step * step_number as f64) as i64, false, date1904)
+            }
+            SeriesDate::Year => {
+                add_months(start, (spec.step * 12.0 * step_number as f64) as i64, false, date1904)
+            }
         },
         SeriesKind::AutoFill => value,
     }

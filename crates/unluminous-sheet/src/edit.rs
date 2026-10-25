@@ -73,7 +73,9 @@ impl Clip {
             }
             let shown: Vec<String> = (0..cols)
                 .filter(|c| !self.extras.hidden_columns.contains(c))
-                .map(|c| by_place.get(&(r, c)).map_or_else(String::new, |cell| shown_text(book, cell)))
+                .map(|c| {
+                    by_place.get(&(r, c)).map_or_else(String::new, |cell| shown_text(book, cell))
+                })
                 .collect();
             out.push_str(&shown.join("\t"));
             out.push_str("\r\n");

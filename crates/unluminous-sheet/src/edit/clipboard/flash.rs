@@ -33,8 +33,14 @@ enum Class {
 }
 
 impl Class {
-    const ALL: [Class; 6] =
-        [Class::Digits, Class::Letters, Class::Upper, Class::Lower, Class::AlphaNumeric, Class::Word];
+    const ALL: [Class; 6] = [
+        Class::Digits,
+        Class::Letters,
+        Class::Upper,
+        Class::Lower,
+        Class::AlphaNumeric,
+        Class::Word,
+    ];
 
     fn holds(self, c: char) -> bool {
         match self {
@@ -151,7 +157,8 @@ impl Pos {
     /// Every way of naming an index in a text.
     fn naming(chars: &[char], index: usize) -> Vec<Pos> {
         let mut out = vec![Pos::FromStart(index), Pos::FromEnd(chars.len() - index)];
-        let mut delimiters: Vec<char> = chars.iter().copied().filter(|c| !c.is_alphanumeric()).collect();
+        let mut delimiters: Vec<char> =
+            chars.iter().copied().filter(|c| !c.is_alphanumeric()).collect();
         delimiters.sort_unstable();
         delimiters.dedup();
         for d in delimiters {
@@ -273,7 +280,13 @@ fn pieces_making(target: &str, row: &[Vec<char>]) -> Vec<Piece> {
 }
 
 /// The ways of saying that a stretch of a text runs from `start` to `end`.
-fn parts_for(column: usize, chars: &[char], start: usize, end: usize, letters: Letters) -> Vec<Piece> {
+fn parts_for(
+    column: usize,
+    chars: &[char],
+    start: usize,
+    end: usize,
+    letters: Letters,
+) -> Vec<Piece> {
     let mut froms = Pos::naming(chars, start);
     froms.sort_by_key(Pos::cost);
     froms.truncate(NAMINGS_KEPT);
@@ -352,7 +365,10 @@ impl Search<'_> {
         let mut next = Vec::with_capacity(at.len());
         for (a, e) in at.iter().zip(self.examples) {
             let made: Vec<char> = piece.make(&e.row)?.chars().collect();
-            if made.is_empty() || e.output.len() < a + made.len() || e.output[*a..a + made.len()] != made[..] {
+            if made.is_empty()
+                || e.output.len() < a + made.len()
+                || e.output[*a..a + made.len()] != made[..]
+            {
                 return None;
             }
             next.push(a + made.len());
@@ -368,7 +384,8 @@ pub fn flash_fill_examples(
     examples: &[(Vec<String>, String)],
     rows: &[Vec<String>],
 ) -> Result<Vec<Option<String>>, String> {
-    let chars = |row: &[String]| row.iter().map(|c| c.chars().collect::<Vec<char>>()).collect::<Vec<_>>();
+    let chars =
+        |row: &[String]| row.iter().map(|c| c.chars().collect::<Vec<char>>()).collect::<Vec<_>>();
     let examples: Vec<Example> = examples
         .iter()
         .map(|(row, out)| Example { row: chars(row), output: out.chars().collect() })
@@ -376,7 +393,8 @@ pub fn flash_fill_examples(
     if examples.is_empty() {
         return Err(NO_PATTERN.to_owned());
     }
-    let mut search = Search { examples: &examples, memo: HashMap::new(), candidates: HashMap::new() };
+    let mut search =
+        Search { examples: &examples, memo: HashMap::new(), candidates: HashMap::new() };
     let Some((_, program)) = search.best(vec![0; examples.len()], 0) else {
         return Err(NO_PATTERN.to_owned());
     };
@@ -387,7 +405,11 @@ pub fn flash_fill_examples(
             if row.iter().all(Vec::is_empty) {
                 return None;
             }
-            program.iter().map(|p| p.make(&row)).collect::<Option<Vec<String>>>().map(|v| v.concat())
+            program
+                .iter()
+                .map(|p| p.make(&row))
+                .collect::<Option<Vec<String>>>()
+                .map(|v| v.concat())
         })
         .collect())
 }
@@ -434,7 +456,10 @@ impl Session {
         self.check_sheet(sheet)?;
         let s = &self.book.sheets[sheet];
         let filled = |r: u32, c: u32| s.cells.get(&(r, c)).is_some_and(|x| !x.value.is_empty());
-        let beside = [at.col.checked_sub(1), Some(at.col + 1)].into_iter().flatten().find(|c| filled(at.row, *c));
+        let beside = [at.col.checked_sub(1), Some(at.col + 1)]
+            .into_iter()
+            .flatten()
+            .find(|c| filled(at.row, *c));
         let Some(beside) = beside else { return Err(NO_PATTERN.to_owned()) };
         let (mut first, mut last) = (at.row, at.row);
         while first > 0 && filled(first - 1, beside) {
@@ -484,7 +509,8 @@ impl Session {
     ) -> (Vec<(Vec<String>, String)>, Vec<(u32, Vec<String>)>) {
         let (mut examples, mut targets) = (Vec::new(), Vec::new());
         for r in range.first.row..=range.last.row {
-            let row: Vec<String> = inputs.iter().map(|c| self.flash_text(sheet, CellRef::new(r, *c))).collect();
+            let row: Vec<String> =
+                inputs.iter().map(|c| self.flash_text(sheet, CellRef::new(r, *c))).collect();
             let typed = self.flash_text(sheet, CellRef::new(r, range.first.col));
             if row.iter().all(String::is_empty) {
                 continue;
@@ -522,7 +548,8 @@ mod tests {
 
     fn learn(rows: &[(&[&str], &str)], more: &[&[&str]]) -> Vec<Option<String>> {
         let owned = |r: &[&str]| r.iter().map(|s| (*s).to_owned()).collect::<Vec<String>>();
-        let examples: Vec<(Vec<String>, String)> = rows.iter().map(|(r, o)| (owned(r), (*o).to_owned())).collect();
+        let examples: Vec<(Vec<String>, String)> =
+            rows.iter().map(|(r, o)| (owned(r), (*o).to_owned())).collect();
         let rest: Vec<Vec<String>> = more.iter().map(|r| owned(r)).collect();
         flash_fill_examples(&examples, &rest).unwrap()
     }
@@ -547,9 +574,18 @@ mod tests {
 
     #[test]
     fn capitals_lower_case_and_proper_case() {
-        assert_eq!(learn(&[(&["john smith"], "JOHN SMITH")], &[&["mary jones"]])[0].as_deref(), Some("MARY JONES"));
-        assert_eq!(learn(&[(&["JOHN SMITH"], "john smith")], &[&["MARY JONES"]])[0].as_deref(), Some("mary jones"));
-        assert_eq!(learn(&[(&["jOHN sMITH"], "John Smith")], &[&["mARY jONES"]])[0].as_deref(), Some("Mary Jones"));
+        assert_eq!(
+            learn(&[(&["john smith"], "JOHN SMITH")], &[&["mary jones"]])[0].as_deref(),
+            Some("MARY JONES")
+        );
+        assert_eq!(
+            learn(&[(&["JOHN SMITH"], "john smith")], &[&["MARY JONES"]])[0].as_deref(),
+            Some("mary jones")
+        );
+        assert_eq!(
+            learn(&[(&["jOHN sMITH"], "John Smith")], &[&["mARY jONES"]])[0].as_deref(),
+            Some("Mary Jones")
+        );
     }
 
     #[test]
@@ -572,7 +608,10 @@ mod tests {
 
     #[test]
     fn examples_that_fit_no_pattern_are_refused() {
-        let examples = vec![(vec!["abc".to_owned()], "zzz".to_owned()), (vec!["def".to_owned()], "q".to_owned())];
+        let examples = vec![
+            (vec!["abc".to_owned()], "zzz".to_owned()),
+            (vec!["def".to_owned()], "q".to_owned()),
+        ];
         assert!(flash_fill_examples(&examples, &[]).is_err());
     }
 }

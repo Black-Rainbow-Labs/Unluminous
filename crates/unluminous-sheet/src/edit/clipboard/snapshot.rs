@@ -44,7 +44,8 @@ fn filtered_rows(s: &Sheet, range: Range) -> Vec<u32> {
         row > filter.range.first.row && row <= filter.range.last.row && s.is_row_hidden(row)
     };
     // Only rows that hold something matter, so a copy of whole columns is cut to the rows in use.
-    let limit = range.last.row.min(last_used_row(s).max(filter.range.last.row)).max(range.first.row);
+    let limit =
+        range.last.row.min(last_used_row(s).max(filter.range.last.row)).max(range.first.row);
     let kept: Vec<u32> = (range.first.row..=limit)
         .filter(|r| !hidden_by_filter(*r))
         .map(|r| r - range.first.row)
@@ -116,7 +117,9 @@ fn block_extras(s: &Sheet, range: Range) -> ClipExtras {
         .filter(|m| range.contains(m.first) && range.contains(m.last))
         .map(|m| at(*m))
         .collect();
-    for link in s.links.iter().filter(|l| range.contains(l.range.first) && range.contains(l.range.last)) {
+    for link in
+        s.links.iter().filter(|l| range.contains(l.range.first) && range.contains(l.range.last))
+    {
         extras.links.push(crate::model::Hyperlink { range: at(link.range), ..link.clone() });
     }
     widths_and_heights(s, range, &mut extras);

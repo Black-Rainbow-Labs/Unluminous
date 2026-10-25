@@ -151,7 +151,8 @@ impl Session {
             let typed = crate::input::read(text, self.book.date1904, self.this_year);
             if let Some(code) = typed.format {
                 if self.book.styles.format_code(style) == "General" {
-                    style = self.book.styles.derive(style, &StyleChange::NumberFormat(code.to_owned()));
+                    style =
+                        self.book.styles.derive(style, &StyleChange::NumberFormat(code.to_owned()));
                 }
             }
             quote = matches!(typed.value, Value::Text(_)) && text.starts_with(['=', '@', '+', '-']);
@@ -160,7 +161,8 @@ impl Session {
         if quote {
             style = self.quoted_style(style);
         }
-        self.book.sheets[sheet].set(at, Cell { value, formula, style, rich: None, extra: old.extra });
+        self.book.sheets[sheet]
+            .set(at, Cell { value, formula, style, rich: None, extra: old.extra });
         self.engine.changed(&self.book, sheet, at);
     }
 
@@ -168,7 +170,8 @@ impl Session {
     pub(super) fn enter_plain_text(&mut self, sheet: usize, at: CellRef, text: &str) {
         let old = self.book.sheets[sheet].cell(at).cloned().unwrap_or_default();
         let value = if text.is_empty() { Value::Empty } else { Value::text(text) };
-        self.book.sheets[sheet].set(at, Cell { value, formula: None, style: old.style, rich: None, extra: old.extra });
+        self.book.sheets[sheet]
+            .set(at, Cell { value, formula: None, style: old.style, rich: None, extra: old.extra });
         self.engine.changed(&self.book, sheet, at);
     }
 
@@ -214,7 +217,13 @@ impl Session {
     }
 
     /// Write one cell of the page, and merge it when it spans.
-    fn place_piece(&mut self, sheet: usize, origin: CellRef, piece: &Piece, options: ExternalPaste) {
+    fn place_piece(
+        &mut self,
+        sheet: usize,
+        origin: CellRef,
+        piece: &Piece,
+        options: ExternalPaste,
+    ) {
         let Some(first) = origin.offset(piece.row as i64, piece.col as i64) else { return };
         let span = Range::new(
             first,
@@ -234,21 +243,34 @@ impl Session {
             s.merges.push(span);
         }
         if let Some(href) = &piece.cell.link {
-            s.links.push(Hyperlink { range: Range::cell(first), target: LinkTarget::External(href.clone()), display: None, tooltip: None });
+            s.links.push(Hyperlink {
+                range: Range::cell(first),
+                target: LinkTarget::External(href.clone()),
+                display: None,
+                tooltip: None,
+            });
         }
         self.engine.changed(&self.book, sheet, first);
     }
 
-    fn enter_html_text(&mut self, sheet: usize, at: CellRef, piece: &Piece, options: ExternalPaste) {
+    fn enter_html_text(
+        &mut self,
+        sheet: usize,
+        at: CellRef,
+        piece: &Piece,
+        options: ExternalPaste,
+    ) {
         let text = piece.text.as_str();
         match piece.cell.number {
             Some(n) if !piece.cell.as_text => {
                 let style = self.book.sheets[sheet].cell(at).map_or(0, |c| c.style);
-                self.book.sheets[sheet].set(at, Cell { value: Value::Number(n), style, ..Default::default() });
+                self.book.sheets[sheet]
+                    .set(at, Cell { value: Value::Number(n), style, ..Default::default() });
             }
             _ if piece.cell.as_text => {
                 let style = self.book.sheets[sheet].cell(at).map_or(0, |c| c.style);
-                let style = self.book.styles.derive(style, &StyleChange::NumberFormat("@".to_owned()));
+                let style =
+                    self.book.styles.derive(style, &StyleChange::NumberFormat("@".to_owned()));
                 let value = if text.is_empty() { Value::Empty } else { Value::text(text) };
                 self.book.sheets[sheet].set(at, Cell { value, style, ..Default::default() });
             }
@@ -264,7 +286,13 @@ impl Session {
         };
         let link_colour = Color::Theme(10, 0.0);
         let colour = cell.color.or(cell.link.is_some().then_some(link_colour));
-        if cell.bold || cell.italic || cell.underline || cell.strike || colour.is_some() || cell.link.is_some() {
+        if cell.bold
+            || cell.italic
+            || cell.underline
+            || cell.strike
+            || colour.is_some()
+            || cell.link.is_some()
+        {
             let edit = FontEdit {
                 bold: cell.bold.then_some(true),
                 italic: cell.italic.then_some(true),
@@ -319,9 +347,23 @@ fn layout(grid: &HtmlGrid) -> Layout {
     let heights: Vec<u32> = grid
         .rows
         .iter()
-        .map(|row| row.iter().filter(|c| !c.same_cell).map(|c| c.lines.len() as u32).max().unwrap_or(1).max(1))
+        .map(|row| {
+            row.iter()
+                .filter(|c| !c.same_cell)
+                .map(|c| c.lines.len() as u32)
+                .max()
+                .unwrap_or(1)
+                .max(1)
+        })
         .collect();
-    let tops: Vec<u32> = heights.iter().scan(0, |at, h| { let top = *at; *at += h; Some(top) }).collect();
+    let tops: Vec<u32> = heights
+        .iter()
+        .scan(0, |at, h| {
+            let top = *at;
+            *at += h;
+            Some(top)
+        })
+        .collect();
     let mut taken: std::collections::HashSet<(u32, u32)> = std::collections::HashSet::new();
     let mut pieces = Vec::new();
     let (mut rows_used, mut cols_used) = (0, 0);
@@ -331,7 +373,9 @@ fn layout(grid: &HtmlGrid) -> Layout {
             while taken.contains(&(tops[r], x)) {
                 x += 1;
             }
-            let covered = (r..(r + cell.row_span as usize).min(grid.rows.len())).map(|i| heights[i]).sum::<u32>();
+            let covered = (r..(r + cell.row_span as usize).min(grid.rows.len()))
+                .map(|i| heights[i])
+                .sum::<u32>();
             for piece in pieces_of(cell, tops[r], x, covered) {
                 for dy in 0..piece.rows {
                     for dx in 0..piece.cols {
@@ -350,7 +394,8 @@ fn layout(grid: &HtmlGrid) -> Layout {
 
 /// The cells one cell of the page makes: one, or one for each line.
 fn pieces_of(cell: &HtmlCell, top: u32, col: u32, covered: u32) -> Vec<Piece> {
-    let lines: Vec<String> = if cell.same_cell { vec![cell.lines.join("\n")] } else { cell.lines.clone() };
+    let lines: Vec<String> =
+        if cell.same_cell { vec![cell.lines.join("\n")] } else { cell.lines.clone() };
     let last = lines.len() as u32 - 1;
     lines
         .into_iter()
@@ -370,7 +415,10 @@ mod tests {
     fn text_is_split_at_tabs_and_line_breaks() {
         assert_eq!(parse_text_grid("a\tb\r\nc\td\r\n"), [["a", "b"], ["c", "d"]]);
         assert_eq!(parse_text_grid("x\ty"), [["x", "y"]]);
-        assert_eq!(parse_text_grid("a\t\tc\r\n\r\nx\ty\r\n"), [vec!["a", "", "c"], vec![""], vec!["x", "y"]]);
+        assert_eq!(
+            parse_text_grid("a\t\tc\r\n\r\nx\ty\r\n"),
+            [vec!["a", "", "c"], vec![""], vec!["x", "y"]]
+        );
     }
 
     #[test]

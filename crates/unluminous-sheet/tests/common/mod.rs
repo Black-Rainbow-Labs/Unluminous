@@ -10,8 +10,8 @@
 use serde_json::Value as J;
 use unluminous_sheet::coord::{CellRef, Range};
 use unluminous_sheet::edit::clipboard::{
-    AcrossSheets, CustomLists, ExternalPaste, FillKind, PasteKind, PasteOperation, PasteSpecial, SeriesDate, SeriesKind,
-    SeriesSpec,
+    AcrossSheets, CustomLists, ExternalPaste, FillKind, PasteKind, PasteOperation, PasteSpecial,
+    SeriesDate, SeriesKind, SeriesSpec,
 };
 use unluminous_sheet::edit::{Clip, Session, Shift};
 use unluminous_sheet::model::{CfRule, FilterCriteria, Validation, Workbook};
@@ -86,7 +86,9 @@ fn put_cell(session: &mut Session, at: &str, spec: &J) {
     let at = range.first;
     let cell = Range::cell(at);
     let (value, formula) = match spec {
-        J::Object(o) => (o.get("v").cloned().unwrap_or(J::Null), o.get("f").and_then(|f| f.as_str())),
+        J::Object(o) => {
+            (o.get("v").cloned().unwrap_or(J::Null), o.get("f").and_then(|f| f.as_str()))
+        }
         other => (other.clone(), None),
     };
     if let Some(code) = spec["nf"].as_str() {
@@ -96,7 +98,9 @@ fn put_cell(session: &mut Session, at: &str, spec: &J) {
         session.set_input(sheet, at, f).unwrap();
     } else {
         match value {
-            J::Number(n) => session.set_value(sheet, at, Value::Number(n.as_f64().unwrap())).unwrap(),
+            J::Number(n) => {
+                session.set_value(sheet, at, Value::Number(n.as_f64().unwrap())).unwrap()
+            }
             // Excel reads a string it is given as it would be typed, unless the cell is a text cell.
             J::String(s) if spec["nf"].as_str() == Some("@") => {
                 session.set_value(sheet, at, Value::text(s)).unwrap()
@@ -238,6 +242,9 @@ fn run_step(world: &mut World, step: &J) -> Result<(), String> {
             let clip = world.clip.as_ref().expect("a clip");
             world.copied_text = Some(clip.to_text(&s.book));
         }
+        "justify" => {
+            s.justify(sheet, at)?;
+        }
         "flashfill" => {
             s.flash_fill(sheet, at)?;
         }
@@ -251,13 +258,15 @@ fn run_step(world: &mut World, step: &J) -> Result<(), String> {
         }
         "insertcopied" => {
             let clip = world.clip.clone().expect("a clip");
-            let shift = if step["shift"].as_i64() == Some(-4161) { Shift::Right } else { Shift::Down };
+            let shift =
+                if step["shift"].as_i64() == Some(-4161) { Shift::Right } else { Shift::Down };
             s.insert_copied(&clip, sheet, at.first, shift)?;
         }
         "filter" => filter(s, sheet, at, step)?,
         "autofill" => {
             let (_, to) = address(s, step["to"].as_str().unwrap());
-            let kind = FillKind::from_excel_code(step["type"].as_i64().unwrap_or(0) as i32).unwrap();
+            let kind =
+                FillKind::from_excel_code(step["type"].as_i64().unwrap_or(0) as i32).unwrap();
             s.fill_series_with(sheet, at, to, kind, &CustomLists::default())?;
         }
         "dataseries" => s.data_series(sheet, at, &series_of(step))?,
@@ -306,7 +315,9 @@ pub fn series_of(step: &J) -> SeriesSpec {
 /// The options of a `pastespecial` step.
 pub fn special_of(step: &J) -> PasteSpecial {
     PasteSpecial {
-        kind: step["paste"].as_i64().map_or(PasteKind::All, |c| PasteKind::from_excel_code(c as i32).unwrap()),
+        kind: step["paste"]
+            .as_i64()
+            .map_or(PasteKind::All, |c| PasteKind::from_excel_code(c as i32).unwrap()),
         operation: step["op"]
             .as_i64()
             .map_or(PasteOperation::None, |c| PasteOperation::from_excel_code(c as i32).unwrap()),
@@ -412,7 +423,7 @@ impl Seen {
         let rgb_int = |color: Color| {
             color.resolve(theme).map_or(0, |(r, g, b)| r as i64 + g as i64 * 256 + b as i64 * 65536)
         };
-        let fill = book.styles.fill_of(style).paint().map_or(-1, |c| rgb_int(c));
+        let fill = book.styles.fill_of(style).paint().map_or(-1, &rgb_int);
         let xf = book.styles.xf(style);
         let align = match xf.align.horizontal.as_deref() {
             None => 1,
@@ -526,11 +537,21 @@ pub fn differences(excel: &Seen, ours: &Seen, formats: bool) -> Vec<String> {
     check("bold", excel.bold == ours.bold, excel.bold.to_string(), ours.bold.to_string());
     check("italic", excel.italic == ours.italic, excel.italic.to_string(), ours.italic.to_string());
     check("fill", excel.fill == ours.fill, excel.fill.to_string(), ours.fill.to_string());
-    check("font colour", excel.color == ours.color, excel.color.to_string(), ours.color.to_string());
+    check(
+        "font colour",
+        excel.color == ours.color,
+        excel.color.to_string(),
+        ours.color.to_string(),
+    );
     check("alignment", excel.align == ours.align, excel.align.to_string(), ours.align.to_string());
     check("border", excel.border == ours.border, excel.border.to_string(), ours.border.to_string());
     check("note", excel.note == ours.note, excel.note.clone(), ours.note.clone());
-    check("validation", excel.validation == ours.validation, excel.validation.to_string(), ours.validation.to_string());
+    check(
+        "validation",
+        excel.validation == ours.validation,
+        excel.validation.to_string(),
+        ours.validation.to_string(),
+    );
     check("conditional formats", excel.cf == ours.cf, excel.cf.to_string(), ours.cf.to_string());
     check("merged", excel.merged == ours.merged, excel.merged.to_string(), ours.merged.to_string());
     out
@@ -538,7 +559,8 @@ pub fn differences(excel: &Seen, ours: &Seen, formats: bool) -> Vec<String> {
 
 /// Run every case of a scenario file against Excel's answers and return the differences, labelled by case.
 pub fn check_file(folder: &str, stem: &str, skip: &[(&str, &str)]) -> Vec<String> {
-    let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(folder);
+    let folder =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(folder);
     let cases: Vec<J> = read(&folder, &format!("{stem}.in.json"));
     let answers: Vec<J> = read(&folder, &format!("{stem}.out.json"));
     let mut wrong = Vec::new();
@@ -605,7 +627,10 @@ pub fn check_case(case: &J, answer: &J, ignored_columns: &[String]) -> Vec<Strin
     out.extend(width_differences(case, answer, &world));
     if let Some(expected) = answer["clipboard"].as_str() {
         if world.copied_text.as_deref() != Some(expected) {
-            out.push(format!("text for other programs: excel {expected:?}, engine {:?}", world.copied_text));
+            out.push(format!(
+                "text for other programs: excel {expected:?}, engine {:?}",
+                world.copied_text
+            ));
         }
     }
     out

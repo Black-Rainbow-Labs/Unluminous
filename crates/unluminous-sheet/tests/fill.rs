@@ -47,3 +47,8 @@ fn fill_keeps_formats_values_validation_and_rules_as_excel_does() {
 fn flash_fill_finds_the_pattern_excel_finds() {
     expect_none(common::check_file("fill", "flash_fill", &[]));
 }
+
+#[test]
+fn justify_pours_text_into_lines_as_wide_as_excel_would() {
+    expect_none(common::check_file("fill", "justify", &[]));
+}

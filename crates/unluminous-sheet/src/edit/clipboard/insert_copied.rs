@@ -25,7 +25,12 @@ impl Session {
                 let dest = CellRef::new(at.row + r, at.col + c);
                 let style = self.book.sheets[sheet].cell(dest).map_or(0, |x| x.style);
                 let formula = Formula::from_expr(Expr::Ref(reference), true);
-                let cell = Cell { value: Value::Empty, formula: Some(formula), style, ..Default::default() };
+                let cell = Cell {
+                    value: Value::Empty,
+                    formula: Some(formula),
+                    style,
+                    ..Default::default()
+                };
                 self.book.sheets[sheet].set(dest, cell);
                 self.engine.changed(&self.book, sheet, dest);
             }
@@ -50,7 +55,10 @@ impl Session {
         let (rows, cols) = clip.block_size();
         let target = Range::new(
             at,
-            CellRef::new((at.row + rows - 1).min(MAX_ROWS - 1), (at.col + cols - 1).min(MAX_COLS - 1)),
+            CellRef::new(
+                (at.row + rows - 1).min(MAX_ROWS - 1),
+                (at.col + cols - 1).min(MAX_COLS - 1),
+            ),
         );
         if clip.cut && clip.sheet == sheet && clip.range.intersects(&target) {
             return Err("This action won't work on overlapping selections.".to_owned());
@@ -92,7 +100,9 @@ impl Session {
     /// say where the target is after that.
     fn close_the_gap(&mut self, source: Range, target: Range, shift: Shift, sheet: usize) -> Range {
         let aligned = match shift {
-            Shift::Right => source.first.row == target.first.row && source.last.row == target.last.row,
+            Shift::Right => {
+                source.first.row == target.first.row && source.last.row == target.last.row
+            }
             _ => source.first.col == target.first.col && source.last.col == target.last.col,
         };
         if !aligned {

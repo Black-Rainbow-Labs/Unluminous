@@ -4,21 +4,24 @@
 //! Excel is the oracle for all of it. `tests/clipboard.rs` replays scenarios that `tools/excel-oracle/
 //! edit-oracle.ps1` ran through Excel's own object model and compares every cell.
 
-mod extras;
 mod external;
+mod extras;
 mod fill;
 mod flash;
 mod html;
 mod insert_copied;
+mod justify;
 mod lists;
 mod operate;
 mod paste;
 mod series;
 mod snapshot;
+#[cfg(test)]
+mod tests;
 mod trend;
 
-pub use fill::{AcrossSheets, FillKind, SeriesDate, SeriesKind, SeriesSpec};
 pub use external::{parse_text_grid, ExternalPaste};
+pub use fill::{AcrossSheets, FillKind, SeriesDate, SeriesKind, SeriesSpec};
 pub use flash::flash_fill_examples;
 pub use lists::CustomLists;
 
@@ -26,8 +29,8 @@ use std::collections::BTreeMap;
 
 use crate::coord::{CellRef, Range};
 use crate::model::{ColumnInfo, Hyperlink, Note, Validation};
-use crate::styles::{Dxf, Font};
 use crate::styles::{Alignment, Border, Fill, Xf};
+use crate::styles::{Dxf, Font};
 
 /// What Paste Special takes from the cells copied, in the order of Excel's `XlPasteType`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

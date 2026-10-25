@@ -54,7 +54,7 @@ impl CustomLists {
         if items.len() < 2 || items.iter().any(|i| i.trim().is_empty()) {
             return Err("A custom list needs at least two entries, none of them empty.".to_owned());
         }
-        if self.lists.iter().any(|l| *l == items) {
+        if self.lists.contains(&items) {
             return Err("That list is already there.".to_owned());
         }
         self.lists.push(items);
@@ -100,7 +100,10 @@ impl CustomLists {
         let list = &self.lists[index];
         let matches = |names: &[&str]| {
             list.len() == names.len()
-                && list.iter().zip(names).all(|(a, b)| a.to_ascii_lowercase().starts_with(&b.to_ascii_lowercase()))
+                && list
+                    .iter()
+                    .zip(names)
+                    .all(|(a, b)| a.to_ascii_lowercase().starts_with(&b.to_ascii_lowercase()))
         };
         if matches(&DAYS_SHORT) {
             ListKind::Days

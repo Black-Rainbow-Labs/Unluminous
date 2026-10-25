@@ -78,12 +78,20 @@ impl Session {
             }
             s.conditional.retain(|cf| !cf.ranges.is_empty());
         }
-        let mut priority = s.conditional.iter().flat_map(|c| &c.rules).map(|r| r.priority).max().unwrap_or(0);
+        let mut priority =
+            s.conditional.iter().flat_map(|c| &c.rules).map(|r| r.priority).max().unwrap_or(0);
         for origin in plan.origins() {
             let (dr, dc) = offset(clip, origin);
             for rules in &clip.extras.conditional {
                 priority += 1;
-                s.conditional.push(moved_rules(rules, plan, origin, (dr, dc), &dxf_map, &mut priority));
+                s.conditional.push(moved_rules(
+                    rules,
+                    plan,
+                    origin,
+                    (dr, dc),
+                    &dxf_map,
+                    &mut priority,
+                ));
             }
         }
     }
@@ -106,7 +114,8 @@ impl Session {
         s.links.retain(|l| !plan.target.intersects(&l.range));
         for origin in plan.origins() {
             for link in &clip.extras.links {
-                s.links.push(Hyperlink { range: plan.map_range(origin, link.range), ..link.clone() });
+                s.links
+                    .push(Hyperlink { range: plan.map_range(origin, link.range), ..link.clone() });
             }
         }
     }
@@ -121,7 +130,8 @@ impl Session {
             if col >= crate::coord::MAX_COLS {
                 break;
             }
-            let source = clip.extras.widths.iter().find(|(o, _)| *o == offset).map(|(_, i)| i.clone());
+            let source =
+                clip.extras.widths.iter().find(|(o, _)| *o == offset).map(|(_, i)| i.clone());
             self.book.sheets[cx.sheet].edit_column(col, |info| match &source {
                 Some(s) => {
                     info.width = s.width;
@@ -152,7 +162,10 @@ impl Session {
 
 /// How far a copy of the block moved from where it was copied, in rows and columns.
 fn offset(clip: &Clip, origin: CellRef) -> (i64, i64) {
-    (origin.row as i64 - clip.range.first.row as i64, origin.col as i64 - clip.range.first.col as i64)
+    (
+        origin.row as i64 - clip.range.first.row as i64,
+        origin.col as i64 - clip.range.first.col as i64,
+    )
 }
 
 /// The ranges with a hole cut out of them.

@@ -32,13 +32,22 @@ impl Plan {
     pub(super) fn new(clip: &Clip, to: Range, transpose: bool) -> Result<Plan, String> {
         let (h, w) = clip.block_size();
         let (rows, cols) = if transpose { (w, h) } else { (h, w) };
-        let repeat_rows = if to.rows() > rows && to.rows() % rows == 0 { to.rows() / rows } else { 1 };
-        let repeat_cols = if to.cols() > cols && to.cols() % cols == 0 { to.cols() / cols } else { 1 };
+        let repeat_rows =
+            if to.rows() > rows && to.rows() % rows == 0 { to.rows() / rows } else { 1 };
+        let repeat_cols =
+            if to.cols() > cols && to.cols() % cols == 0 { to.cols() / cols } else { 1 };
         let last = CellRef::new(
             (to.first.row + rows * repeat_rows - 1).min(MAX_ROWS - 1),
             (to.first.col + cols * repeat_cols - 1).min(MAX_COLS - 1),
         );
-        Ok(Plan { rows, cols, repeat_rows, repeat_cols, target: Range::new(to.first, last), transpose })
+        Ok(Plan {
+            rows,
+            cols,
+            repeat_rows,
+            repeat_cols,
+            target: Range::new(to.first, last),
+            transpose,
+        })
     }
 
     /// The top left cell of every copy of the block.
@@ -46,7 +55,10 @@ impl Plan {
         let mut out = Vec::new();
         for rr in 0..self.repeat_rows {
             for rc in 0..self.repeat_cols {
-                let (row, col) = (self.target.first.row + rr * self.rows, self.target.first.col + rc * self.cols);
+                let (row, col) = (
+                    self.target.first.row + rr * self.rows,
+                    self.target.first.col + rc * self.cols,
+                );
                 if row < MAX_ROWS && col < MAX_COLS {
                     out.push(CellRef::new(row, col));
                 }
@@ -89,7 +101,12 @@ pub(super) struct Cx<'a> {
 }
 
 impl<'a> Cx<'a> {
-    pub(super) fn new(clip: &'a Clip, sheet: usize, plan: &'a Plan, opts: &'a PasteSpecial) -> Self {
+    pub(super) fn new(
+        clip: &'a Clip,
+        sheet: usize,
+        plan: &'a Plan,
+        opts: &'a PasteSpecial,
+    ) -> Self {
         Self { clip, sheet, plan, opts, styles: BTreeMap::new(), arrays: Vec::new() }
     }
 }
@@ -111,7 +128,10 @@ impl Session {
         let plan = Plan::new(clip, to, opts.transpose)?;
         // Cells left out by a filter, pasted over the filtered range they came from, do not line up.
         let compacted = !clip.extras.rows.is_empty();
-        if compacted && clip.sheet == sheet && to.len() > 1 && to.intersects(&clip.range)
+        if compacted
+            && clip.sheet == sheet
+            && to.len() > 1
+            && to.intersects(&clip.range)
             && (to.rows() != plan.rows || to.cols() != plan.cols)
         {
             return Err(SIZE_MISMATCH.to_owned());
@@ -124,7 +144,13 @@ impl Session {
     }
 
     /// Carry out a paste whose undo step is already recorded.
-    pub(super) fn run_paste(&mut self, clip: &Clip, sheet: usize, plan: &Plan, opts: &PasteSpecial) {
+    pub(super) fn run_paste(
+        &mut self,
+        clip: &Clip,
+        sheet: usize,
+        plan: &Plan,
+        opts: &PasteSpecial,
+    ) {
         let mut cx = Cx::new(clip, sheet, plan, opts);
         if !matches!(
             opts.kind,
@@ -239,7 +265,13 @@ impl Session {
         };
         let style = self.pasted_style(cx, &existing, src);
         let extra = if written { None } else { existing.extra.clone() };
-        let cell = Cell { value: content.value, formula: content.formula, style, rich: content.rich, extra };
+        let cell = Cell {
+            value: content.value,
+            formula: content.formula,
+            style,
+            rich: content.rich,
+            extra,
+        };
         self.book.sheets[cx.sheet].set(at, cell);
         self.engine.changed(&self.book, cx.sheet, at);
     }
@@ -310,7 +342,12 @@ impl Session {
     }
 
     /// A cell format made of one, with the border of another or the number format of another.
-    fn compose_style(&mut self, base: u32, border_from: Option<u32>, number_from: Option<u32>) -> u32 {
+    fn compose_style(
+        &mut self,
+        base: u32,
+        border_from: Option<u32>,
+        number_from: Option<u32>,
+    ) -> u32 {
         let styles = &mut self.book.styles;
         let mut xf = styles.xf(base);
         if let Some(b) = border_from {
@@ -332,9 +369,9 @@ fn source_position(cx: &Cx, rel: (u32, u32)) -> CellRef {
 /// A formula moved to where it is pasted: relative references move with it, and a transposed paste turns
 /// the offsets round as well.
 fn moved_formula(cx: &Cx, f: &Formula, from: CellRef, at: CellRef, origin: CellRef) -> Formula {
-    let array_whole = f
-        .array
-        .filter(|a| !cx.plan.transpose && cx.clip.range.contains(a.first) && cx.clip.range.contains(a.last));
+    let array_whole = f.array.filter(|a| {
+        !cx.plan.transpose && cx.clip.range.contains(a.first) && cx.clip.range.contains(a.last)
+    });
     let expr = if cx.plan.transpose {
         transposed_expr(&f.expr, from, at, cx.clip.range, origin)
     } else {
@@ -343,7 +380,8 @@ fn moved_formula(cx: &Cx, f: &Formula, from: CellRef, at: CellRef, origin: CellR
     let mut out = Formula::from_expr(expr, f.dynamic && array_whole.is_none());
     if let Some(a) = array_whole {
         let (dr, dc) = (at.row as i64 - from.row as i64, at.col as i64 - from.col as i64);
-        let shift = |p: CellRef| CellRef::new((p.row as i64 + dr) as u32, (p.col as i64 + dc) as u32);
+        let shift =
+            |p: CellRef| CellRef::new((p.row as i64 + dr) as u32, (p.col as i64 + dc) as u32);
         out.array = Some(Range::new(shift(a.first), shift(a.last)));
         out.dynamic = false;
     }
@@ -366,9 +404,7 @@ fn transposed_reference(
     if matches!(r.shape, Shape::Columns | Shape::Rows) {
         return Some(r.clone());
     }
-    let inside = r.sheet.is_none()
-        && block.contains(r.first.at())
-        && block.contains(r.last.at());
+    let inside = r.sheet.is_none() && block.contains(r.first.at()) && block.contains(r.last.at());
     let map = |p: &Point| -> Option<Point> {
         let (row, col, row_abs, col_abs) = if inside {
             (

@@ -70,17 +70,43 @@ pub(super) enum Run {
     /// Repeat the seed (a formula moves its references).
     Copy,
     /// A straight line: `a + b * index`.
-    Linear { a: f64, b: f64 },
+    Linear {
+        a: f64,
+        b: f64,
+    },
     /// An exponential curve: `exp(c + m * index)`.
-    Growth { c: f64, m: f64 },
+    Growth {
+        c: f64,
+        m: f64,
+    },
     /// A growth fit that cannot be made: the seeds stay and the rest is zero.
     Zeros,
-    Days { first: f64, step: f64 },
-    Months { first: f64, step: i64, end_of_month: bool },
-    Weekdays { first: f64, step: i64 },
+    Days {
+        first: f64,
+        step: f64,
+    },
+    Months {
+        first: f64,
+        step: i64,
+        end_of_month: bool,
+    },
+    Weekdays {
+        first: f64,
+        step: i64,
+    },
     /// The block of dates repeats, moved on by some months each time round.
-    Shift { dates: Vec<f64>, months: i64, end_of_month: bool },
-    Names { list: Vec<String>, first: i64, step: i64, case: Case, weekdays_only: bool },
+    Shift {
+        dates: Vec<f64>,
+        months: i64,
+        end_of_month: bool,
+    },
+    Names {
+        list: Vec<String>,
+        first: i64,
+        step: i64,
+        case: Case,
+        weekdays_only: bool,
+    },
     Counted(Counted),
 }
 
@@ -109,15 +135,24 @@ impl Counted {
         let lower = text.to_ascii_lowercase();
         for ending in ["st", "nd", "rd", "th"] {
             if let Some(digits) = lower.strip_suffix(ending) {
-                if !digits.is_empty() && digits.len() <= 15 && digits.bytes().all(|b| b.is_ascii_digit()) {
+                if !digits.is_empty()
+                    && digits.len() <= 15
+                    && digits.bytes().all(|b| b.is_ascii_digit())
+                {
                     let shown_suffix = &text[text.len() - 2..];
                     return Some(Self::make(CountMode::Ordinal, "", shown_suffix, digits));
                 }
             }
         }
         let digits_at_start = text.bytes().take_while(u8::is_ascii_digit).count();
-        if digits_at_start > 0 && digits_at_start <= 15 && text[digits_at_start..].starts_with(' ') {
-            return Some(Self::make(CountMode::Leading, "", &text[digits_at_start..], &text[..digits_at_start]));
+        if digits_at_start > 0 && digits_at_start <= 15 && text[digits_at_start..].starts_with(' ')
+        {
+            return Some(Self::make(
+                CountMode::Leading,
+                "",
+                &text[digits_at_start..],
+                &text[..digits_at_start],
+            ));
         }
         let digits_at_end = text.bytes().rev().take_while(u8::is_ascii_digit).count();
         if digits_at_end > 0 && digits_at_end <= 15 {
@@ -200,7 +235,9 @@ fn family_of(seed: &Seed, ctx: &Context) -> Family {
         return Family::Other;
     }
     let family = match &seed.value {
-        Value::Number(_) if seed.date == Some(DateShape::TimeOnly) && ctx.kind.is_by_unit() => Family::Other,
+        Value::Number(_) if seed.date == Some(DateShape::TimeOnly) && ctx.kind.is_by_unit() => {
+            Family::Other
+        }
         Value::Number(_) if seed.date.is_some() => Family::Date,
         Value::Number(_) => Family::Number,
         Value::Text(t) => match ctx.lists.containing(t) {
@@ -218,7 +255,10 @@ fn allowed(family: Family, ctx: &Context) -> Family {
     let keep = match (&family, ctx.kind) {
         (_, FillKind::Copy | FillKind::Formats) => false,
         (_, FillKind::Default | FillKind::Series | FillKind::Values) => true,
-        (Family::Date, FillKind::Days | FillKind::Weekdays | FillKind::Months | FillKind::Years) => true,
+        (
+            Family::Date,
+            FillKind::Days | FillKind::Weekdays | FillKind::Months | FillKind::Years,
+        ) => true,
         (Family::Name(l), FillKind::Days | FillKind::Weekdays) => list_kind(l) == ListKind::Days,
         (Family::Name(l), FillKind::Months) => list_kind(l) == ListKind::Months,
         (Family::Number, FillKind::LinearTrend | FillKind::GrowthTrend) => true,
@@ -321,7 +361,9 @@ fn date_run(seeds: &[Seed], ctx: &Context) -> Run {
         },
         FillKind::Years => match (v.len(), months) {
             (1, _) => Run::Months { first, step: 12, end_of_month: false },
-            (_, Some((step, eom))) if step % 12 == 0 => Run::Months { first, step, end_of_month: eom },
+            (_, Some((step, eom))) if step % 12 == 0 => {
+                Run::Months { first, step, end_of_month: eom }
+            }
             _ if day_step.is_some() || months.is_some() => shifted_run(v, 12, ctx.date1904),
             _ => Run::Copy,
         },
@@ -346,13 +388,15 @@ fn month_step(v: &[f64], date1904: bool) -> Option<(i64, bool)> {
     if v.len() < 2 {
         return None;
     }
-    let parts: Vec<(i64, u32, u32)> = v.iter().map(|d| dates::date(*d, date1904)).collect::<Option<_>>()?;
+    let parts: Vec<(i64, u32, u32)> =
+        v.iter().map(|d| dates::date(*d, date1904)).collect::<Option<_>>()?;
     let index = |p: &(i64, u32, u32)| p.0 * 12 + p.1 as i64 - 1;
     let step = index(&parts[1]) - index(&parts[0]);
     let even = parts.windows(2).all(|w| index(&w[1]) - index(&w[0]) == step);
     let last_days = parts.iter().all(|p| p.2 == dates::days_in_month(p.0, p.1));
     let same_day = parts.iter().all(|p| p.2 == parts[0].2);
-    (even && step != 0 && (same_day || last_days)).then_some((step, last_days && !same_day || last_days && parts[0].2 >= 28))
+    (even && step != 0 && (same_day || last_days))
+        .then_some((step, last_days && (!same_day || parts[0].2 >= 28)))
 }
 
 /// The block of dates, moved on by some months each time round. Dates that are all the last day of their
@@ -438,7 +482,8 @@ fn names_run(list: usize, seeds: &[Seed], ctx: &Context) -> Run {
         (positions, size)
     };
     let case = Case::of(&texts[0]);
-    let step = if positions.len() == 1 { 1 } else { (positions[1] - positions[0]).rem_euclid(size) };
+    let step =
+        if positions.len() == 1 { 1 } else { (positions[1] - positions[0]).rem_euclid(size) };
     let even = positions.windows(2).all(|w| (w[1] - w[0]).rem_euclid(size) == step);
     if !even || (positions.len() > 1 && step == 0) {
         return Run::Copy;
@@ -490,7 +535,9 @@ pub(super) fn value_at(
         Run::Months { first, step, end_of_month } => {
             Value::Number(add_months(*first, step * index, *end_of_month, ctx.date1904))
         }
-        Run::Weekdays { first, step } => Value::Number(add_weekdays(*first, step * index, ctx.date1904)),
+        Run::Weekdays { first, step } => {
+            Value::Number(add_weekdays(*first, step * index, ctx.date1904))
+        }
         Run::Shift { dates, months, end_of_month } => {
             Value::Number(add_months(dates[offset], months * cycle, *end_of_month, ctx.date1904))
         }
@@ -511,7 +558,8 @@ mod tests {
     #[test]
     fn ordinals_follow_english() {
         let c = Counted::read("1st").unwrap();
-        let texts: Vec<String> = [0, 1, 2, 3, 10, 11, 12, 20].iter().map(|i| c.text_at(*i)).collect();
+        let texts: Vec<String> =
+            [0, 1, 2, 3, 10, 11, 12, 20].iter().map(|i| c.text_at(*i)).collect();
         assert_eq!(texts, ["1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st"]);
     }
 

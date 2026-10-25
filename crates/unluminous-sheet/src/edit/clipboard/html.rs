@@ -261,7 +261,12 @@ impl Builder {
         }
         self.end_cell();
         self.end_row();
-        while self.grid.rows.last().is_some_and(|r| r.len() == 1 && r[0].lines.iter().all(String::is_empty)) {
+        while self
+            .grid
+            .rows
+            .last()
+            .is_some_and(|r| r.len() == 1 && r[0].lines.iter().all(String::is_empty))
+        {
             self.grid.rows.pop();
         }
         self.grid
@@ -310,7 +315,8 @@ impl Builder {
     }
 
     fn start_cell(&mut self, header: bool, attrs: &[(String, String)]) {
-        let mut cell = HtmlCell { row_span: 1, col_span: 1, lines: vec![String::new()], ..Default::default() };
+        let mut cell =
+            HtmlCell { row_span: 1, col_span: 1, lines: vec![String::new()], ..Default::default() };
         cell.row_span = span(attrs, "rowspan");
         cell.col_span = span(attrs, "colspan");
         if header {
@@ -350,12 +356,23 @@ impl Builder {
             cell.lines.last_mut().unwrap().push_str(text);
         } else if self.depth == 0 && !text.trim().is_empty() {
             if self.block_gap {
-                self.grid.rows.push(vec![HtmlCell { row_span: 1, col_span: 1, lines: vec![String::new()], ..Default::default() }]);
+                self.grid.rows.push(vec![HtmlCell {
+                    row_span: 1,
+                    col_span: 1,
+                    lines: vec![String::new()],
+                    ..Default::default()
+                }]);
                 self.block_gap = false;
             }
-            let mut cell = HtmlCell { row_span: 1, col_span: 1, lines: vec![tidy(text)], ..Default::default() };
+            let mut cell = HtmlCell {
+                row_span: 1,
+                col_span: 1,
+                lines: vec![tidy(text)],
+                ..Default::default()
+            };
             let look = self.looks.iter().fold(Look::default(), |acc, (_, l)| merge(acc, l));
-            (cell.bold, cell.italic, cell.underline, cell.strike) = (look.bold, look.italic, look.underline, look.strike);
+            (cell.bold, cell.italic, cell.underline, cell.strike) =
+                (look.bold, look.italic, look.underline, look.strike);
             cell.color = look.color;
             self.grid.rows.push(vec![cell]);
         }
@@ -369,7 +386,10 @@ impl Builder {
 
     fn block_start(&mut self, name: &str, attrs: &[(String, String)]) {
         if self.cell.is_some() {
-            let last_empty = self.cell.as_ref().is_some_and(|c| c.lines.last().is_some_and(|l| l.trim().is_empty()));
+            let last_empty = self
+                .cell
+                .as_ref()
+                .is_some_and(|c| c.lines.last().is_some_and(|l| l.trim().is_empty()));
             if !last_empty {
                 self.line_break();
             }
@@ -403,7 +423,10 @@ impl Builder {
         let css = css_of(attrs);
         for (k, v) in &css {
             match k.as_str() {
-                "font-weight" => look.bold = matches!(v.as_str(), "bold" | "bolder" | "600" | "700" | "800" | "900"),
+                "font-weight" => {
+                    look.bold =
+                        matches!(v.as_str(), "bold" | "bolder" | "600" | "700" | "800" | "900")
+                }
                 "font-style" => look.italic = v == "italic" || v == "oblique",
                 "text-decoration" | "text-decoration-line" => {
                     look.underline = look.underline || v.contains("underline");
@@ -440,7 +463,12 @@ fn css_of(attrs: &[(String, String)]) -> Vec<(String, String)> {
     style
         .split(';')
         .filter_map(|decl| decl.split_once(':'))
-        .map(|(k, v)| (k.trim().to_ascii_lowercase(), v.trim().trim_end_matches("!important").trim().to_ascii_lowercase()))
+        .map(|(k, v)| {
+            (
+                k.trim().to_ascii_lowercase(),
+                v.trim().trim_end_matches("!important").trim().to_ascii_lowercase(),
+            )
+        })
         .collect()
 }
 
@@ -459,7 +487,10 @@ fn apply_attributes(cell: &mut HtmlCell, attrs: &[(String, String)]) {
             "background" | "background-color" => cell.fill = parse_color(&v).or(cell.fill),
             "text-align" => cell.align = align_of(&v).or(cell.align),
             "color" => cell.color = parse_color(&v),
-            "font-weight" => cell.bold = cell.bold || matches!(v.as_str(), "bold" | "600" | "700" | "800" | "900"),
+            "font-weight" => {
+                cell.bold =
+                    cell.bold || matches!(v.as_str(), "bold" | "600" | "700" | "800" | "900")
+            }
             "font-style" => cell.italic = v == "italic",
             "mso-number-format" => {
                 cell.as_text = cell.as_text || v.trim_matches(['\'', '"']).replace('\\', "") == "@";
@@ -573,7 +604,11 @@ pub fn parse_color(text: &str) -> Option<Color> {
         };
     }
     if let Some(args) = t.strip_prefix("rgb(").and_then(|r| r.strip_suffix(')')) {
-        let parts: Vec<u8> = args.split(',').filter_map(|p| p.trim().parse::<f64>().ok()).map(|v| v.clamp(0.0, 255.0) as u8).collect();
+        let parts: Vec<u8> = args
+            .split(',')
+            .filter_map(|p| p.trim().parse::<f64>().ok())
+            .map(|v| v.clamp(0.0, 255.0) as u8)
+            .collect();
         return (parts.len() == 3).then(|| Color::rgb(parts[0], parts[1], parts[2]));
     }
     let named = match t.as_str() {
@@ -609,7 +644,7 @@ mod tests {
         assert_eq!(grid.rows.len(), 2);
         assert_eq!(grid.rows[0][0].col_span, 2);
         assert_eq!(grid.rows[1][0].row_span, 2);
-        assert_eq!(grid.rows[0][2].lines, ["x"]);
+        assert_eq!(grid.rows[0][1].lines, ["x"]);
     }
 
     #[test]
