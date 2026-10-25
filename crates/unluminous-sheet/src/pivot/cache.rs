@@ -392,7 +392,37 @@ impl PivotCache {
         if range.rows() < 2 {
             return Err("The source of the pivot table has no data.".to_owned());
         }
-        self.read_source(book, sheet, range, true)
+        let remaps = self.read_source(book, sheet, range, true)?;
+        self.extend_year_groups();
+        Ok(remaps)
+    }
+
+    /// A year in the dates that no group item names yet gets an item, after the others, as Excel adds it.
+    fn extend_year_groups(&mut self) {
+        for f in 0..self.fields.len() {
+            let Some(group) = &self.fields[f].group else { continue };
+            let Some(range) = &group.range else { continue };
+            if range.group_by != GroupBy::Years || !(range.auto_start || range.auto_end) {
+                continue;
+            }
+            let base = group.base.unwrap_or(f);
+            let mut missing: Vec<i64> = Vec::new();
+            for r in &self.records {
+                if let Some(n) = r[base].number() {
+                    let (y, _, _) = crate::dates::date(n, false).unwrap_or((1900, 1, 1));
+                    let named = group
+                        .items
+                        .iter()
+                        .any(|v| crate::pivot::group::item_text(v) == y.to_string());
+                    if !named && !missing.contains(&(y as i64)) {
+                        missing.push(y as i64);
+                    }
+                }
+            }
+            if let Some(g) = &mut self.fields[f].group {
+                missing.iter().for_each(|y| g.items.push(CacheValue::text(&y.to_string())));
+            }
+        }
     }
 
     /// Make a field's shared items from the records when nothing has listed them.

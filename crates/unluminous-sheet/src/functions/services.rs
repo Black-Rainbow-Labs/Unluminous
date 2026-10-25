@@ -11,19 +11,25 @@ use crate::value::{ErrorKind, Value};
 
 /// The cube functions, which read an OLAP data source.
 pub const CUBE: &[Function] = &[
-    offline("CUBEKPIMEMBER", 3, 4, "connection, kpi_name, kpi_property, [caption]", NEEDS_CUBE).answering(cube_kpi),
-    offline("CUBEMEMBER", 2, 3, "connection, member_expression, [caption]", NEEDS_CUBE).answering(cube),
-    offline("CUBEMEMBERPROPERTY", 3, 3, "connection, member_expression, property", NEEDS_CUBE).answering(cube),
-    offline("CUBERANKEDMEMBER", 3, 4, "connection, set_expression, rank, [caption]", NEEDS_CUBE).answering(cube),
+    offline("CUBEKPIMEMBER", 3, 4, "connection, kpi_name, kpi_property, [caption]", NEEDS_CUBE)
+        .answering(cube_kpi),
+    offline("CUBEMEMBER", 2, 3, "connection, member_expression, [caption]", NEEDS_CUBE)
+        .answering(cube),
+    offline("CUBEMEMBERPROPERTY", 3, 3, "connection, member_expression, property", NEEDS_CUBE)
+        .answering(cube),
+    offline("CUBERANKEDMEMBER", 3, 4, "connection, set_expression, rank, [caption]", NEEDS_CUBE)
+        .answering(cube),
     offline(
         "CUBESET",
         2,
         5,
         "connection, set_expression, [caption], [sort_order], [sort_by]",
         NEEDS_CUBE,
-    ).answering(cube),
+    )
+    .answering(cube),
     offline("CUBESETCOUNT", 1, 1, "set", NEEDS_CUBE).answering(cube),
-    offline("CUBEVALUE", 1, 255, "connection, [member_expression1], ...", NEEDS_CUBE).answering(cube),
+    offline("CUBEVALUE", 1, 255, "connection, [member_expression1], ...", NEEDS_CUBE)
+        .answering(cube),
 ];
 
 const NEEDS_CUBE: &str = "Needs Excel's service: a connection to an OLAP data source.";
@@ -43,7 +49,8 @@ pub const ADD_IN: &[Function] = &[
         5,
         "number, source, target, [full_precision], [triangulation_precision]",
         "Needs Excel's service: the Euro Currency Tools add in.",
-    ).answering(not_in_this_excel),
+    )
+    .answering(not_in_this_excel),
     offline(
         "REGISTER.ID",
         2,
@@ -61,14 +68,16 @@ pub const LOOKUP: &[Function] = &[
         5,
         "source, [alt_text], [sizing], [height], [width]",
         "Needs Excel's service: fetches a picture from a web address.",
-    ).answering(web_address),
+    )
+    .answering(web_address),
     offline(
         "RTD",
         3,
         255,
         "prog_id, server, topic1, [topic2], ...",
         "Needs Excel's service: real time data from a COM server.",
-    ).answering(no_server),
+    )
+    .answering(no_server),
 ];
 
 /// The functions of the text group that call a cloud service.
@@ -79,14 +88,16 @@ pub const TEXT: &[Function] = &[
         1,
         "text",
         "Needs Excel's service: the language a text is written in.",
-    ).answering(blocked),
+    )
+    .answering(blocked),
     offline(
         "TRANSLATE",
         1,
         3,
         "text, [source_language], [target_language]",
         "Needs Excel's service: translates a text.",
-    ).answering(blocked),
+    )
+    .answering(blocked),
 ];
 
 /// The function of the information group that reads a stock feed.
@@ -96,11 +107,13 @@ pub const INFORMATION: &[Function] = &[offline(
     255,
     "stock, start_date, [end_date], [interval], [headers], [property0], ...",
     "Needs Excel's service: the price history of a stock.",
-).answering(stock_history)];
+)
+.answering(stock_history)];
 
 /// The web function that calls out to a web address.
 pub const WEB: &[Function] =
-    &[offline("WEBSERVICE", 1, 1, "url", "Needs Excel's service: the answer of a web service.").answering(web_address)];
+    &[offline("WEBSERVICE", 1, 1, "url", "Needs Excel's service: the answer of a web service.")
+        .answering(web_address)];
 
 /// The functions documented apart from the groups.
 pub const OTHER: &[Function] = &[
@@ -110,7 +123,8 @@ pub const OTHER: &[Function] = &[
         255,
         "prompt_part1, [context1], [prompt_part2], ...",
         "Needs Excel's service: asks Copilot.",
-    ).answering(not_in_this_excel),
+    )
+    .answering(not_in_this_excel),
     offline(
         "PY",
         1,
@@ -124,7 +138,10 @@ pub const OTHER: &[Function] = &[
 mod tests {
     #[test]
     fn python_is_blocked_because_nothing_is_sent_to_the_service() {
-        crate::functions::testing::check(&[("PY(\"1\")", "#BLOCKED!"), ("PY(\"x\",0)", "#BLOCKED!")]);
+        crate::functions::testing::check(&[
+            ("PY(\"1\")", "#BLOCKED!"),
+            ("PY(\"x\",0)", "#BLOCKED!"),
+        ]);
     }
 
     use crate::functions::testing::eval;

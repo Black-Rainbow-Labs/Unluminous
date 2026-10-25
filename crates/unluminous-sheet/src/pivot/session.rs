@@ -314,7 +314,8 @@ impl Session {
             field.items = kept;
             for p in &mut table.pages {
                 if p.field == remap.field {
-                    p.item = p.item.and_then(|i| old_position.get(i).copied().flatten());
+                    // Excel keeps the position of the chosen item, which is another item when one before it went.
+                    p.item = p.item.filter(|i| *i < field.items.len());
                 }
             }
             for d in &mut table.data {
@@ -338,7 +339,10 @@ impl Session {
             let table = &mut self.book.pivots.tables[t];
             for x in 0..count {
                 if table.fields[f].position_of(x).is_none() {
-                    table.fields[f].items.push(ItemEntry::new(x));
+                    // A field with items taken out does not show the items that come new.
+                    let mut entry = ItemEntry::new(x);
+                    entry.hidden = table.fields[f].items.iter().any(|i| i.hidden);
+                    table.fields[f].items.push(entry);
                 }
             }
         }

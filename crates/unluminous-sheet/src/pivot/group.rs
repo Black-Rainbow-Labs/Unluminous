@@ -39,7 +39,7 @@ fn grouped_items(cache: &PivotCache, field: usize) -> Vec<Option<usize>> {
         .records
         .iter()
         .map(|r| match r[base].number() {
-            Some(n) => Some(range_index(range, n, group.items.len())),
+            Some(n) => Some(range_index(range, n, &group.items)),
             None => (r[base].is_blank() && range.group_by == super::cache::GroupBy::Range)
                 .then_some(0)
                 .or_else(|| r[base].is_blank().then_some(0)),
@@ -48,17 +48,25 @@ fn grouped_items(cache: &PivotCache, field: usize) -> Vec<Option<usize>> {
 }
 
 /// Which group item a number or a date falls in.
-fn range_index(range: &super::cache::RangePr, n: f64, count: usize) -> usize {
+fn range_index(range: &super::cache::RangePr, n: f64, items: &[CacheValue]) -> usize {
     use super::cache::GroupBy;
+    let count = items.len();
     let (start, end) = match range.group_by {
         GroupBy::Range => (range.start_num.unwrap_or(0.0), range.end_num.unwrap_or(0.0)),
         _ => (range.start_date.unwrap_or(0.0), range.end_date.unwrap_or(0.0)),
     };
-    if n < start {
+    if n < start && !range.auto_start {
         return 0;
     }
-    if n > end {
+    if n > end && !range.auto_end {
         return count - 1;
+    }
+    if range.group_by == GroupBy::Years {
+        // A year is found by its name, since years added by a refresh come after the others.
+        let (y, _, _) = crate::dates::date(n, false).unwrap_or((1900, 1, 1));
+        if let Some(at) = items.iter().position(|v| item_text(v) == y.to_string()) {
+            return at;
+        }
     }
     match range.group_by {
         GroupBy::Range => {

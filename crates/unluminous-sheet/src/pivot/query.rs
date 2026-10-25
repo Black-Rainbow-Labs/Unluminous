@@ -130,6 +130,9 @@ fn find_item(
                 (a - b).abs() < 1e-9
             }
             (Some(CacheValue::Bool(a)), Value::Bool(b)) => a == b,
+            (Some(CacheValue::Date(a)), Value::Text(b)) => {
+                crate::input::date_time_from_text(b, false).is_some_and(|d| (a - d).abs() < 1e-9)
+            }
             (Some(CacheValue::Number(a)), Value::Text(b)) => {
                 crate::value::number_to_text(*a) == **b
             }

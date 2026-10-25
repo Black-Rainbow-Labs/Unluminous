@@ -6597,7 +6597,8 @@
    ],
    "formulas": [
     "GETPIVOTDATA(\"Units\",$A$6,\"Date\",45292)",
-    "GETPIVOTDATA(\"Units\",$A$6,\"Date\",DATE(2024,1,30))"
+    "GETPIVOTDATA(\"Units\",$A$6,\"Date\",DATE(2024,1,30))",
+    "GETPIVOTDATA(\"Units\",$A$6,\"Date\",\"1/16/2024\")"
    ]
   },
   {
