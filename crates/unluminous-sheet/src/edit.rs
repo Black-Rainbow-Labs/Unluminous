@@ -28,6 +28,7 @@ use crate::value::Value;
 
 mod cf_rules;
 mod outline;
+pub mod review;
 mod subtotal;
 
 pub use cf_rules::{RuleEntry, RuleMove};
@@ -526,6 +527,9 @@ impl Session {
                 s.notes.retain(|(r, c), _| {
                     !ranges.iter().any(|range| range.contains(CellRef::new(*r, *c)))
                 });
+                s.threads.retain(|(r, c), _| {
+                    !ranges.iter().any(|range| range.contains(CellRef::new(*r, *c)))
+                });
                 s.notes_changed = true;
                 return Ok(());
             }
@@ -907,6 +911,16 @@ impl Session {
         if had_notes {
             s.notes_changed = true;
         }
+        let threads = std::mem::take(&mut s.threads);
+        let had_threads = !threads.is_empty();
+        for (key, thread) in threads {
+            if let Some(k) = moved(key) {
+                s.threads.insert(k, thread);
+            }
+        }
+        if had_threads {
+            s.notes_changed = true;
+        }
         let shift_range = |r: Range| -> Option<Range> {
             let reference = formula::Reference::from_range(r, None);
             let adjusted = match band {
@@ -941,6 +955,17 @@ impl Session {
             .iter()
             .filter_map(|l| shift_range(l.range).map(|range| Hyperlink { range, ..l.clone() }))
             .collect();
+        for row in &mut s.ignored_errors {
+            row.ranges = row.ranges.iter().filter_map(|r| shift_range(*r)).collect();
+        }
+        s.ignored_errors.retain(|row| !row.ranges.is_empty());
+        s.watches.retain_mut(|w| match moved((w.at.row, w.at.col)) {
+            Some((row, col)) => {
+                w.at = CellRef::new(row, col);
+                true
+            }
+            None => false,
+        });
         if let Some(f) = &s.filter {
             s.filter = shift_range(f.range).map(|range| AutoFilter {
                 range,
@@ -1171,6 +1196,7 @@ impl Session {
         copy.raw.rels.retain(|r| {
             r.kind != crate::xlsx::REL_COMMENTS
                 && r.kind != crate::xlsx::REL_VML
+                && r.kind != crate::xlsx::threads::REL_THREADED
                 && r.kind != crate::xlsx::REL_DRAWING
         });
         copy.raw
@@ -1181,6 +1207,7 @@ impl Session {
         copy.state = Visibility::Visible;
         let index = sheet + 1;
         self.book.sheets.insert(index, copy);
+        self.renew_thread_ids(index);
         self.reindex_after_sheet_move(|i| if i >= index { i + 1 } else { i });
         self.book.active_sheet = index;
         self.engine.rebuild(&self.book);
@@ -1542,6 +1569,7 @@ impl Session {
             self.book.sheets[sheet].notes_changed = true;
             self.book.sheets[clip.sheet].notes_changed = true;
         }
+        self.move_threads(clip, sheet, (dr, dc));
         self.engine.rebuild(&self.book);
         self.recalculate_all();
     }
@@ -1665,6 +1693,11 @@ impl Session {
         author: &str,
     ) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        if text.is_some() && self.book.sheets[sheet].threads.contains_key(&(at.row, at.col)) {
+            return Err(
+                "This cell has a comment. Delete the comment before adding a note.".to_owned()
+            );
+        }
         self.allowed(sheet, Guard::Objects)?;
         self.remember_whole(if text.is_some() { "Note" } else { "Delete note" });
         let s = &mut self.book.sheets[sheet];

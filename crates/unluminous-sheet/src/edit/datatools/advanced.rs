@@ -6,8 +6,8 @@
 //! matches the start of the text unless it begins with `=`, and `?`, `*` and `~` work as they do in
 //! SUMIF. The comparison ignores case.
 
-use crate::edit::Guard;
 use crate::coord::{CellRef, Range};
+use crate::edit::Guard;
 use crate::edit::Session;
 use crate::formula::{self, Formula};
 use crate::functions::criteria::wildcard_match;

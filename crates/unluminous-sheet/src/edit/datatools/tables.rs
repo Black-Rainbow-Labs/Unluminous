@@ -5,10 +5,10 @@
 //! [`xmltree`](super::xmltree) so everything Excel put there stays. The model fields (`range`, `columns`,
 //! `header_row`, `totals_row`) are read back from that XML after every change, so the two never differ.
 
-use crate::edit::Guard;
 use super::displayed;
 use super::xmltree::{Document, Element, Node};
 use crate::coord::{CellRef, Range};
+use crate::edit::Guard;
 use crate::edit::{check_defined_name, Session};
 use std::sync::Arc;
 
