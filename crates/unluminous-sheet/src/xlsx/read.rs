@@ -256,7 +256,7 @@ fn decode(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
 
-fn read_theme(xml: &str, styles: &mut Styles) {
+pub(crate) fn read_theme(xml: &str, styles: &mut Styles) {
     let Ok(doc) = Document::parse(xml) else { return };
     let order = [
         "dk1", "lt1", "dk2", "lt2", "accent1", "accent2", "accent3", "accent4", "accent5",
@@ -620,7 +620,7 @@ fn read_metadata(xml: &str) -> (Option<u32>, bool) {
 }
 
 /// Read a formula from a file, keeping it frozen when it cannot be computed here.
-fn file_formula(text: &str, dynamic: bool) -> Formula {
+pub(crate) fn file_formula(text: &str, dynamic: bool) -> Formula {
     match Formula::parse_kept(text) {
         Ok(mut f) => {
             f.dynamic = dynamic;
