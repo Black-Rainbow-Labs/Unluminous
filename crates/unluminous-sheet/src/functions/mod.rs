@@ -30,6 +30,7 @@ pub mod info;
 pub mod logical;
 pub mod lookup;
 pub mod math;
+pub mod pivot;
 pub mod precise;
 pub mod regex;
 pub mod regression;
@@ -120,6 +121,15 @@ pub const fn offline(
     }
 }
 
+impl Function {
+    /// The same entry answering with `f`, for a service function whose answer without its service was
+    /// measured in Excel.
+    pub const fn answering(mut self, f: ScalarFn) -> Function {
+        self.imp = Imp::Scalar(f);
+        self
+    }
+}
+
 const CATEGORIES: &[(&str, &[Function])] = &[
     ("Math", math::FUNCTIONS),
     ("Statistical", stats::FUNCTIONS),
@@ -148,6 +158,7 @@ const CATEGORIES: &[(&str, &[Function])] = &[
     ("Financial", securities::FUNCTIONS),
     ("Information", info::FUNCTIONS),
     ("Engineering", engineering::FUNCTIONS),
+    ("Lookup", pivot::FUNCTIONS),
     ("Engineering", complex::FUNCTIONS),
 ];
 
@@ -340,7 +351,7 @@ pub fn first_cell(ctx: &mut Ctx, expr: &Expr) -> Val {
             Some(area) => Val::Ref(crate::eval::Area {
                 range: crate::coord::Range::cell(area.range.first),
                 sheet_last: area.sheet,
-                ..area.clone()
+                ..*area
             }),
             None => Val::error(ErrorKind::Value),
         },

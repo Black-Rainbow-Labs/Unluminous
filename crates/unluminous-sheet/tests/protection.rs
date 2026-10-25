@@ -112,21 +112,9 @@ fn validation() -> Validation {
 
 fn rule() -> CfRule {
     CfRule {
-        kind: "cellIs".to_owned(),
-        dxf: None,
-        priority: 1,
-        stop: false,
         operator: Some("equal".to_owned()),
-        text: None,
-        rank: None,
-        percent: false,
-        bottom: false,
-        above_average: None,
         formulas: vec!["0".to_owned()],
-        color_scale: None,
-        data_bar: None,
-        attrs: Vec::new(),
-        raw_children: String::new(),
+        ..CfRule::new("cellIs")
     }
 }
 

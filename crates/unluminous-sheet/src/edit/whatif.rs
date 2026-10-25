@@ -641,14 +641,7 @@ impl<'a> Report<'a> {
     fn new(data: &'a SummaryData, book: &mut Workbook, name: &str) -> Self {
         let mut sheet = Sheet::new(name);
         sheet.show_grid = false;
-        sheet.raw.elements.push((
-            "sheetPr".to_owned(),
-            "<sheetPr><outlinePr summaryBelow=\"0\"/></sheetPr>".to_owned(),
-        ));
-        sheet.raw.format_attrs = vec![
-            ("outlineLevelRow".to_owned(), "1".to_owned()),
-            ("outlineLevelCol".to_owned(), "1".to_owned()),
-        ];
+        sheet.outline.summary_below = false;
         Self {
             data,
             sheet,

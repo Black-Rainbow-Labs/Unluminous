@@ -1,0 +1,126 @@
+[
+ {
+  "name": "copy_text",
+  "formats": false,
+  "cells": {
+   "A1": "plain",
+   "B1": {
+    "v": 12.5,
+    "nf": "0.00"
+   },
+   "C1": {
+    "v": 45000,
+    "nf": "yyyy-mm-dd"
+   },
+   "D1": "tab\there",
+   "E1": "line1\nline2",
+   "F1": "say \"hi\"",
+   "G1": " lead",
+   "H1": {
+    "f": "=1/0"
+   },
+   "A2": true,
+   "B2": {
+    "v": 0.5,
+    "nf": "0%"
+   },
+   "C2": {
+    "v": -3,
+    "nf": "#,##0;(#,##0)"
+   },
+   "D2": {
+    "f": "=B1*2",
+    "nf": "0.0"
+   },
+   "F2": "x,y",
+   "G2": "trail ",
+   "H2": {
+    "v": 1234567,
+    "nf": "#,##0"
+   },
+   "A3": "alpha",
+   "B3": {
+    "v": "12",
+    "nf": "@"
+   },
+   "C3": "a\r\nb",
+   "D3": "\"\"",
+   "E3": "\"",
+   "F3": {
+    "v": 0.000012345
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:H3"
+   },
+   {
+    "do": "copytext",
+    "at": "A1:H3"
+   }
+  ],
+  "dump": []
+ },
+ {
+  "name": "copy_text_blanks",
+  "formats": false,
+  "cells": {
+   "A1": 1,
+   "C1": 3,
+   "B2": "x"
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:D3"
+   },
+   {
+    "do": "copytext",
+    "at": "A1:D3"
+   }
+  ],
+  "dump": []
+ },
+ {
+  "name": "copy_text_one_cell",
+  "formats": false,
+  "cells": {
+   "A1": "solo"
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1"
+   },
+   {
+    "do": "copytext",
+    "at": "A1"
+   }
+  ],
+  "dump": []
+ },
+ {
+  "name": "copy_text_hidden_row",
+  "formats": false,
+  "cells": {
+   "A1": 1,
+   "A2": 2,
+   "A3": 3
+  },
+  "hidden_rows": [
+   2
+  ],
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:A3"
+   },
+   {
+    "do": "copytext",
+    "at": "A1:A3"
+   }
+  ],
+  "dump": []
+ }
+]

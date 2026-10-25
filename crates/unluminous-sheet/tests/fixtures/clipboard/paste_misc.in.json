@@ -1,0 +1,348 @@
+[
+ {
+  "name": "ref_plain",
+  "cells": {
+   "Z1": 50,
+   "Z2": 60,
+   "A1": 1,
+   "B1": {
+    "f": "=A1+Z1"
+   },
+   "A2": {
+    "f": "=$A$1+$Z$1"
+   },
+   "B2": {
+    "f": "=Z2+$A$2+B1"
+   },
+   "C1": {
+    "f": "=SUM(A1:B2)"
+   },
+   "C2": {
+    "f": "=SUM($A$1:$B$2)+SUM(Z1:Z2)"
+   }
+  },
+  "formats": false,
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:C2"
+   },
+   {
+    "do": "pastespecial",
+    "at": "E5",
+    "paste": -4104,
+    "transpose": false
+   }
+  ],
+  "dump": [
+   "E5:H8"
+  ]
+ },
+ {
+  "name": "ref_transpose",
+  "cells": {
+   "Z1": 50,
+   "Z2": 60,
+   "A1": 1,
+   "B1": {
+    "f": "=A1+Z1"
+   },
+   "A2": {
+    "f": "=$A$1+$Z$1"
+   },
+   "B2": {
+    "f": "=Z2+$A$2+B1"
+   },
+   "C1": {
+    "f": "=SUM(A1:B2)"
+   },
+   "C2": {
+    "f": "=SUM($A$1:$B$2)+SUM(Z1:Z2)"
+   }
+  },
+  "formats": false,
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:C2"
+   },
+   {
+    "do": "pastespecial",
+    "at": "E5",
+    "paste": -4104,
+    "transpose": true
+   }
+  ],
+  "dump": [
+   "E5:H8"
+  ]
+ },
+ {
+  "name": "blankdst_add",
+  "cells": {
+   "A1": "txt",
+   "A2": true,
+   "A3": {
+    "f": "=NA()"
+   },
+   "A4": 6
+  },
+  "formats": false,
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:A4"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4163,
+    "op": 2
+   }
+  ],
+  "dump": [
+   "C1:C5"
+  ]
+ },
+ {
+  "name": "blankdst_multiply",
+  "cells": {
+   "A1": "txt",
+   "A2": true,
+   "A3": {
+    "f": "=NA()"
+   },
+   "A4": 6
+  },
+  "formats": false,
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:A4"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4163,
+    "op": 4
+   }
+  ],
+  "dump": [
+   "C1:C5"
+  ]
+ },
+ {
+  "name": "blankdst_divide",
+  "cells": {
+   "A1": "txt",
+   "A2": true,
+   "A3": {
+    "f": "=NA()"
+   },
+   "A4": 6
+  },
+  "formats": false,
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:A4"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4163,
+    "op": 5
+   }
+  ],
+  "dump": [
+   "C1:C5"
+  ]
+ },
+ {
+  "name": "blankdst_subtract",
+  "cells": {
+   "A1": "txt",
+   "A2": true,
+   "A3": {
+    "f": "=NA()"
+   },
+   "A4": 6
+  },
+  "formats": false,
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:A4"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4163,
+    "op": 3
+   }
+  ],
+  "dump": [
+   "C1:C5"
+  ]
+ },
+ {
+  "name": "insert_copied_down",
+  "formats": true,
+  "cells": {
+   "A1": {
+    "v": 1,
+    "bold": true
+   },
+   "A2": {
+    "f": "=A1+1"
+   },
+   "B1": "x",
+   "B2": "y",
+   "D1": 10,
+   "D2": 20,
+   "D3": 30,
+   "E1": 40,
+   "E2": 50,
+   "F1": {
+    "f": "=D1+D2"
+   },
+   "F3": {
+    "f": "=SUM(D1:E3)"
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B2"
+   },
+   {
+    "do": "insertcopied",
+    "at": "D1",
+    "shift": -4121
+   }
+  ],
+  "dump": [
+   "A1:I6"
+  ]
+ },
+ {
+  "name": "insert_cut_down",
+  "formats": true,
+  "cells": {
+   "A1": {
+    "v": 1,
+    "bold": true
+   },
+   "A2": {
+    "f": "=A1+1"
+   },
+   "B1": "x",
+   "B2": "y",
+   "D1": 10,
+   "D2": 20,
+   "D3": 30,
+   "E1": 40,
+   "E2": 50,
+   "F1": {
+    "f": "=D1+D2+A2"
+   },
+   "F3": {
+    "f": "=SUM(D1:E3)"
+   }
+  },
+  "steps": [
+   {
+    "do": "cut",
+    "at": "A1:B2"
+   },
+   {
+    "do": "insertcopied",
+    "at": "D1",
+    "shift": -4121
+   }
+  ],
+  "dump": [
+   "A1:I6"
+  ]
+ },
+ {
+  "name": "insert_copied_right",
+  "formats": true,
+  "cells": {
+   "A1": {
+    "v": 1,
+    "bold": true
+   },
+   "A2": {
+    "f": "=A1+1"
+   },
+   "B1": "x",
+   "B2": "y",
+   "D1": 10,
+   "D2": 20,
+   "D3": 30,
+   "E1": 40,
+   "E2": 50,
+   "F1": {
+    "f": "=D1+D2"
+   },
+   "F3": {
+    "f": "=SUM(D1:E3)"
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B2"
+   },
+   {
+    "do": "insertcopied",
+    "at": "D1",
+    "shift": -4161
+   }
+  ],
+  "dump": [
+   "A1:I6"
+  ]
+ },
+ {
+  "name": "insert_cut_right",
+  "formats": true,
+  "cells": {
+   "A1": {
+    "v": 1,
+    "bold": true
+   },
+   "A2": {
+    "f": "=A1+1"
+   },
+   "B1": "x",
+   "B2": "y",
+   "D1": 10,
+   "D2": 20,
+   "D3": 30,
+   "E1": 40,
+   "E2": 50,
+   "F1": {
+    "f": "=D1+D2+A2"
+   },
+   "F3": {
+    "f": "=SUM(D1:E3)"
+   }
+  },
+  "steps": [
+   {
+    "do": "cut",
+    "at": "A1:B2"
+   },
+   {
+    "do": "insertcopied",
+    "at": "D1",
+    "shift": -4161
+   }
+  ],
+  "dump": [
+   "A1:I6"
+  ]
+ }
+]

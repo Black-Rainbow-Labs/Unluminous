@@ -59,6 +59,9 @@ pub struct Book {
     pub pictures: Pictures,
     /// The last change made, which F4 and Ctrl+Y repeat on the selection when there is nothing to redo.
     pub last: Option<actions::Act>,
+    /// How a text file was encoded when it was read, so it is saved the same way. `None` for a new file,
+    /// which is saved as Excel's default for its kind.
+    pub encoding: Option<unluminous_sheet::csv::Encoding>,
 }
 
 /// The decoded pictures of a workbook. Written out by hand because a texture handle has no `Debug`.
@@ -80,7 +83,11 @@ impl Book {
         let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Sheet1");
         let book = unluminous_sheet::open(&bytes, kind, name, this_year())
             .map_err(|e| format!("{} could not be opened: {e}", path.display()))?;
-        Ok(Book::of(key, path, kind, book, modified_time(path)))
+        let mut read = Book::of(key, path, kind, book, modified_time(path));
+        if matches!(kind, FileKind::Csv | FileKind::Tsv | FileKind::Txt) {
+            read.encoding = Some(unluminous_sheet::csv::encoding_of(&bytes));
+        }
+        Ok(read)
     }
 
     /// A book that has not been written anywhere yet, for `new`.
@@ -115,6 +122,7 @@ impl Book {
             filter_values: Vec::new(),
             pictures: Default::default(),
             last: None,
+            encoding: None,
         }
     }
 
@@ -122,7 +130,8 @@ impl Book {
     pub fn save(&mut self) -> Result<String, String> {
         self.session.book.active_sheet = self.view.sheet;
         keep_view(&mut self.session, &self.view);
-        let bytes = unluminous_sheet::save(&self.session.book, self.kind)?;
+        let options = unluminous_sheet::SaveOptions { encoding: self.encoding };
+        let bytes = unluminous_sheet::save_with(&self.session.book, self.kind, &options)?;
         if let Some(folder) = self.path.parent() {
             let _ = std::fs::create_dir_all(folder);
         }

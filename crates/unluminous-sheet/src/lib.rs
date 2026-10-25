@@ -25,12 +25,15 @@
 
 pub mod calc;
 pub mod cellstyles;
+pub mod cfb;
+pub mod conditional;
 pub mod coord;
 pub mod dates;
 pub mod edit;
 pub mod eval;
 pub mod fixedwidth;
 pub mod formula;
+pub mod ftab;
 pub mod functions;
 pub mod html;
 pub mod input;
@@ -38,13 +41,17 @@ pub mod json;
 pub mod model;
 pub mod numfmt;
 pub mod ods;
+pub mod outline;
 pub mod pages;
+pub mod pivot;
 pub mod protect;
 pub mod refshift;
 pub mod styles;
 pub mod theme;
 pub mod value;
 pub mod whatif;
+pub mod xls;
+pub mod xlsb;
 pub mod xlsx;
 pub mod xml2003;
 pub mod zip;
@@ -59,6 +66,10 @@ pub mod csv;
 pub enum FileKind {
     Xlsx,
     Xlsm,
+    /// Excel 97 to 2003 (BIFF8). Read only.
+    Xls,
+    /// Excel binary workbook. Read only.
+    Xlsb,
     /// Comma separated values. Saved as Excel's "CSV UTF-8" unless [`SaveOptions`] says otherwise.
     Csv,
     /// Tab separated values with the extension `.tsv` or `.tab`.
@@ -92,8 +103,8 @@ impl FileKind {
             "html" | "htm" => Ok(FileKind::Html),
             "xml" => Ok(FileKind::Xml),
             "json" => Ok(FileKind::Json),
-            "xls" => Err("This is an Excel 97-2003 workbook (.xls), a binary format this version does not read. Excel can save it as .xlsx.".to_owned()),
-            "xlsb" => Err("This is an Excel binary workbook (.xlsb), which this version does not read. Excel can save it as .xlsx.".to_owned()),
+            "xls" => Ok(FileKind::Xls),
+            "xlsb" => Ok(FileKind::Xlsb),
             other => Err(format!("A .{other} file is not a workbook this version opens.")),
         }
     }
@@ -105,7 +116,7 @@ impl FileKind {
 
     /// Whether this version can write files of this kind.
     pub fn can_save(&self) -> bool {
-        !matches!(self, FileKind::Xml | FileKind::Json)
+        !matches!(self, FileKind::Xml | FileKind::Json | FileKind::Xls | FileKind::Xlsb)
     }
 }
 
@@ -121,7 +132,10 @@ pub struct SaveOptions {
 /// Read a workbook from a file's bytes.
 pub fn open(bytes: &[u8], kind: FileKind, name: &str, this_year: i64) -> Result<Workbook, String> {
     match kind {
+        FileKind::Xlsx | FileKind::Xlsm if cfb::is_compound(bytes) => xls::read(bytes),
         FileKind::Xlsx | FileKind::Xlsm => xlsx::read(bytes),
+        FileKind::Xls => xls::read(bytes),
+        FileKind::Xlsb => xlsb::read(bytes),
         FileKind::Csv | FileKind::Tsv | FileKind::Txt => {
             let text = csv::decode(bytes);
             Ok(csv::read(&text, matches!(kind, FileKind::Tsv | FileKind::Txt), name, this_year))
@@ -152,6 +166,9 @@ pub fn save_with(
     let sheet = book.active_sheet.min(book.sheets.len().saturating_sub(1));
     match kind {
         FileKind::Xlsx | FileKind::Xlsm => xlsx::write(book),
+        FileKind::Xls | FileKind::Xlsb => Err(
+            "Excel saves a workbook in an older format only when it is asked to; this version saves it as .xlsx beside the original. Use Save As and choose .xlsx.".to_owned(),
+        ),
         FileKind::Csv => Ok(csv::encode(
             &csv::write(book, sheet, ','),
             options.encoding.unwrap_or(csv::Encoding::Utf8Bom),

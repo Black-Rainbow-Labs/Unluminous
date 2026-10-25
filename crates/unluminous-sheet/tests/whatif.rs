@@ -336,11 +336,7 @@ fn layout(book: &Workbook, sheet: usize) -> Vec<String> {
             ));
         }
     }
-    out.push(format!(
-        "grid={} sheetPr={}",
-        s.show_grid,
-        s.raw.elements.iter().any(|(n, x)| n == "sheetPr" && x.contains("summaryBelow=\"0\""))
-    ));
+    out.push(format!("grid={} sheetPr={}", s.show_grid, !s.outline.summary_below));
     out
 }
 
