@@ -903,9 +903,29 @@ impl Session {
         }
         let notes = std::mem::take(&mut s.notes);
         let had_notes = !notes.is_empty();
-        for (key, note) in notes {
+        for (key, mut note) in notes {
             if let Some(k) = moved(key) {
+                // The box moves with its cell, as Excel moves a note's shape with the cells under it.
+                if let Some(b) = note.bounds.as_mut() {
+                    let (dr, dc) = (k.0 as i32 - key.0 as i32, k.1 as i32 - key.1 as i32);
+                    for i in [0, 4] {
+                        b.anchor[i] = (b.anchor[i] + dc).max(0);
+                        b.anchor[i + 2] = (b.anchor[i + 2] + dr).max(0);
+                    }
+                }
                 s.notes.insert(k, note);
+            }
+        }
+        let placed: Vec<((u32, u32), (f64, f64, f64, f64))> = {
+            let geometry = review::notebox::Geometry::standard(s);
+            s.notes
+                .iter()
+                .filter_map(|(k, n)| n.bounds.as_ref().map(|b| (*k, geometry.points_of(b.anchor))))
+                .collect()
+        };
+        for (key, (left, top, width, height)) in placed {
+            if let Some(b) = s.notes.get_mut(&key).and_then(|n| n.bounds.as_mut()) {
+                (b.left, b.top, b.width, b.height) = (left, top, width, height);
             }
         }
         if had_notes {
