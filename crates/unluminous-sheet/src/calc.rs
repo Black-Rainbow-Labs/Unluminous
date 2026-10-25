@@ -39,6 +39,8 @@ pub struct Engine {
     dirty: BTreeSet<Key>,
     /// How many formulas the last calculation computed, for tests and the frame trace.
     pub computed: usize,
+    /// A cell changed since the data tables were last computed.
+    tables_stale: bool,
 }
 
 impl Engine {
@@ -59,6 +61,7 @@ impl Engine {
                 }
             }
         }
+        self.tables_stale = true;
     }
 
     /// How many formulas the workbook has.
@@ -113,6 +116,7 @@ impl Engine {
 
     /// A cell's content changed: index its formula again if it has one, and mark what depends on it.
     pub fn changed(&mut self, book: &Workbook, sheet: usize, at: CellRef) {
+        self.tables_stale = true;
         let key = (sheet, at.row, at.col);
         let is_formula = book
             .sheets
@@ -175,10 +179,30 @@ impl Engine {
     /// Mark every formula, which is what opening a file and F9 with Shift and Control do.
     pub fn mark_all(&mut self) {
         self.dirty = self.formulas.clone();
+        self.tables_stale = true;
     }
 
-    /// Compute every marked formula and every volatile one. `now` is the serial NOW() answers.
+    /// Compute every marked formula and every volatile one, then the data tables when anything they could
+    /// read changed, and the formulas that read the tables' results. `now` is the serial NOW() answers.
     pub fn recalculate(&mut self, book: &mut Workbook, now: f64, seed: u64) {
+        self.recalculate_formulas(book, now, seed);
+        if !self.tables_stale || !crate::whatif::has_data_tables(book) {
+            self.tables_stale = false;
+            return;
+        }
+        self.tables_stale = false;
+        let changed = crate::whatif::compute_data_tables(book, now, seed);
+        if !changed.is_empty() {
+            let computed = self.computed;
+            for key in changed {
+                self.mark_dependents(key);
+            }
+            self.recalculate_formulas(book, now, seed);
+            self.computed += computed;
+        }
+    }
+
+    pub(crate) fn recalculate_formulas(&mut self, book: &mut Workbook, now: f64, seed: u64) {
         let env = Env::new(now, seed);
         self.computed = 0;
         book.circular = None;
@@ -195,14 +219,22 @@ impl Engine {
                 .filter(|k| self.formulas.contains(k))
                 .collect();
             let (order, cycle) = self.order(&dirty, book);
-            if let Some(first) = cycle.iter().next() {
+            let iterating = book.calc.iterate;
+            if let (Some(first), false) = (cycle.iter().next(), iterating) {
                 book.circular = Some((first.0, CellRef::new(first.1, first.2)));
             }
             let mut moved_spills: Vec<(usize, Range)> = Vec::new();
+            let mut iterated = false;
             for key in order {
                 if cycle.contains(&key) {
-                    if let Some(cell) = book.sheets[key.0].cells.get_mut(&(key.1, key.2)) {
-                        cell.value = Value::Number(0.0);
+                    if !iterating {
+                        if let Some(cell) = book.sheets[key.0].cells.get_mut(&(key.1, key.2)) {
+                            cell.value = Value::Number(0.0);
+                        }
+                    } else if !iterated {
+                        iterated = true;
+                        let keys: Vec<Key> = cycle.iter().copied().collect();
+                        self.iterate(book, &keys, &env);
                     }
                     continue;
                 }
@@ -210,6 +242,7 @@ impl Engine {
                 if let Some(moved) = compute(book, key, &env) {
                     moved_spills.push((key.0, moved));
                 }
+                round_to_shown(book, key);
             }
             // A spill that changed its extent changes cells formulas may read.
             for (sheet, range) in moved_spills {
@@ -219,6 +252,27 @@ impl Engine {
             }
         }
         self.dirty.clear();
+    }
+
+    /// Calculate the formulas of a circular reference over and over, as Excel does with iteration on. Each
+    /// pass computes every formula of the cycle in sheet, row and column order, starting from the values the
+    /// cells hold now. It stops after `iterate_count` passes, or earlier once no cell moved by `iterate_delta`.
+    fn iterate(&mut self, book: &mut Workbook, cycle: &[Key], env: &Env) {
+        let passes = book.calc.iterate_count.max(1);
+        let delta = book.calc.iterate_delta;
+        for _ in 0..passes {
+            let mut largest = 0.0f64;
+            for &key in cycle {
+                let before = cell_value(book, key);
+                self.computed += 1;
+                compute(book, key, env);
+                round_to_shown(book, key);
+                largest = largest.max(change_between(&before, &cell_value(book, key)));
+            }
+            if largest < delta {
+                break;
+            }
+        }
     }
 
     /// Order formulas so each comes after the marked formulas it reads. Answers the order, and the formulas
@@ -351,6 +405,41 @@ impl Engine {
 }
 
 /// Cells in a range, so their dependents can be marked.
+/// The value a formula cell holds now.
+fn cell_value(book: &Workbook, key: Key) -> Value {
+    book.sheets[key.0].cells.get(&(key.1, key.2)).map_or(Value::Empty, |c| c.value.clone())
+}
+
+/// How far a value moved between two passes: the difference of two numbers, none for two values that are
+/// the same, and as far as can be for anything else that changed.
+fn change_between(before: &Value, after: &Value) -> f64 {
+    match (before, after) {
+        (Value::Number(a), Value::Number(b)) => (a - b).abs(),
+        (a, b) if a == b => 0.0,
+        _ => f64::INFINITY,
+    }
+}
+
+/// With precision as displayed, a number a formula computed is kept as its cell shows it.
+fn round_to_shown(book: &mut Workbook, key: Key) {
+    if book.calc.full_precision {
+        return;
+    }
+    let date1904 = book.date1904;
+    let Some(cell) = book.sheets[key.0].cells.get(&(key.1, key.2)) else {
+        return;
+    };
+    let Value::Number(n) = cell.value else {
+        return;
+    };
+    let shown = book.shown_number(cell.style, n, date1904);
+    if shown != n {
+        if let Some(cell) = book.sheets[key.0].cells.get_mut(&(key.1, key.2)) {
+            cell.value = Value::Number(shown);
+        }
+    }
+}
+
 fn cells_with_dependents(engine: &Engine, sheet: usize, range: Range) -> Vec<CellRef> {
     let mut out: Vec<CellRef> = engine
         .single

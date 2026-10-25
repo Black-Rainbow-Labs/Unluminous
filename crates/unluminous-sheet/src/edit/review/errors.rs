@@ -221,8 +221,13 @@ fn text_of(cell: &Cell) -> Option<&str> {
 fn number_as_text(book: &Workbook, cell: &Cell) -> bool {
     let Some(text) = text_of(cell) else { return false };
     let typed = crate::input::read(text.trim(), book.date1904, 2000);
-    matches!(typed.value, Value::Number(_))
-        && typed.format.is_none_or(|f| !f.contains(['d', 'h', 'y']))
+    matches!(typed.value, Value::Number(_)) && typed.format.is_none_or(|f| !is_date_format(f))
+}
+
+/// Whether a number format the typing of a value gives is one for dates or times.
+fn is_date_format(code: &str) -> bool {
+    let lower = code.to_ascii_lowercase();
+    ["yy", "dd", "mm", "hh", ":", "d-m", "m/d"].iter().any(|p| lower.contains(p))
 }
 
 /// Text that reads as a date written with two digits for the year: `1/2/30`, `5-Jan-25` or `Jan 5 25`.

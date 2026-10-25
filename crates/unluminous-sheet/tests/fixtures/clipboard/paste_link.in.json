@@ -1,0 +1,8 @@
+[
+ {"name":"link_same_sheet","formats":true,
+  "cells":{"A1":5,"A2":"txt","A3":{"f":"=A1*2","nf":"0.0","bold":true},"B1":7,"B3":{"v":"ctr","align":-4108},"B4":{"v":1,"fill":255}},
+  "steps":[{"do":"copy","at":"A1:B5"},{"do":"pastelink","at":"D1"}],"dump":["A1:F6"]},
+ {"name":"link_other_sheet","formats":true,"sheets":["Sheet2"],
+  "cells":{"A1":5,"A2":"txt","A3":{"f":"=A1*2","nf":"0.0","bold":true},"B1":7,"Sheet2!A1":1},
+  "steps":[{"do":"copy","at":"A1:B3"},{"do":"pastelink","at":"Sheet2!D1"}],"dump":["Sheet2!A1:F5"]}
+]

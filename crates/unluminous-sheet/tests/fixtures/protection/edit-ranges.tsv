@@ -1,0 +1,6 @@
+edit a cell in the range with no password	ok
+edit a cell in the range with a password	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+edit a locked cell outside the ranges	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+give the range the wrong password	The password you supplied is not correct. Verify that the CAPS LOCK key is off and be sure to use the correct capitalization.
+give the range its password	ok
+edit the cell in the range once its password was given	ok

@@ -41,6 +41,8 @@ impl Area {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Lambda {
     pub params: Vec<Arc<str>>,
+    /// How many of the leading parameters must be given; the rest were written `[name]` and may be left out.
+    pub required: usize,
     pub body: Arc<Expr>,
     pub scope: Vec<(Arc<str>, Val)>,
 }
@@ -106,6 +108,7 @@ pub struct Env {
 
 impl Env {
     pub fn new(now: f64, seed: u64) -> Self {
+        crate::input::use_clock(now);
         Self { now, seed: StdCell::new(seed | 1) }
     }
 
@@ -256,6 +259,11 @@ impl<'a> Ctx<'a> {
 
     /// A reference written in the formula, on the formula's own sheet or the one it names.
     pub fn reference(&mut self, r: &Reference) -> Val {
+        if r.sheet.is_none() {
+            if let Some(found) = self.reference_in_scope(r) {
+                return found;
+            }
+        }
         let sheet = match &r.sheet {
             None => self.sheet,
             Some(name) => match self.book.sheet_index(name) {
@@ -281,6 +289,24 @@ impl<'a> Ctx<'a> {
             _ => r.range(),
         };
         Val::Ref(Area { sheet, sheet_last, range })
+    }
+
+    /// A LET name may look like a cell, `LET(A1, 2, A1)`, and the name wins over the cell. While such a name
+    /// is in scope Excel cannot tell the cells of the formula from names, so every other cell written in
+    /// the formula is `#NAME?`.
+    fn reference_in_scope(&self, r: &Reference) -> Option<Val> {
+        if !self.scope.iter().any(|(n, _)| looks_like_a_cell(n)) {
+            return None;
+        }
+        if r.shape == Shape::Cell {
+            let name = cell_name(r.first.row, r.first.col);
+            if let Some((_, val)) =
+                self.scope.iter().rev().find(|(n, _)| n.eq_ignore_ascii_case(&name))
+            {
+                return Some(val.clone());
+            }
+        }
+        Some(Val::error(ErrorKind::Name))
     }
 
     fn name(&mut self, name: &Arc<str>) -> Val {
@@ -350,7 +376,7 @@ impl<'a> Ctx<'a> {
 
     /// Call a LAMBDA with values already computed, which is what MAP and REDUCE do.
     pub fn invoke_with(&mut self, lambda: &Lambda, values: Vec<Val>) -> Val {
-        if values.len() > lambda.params.len() {
+        if values.len() > lambda.params.len() || values.len() < lambda.required {
             return Val::error(ErrorKind::Value);
         }
         if self.depth > DEEPEST {
@@ -451,6 +477,7 @@ impl<'a> Ctx<'a> {
             Val::Ref(area) if !area.is_3d() => {
                 Some((area.range.rows() as usize, area.range.cols() as usize))
             }
+            Val::Refs(areas) if areas.is_empty() => Some((1, 1)),
             _ => None,
         }
     }
@@ -474,6 +501,8 @@ impl<'a> Ctx<'a> {
                 )
             }
             Val::Lambda(_) => Value::Error(ErrorKind::Calc),
+            // An omitted LAMBDA parameter reads as an empty cell.
+            Val::Refs(ref areas) if areas.is_empty() => Value::Empty,
             Val::Refs(_) => Value::Error(ErrorKind::Value),
         }
     }
@@ -816,6 +845,16 @@ pub fn power(x: f64, y: f64) -> Result<f64, ErrorKind> {
 /// an array, with the array itself when there is one.
 /// One value from a parsed formula evaluated at a cell, which is what a conditional format rule's formula
 /// is, moved to each cell it covers.
+/// The name a cell is written with when it is also a LET name: `A1`.
+pub fn cell_name(row: u32, col: u32) -> String {
+    format!("{}{}", crate::coord::column_name(col), row + 1)
+}
+
+/// Whether a name is a cell address, which a LET name may be.
+fn looks_like_a_cell(name: &str) -> bool {
+    CellRef::parse(name).is_some_and(|at| cell_name(at.row, at.col).eq_ignore_ascii_case(name))
+}
+
 pub fn evaluate_expr(book: &Workbook, sheet: usize, at: CellRef, expr: &Expr, now: f64) -> Value {
     let env = Env::new(now, 0x2545_F491_4F6C_DD1D);
     let mut ctx = Ctx::new(book, sheet, at, &env);
@@ -838,10 +877,13 @@ pub fn evaluate(
     let mut ctx = Ctx::new(book, sheet, at, &env);
     let v = ctx.eval(&expr);
     Ok(match v {
-        Val::Array(a) => (a.data.first().cloned().unwrap_or(Value::Empty), Some(a)),
+        Val::Array(a) => spilled(at, a),
         Val::Ref(area) if area.range.len() > 1 && !area.is_3d() => {
+            if !fits(at, area.range.rows() as usize, area.range.cols() as usize) {
+                return Ok((Value::Error(ErrorKind::Spill), None));
+            }
             let a = ctx.array(Val::Ref(area)).unwrap_or_else(|e| Array::single(Value::Error(e)));
-            (a.data.first().cloned().unwrap_or(Value::Empty), Some(a))
+            spilled(at, a)
         }
         Val::Lambda(_) => (Value::Error(ErrorKind::Calc), None),
         other => {
@@ -921,4 +963,18 @@ pub fn table_area(
         table.sheet,
         Range::new(CellRef::new(first_row, first_col), CellRef::new(last_row, last_col)),
     ))
+}
+
+/// An array answer anchored at a cell: its first value and the array, or `#SPILL!` when the array would
+/// run past the last row or column of the sheet.
+fn spilled(at: CellRef, array: Array) -> (Value, Option<Array>) {
+    if !fits(at, array.rows, array.cols) {
+        return (Value::Error(ErrorKind::Spill), None);
+    }
+    (array.data.first().cloned().unwrap_or(Value::Empty), Some(array))
+}
+
+/// Whether a block of cells anchored at `at` stays inside the sheet.
+pub fn fits(at: CellRef, rows: usize, cols: usize) -> bool {
+    rows == 0 || cols == 0 || at.offset(rows as i64 - 1, cols as i64 - 1).is_some()
 }

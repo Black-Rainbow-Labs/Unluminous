@@ -45,19 +45,42 @@ pub struct Workbook {
     pub persons: Vec<Person>,
     /// The people changed since the file was read, so the persons part is written again.
     pub persons_changed: bool,
+    /// The pivot tables and the caches of data they summarise.
+    pub pivots: crate::pivot::Pivots,
 }
 
 /// The calculation settings in `calcPr`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CalcSettings {
     pub automatic: bool,
+    /// Iterative calculation (`iterate`): a circular reference is calculated over and over until it settles,
+    /// instead of being left at 0.
+    pub iterate: bool,
+    /// The most passes iterative calculation makes (`iterateCount`).
+    pub iterate_count: u32,
+    /// Iteration stops once no cell of a circular reference changes by this much (`iterateDelta`).
+    pub iterate_delta: f64,
+    /// False for "precision as displayed" (`fullPrecision="0"`): a number is stored as it is shown.
+    pub full_precision: bool,
     /// The other `calcPr` attributes, kept.
     pub attrs: Vec<(String, String)>,
 }
 
+/// How many passes iterative calculation makes when the file does not say.
+pub const DEFAULT_ITERATE_COUNT: u32 = 100;
+/// The largest change that ends iteration when the file does not say.
+pub const DEFAULT_ITERATE_DELTA: f64 = 0.001;
+
 impl Default for CalcSettings {
     fn default() -> Self {
-        Self { automatic: true, attrs: Vec::new() }
+        Self {
+            automatic: true,
+            iterate: false,
+            iterate_count: DEFAULT_ITERATE_COUNT,
+            iterate_delta: DEFAULT_ITERATE_DELTA,
+            full_precision: true,
+            attrs: Vec::new(),
+        }
     }
 }
 
@@ -74,6 +97,10 @@ pub struct Kept {
     pub package_rels: Vec<Relationship>,
     /// The workbook's relationships other than sheets, styles, shared strings, theme and metadata.
     pub workbook_rels: Vec<Relationship>,
+    /// What a binary workbook (`.xls`, `.xlsb`) holds that this version reads no further: the macro
+    /// project, the pictures and charts, and the document properties, by their path in the file. They are
+    /// kept so a later version can use them, and they are not written to an `.xlsx` file.
+    pub legacy: Vec<(String, Arc<Vec<u8>>)>,
 }
 
 impl Kept {
@@ -323,8 +350,21 @@ pub enum FilterCriteria {
     Values { values: Vec<String>, blank: bool },
     /// One or two conditions such as `>= 10`, joined by and or or.
     Custom { conditions: Vec<(String, String)>, and: bool },
-    /// Kept as read: top ten, colour and dynamic filters.
+    /// Kept as read: whatever [`FilterCriteria`] has no variant for.
     Raw(String),
+    /// A value list that also names items of the date tree: every date in a year, month or day.
+    Dates { values: Vec<String>, groups: Vec<DateGroup>, blank: bool },
+    /// The top or bottom items (or percent) of the column. `threshold` is the value the last item kept has,
+    /// which Excel writes as `filterVal` and which is computed again each time the filter is applied.
+    Top10 { top: bool, percent: bool, value: f64, threshold: Option<f64> },
+    /// One of Excel's dynamic filters, by the name the file gives it: `today`, `thisWeek`, `nextMonth`,
+    /// `yearToDate`, `Q1`, `M3`, `aboveAverage` and the rest. `value` and `max` are the serial numbers (or
+    /// the average) Excel computed when the filter was applied.
+    Dynamic { kind: String, value: Option<f64>, max: Option<f64> },
+    /// Keep the cells filled with a colour, or whose text is a colour, which differential format `dxf` holds.
+    Color { cell: bool, dxf: u32 },
+    /// Keep the cells showing one icon of an icon set. `id` is -1 for the cells with no icon.
+    Icon { set: String, id: i32 },
 }
 
 /// One conditional format: the cells it covers and its rules.
@@ -351,9 +391,165 @@ pub struct CfRule {
     pub formulas: Vec<String>,
     pub color_scale: Option<Vec<(Cfvo, crate::styles::Color)>>,
     pub data_bar: Option<(Cfvo, Cfvo, crate::styles::Color)>,
-    /// Other attributes, and children this version draws nothing for (icon sets, extensions), kept.
+    /// How many standard deviations from the average an `aboveAverage` rule counts (1, 2 or 3).
+    pub std_dev: Option<u32>,
+    /// An `aboveAverage` rule that also takes the cells equal to the average.
+    pub equal_average: bool,
+    /// The period a `timePeriod` rule names, such as `lastWeek`.
+    pub time_period: Option<String>,
+    /// The icon set of an `iconSet` rule.
+    pub icon_set: Option<IconSetRule>,
+    /// What a data bar has besides its colour and its two thresholds.
+    pub data_bar_options: Option<DataBarExt>,
+    /// How the rule is stored in the `x14` extension, when it is.
+    pub x14: Option<X14Payload>,
+    /// Other attributes, and children this version draws nothing for, kept.
     pub attrs: Vec<(String, String)>,
     pub raw_children: String,
+}
+
+impl CfRule {
+    /// A rule of a kind with nothing set, to fill in.
+    pub fn new(kind: &str) -> Self {
+        Self {
+            kind: kind.to_owned(),
+            dxf: None,
+            priority: 1,
+            stop: false,
+            operator: None,
+            text: None,
+            rank: None,
+            percent: false,
+            bottom: false,
+            above_average: None,
+            formulas: Vec::new(),
+            color_scale: None,
+            data_bar: None,
+            std_dev: None,
+            equal_average: false,
+            time_period: None,
+            icon_set: None,
+            data_bar_options: None,
+            x14: None,
+            attrs: Vec::new(),
+            raw_children: String::new(),
+        }
+    }
+}
+
+/// The icon set of a rule: which set, where each icon begins, and how it is drawn.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IconSetRule {
+    /// `3Arrows`, `4Rating`, `3Stars` and the rest of Excel's twenty sets.
+    pub name: String,
+    /// One threshold for each icon, the first being the lowest. The flag is whether a value equal to the
+    /// threshold earns the icon (`>=`) rather than only a value above it (`>`).
+    pub thresholds: Vec<(Cfvo, bool)>,
+    pub reverse: bool,
+    pub show_value: bool,
+    /// An icon chosen for each position instead of the set's own: the set it comes from and its index
+    /// there, or `None` for no icon (`NoIcons`).
+    pub custom: Vec<Option<(String, u32)>>,
+}
+
+impl IconSetRule {
+    /// A set with the thresholds Excel gives it: percentages that split the range evenly, the thirds
+    /// written as 33 and 67.
+    pub fn new(name: &str) -> Self {
+        let count = icon_count(name);
+        let thresholds = (0..count)
+            .map(|i| {
+                let value = match (count, i) {
+                    (3, 1) => 33,
+                    (3, 2) => 67,
+                    _ => i * 100 / count,
+                };
+                (Cfvo { kind: "percent".to_owned(), value: Some(value.to_string()) }, true)
+            })
+            .collect();
+        Self {
+            name: name.to_owned(),
+            thresholds,
+            reverse: false,
+            show_value: true,
+            custom: Vec::new(),
+        }
+    }
+
+    /// Whether the set can be stored in the main part of the file; three of Excel's sets and any custom
+    /// choice of icons need the extension.
+    pub fn needs_extension(&self) -> bool {
+        !self.custom.is_empty() || matches!(self.name.as_str(), "3Stars" | "3Triangles" | "5Boxes")
+    }
+}
+
+/// How many icons an icon set has: the first digit of its name.
+pub fn icon_count(name: &str) -> usize {
+    name.chars().next().and_then(|c| c.to_digit(10)).map_or(3, |d| d as usize)
+}
+
+/// Everything about a data bar other than its colour and its two thresholds: the options of the 2007
+/// element and of the Excel 2010 extension.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DataBarExt {
+    /// The number is shown beside the bar (`showValue`).
+    pub show_value: bool,
+    /// The shortest and longest bar as a percentage of the cell's width, in the 2007 element.
+    pub main_min_length: u32,
+    pub main_max_length: u32,
+    /// The same in the extension, which Excel 2010 writes as 0 and 100.
+    pub min_length: u32,
+    pub max_length: u32,
+    pub border: bool,
+    /// A gradient fill rather than a solid one.
+    pub gradient: bool,
+    /// `context`, `leftToRight` or `rightToLeft`.
+    pub direction: String,
+    /// Negative bars use the fill and the border of the positive ones.
+    pub negative_same_fill: bool,
+    pub negative_same_border: bool,
+    /// `automatic`, `middle` or `none`.
+    pub axis_position: String,
+    pub border_color: Option<crate::styles::Color>,
+    pub negative_fill: Option<crate::styles::Color>,
+    pub negative_border: Option<crate::styles::Color>,
+    pub axis_color: Option<crate::styles::Color>,
+    /// The extension is present in the file, so a rule written back gets one.
+    pub has_extension: bool,
+}
+
+impl Default for DataBarExt {
+    /// What Excel 2010 and later give a new data bar: a gradient fill with no border, the axis automatic.
+    fn default() -> Self {
+        Self {
+            show_value: true,
+            main_min_length: 10,
+            main_max_length: 90,
+            min_length: 0,
+            max_length: 100,
+            border: false,
+            gradient: true,
+            direction: "context".to_owned(),
+            negative_same_fill: false,
+            negative_same_border: true,
+            axis_position: "automatic".to_owned(),
+            border_color: None,
+            negative_fill: None,
+            negative_border: None,
+            axis_color: None,
+            has_extension: true,
+        }
+    }
+}
+
+/// How a rule is kept in the worksheet's `x14` extension.
+#[derive(Debug, Clone, PartialEq)]
+pub struct X14Payload {
+    /// The GUID that pairs the extension's rule with its twin in the main part, or names a rule that has none.
+    pub id: String,
+    /// The rule exists only in the extension: Excel keeps there what the 2007 schema cannot say, such as
+    /// the stars, triangles and boxes icon sets, custom icons, and formulas that name another sheet.
+    pub only: bool,
 }
 
 /// A threshold of a colour scale or a data bar.
@@ -496,12 +692,35 @@ pub struct Sheet {
     pub default_row_height: f64,
     pub spills: Spills,
     pub raw: SheetRaw,
+    /// How the sheet prints: page setup, margins, headers and footers, manual page breaks.
+    pub page: crate::pages::PageSetup,
     /// The legacy array formulas: a range sharing one formula entered with Ctrl+Shift+Enter.
     pub array_formulas: Vec<Range>,
     /// What If data tables (`TABLE()`): the results range and its input cells.
     pub data_tables: Vec<DataTable>,
     /// A chart sheet, a dialog sheet or a macro sheet, kept as its part and shown as a tab with no grid.
     pub kept_part: Option<KeptSheet>,
+    /// Where the summary rows and columns of the outline sit, and whether its symbols show.
+    pub outline: OutlineSettings,
+}
+
+/// The outline settings of a sheet (`sheetPr/outlinePr`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OutlineSettings {
+    /// The summary row sits below its detail rows rather than above them.
+    pub summary_below: bool,
+    /// The summary column sits to the right of its detail columns rather than the left.
+    pub summary_right: bool,
+    /// Automatic styles: bold and italic on the summary rows and columns.
+    pub apply_styles: bool,
+    /// The outline symbols (buttons and level numbers) are shown.
+    pub show_symbols: bool,
+}
+
+impl Default for OutlineSettings {
+    fn default() -> Self {
+        Self { summary_below: true, summary_right: true, apply_styles: false, show_symbols: true }
+    }
 }
 
 /// What a sheet's `sheetView` says beyond the frozen panes, the zoom and the gridlines, which [`Sheet`]
@@ -808,6 +1027,16 @@ impl Workbook {
         }
     }
 
+    /// A number as a cell with this style stores it under precision as displayed: rounded to what its
+    /// number format shows.
+    pub fn shown_number(&self, style: u32, n: f64, date1904: bool) -> f64 {
+        let code = self.styles.format_code(style);
+        if code == "General" {
+            return n;
+        }
+        crate::numfmt::Format::parse(&code).shown_value(n, date1904)
+    }
+
     pub fn sheet_index(&self, name: &str) -> Option<usize> {
         self.sheets.iter().position(|sheet| sheet.name.eq_ignore_ascii_case(name))
     }
@@ -837,6 +1066,56 @@ impl Workbook {
     /// The table a cell is inside.
     pub fn table_at(&self, sheet: usize, at: CellRef) -> Option<&Table> {
         self.tables.iter().find(|table| table.sheet == sheet && table.range.contains(at))
+    }
+}
+
+/// One item of the year, month, day tree a filter on a date column offers (`dateGroupItem`): every date in
+/// the year, the month of the year or the day, according to `grouping`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DateGroup {
+    pub year: i32,
+    pub month: Option<u32>,
+    pub day: Option<u32>,
+    pub hour: Option<u32>,
+    pub minute: Option<u32>,
+    pub second: Option<u32>,
+    pub grouping: DateGrouping,
+}
+
+/// How much of a date a [`DateGroup`] fixes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DateGrouping {
+    Year,
+    Month,
+    Day,
+    Hour,
+    Minute,
+    Second,
+}
+
+impl DateGrouping {
+    /// The name the file gives it (`dateTimeGrouping`).
+    pub fn name(self) -> &'static str {
+        match self {
+            DateGrouping::Year => "year",
+            DateGrouping::Month => "month",
+            DateGrouping::Day => "day",
+            DateGrouping::Hour => "hour",
+            DateGrouping::Minute => "minute",
+            DateGrouping::Second => "second",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        Some(match text {
+            "year" => DateGrouping::Year,
+            "month" => DateGrouping::Month,
+            "day" => DateGrouping::Day,
+            "hour" => DateGrouping::Hour,
+            "minute" => DateGrouping::Minute,
+            "second" => DateGrouping::Second,
+            _ => return None,
+        })
     }
 }
 

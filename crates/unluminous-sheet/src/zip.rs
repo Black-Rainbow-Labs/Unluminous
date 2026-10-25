@@ -107,6 +107,13 @@ pub fn read(bytes: &[u8]) -> Result<Vec<Entry>, String> {
 
 /// Write entries as a zip, deflated, in the order given.
 pub fn write(entries: &[Entry]) -> Result<Vec<u8>, String> {
+    write_with_stored(entries, &[])
+}
+
+/// Write entries as a zip in the order given, deflated except those whose names are in `stored`, which
+/// are written as they are. An OpenDocument file needs its `mimetype` entry stored so a program can read
+/// the file's type from a fixed place in the first bytes.
+pub fn write_with_stored(entries: &[Entry], stored: &[&str]) -> Result<Vec<u8>, String> {
     let mut out: Vec<u8> = Vec::new();
     let mut directory: Vec<u8> = Vec::new();
     // 1 January 1980, the earliest time a zip can hold; a fixed time keeps the file the same for the same
@@ -116,10 +123,15 @@ pub fn write(entries: &[Entry]) -> Result<Vec<u8>, String> {
         let mut crc = crc32fast::Hasher::new();
         crc.update(&entry.data);
         let crc = crc.finalize();
-        let mut encoder =
-            flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
-        encoder.write_all(&entry.data).map_err(|problem| problem.to_string())?;
-        let compressed = encoder.finish().map_err(|problem| problem.to_string())?;
+        let is_stored = stored.contains(&entry.name.as_str());
+        let compressed = if is_stored {
+            entry.data.clone()
+        } else {
+            let mut encoder =
+                flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
+            encoder.write_all(&entry.data).map_err(|problem| problem.to_string())?;
+            encoder.finish().map_err(|problem| problem.to_string())?
+        };
         if compressed.len() > u32::MAX as usize || out.len() > u32::MAX as usize {
             return Err("the workbook is larger than 4 GB, which a zip without zip64 cannot hold"
                 .to_owned());
@@ -134,7 +146,7 @@ pub fn write(entries: &[Entry]) -> Result<Vec<u8>, String> {
             }
             h.extend(20u16.to_le_bytes()); // needed
             h.extend(0x0800u16.to_le_bytes()); // names are UTF-8
-            h.extend(8u16.to_le_bytes());
+            h.extend((if is_stored { 0u16 } else { 8u16 }).to_le_bytes());
             h.extend(time.to_le_bytes());
             h.extend(date.to_le_bytes());
             h.extend(crc.to_le_bytes());

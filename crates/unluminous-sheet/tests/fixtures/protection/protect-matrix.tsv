@@ -1,0 +1,660 @@
+set locked A1	none	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+set locked A1	formatCells	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+set locked A1	formatColumns	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+set locked A1	formatRows	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+set locked A1	insertColumns	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+set locked A1	insertRows	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+set locked A1	insertHyperlinks	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+set locked A1	deleteColumns	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+set locked A1	deleteRows	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+set locked A1	sort	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+set locked A1	autoFilter	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+set locked A1	pivotTables	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+set locked A1	selectLocked	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+set locked A1	objectsOff	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+set locked A1	scenariosOff	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+set unlocked B1	none	ok
+set unlocked B1	formatCells	ok
+set unlocked B1	formatColumns	ok
+set unlocked B1	formatRows	ok
+set unlocked B1	insertColumns	ok
+set unlocked B1	insertRows	ok
+set unlocked B1	insertHyperlinks	ok
+set unlocked B1	deleteColumns	ok
+set unlocked B1	deleteRows	ok
+set unlocked B1	sort	ok
+set unlocked B1	autoFilter	ok
+set unlocked B1	pivotTables	ok
+set unlocked B1	selectLocked	ok
+set unlocked B1	objectsOff	ok
+set unlocked B1	scenariosOff	ok
+clear unlocked B1	none	ok
+clear unlocked B1	formatCells	ok
+clear unlocked B1	formatColumns	ok
+clear unlocked B1	formatRows	ok
+clear unlocked B1	insertColumns	ok
+clear unlocked B1	insertRows	ok
+clear unlocked B1	insertHyperlinks	ok
+clear unlocked B1	deleteColumns	ok
+clear unlocked B1	deleteRows	ok
+clear unlocked B1	sort	ok
+clear unlocked B1	autoFilter	ok
+clear unlocked B1	pivotTables	ok
+clear unlocked B1	selectLocked	ok
+clear unlocked B1	objectsOff	ok
+clear unlocked B1	scenariosOff	ok
+clear locked A1	none	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+clear locked A1	formatCells	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+clear locked A1	formatColumns	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+clear locked A1	formatRows	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+clear locked A1	insertColumns	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+clear locked A1	insertRows	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+clear locked A1	insertHyperlinks	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+clear locked A1	deleteColumns	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+clear locked A1	deleteRows	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+clear locked A1	sort	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+clear locked A1	autoFilter	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+clear locked A1	pivotTables	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+clear locked A1	selectLocked	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+clear locked A1	objectsOff	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+clear locked A1	scenariosOff	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+bold unlocked B1	none	Unable to set the Bold property of the Font class
+bold unlocked B1	formatCells	ok
+bold unlocked B1	formatColumns	Unable to set the Bold property of the Font class
+bold unlocked B1	formatRows	Unable to set the Bold property of the Font class
+bold unlocked B1	insertColumns	Unable to set the Bold property of the Font class
+bold unlocked B1	insertRows	Unable to set the Bold property of the Font class
+bold unlocked B1	insertHyperlinks	Unable to set the Bold property of the Font class
+bold unlocked B1	deleteColumns	Unable to set the Bold property of the Font class
+bold unlocked B1	deleteRows	Unable to set the Bold property of the Font class
+bold unlocked B1	sort	Unable to set the Bold property of the Font class
+bold unlocked B1	autoFilter	Unable to set the Bold property of the Font class
+bold unlocked B1	pivotTables	Unable to set the Bold property of the Font class
+bold unlocked B1	selectLocked	Unable to set the Bold property of the Font class
+bold unlocked B1	objectsOff	Unable to set the Bold property of the Font class
+bold unlocked B1	scenariosOff	Unable to set the Bold property of the Font class
+bold locked A1	none	Unable to set the Bold property of the Font class
+bold locked A1	formatCells	ok
+bold locked A1	formatColumns	Unable to set the Bold property of the Font class
+bold locked A1	formatRows	Unable to set the Bold property of the Font class
+bold locked A1	insertColumns	Unable to set the Bold property of the Font class
+bold locked A1	insertRows	Unable to set the Bold property of the Font class
+bold locked A1	insertHyperlinks	Unable to set the Bold property of the Font class
+bold locked A1	deleteColumns	Unable to set the Bold property of the Font class
+bold locked A1	deleteRows	Unable to set the Bold property of the Font class
+bold locked A1	sort	Unable to set the Bold property of the Font class
+bold locked A1	autoFilter	Unable to set the Bold property of the Font class
+bold locked A1	pivotTables	Unable to set the Bold property of the Font class
+bold locked A1	selectLocked	Unable to set the Bold property of the Font class
+bold locked A1	objectsOff	Unable to set the Bold property of the Font class
+bold locked A1	scenariosOff	Unable to set the Bold property of the Font class
+numfmt unlocked B1	none	Unable to set the NumberFormat property of the Range class
+numfmt unlocked B1	formatCells	ok
+numfmt unlocked B1	formatColumns	Unable to set the NumberFormat property of the Range class
+numfmt unlocked B1	formatRows	Unable to set the NumberFormat property of the Range class
+numfmt unlocked B1	insertColumns	Unable to set the NumberFormat property of the Range class
+numfmt unlocked B1	insertRows	Unable to set the NumberFormat property of the Range class
+numfmt unlocked B1	insertHyperlinks	Unable to set the NumberFormat property of the Range class
+numfmt unlocked B1	deleteColumns	Unable to set the NumberFormat property of the Range class
+numfmt unlocked B1	deleteRows	Unable to set the NumberFormat property of the Range class
+numfmt unlocked B1	sort	Unable to set the NumberFormat property of the Range class
+numfmt unlocked B1	autoFilter	Unable to set the NumberFormat property of the Range class
+numfmt unlocked B1	pivotTables	Unable to set the NumberFormat property of the Range class
+numfmt unlocked B1	selectLocked	Unable to set the NumberFormat property of the Range class
+numfmt unlocked B1	objectsOff	Unable to set the NumberFormat property of the Range class
+numfmt unlocked B1	scenariosOff	Unable to set the NumberFormat property of the Range class
+fill unlocked B1	none	0x800A03EC
+fill unlocked B1	formatCells	ok
+fill unlocked B1	formatColumns	0x800A03EC
+fill unlocked B1	formatRows	0x800A03EC
+fill unlocked B1	insertColumns	0x800A03EC
+fill unlocked B1	insertRows	0x800A03EC
+fill unlocked B1	insertHyperlinks	0x800A03EC
+fill unlocked B1	deleteColumns	0x800A03EC
+fill unlocked B1	deleteRows	0x800A03EC
+fill unlocked B1	sort	0x800A03EC
+fill unlocked B1	autoFilter	0x800A03EC
+fill unlocked B1	pivotTables	0x800A03EC
+fill unlocked B1	selectLocked	0x800A03EC
+fill unlocked B1	objectsOff	0x800A03EC
+fill unlocked B1	scenariosOff	0x800A03EC
+merge unlocked B1:C1	none	0x800A03EC
+merge unlocked B1:C1	formatCells	0x800A03EC
+merge unlocked B1:C1	formatColumns	0x800A03EC
+merge unlocked B1:C1	formatRows	0x800A03EC
+merge unlocked B1:C1	insertColumns	0x800A03EC
+merge unlocked B1:C1	insertRows	0x800A03EC
+merge unlocked B1:C1	insertHyperlinks	0x800A03EC
+merge unlocked B1:C1	deleteColumns	0x800A03EC
+merge unlocked B1:C1	deleteRows	0x800A03EC
+merge unlocked B1:C1	sort	0x800A03EC
+merge unlocked B1:C1	autoFilter	0x800A03EC
+merge unlocked B1:C1	pivotTables	0x800A03EC
+merge unlocked B1:C1	selectLocked	0x800A03EC
+merge unlocked B1:C1	objectsOff	0x800A03EC
+merge unlocked B1:C1	scenariosOff	0x800A03EC
+colwidth B	none	Unable to set the ColumnWidth property of the Range class
+colwidth B	formatCells	Unable to set the ColumnWidth property of the Range class
+colwidth B	formatColumns	ok
+colwidth B	formatRows	Unable to set the ColumnWidth property of the Range class
+colwidth B	insertColumns	Unable to set the ColumnWidth property of the Range class
+colwidth B	insertRows	Unable to set the ColumnWidth property of the Range class
+colwidth B	insertHyperlinks	Unable to set the ColumnWidth property of the Range class
+colwidth B	deleteColumns	Unable to set the ColumnWidth property of the Range class
+colwidth B	deleteRows	Unable to set the ColumnWidth property of the Range class
+colwidth B	sort	Unable to set the ColumnWidth property of the Range class
+colwidth B	autoFilter	Unable to set the ColumnWidth property of the Range class
+colwidth B	pivotTables	Unable to set the ColumnWidth property of the Range class
+colwidth B	selectLocked	Unable to set the ColumnWidth property of the Range class
+colwidth B	objectsOff	Unable to set the ColumnWidth property of the Range class
+colwidth B	scenariosOff	Unable to set the ColumnWidth property of the Range class
+col hide B	none	Unable to set the Hidden property of the Range class
+col hide B	formatCells	Unable to set the Hidden property of the Range class
+col hide B	formatColumns	ok
+col hide B	formatRows	Unable to set the Hidden property of the Range class
+col hide B	insertColumns	Unable to set the Hidden property of the Range class
+col hide B	insertRows	Unable to set the Hidden property of the Range class
+col hide B	insertHyperlinks	Unable to set the Hidden property of the Range class
+col hide B	deleteColumns	Unable to set the Hidden property of the Range class
+col hide B	deleteRows	Unable to set the Hidden property of the Range class
+col hide B	sort	Unable to set the Hidden property of the Range class
+col hide B	autoFilter	Unable to set the Hidden property of the Range class
+col hide B	pivotTables	Unable to set the Hidden property of the Range class
+col hide B	selectLocked	Unable to set the Hidden property of the Range class
+col hide B	objectsOff	Unable to set the Hidden property of the Range class
+col hide B	scenariosOff	Unable to set the Hidden property of the Range class
+rowheight 1	none	Unable to set the RowHeight property of the Range class
+rowheight 1	formatCells	Unable to set the RowHeight property of the Range class
+rowheight 1	formatColumns	Unable to set the RowHeight property of the Range class
+rowheight 1	formatRows	ok
+rowheight 1	insertColumns	Unable to set the RowHeight property of the Range class
+rowheight 1	insertRows	Unable to set the RowHeight property of the Range class
+rowheight 1	insertHyperlinks	Unable to set the RowHeight property of the Range class
+rowheight 1	deleteColumns	Unable to set the RowHeight property of the Range class
+rowheight 1	deleteRows	Unable to set the RowHeight property of the Range class
+rowheight 1	sort	Unable to set the RowHeight property of the Range class
+rowheight 1	autoFilter	Unable to set the RowHeight property of the Range class
+rowheight 1	pivotTables	Unable to set the RowHeight property of the Range class
+rowheight 1	selectLocked	Unable to set the RowHeight property of the Range class
+rowheight 1	objectsOff	Unable to set the RowHeight property of the Range class
+rowheight 1	scenariosOff	Unable to set the RowHeight property of the Range class
+row hide 1	none	Unable to set the Hidden property of the Range class
+row hide 1	formatCells	Unable to set the Hidden property of the Range class
+row hide 1	formatColumns	Unable to set the Hidden property of the Range class
+row hide 1	formatRows	ok
+row hide 1	insertColumns	Unable to set the Hidden property of the Range class
+row hide 1	insertRows	Unable to set the Hidden property of the Range class
+row hide 1	insertHyperlinks	Unable to set the Hidden property of the Range class
+row hide 1	deleteColumns	Unable to set the Hidden property of the Range class
+row hide 1	deleteRows	Unable to set the Hidden property of the Range class
+row hide 1	sort	Unable to set the Hidden property of the Range class
+row hide 1	autoFilter	Unable to set the Hidden property of the Range class
+row hide 1	pivotTables	Unable to set the Hidden property of the Range class
+row hide 1	selectLocked	Unable to set the Hidden property of the Range class
+row hide 1	objectsOff	Unable to set the Hidden property of the Range class
+row hide 1	scenariosOff	Unable to set the Hidden property of the Range class
+insert row 2	none	Unable to get the Insert property of the Range class
+insert row 2	formatCells	Unable to get the Insert property of the Range class
+insert row 2	formatColumns	Unable to get the Insert property of the Range class
+insert row 2	formatRows	Unable to get the Insert property of the Range class
+insert row 2	insertColumns	Unable to get the Insert property of the Range class
+insert row 2	insertRows	ok
+insert row 2	insertHyperlinks	Unable to get the Insert property of the Range class
+insert row 2	deleteColumns	Unable to get the Insert property of the Range class
+insert row 2	deleteRows	Unable to get the Insert property of the Range class
+insert row 2	sort	Unable to get the Insert property of the Range class
+insert row 2	autoFilter	Unable to get the Insert property of the Range class
+insert row 2	pivotTables	Unable to get the Insert property of the Range class
+insert row 2	selectLocked	Unable to get the Insert property of the Range class
+insert row 2	objectsOff	Unable to get the Insert property of the Range class
+insert row 2	scenariosOff	Unable to get the Insert property of the Range class
+insert col B	none	Unable to get the Insert property of the Range class
+insert col B	formatCells	Unable to get the Insert property of the Range class
+insert col B	formatColumns	Unable to get the Insert property of the Range class
+insert col B	formatRows	Unable to get the Insert property of the Range class
+insert col B	insertColumns	ok
+insert col B	insertRows	Unable to get the Insert property of the Range class
+insert col B	insertHyperlinks	Unable to get the Insert property of the Range class
+insert col B	deleteColumns	Unable to get the Insert property of the Range class
+insert col B	deleteRows	Unable to get the Insert property of the Range class
+insert col B	sort	Unable to get the Insert property of the Range class
+insert col B	autoFilter	Unable to get the Insert property of the Range class
+insert col B	pivotTables	Unable to get the Insert property of the Range class
+insert col B	selectLocked	Unable to get the Insert property of the Range class
+insert col B	objectsOff	Unable to get the Insert property of the Range class
+insert col B	scenariosOff	Unable to get the Insert property of the Range class
+delete row 5 unlocked	none	Unable to get the Delete property of the Range class
+delete row 5 unlocked	formatCells	Unable to get the Delete property of the Range class
+delete row 5 unlocked	formatColumns	Unable to get the Delete property of the Range class
+delete row 5 unlocked	formatRows	Unable to get the Delete property of the Range class
+delete row 5 unlocked	insertColumns	Unable to get the Delete property of the Range class
+delete row 5 unlocked	insertRows	Unable to get the Delete property of the Range class
+delete row 5 unlocked	insertHyperlinks	Unable to get the Delete property of the Range class
+delete row 5 unlocked	deleteColumns	Unable to get the Delete property of the Range class
+delete row 5 unlocked	deleteRows	ok
+delete row 5 unlocked	sort	Unable to get the Delete property of the Range class
+delete row 5 unlocked	autoFilter	Unable to get the Delete property of the Range class
+delete row 5 unlocked	pivotTables	Unable to get the Delete property of the Range class
+delete row 5 unlocked	selectLocked	Unable to get the Delete property of the Range class
+delete row 5 unlocked	objectsOff	Unable to get the Delete property of the Range class
+delete row 5 unlocked	scenariosOff	Unable to get the Delete property of the Range class
+delete row 6 locked	none	Unable to get the Delete property of the Range class
+delete row 6 locked	formatCells	Unable to get the Delete property of the Range class
+delete row 6 locked	formatColumns	Unable to get the Delete property of the Range class
+delete row 6 locked	formatRows	Unable to get the Delete property of the Range class
+delete row 6 locked	insertColumns	Unable to get the Delete property of the Range class
+delete row 6 locked	insertRows	Unable to get the Delete property of the Range class
+delete row 6 locked	insertHyperlinks	Unable to get the Delete property of the Range class
+delete row 6 locked	deleteColumns	Unable to get the Delete property of the Range class
+delete row 6 locked	deleteRows	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+delete row 6 locked	sort	Unable to get the Delete property of the Range class
+delete row 6 locked	autoFilter	Unable to get the Delete property of the Range class
+delete row 6 locked	pivotTables	Unable to get the Delete property of the Range class
+delete row 6 locked	selectLocked	Unable to get the Delete property of the Range class
+delete row 6 locked	objectsOff	Unable to get the Delete property of the Range class
+delete row 6 locked	scenariosOff	Unable to get the Delete property of the Range class
+delete col E unlocked	none	Unable to get the Delete property of the Range class
+delete col E unlocked	formatCells	Unable to get the Delete property of the Range class
+delete col E unlocked	formatColumns	Unable to get the Delete property of the Range class
+delete col E unlocked	formatRows	Unable to get the Delete property of the Range class
+delete col E unlocked	insertColumns	Unable to get the Delete property of the Range class
+delete col E unlocked	insertRows	Unable to get the Delete property of the Range class
+delete col E unlocked	insertHyperlinks	Unable to get the Delete property of the Range class
+delete col E unlocked	deleteColumns	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+delete col E unlocked	deleteRows	Unable to get the Delete property of the Range class
+delete col E unlocked	sort	Unable to get the Delete property of the Range class
+delete col E unlocked	autoFilter	Unable to get the Delete property of the Range class
+delete col E unlocked	pivotTables	Unable to get the Delete property of the Range class
+delete col E unlocked	selectLocked	Unable to get the Delete property of the Range class
+delete col E unlocked	objectsOff	Unable to get the Delete property of the Range class
+delete col E unlocked	scenariosOff	Unable to get the Delete property of the Range class
+delete col A locked	none	Unable to get the Delete property of the Range class
+delete col A locked	formatCells	Unable to get the Delete property of the Range class
+delete col A locked	formatColumns	Unable to get the Delete property of the Range class
+delete col A locked	formatRows	Unable to get the Delete property of the Range class
+delete col A locked	insertColumns	Unable to get the Delete property of the Range class
+delete col A locked	insertRows	Unable to get the Delete property of the Range class
+delete col A locked	insertHyperlinks	Unable to get the Delete property of the Range class
+delete col A locked	deleteColumns	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+delete col A locked	deleteRows	Unable to get the Delete property of the Range class
+delete col A locked	sort	Unable to get the Delete property of the Range class
+delete col A locked	autoFilter	Unable to get the Delete property of the Range class
+delete col A locked	pivotTables	Unable to get the Delete property of the Range class
+delete col A locked	selectLocked	Unable to get the Delete property of the Range class
+delete col A locked	objectsOff	Unable to get the Delete property of the Range class
+delete col A locked	scenariosOff	Unable to get the Delete property of the Range class
+sort unlocked B1:C3	none	Unable to get the Sort property of the Range class
+sort unlocked B1:C3	formatCells	Unable to get the Sort property of the Range class
+sort unlocked B1:C3	formatColumns	Unable to get the Sort property of the Range class
+sort unlocked B1:C3	formatRows	Unable to get the Sort property of the Range class
+sort unlocked B1:C3	insertColumns	Unable to get the Sort property of the Range class
+sort unlocked B1:C3	insertRows	Unable to get the Sort property of the Range class
+sort unlocked B1:C3	insertHyperlinks	Unable to get the Sort property of the Range class
+sort unlocked B1:C3	deleteColumns	Unable to get the Sort property of the Range class
+sort unlocked B1:C3	deleteRows	Unable to get the Sort property of the Range class
+sort unlocked B1:C3	sort	ok
+sort unlocked B1:C3	autoFilter	Unable to get the Sort property of the Range class
+sort unlocked B1:C3	pivotTables	Unable to get the Sort property of the Range class
+sort unlocked B1:C3	selectLocked	Unable to get the Sort property of the Range class
+sort unlocked B1:C3	objectsOff	Unable to get the Sort property of the Range class
+sort unlocked B1:C3	scenariosOff	Unable to get the Sort property of the Range class
+sort locked A1:A3	none	Unable to get the Sort property of the Range class
+sort locked A1:A3	formatCells	Unable to get the Sort property of the Range class
+sort locked A1:A3	formatColumns	Unable to get the Sort property of the Range class
+sort locked A1:A3	formatRows	Unable to get the Sort property of the Range class
+sort locked A1:A3	insertColumns	Unable to get the Sort property of the Range class
+sort locked A1:A3	insertRows	Unable to get the Sort property of the Range class
+sort locked A1:A3	insertHyperlinks	Unable to get the Sort property of the Range class
+sort locked A1:A3	deleteColumns	Unable to get the Sort property of the Range class
+sort locked A1:A3	deleteRows	Unable to get the Sort property of the Range class
+sort locked A1:A3	sort	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+sort locked A1:A3	autoFilter	Unable to get the Sort property of the Range class
+sort locked A1:A3	pivotTables	Unable to get the Sort property of the Range class
+sort locked A1:A3	selectLocked	Unable to get the Sort property of the Range class
+sort locked A1:A3	objectsOff	Unable to get the Sort property of the Range class
+sort locked A1:A3	scenariosOff	Unable to get the Sort property of the Range class
+autofilter B1:C3	none	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+autofilter B1:C3	formatCells	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+autofilter B1:C3	formatColumns	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+autofilter B1:C3	formatRows	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+autofilter B1:C3	insertColumns	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+autofilter B1:C3	insertRows	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+autofilter B1:C3	insertHyperlinks	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+autofilter B1:C3	deleteColumns	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+autofilter B1:C3	deleteRows	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+autofilter B1:C3	sort	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+autofilter B1:C3	autoFilter	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+autofilter B1:C3	pivotTables	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+autofilter B1:C3	selectLocked	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+autofilter B1:C3	objectsOff	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+autofilter B1:C3	scenariosOff	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+hyperlink unlocked B1	none	0x800A03EC
+hyperlink unlocked B1	formatCells	0x800A03EC
+hyperlink unlocked B1	formatColumns	0x800A03EC
+hyperlink unlocked B1	formatRows	0x800A03EC
+hyperlink unlocked B1	insertColumns	0x800A03EC
+hyperlink unlocked B1	insertRows	0x800A03EC
+hyperlink unlocked B1	insertHyperlinks	ok
+hyperlink unlocked B1	deleteColumns	0x800A03EC
+hyperlink unlocked B1	deleteRows	0x800A03EC
+hyperlink unlocked B1	sort	0x800A03EC
+hyperlink unlocked B1	autoFilter	0x800A03EC
+hyperlink unlocked B1	pivotTables	0x800A03EC
+hyperlink unlocked B1	selectLocked	0x800A03EC
+hyperlink unlocked B1	objectsOff	0x800A03EC
+hyperlink unlocked B1	scenariosOff	0x800A03EC
+hyperlink locked A1	none	0x800A03EC
+hyperlink locked A1	formatCells	0x800A03EC
+hyperlink locked A1	formatColumns	0x800A03EC
+hyperlink locked A1	formatRows	0x800A03EC
+hyperlink locked A1	insertColumns	0x800A03EC
+hyperlink locked A1	insertRows	0x800A03EC
+hyperlink locked A1	insertHyperlinks	0x800A03EC
+hyperlink locked A1	deleteColumns	0x800A03EC
+hyperlink locked A1	deleteRows	0x800A03EC
+hyperlink locked A1	sort	0x800A03EC
+hyperlink locked A1	autoFilter	0x800A03EC
+hyperlink locked A1	pivotTables	0x800A03EC
+hyperlink locked A1	selectLocked	0x800A03EC
+hyperlink locked A1	objectsOff	0x800A03EC
+hyperlink locked A1	scenariosOff	0x800A03EC
+note unlocked B1	none	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+note unlocked B1	formatCells	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+note unlocked B1	formatColumns	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+note unlocked B1	formatRows	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+note unlocked B1	insertColumns	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+note unlocked B1	insertRows	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+note unlocked B1	insertHyperlinks	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+note unlocked B1	deleteColumns	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+note unlocked B1	deleteRows	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+note unlocked B1	sort	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+note unlocked B1	autoFilter	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+note unlocked B1	pivotTables	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+note unlocked B1	selectLocked	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+note unlocked B1	objectsOff	ok
+note unlocked B1	scenariosOff	The cell or chart you're trying to change is on a protected sheet. To make a change, unprotect the sheet. You might be requested to enter a password.
+validation B1	none	0x800A03EC
+validation B1	formatCells	0x800A03EC
+validation B1	formatColumns	0x800A03EC
+validation B1	formatRows	0x800A03EC
+validation B1	insertColumns	0x800A03EC
+validation B1	insertRows	0x800A03EC
+validation B1	insertHyperlinks	0x800A03EC
+validation B1	deleteColumns	0x800A03EC
+validation B1	deleteRows	0x800A03EC
+validation B1	sort	0x800A03EC
+validation B1	autoFilter	0x800A03EC
+validation B1	pivotTables	0x800A03EC
+validation B1	selectLocked	0x800A03EC
+validation B1	objectsOff	0x800A03EC
+validation B1	scenariosOff	0x800A03EC
+conditional B1	none	0x800A03EC
+conditional B1	formatCells	ok
+conditional B1	formatColumns	0x800A03EC
+conditional B1	formatRows	0x800A03EC
+conditional B1	insertColumns	0x800A03EC
+conditional B1	insertRows	0x800A03EC
+conditional B1	insertHyperlinks	0x800A03EC
+conditional B1	deleteColumns	0x800A03EC
+conditional B1	deleteRows	0x800A03EC
+conditional B1	sort	0x800A03EC
+conditional B1	autoFilter	0x800A03EC
+conditional B1	pivotTables	0x800A03EC
+conditional B1	selectLocked	0x800A03EC
+conditional B1	objectsOff	0x800A03EC
+conditional B1	scenariosOff	0x800A03EC
+name define	none	ok
+name define	formatCells	ok
+name define	formatColumns	ok
+name define	formatRows	ok
+name define	insertColumns	ok
+name define	insertRows	ok
+name define	insertHyperlinks	ok
+name define	deleteColumns	ok
+name define	deleteRows	ok
+name define	sort	ok
+name define	autoFilter	ok
+name define	pivotTables	ok
+name define	selectLocked	ok
+name define	objectsOff	ok
+name define	scenariosOff	ok
+freeze	none	ok
+freeze	formatCells	ok
+freeze	formatColumns	ok
+freeze	formatRows	ok
+freeze	insertColumns	ok
+freeze	insertRows	ok
+freeze	insertHyperlinks	ok
+freeze	deleteColumns	ok
+freeze	deleteRows	ok
+freeze	sort	ok
+freeze	autoFilter	ok
+freeze	pivotTables	ok
+freeze	selectLocked	ok
+freeze	objectsOff	ok
+freeze	scenariosOff	ok
+fill down unlocked	none	ok
+fill down unlocked	formatCells	ok
+fill down unlocked	formatColumns	ok
+fill down unlocked	formatRows	ok
+fill down unlocked	insertColumns	ok
+fill down unlocked	insertRows	ok
+fill down unlocked	insertHyperlinks	ok
+fill down unlocked	deleteColumns	ok
+fill down unlocked	deleteRows	ok
+fill down unlocked	sort	ok
+fill down unlocked	autoFilter	ok
+fill down unlocked	pivotTables	ok
+fill down unlocked	selectLocked	ok
+fill down unlocked	objectsOff	ok
+fill down unlocked	scenariosOff	ok
+text to columns B	none	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+text to columns B	formatCells	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+text to columns B	formatColumns	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+text to columns B	formatRows	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+text to columns B	insertColumns	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+text to columns B	insertRows	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+text to columns B	insertHyperlinks	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+text to columns B	deleteColumns	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+text to columns B	deleteRows	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+text to columns B	sort	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+text to columns B	autoFilter	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+text to columns B	pivotTables	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+text to columns B	selectLocked	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+text to columns B	objectsOff	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+text to columns B	scenariosOff	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+remove dups B1:C3	none	0x800A03EC
+remove dups B1:C3	formatCells	0x800A03EC
+remove dups B1:C3	formatColumns	0x800A03EC
+remove dups B1:C3	formatRows	0x800A03EC
+remove dups B1:C3	insertColumns	0x800A03EC
+remove dups B1:C3	insertRows	0x800A03EC
+remove dups B1:C3	insertHyperlinks	0x800A03EC
+remove dups B1:C3	deleteColumns	0x800A03EC
+remove dups B1:C3	deleteRows	0x800A03EC
+remove dups B1:C3	sort	0x800A03EC
+remove dups B1:C3	autoFilter	0x800A03EC
+remove dups B1:C3	pivotTables	0x800A03EC
+remove dups B1:C3	selectLocked	0x800A03EC
+remove dups B1:C3	objectsOff	0x800A03EC
+remove dups B1:C3	scenariosOff	0x800A03EC
+list object	none	Table features aren't available because the sheet is protected.
+list object	formatCells	Table features aren't available because the sheet is protected.
+list object	formatColumns	Table features aren't available because the sheet is protected.
+list object	formatRows	Table features aren't available because the sheet is protected.
+list object	insertColumns	Table features aren't available because the sheet is protected.
+list object	insertRows	Table features aren't available because the sheet is protected.
+list object	insertHyperlinks	Table features aren't available because the sheet is protected.
+list object	deleteColumns	Table features aren't available because the sheet is protected.
+list object	deleteRows	Table features aren't available because the sheet is protected.
+list object	sort	Table features aren't available because the sheet is protected.
+list object	autoFilter	Table features aren't available because the sheet is protected.
+list object	pivotTables	Table features aren't available because the sheet is protected.
+list object	selectLocked	Table features aren't available because the sheet is protected.
+list object	objectsOff	Table features aren't available because the sheet is protected.
+list object	scenariosOff	Table features aren't available because the sheet is protected.
+chart	none	0x800A03EC
+chart	formatCells	0x800A03EC
+chart	formatColumns	0x800A03EC
+chart	formatRows	0x800A03EC
+chart	insertColumns	0x800A03EC
+chart	insertRows	0x800A03EC
+chart	insertHyperlinks	0x800A03EC
+chart	deleteColumns	0x800A03EC
+chart	deleteRows	0x800A03EC
+chart	sort	0x800A03EC
+chart	autoFilter	0x800A03EC
+chart	pivotTables	0x800A03EC
+chart	selectLocked	0x800A03EC
+chart	objectsOff	0x800A03EC
+chart	scenariosOff	0x800A03EC
+shape	none	The specified value is out of range.
+shape	formatCells	The specified value is out of range.
+shape	formatColumns	The specified value is out of range.
+shape	formatRows	The specified value is out of range.
+shape	insertColumns	The specified value is out of range.
+shape	insertRows	The specified value is out of range.
+shape	insertHyperlinks	The specified value is out of range.
+shape	deleteColumns	The specified value is out of range.
+shape	deleteRows	The specified value is out of range.
+shape	sort	The specified value is out of range.
+shape	autoFilter	The specified value is out of range.
+shape	pivotTables	The specified value is out of range.
+shape	selectLocked	The specified value is out of range.
+shape	objectsOff	ok
+shape	scenariosOff	The specified value is out of range.
+tab color	none	ok
+tab color	formatCells	ok
+tab color	formatColumns	ok
+tab color	formatRows	ok
+tab color	insertColumns	ok
+tab color	insertRows	ok
+tab color	insertHyperlinks	ok
+tab color	deleteColumns	ok
+tab color	deleteRows	ok
+tab color	sort	ok
+tab color	autoFilter	ok
+tab color	pivotTables	ok
+tab color	selectLocked	ok
+tab color	objectsOff	ok
+tab color	scenariosOff	ok
+rename sheet	none	ok
+rename sheet	formatCells	ok
+rename sheet	formatColumns	ok
+rename sheet	formatRows	ok
+rename sheet	insertColumns	ok
+rename sheet	insertRows	ok
+rename sheet	insertHyperlinks	ok
+rename sheet	deleteColumns	ok
+rename sheet	deleteRows	ok
+rename sheet	sort	ok
+rename sheet	autoFilter	ok
+rename sheet	pivotTables	ok
+rename sheet	selectLocked	ok
+rename sheet	objectsOff	ok
+rename sheet	scenariosOff	ok
+delete sheet	none	ok
+delete sheet	formatCells	ok
+delete sheet	formatColumns	ok
+delete sheet	formatRows	ok
+delete sheet	insertColumns	ok
+delete sheet	insertRows	ok
+delete sheet	insertHyperlinks	ok
+delete sheet	deleteColumns	ok
+delete sheet	deleteRows	ok
+delete sheet	sort	ok
+delete sheet	autoFilter	ok
+delete sheet	pivotTables	ok
+delete sheet	selectLocked	ok
+delete sheet	objectsOff	ok
+delete sheet	scenariosOff	ok
+unhide sheet	none	ok
+unhide sheet	formatCells	ok
+unhide sheet	formatColumns	ok
+unhide sheet	formatRows	ok
+unhide sheet	insertColumns	ok
+unhide sheet	insertRows	ok
+unhide sheet	insertHyperlinks	ok
+unhide sheet	deleteColumns	ok
+unhide sheet	deleteRows	ok
+unhide sheet	sort	ok
+unhide sheet	autoFilter	ok
+unhide sheet	pivotTables	ok
+unhide sheet	selectLocked	ok
+unhide sheet	objectsOff	ok
+unhide sheet	scenariosOff	ok
+scenario add	none	Unable to get the Add property of the Scenarios class
+scenario add	formatCells	Unable to get the Add property of the Scenarios class
+scenario add	formatColumns	Unable to get the Add property of the Scenarios class
+scenario add	formatRows	Unable to get the Add property of the Scenarios class
+scenario add	insertColumns	Unable to get the Add property of the Scenarios class
+scenario add	insertRows	Unable to get the Add property of the Scenarios class
+scenario add	insertHyperlinks	Unable to get the Add property of the Scenarios class
+scenario add	deleteColumns	Unable to get the Add property of the Scenarios class
+scenario add	deleteRows	Unable to get the Add property of the Scenarios class
+scenario add	sort	Unable to get the Add property of the Scenarios class
+scenario add	autoFilter	Unable to get the Add property of the Scenarios class
+scenario add	pivotTables	Unable to get the Add property of the Scenarios class
+scenario add	selectLocked	Unable to get the Add property of the Scenarios class
+scenario add	objectsOff	Unable to get the Add property of the Scenarios class
+scenario add	scenariosOff	Unable to get the Add property of the Scenarios class
+paste unlocked B1	none	ok
+paste unlocked B1	formatCells	ok
+paste unlocked B1	formatColumns	ok
+paste unlocked B1	formatRows	ok
+paste unlocked B1	insertColumns	ok
+paste unlocked B1	insertRows	ok
+paste unlocked B1	insertHyperlinks	ok
+paste unlocked B1	deleteColumns	ok
+paste unlocked B1	deleteRows	ok
+paste unlocked B1	sort	ok
+paste unlocked B1	autoFilter	ok
+paste unlocked B1	pivotTables	ok
+paste unlocked B1	selectLocked	ok
+paste unlocked B1	objectsOff	ok
+paste unlocked B1	scenariosOff	ok
+group rows	none	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+group rows	formatCells	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+group rows	formatColumns	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+group rows	formatRows	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+group rows	insertColumns	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+group rows	insertRows	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+group rows	insertHyperlinks	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+group rows	deleteColumns	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+group rows	deleteRows	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+group rows	sort	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+group rows	autoFilter	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+group rows	pivotTables	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+group rows	selectLocked	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+group rows	objectsOff	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+group rows	scenariosOff	You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.
+cut paste unlocked	none	ok
+cut paste unlocked	formatCells	ok
+cut paste unlocked	formatColumns	ok
+cut paste unlocked	formatRows	ok
+cut paste unlocked	insertColumns	ok
+cut paste unlocked	insertRows	ok
+cut paste unlocked	insertHyperlinks	ok
+cut paste unlocked	deleteColumns	ok
+cut paste unlocked	deleteRows	ok
+cut paste unlocked	sort	ok
+cut paste unlocked	autoFilter	ok
+cut paste unlocked	pivotTables	ok
+cut paste unlocked	selectLocked	ok
+cut paste unlocked	objectsOff	ok
+cut paste unlocked	scenariosOff	ok
+row insert, hidden row 7	none	Unable to set the Hidden property of the Range class
+row insert, hidden row 7	formatCells	Unable to set the Hidden property of the Range class
+row insert, hidden row 7	formatColumns	Unable to set the Hidden property of the Range class
+row insert, hidden row 7	formatRows	ok
+row insert, hidden row 7	insertColumns	Unable to set the Hidden property of the Range class
+row insert, hidden row 7	insertRows	Unable to set the Hidden property of the Range class
+row insert, hidden row 7	insertHyperlinks	Unable to set the Hidden property of the Range class
+row insert, hidden row 7	deleteColumns	Unable to set the Hidden property of the Range class
+row insert, hidden row 7	deleteRows	Unable to set the Hidden property of the Range class
+row insert, hidden row 7	sort	Unable to set the Hidden property of the Range class
+row insert, hidden row 7	autoFilter	Unable to set the Hidden property of the Range class
+row insert, hidden row 7	pivotTables	Unable to set the Hidden property of the Range class
+row insert, hidden row 7	selectLocked	Unable to set the Hidden property of the Range class
+row insert, hidden row 7	objectsOff	Unable to set the Hidden property of the Range class
+row insert, hidden row 7	scenariosOff	Unable to set the Hidden property of the Range class

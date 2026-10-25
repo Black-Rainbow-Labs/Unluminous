@@ -16,7 +16,10 @@ pub mod commands;
 pub mod conditional;
 pub mod config;
 pub mod display;
+pub mod entry;
 pub mod formula_text;
+pub mod names;
+pub mod verbs;
 pub mod view;
 
 #[cfg(test)]
@@ -54,6 +57,11 @@ pub struct Book {
     /// The pictures of the workbook, decoded once and kept as textures, by their part's path. A picture
     /// that could not be decoded is kept as `None` so it is not tried again every frame.
     pub pictures: Pictures,
+    /// The last change made, which F4 and Ctrl+Y repeat on the selection when there is nothing to redo.
+    pub last: Option<actions::Act>,
+    /// How a text file was encoded when it was read, so it is saved the same way. `None` for a new file,
+    /// which is saved as Excel's default for its kind.
+    pub encoding: Option<unluminous_sheet::csv::Encoding>,
 }
 
 /// The decoded pictures of a workbook. Written out by hand because a texture handle has no `Debug`.
@@ -75,7 +83,11 @@ impl Book {
         let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Sheet1");
         let book = unluminous_sheet::open(&bytes, kind, name, this_year())
             .map_err(|e| format!("{} could not be opened: {e}", path.display()))?;
-        Ok(Book::of(key, path, kind, book, modified_time(path)))
+        let mut read = Book::of(key, path, kind, book, modified_time(path));
+        if matches!(kind, FileKind::Csv | FileKind::Tsv | FileKind::Txt) {
+            read.encoding = Some(unluminous_sheet::csv::encoding_of(&bytes));
+        }
+        Ok(read)
     }
 
     /// A book that has not been written anywhere yet, for `new`.
@@ -93,10 +105,11 @@ impl Book {
     ) -> Book {
         let mut session = Session::new(book, now_serial());
         session.this_year = this_year();
-        let view = View {
+        let mut view = View {
             sheet: session.book.active_sheet.min(session.book.sheets.len().saturating_sub(1)),
             ..View::default()
         };
+        restore_view(&session.book, &mut view);
         Book {
             key: key.to_owned(),
             path: path.to_path_buf(),
@@ -108,13 +121,17 @@ impl Book {
             rules: None,
             filter_values: Vec::new(),
             pictures: Default::default(),
+            last: None,
+            encoding: None,
         }
     }
 
     /// Write the workbook to its file.
     pub fn save(&mut self) -> Result<String, String> {
         self.session.book.active_sheet = self.view.sheet;
-        let bytes = unluminous_sheet::save(&self.session.book, self.kind)?;
+        keep_view(&mut self.session, &self.view);
+        let options = unluminous_sheet::SaveOptions { encoding: self.encoding };
+        let bytes = unluminous_sheet::save_with(&self.session.book, self.kind, &options)?;
         if let Some(folder) = self.path.parent() {
             let _ = std::fs::create_dir_all(folder);
         }
@@ -144,6 +161,54 @@ impl Book {
     pub fn changed(&mut self) {
         self.revision += 1;
     }
+}
+
+/// Put the view where the sheet's saved view says: its active cell, what was chosen and where it was
+/// scrolled, as Excel opens a workbook where it was left.
+pub fn restore_view(book: &Workbook, view: &mut View) {
+    let Some(sheet) = book.sheets.get(view.sheet) else { return };
+    let saved = &sheet.view;
+    match saved.selections.last() {
+        Some(selection) => {
+            let mut ranges = selection.ranges.clone();
+            let last = ranges.pop().unwrap_or(unluminous_sheet::Range::cell(selection.active));
+            view.extra = ranges;
+            view.cursor = selection.active;
+            view.anchor = if last.first == selection.active { last.last } else { last.first };
+        }
+        None => view.select_cell(unluminous_sheet::CellRef::new(0, 0)),
+    }
+    view.held = None;
+    let columns = axis::Axis::columns(sheet);
+    let rows = axis::Axis::rows(sheet);
+    let frozen = sheet.frozen.unwrap_or((0, 0));
+    let top_left =
+        saved.pane_top_left.or(saved.split.as_ref().and_then(|s| s.top_left)).or(saved.top_left);
+    view.scroll = match top_left {
+        Some(at) => egui::Vec2::new(
+            (columns.start(at.col) - columns.start(frozen.1)).max(0.0),
+            (rows.start(at.row) - rows.start(frozen.0)).max(0.0),
+        ),
+        None => egui::Vec2::ZERO,
+    };
+    view.split_scroll = match (saved.split.is_some(), saved.top_left) {
+        (true, Some(at)) => egui::Vec2::new(columns.start(at.col), rows.start(at.row)),
+        _ => egui::Vec2::ZERO,
+    };
+    view.reveal = false;
+}
+
+/// Write what the view shows into the sheet's saved view, so the file opens where it was left.
+pub fn keep_view(session: &mut Session, view: &View) {
+    let Some(sheet) = session.book.sheets.get(view.sheet) else { return };
+    let columns = axis::Axis::columns(sheet);
+    let rows = axis::Axis::rows(sheet);
+    let frozen = sheet.frozen.unwrap_or((0, 0));
+    let top_left = unluminous_sheet::CellRef::new(
+        rows.index_at(rows.start(frozen.0) + view.scroll.y),
+        columns.index_at(columns.start(frozen.1) + view.scroll.x),
+    );
+    session.remember_selection(view.sheet, view.cursor, view.ranges(), top_left);
 }
 
 /// When a file was last written, to compare with later.

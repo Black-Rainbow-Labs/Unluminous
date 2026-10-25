@@ -150,12 +150,17 @@ fn to_base(mut n: u64, base: u32) -> String {
 
 fn to_decimal(v: &Value, base: u32) -> Result<f64, ErrorKind> {
     let text = match v {
+        Value::Number(n) if *n < 0.0 || n.fract() != 0.0 || *n >= 1e10 => {
+            return Err(ErrorKind::Num)
+        }
         Value::Number(n) => format!("{}", *n as i64),
         Value::Error(e) => return Err(*e),
+        Value::Bool(_) => return Err(ErrorKind::Value),
         other => other.to_text(),
     };
-    let text = text.trim();
-    if text.len() > 10 {
+    // Only the digits of the base: a sign or a space is refused, as Excel refuses them.
+    let text = text.as_str();
+    if text.len() > 10 || !text.chars().all(|c| c.is_digit(base)) {
         return Err(ErrorKind::Num);
     }
     if text.is_empty() {
@@ -196,93 +201,209 @@ fn bits(ctx: &mut Ctx, a: &[Value], f: fn(u64, u64) -> u64) -> Result<Value, Err
 
 fn shift(ctx: &mut Ctx, a: &[Value], left: bool) -> Result<Value, ErrorKind> {
     let (x, by) = (num(ctx, &a[0])?, num(ctx, &a[1])?.trunc());
-    if !(0.0..281_474_976_710_656.0).contains(&x) || x.fract() != 0.0 || by.abs() > 53.0 {
+    if !(0.0..281_474_976_710_656.0).contains(&x) || x.fract() != 0.0 {
+        return Err(ErrorKind::Num);
+    }
+    // Nothing shifted is nothing, however far; otherwise Excel refuses a shift of more than 53 bits.
+    if x == 0.0 {
+        return Ok(Value::Number(0.0));
+    }
+    if by.abs() > 53.0 {
         return Err(ErrorKind::Num);
     }
     let by = if left { by } else { -by };
-    let out = if by >= 0.0 { (x as u64) << by as u32 } else { (x as u64) >> (-by) as u32 };
+    // Excel gives 0 for a shift left of 49 to 53 bits, where the result is over the largest it allows.
+    let out = if by >= 49.0 {
+        0
+    } else if by >= 0.0 {
+        (x as u64) << by as u32
+    } else {
+        (x as u64) >> (-by) as u32
+    };
     if out as f64 >= 281_474_976_710_656.0 {
         return Err(ErrorKind::Num);
     }
     Ok(Value::Number(out as f64))
 }
 
-/// Units: name, kind, and the factor to the kind's base unit. Temperature is handled apart.
-const UNITS: &[(&str, &str, f64)] = &[
-    ("g", "mass", 1.0),
-    ("lbm", "mass", 453.59237),
-    ("ozm", "mass", 28.349523125),
-    ("stone", "mass", 6350.29318),
-    ("ton", "mass", 907_184.74),
-    ("u", "mass", 1.660_539_040e-24),
-    ("m", "length", 1.0),
-    ("mi", "length", 1609.344),
-    ("Nmi", "length", 1852.0),
-    ("in", "length", 0.0254),
-    ("ft", "length", 0.3048),
-    ("yd", "length", 0.9144),
-    ("ang", "length", 1e-10),
-    ("ly", "length", 9_460_730_472_580_800.0),
-    ("Pica", "length", 0.0254 / 6.0),
-    ("pica", "length", 0.0254 / 72.0),
-    ("yr", "time", 31_557_600.0),
-    ("day", "time", 86_400.0),
-    ("d", "time", 86_400.0),
-    ("hr", "time", 3600.0),
-    ("mn", "time", 60.0),
-    ("min", "time", 60.0),
-    ("sec", "time", 1.0),
-    ("s", "time", 1.0),
-    ("Pa", "pressure", 1.0),
-    ("p", "pressure", 1.0),
-    ("atm", "pressure", 101_325.0),
-    ("at", "pressure", 101_325.0),
-    ("mmHg", "pressure", 133.322),
-    ("psi", "pressure", 6894.757_293_168),
-    ("N", "force", 1.0),
-    ("dyn", "force", 1e-5),
-    ("lbf", "force", 4.448_221_615_260_5),
-    ("J", "energy", 1.0),
-    ("e", "energy", 1e-7),
-    ("cal", "energy", 4.1868),
-    ("eV", "energy", 1.602_176_620_8e-19),
-    ("HPh", "energy", 2_684_519.537_696_17),
-    ("Wh", "energy", 3600.0),
-    ("BTU", "energy", 1055.055_852_62),
-    ("W", "power", 1.0),
-    ("w", "power", 1.0),
-    ("HP", "power", 745.699_871_582_270_2),
-    ("PS", "power", 735.49875),
-    ("T", "magnetism", 1.0),
-    ("ga", "magnetism", 1e-4),
-    ("l", "volume", 0.001),
-    ("L", "volume", 0.001),
-    ("lt", "volume", 0.001),
-    ("m3", "volume", 1.0),
-    ("tsp", "volume", 4.928_921_593_75e-6),
-    ("tbs", "volume", 1.478_676_478_125e-5),
-    ("oz", "volume", 2.957_352_956_25e-5),
-    ("cup", "volume", 2.365_882_365e-4),
-    ("pt", "volume", 4.731_764_73e-4),
-    ("us_pt", "volume", 4.731_764_73e-4),
-    ("qt", "volume", 9.463_529_46e-4),
-    ("gal", "volume", 0.003_785_411_784),
-    ("m2", "area", 1.0),
-    ("ha", "area", 10_000.0),
-    ("uk_acre", "area", 4046.856_422_4),
-    ("us_acre", "area", 4046.872_609_874_252),
-    ("ft2", "area", 0.092_903_04),
-    ("in2", "area", 0.000_645_16),
-    ("mi2", "area", 2_589_988.110_336),
-    ("m/s", "speed", 1.0),
-    ("m/sec", "speed", 1.0),
-    ("m/h", "speed", 1.0 / 3600.0),
-    ("m/hr", "speed", 1.0 / 3600.0),
-    ("mph", "speed", 0.447_04),
-    ("kn", "speed", 0.514_444_444_444_444_4),
-    ("admkn", "speed", 0.514_773_333_333_333_3),
-    ("bit", "information", 1.0),
-    ("byte", "information", 8.0),
+/// What a unit measures. Units of different kinds cannot be converted into each other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Mass,
+    Length,
+    Time,
+    Pressure,
+    Force,
+    Energy,
+    Power,
+    Magnetism,
+    Volume,
+    Area,
+    Speed,
+    Information,
+}
+
+/// Which prefixes a unit takes. A squared or cubed unit takes them squared or cubed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Prefixes {
+    No,
+    /// The metric prefixes, raised to this power.
+    Metric(i32),
+    /// The metric prefixes and the binary ones, `ki` and the rest.
+    Binary,
+}
+
+use Kind::*;
+use Prefixes::{Binary, Metric, No};
+
+/// Units as Excel's CONVERT has them: the name, what it measures, how many of the base unit of that kind
+/// it is (gram, metre, second, pascal, newton, joule, watt, tesla, litre, square metre, bit, metre a
+/// second) and which prefixes it takes. The factors are the ones Excel answers with, read from Excel.
+#[allow(clippy::excessive_precision)]
+const UNITS: &[(&str, Kind, f64, Prefixes)] = &[
+    ("g", Mass, 1.0, Metric(1)),
+    ("sg", Mass, 14593.902937206363, No),
+    ("lbm", Mass, 453.59237, No),
+    ("u", Mass, 1.660538782e-24, Metric(1)),
+    ("ozm", Mass, 28.349523125, No),
+    ("grain", Mass, 0.06479891, No),
+    ("cwt", Mass, 45359.237, No),
+    ("shweight", Mass, 45359.237, No),
+    ("uk_cwt", Mass, 50802.34544, No),
+    ("lcwt", Mass, 50802.34544, No),
+    ("hweight", Mass, 50802.34544, No),
+    ("stone", Mass, 6350.29318, No),
+    ("ton", Mass, 907184.74, No),
+    ("uk_ton", Mass, 1016046.9088, No),
+    ("LTON", Mass, 1016046.9088, No),
+    ("m", Length, 1.0, Metric(1)),
+    ("mi", Length, 1609.344, No),
+    ("Nmi", Length, 1852.0, No),
+    ("in", Length, 0.0254, No),
+    ("ft", Length, 0.3048, No),
+    ("yd", Length, 0.9144, No),
+    ("ang", Length, 1e-10, Metric(1)),
+    ("ell", Length, 1.143, No),
+    ("ly", Length, 9460730472580800.0, Metric(1)),
+    ("parsec", Length, 30856775812815532.0, Metric(1)),
+    ("pc", Length, 30856775812815532.0, Metric(1)),
+    ("Pica", Length, 0.0003527777777777778, No),
+    ("pica", Length, 0.004233333333333334, No),
+    ("Picapt", Length, 0.0003527777777777778, No),
+    ("yr", Time, 31557600.0, No),
+    ("day", Time, 86400.0, No),
+    ("d", Time, 86400.0, No),
+    ("hr", Time, 3600.0, No),
+    ("mn", Time, 60.0, No),
+    ("min", Time, 60.0, No),
+    ("sec", Time, 1.0, Metric(1)),
+    ("s", Time, 1.0, Metric(1)),
+    ("Pa", Pressure, 1.0, Metric(1)),
+    ("p", Pressure, 1.0, Metric(1)),
+    ("atm", Pressure, 101325.0, Metric(1)),
+    ("at", Pressure, 101325.0, Metric(1)),
+    ("mmHg", Pressure, 133.322, Metric(1)),
+    ("psi", Pressure, 6894.757293168362, No),
+    ("Torr", Pressure, 133.32236842105263, No),
+    ("N", Force, 1.0, Metric(1)),
+    ("dyn", Force, 1e-05, Metric(1)),
+    ("dy", Force, 1e-05, Metric(1)),
+    ("lbf", Force, 4.4482216152605005, No),
+    ("pond", Force, 0.00980665, Metric(1)),
+    ("J", Energy, 1.0, Metric(1)),
+    ("e", Energy, 1e-07, Metric(1)),
+    ("c", Energy, 4.184, Metric(1)),
+    ("cal", Energy, 4.1868, Metric(1)),
+    ("eV", Energy, 1.602176487e-19, Metric(1)),
+    ("ev", Energy, 1.602176487e-19, Metric(1)),
+    ("HPh", Energy, 2684519.537696173, No),
+    ("hh", Energy, 2684519.537696173, No),
+    ("Wh", Energy, 3600.0, Metric(1)),
+    ("wh", Energy, 3600.0, Metric(1)),
+    ("flb", Energy, 1.3558179483314003, No),
+    ("BTU", Energy, 1055.05585262, No),
+    ("btu", Energy, 1055.05585262, No),
+    ("HP", Power, 745.6998715822702, No),
+    ("h", Power, 745.6998715822702, No),
+    ("PS", Power, 735.49875, No),
+    ("W", Power, 1.0, Metric(1)),
+    ("w", Power, 1.0, Metric(1)),
+    ("T", Magnetism, 1.0, Metric(1)),
+    ("ga", Magnetism, 0.0001, Metric(1)),
+    ("tsp", Volume, 0.00492892159375, No),
+    ("tspm", Volume, 0.005, No),
+    ("tbs", Volume, 0.01478676478125, No),
+    ("oz", Volume, 0.0295735295625, No),
+    ("cup", Volume, 0.2365882365, No),
+    ("pt", Volume, 0.473176473, No),
+    ("us_pt", Volume, 0.473176473, No),
+    ("uk_pt", Volume, 0.56826125, Metric(1)),
+    ("qt", Volume, 0.946352946, No),
+    ("uk_qt", Volume, 1.1365225, No),
+    ("gal", Volume, 3.785411784, No),
+    ("uk_gal", Volume, 4.54609, No),
+    ("l", Volume, 1.0, Metric(1)),
+    ("L", Volume, 1.0, Metric(1)),
+    ("lt", Volume, 1.0, Metric(1)),
+    ("ang3", Volume, 1e-27, Metric(3)),
+    ("ang^3", Volume, 1e-27, Metric(3)),
+    ("barrel", Volume, 158.987294928, No),
+    ("bushel", Volume, 35.23907016688, No),
+    ("regton", Volume, 2831.6846592, No),
+    ("GRT", Volume, 2831.6846592, No),
+    ("ft3", Volume, 28.316846592, No),
+    ("ft^3", Volume, 28.316846592, No),
+    ("in3", Volume, 0.016387064, No),
+    ("in^3", Volume, 0.016387064, No),
+    ("ly3", Volume, 8.467866646237152e50, No),
+    ("ly^3", Volume, 8.467866646237152e50, No),
+    ("m3", Volume, 1000.0, Metric(3)),
+    ("m^3", Volume, 1000.0, Metric(3)),
+    ("mi3", Volume, 4168181825440.5796, No),
+    ("mi^3", Volume, 4168181825440.5796, No),
+    ("yd3", Volume, 764.554857984, No),
+    ("yd^3", Volume, 764.554857984, No),
+    ("Nmi3", Volume, 6352182208000.0, No),
+    ("Nmi^3", Volume, 6352182208000.0, No),
+    ("Pica3", Volume, 4.39039566186557e-08, No),
+    ("Pica^3", Volume, 4.39039566186557e-08, No),
+    ("Picapt3", Volume, 4.39039566186557e-08, No),
+    ("Picapt^3", Volume, 4.39039566186557e-08, No),
+    ("MTON", Volume, 1132.67386368, No),
+    ("ar", Area, 100.0, Metric(1)),
+    ("Morgen", Area, 2500.0, No),
+    ("ang2", Area, 1e-20, Metric(2)),
+    ("ang^2", Area, 1e-20, Metric(2)),
+    ("ft2", Area, 0.09290304, No),
+    ("ft^2", Area, 0.09290304, No),
+    ("in2", Area, 0.00064516, No),
+    ("in^2", Area, 0.00064516, No),
+    ("ly2", Area, 8.95054210748189e31, No),
+    ("ly^2", Area, 8.95054210748189e31, No),
+    ("m2", Area, 1.0, Metric(2)),
+    ("m^2", Area, 1.0, Metric(2)),
+    ("mi2", Area, 2589988.110336, No),
+    ("mi^2", Area, 2589988.110336, No),
+    ("Nmi2", Area, 3429904.0, No),
+    ("Nmi^2", Area, 3429904.0, No),
+    ("Pica2", Area, 1.2445216049382715e-07, No),
+    ("Pica^2", Area, 1.2445216049382715e-07, No),
+    ("Picapt2", Area, 1.2445216049382715e-07, No),
+    ("Picapt^2", Area, 1.2445216049382715e-07, No),
+    ("yd2", Area, 0.83612736, No),
+    ("yd^2", Area, 0.83612736, No),
+    ("uk_acre", Area, 4046.8564224, No),
+    ("us_acre", Area, 4046.8726098742522, No),
+    ("ha", Area, 10000.0, No),
+    ("bit", Information, 1.0, Binary),
+    ("byte", Information, 8.0, Binary),
+    ("admkn", Speed, 0.5147733333333333, No),
+    ("kn", Speed, 0.5144444444444445, No),
+    ("m/h", Speed, 0.0002777777777777778, Metric(1)),
+    ("m/hr", Speed, 0.0002777777777777778, Metric(1)),
+    ("m/s", Speed, 1.0, Metric(1)),
+    ("m/sec", Speed, 1.0, Metric(1)),
+    ("mph", Speed, 0.44704, Metric(1)),
 ];
 
 const PREFIXES: &[(&str, f64)] = &[
@@ -296,6 +417,7 @@ const PREFIXES: &[(&str, f64)] = &[
     ("k", 1e3),
     ("h", 1e2),
     ("da", 1e1),
+    ("e", 1e1),
     ("d", 1e-1),
     ("c", 1e-2),
     ("m", 1e-3),
@@ -306,7 +428,10 @@ const PREFIXES: &[(&str, f64)] = &[
     ("a", 1e-18),
     ("z", 1e-21),
     ("y", 1e-24),
-    ("ki", 1024.0),
+];
+
+const BINARY_PREFIXES: &[(&str, f64)] = &[
+    ("ki", 1_024.0),
     ("Mi", 1_048_576.0),
     ("Gi", 1_073_741_824.0),
     ("Ti", 1_099_511_627_776.0),
@@ -316,58 +441,77 @@ const PREFIXES: &[(&str, f64)] = &[
     ("Yi", 1_208_925_819_614_629_174_706_176.0),
 ];
 
-/// A unit's kind and factor, reading a metric prefix where the unit itself is not known.
-fn unit(name: &str) -> Option<(&'static str, f64)> {
-    if let Some((_, kind, factor)) = UNITS.iter().find(|(n, ..)| *n == name) {
-        return Some((kind, *factor));
-    }
-    for (prefix, scale) in PREFIXES {
-        if let Some(rest) = name.strip_prefix(prefix) {
-            if let Some((_, kind, factor)) = UNITS.iter().find(|(n, ..)| *n == rest) {
-                // Squared and cubed units take the prefix squared or cubed.
-                let power = if rest.ends_with('2') {
-                    2
-                } else if rest.ends_with('3') {
-                    3
-                } else {
-                    1
-                };
-                return Some((kind, factor * scale.powi(power)));
+/// Every way a name can be read as a unit: the unit itself, and a prefix on a unit that takes one. A name
+/// can be two things, `pc` is a parsec and a pico calorie, and the conversion uses the reading that fits.
+fn readings(name: &str) -> Vec<(Kind, f64)> {
+    let mut found: Vec<(Kind, f64)> = UNITS
+        .iter()
+        .filter(|(unit, ..)| *unit == name)
+        .map(|(_, kind, factor, _)| (*kind, *factor))
+        .collect();
+    let metric = PREFIXES.iter();
+    let binary = BINARY_PREFIXES.iter();
+    for (prefix, scale) in metric.chain(binary) {
+        let Some(rest) = name.strip_prefix(prefix) else { continue };
+        let binary_prefix = prefix.ends_with('i');
+        for (_, kind, factor, takes) in UNITS.iter().filter(|(unit, ..)| *unit == rest) {
+            match takes {
+                Metric(power) if !binary_prefix => found.push((*kind, factor * scale.powi(*power))),
+                Binary => found.push((*kind, factor * scale)),
+                _ => {}
             }
         }
     }
-    None
+    found
 }
 
-fn temperature_to_kelvin(x: f64, unit: &str) -> Option<f64> {
-    Some(match unit {
-        "C" | "cel" => x + 273.15,
-        "F" | "fah" => (x - 32.0) * 5.0 / 9.0 + 273.15,
-        "K" | "kel" => x,
+/// A temperature unit, with the metric prefix a kelvin may take: the unit's name and the scale.
+fn temperature(name: &str) -> Option<(&'static str, f64)> {
+    let plain = |n: &str| match n {
+        "C" | "cel" => Some("C"),
+        "F" | "fah" => Some("F"),
+        "K" | "kel" => Some("K"),
+        "Rank" => Some("Rank"),
+        "Reau" => Some("Reau"),
+        _ => None,
+    };
+    if let Some(unit) = plain(name) {
+        return Some((unit, 1.0));
+    }
+    PREFIXES.iter().find_map(|(prefix, scale)| {
+        let rest = name.strip_prefix(prefix)?;
+        (rest == "K" || rest == "kel").then_some(("K", *scale))
+    })
+}
+
+fn temperature_to_kelvin(x: f64, unit: &str) -> f64 {
+    match unit {
+        "C" => x + 273.15,
+        "F" => (x - 32.0) * 5.0 / 9.0 + 273.15,
         "Rank" => x * 5.0 / 9.0,
         "Reau" => x * 1.25 + 273.15,
-        _ => return None,
-    })
+        _ => x,
+    }
 }
 
-fn kelvin_to(x: f64, unit: &str) -> Option<f64> {
-    Some(match unit {
-        "C" | "cel" => x - 273.15,
-        "F" | "fah" => (x - 273.15) * 9.0 / 5.0 + 32.0,
-        "K" | "kel" => x,
+fn kelvin_to(x: f64, unit: &str) -> f64 {
+    match unit {
+        "C" => x - 273.15,
+        "F" => (x - 273.15) * 9.0 / 5.0 + 32.0,
         "Rank" => x * 9.0 / 5.0,
         "Reau" => (x - 273.15) / 1.25,
-        _ => return None,
-    })
+        _ => x,
+    }
 }
 
 pub fn convert_units(x: f64, from: &str, to: &str) -> Option<f64> {
-    if let (Some(k), Some(_)) = (temperature_to_kelvin(x, from), kelvin_to(0.0, to)) {
-        return kelvin_to(k, to);
+    if let (Some((a, scale_a)), Some((b, scale_b))) = (temperature(from), temperature(to)) {
+        return Some(kelvin_to(temperature_to_kelvin(x * scale_a, a), b) / scale_b);
     }
-    let (kind_a, factor_a) = unit(from)?;
-    let (kind_b, factor_b) = unit(to)?;
-    (kind_a == kind_b).then(|| x * factor_a / factor_b)
+    let (from, to) = (readings(from), readings(to));
+    from.iter().find_map(|(kind_a, factor_a)| {
+        to.iter().find(|(kind_b, _)| kind_b == kind_a).map(|(_, factor_b)| x * factor_a / factor_b)
+    })
 }
 
 #[cfg(test)]

@@ -4,7 +4,7 @@
 
 use serde_json::{json, Value as Json};
 use unluminous_sheet::coord::{column_name, column_number, CellRef, Range};
-use unluminous_sheet::edit::{clip_to_used, Clear, Direction, PasteMode, Shift};
+use unluminous_sheet::edit::{clip_to_used, Clear, Direction, PasteMode};
 use unluminous_sheet::model::{CfRule, Cfvo, ChartKind, FilterCriteria, Validation, Visibility};
 use unluminous_sheet::styles::{AlignEdit, Color, FontEdit, StyleChange, Underline};
 use unluminous_sheet::Value;
@@ -42,7 +42,7 @@ pub fn parse_range(book: &Book, text: &str) -> Option<(usize, Range)> {
 }
 
 /// Choose the range the first word names, if it names one, and answer the words after it.
-fn take_range<'a>(book: &mut Book, args: &'a [String]) -> &'a [String] {
+pub fn take_range<'a>(book: &mut Book, args: &'a [String]) -> &'a [String] {
     if let Some(first) = args.first() {
         let ranges: Option<Vec<(usize, Range)>> =
             first.split(',').map(|part| parse_range(book, part)).collect();
@@ -65,7 +65,7 @@ fn take_range<'a>(book: &mut Book, args: &'a [String]) -> &'a [String] {
     args
 }
 
-fn act(sheet: &mut Spreadsheet, act: Act) -> Result<Answer, String> {
+pub fn act(sheet: &mut Spreadsheet, act: Act) -> Result<Answer, String> {
     let mut copied = sheet.clip.take();
     let result = match sheet.current_book() {
         Ok(book) => apply(book, &mut copied, act),
@@ -376,6 +376,7 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Result<Answe
             let rest = take_range(book, args);
             match rest.first().map(String::as_str) {
                 Some("default") => act(sheet, Act::Height(None)),
+                Some("auto") => act(sheet, Act::AutoFitRows),
                 Some(n) => act(
                     sheet,
                     Act::Height(Some(
@@ -396,18 +397,15 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Result<Answe
             act(sheet, if verb == "hide" { Act::Hide { rows } } else { Act::Unhide { rows } })
         }
         "insert" | "delete" => {
-            let shift = match (verb, args.first().map(String::as_str)) {
-                (_, Some("rows")) | (_, Some("row")) => Shift::WholeRows,
-                (_, Some("columns")) | (_, Some("column")) => Shift::WholeColumns,
-                ("insert", Some("down")) => Shift::Down,
-                ("insert", Some("right")) => Shift::Right,
-                ("delete", Some("up")) => Shift::Up,
-                ("delete", Some("left")) => Shift::Left,
-                _ => {
-                    return Err(format!(
-                        "{verb} takes rows, columns, or which way the cells beside move"
-                    ))
-                }
+            if args.first().map(String::as_str) == Some("ask") {
+                let book = sheet.current_book()?;
+                return super::verbs::ask_which_way(book, verb == "insert");
+            }
+            let Some(shift) = super::verbs::shift_word(verb, args.first().map(String::as_str))
+            else {
+                return Err(format!(
+                    "{verb} takes rows, columns, ask, or which way the cells beside move"
+                ));
             };
             let book = sheet.current_book()?;
             take_range(book, &args[1..]);
@@ -533,6 +531,7 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Result<Answe
         }
         "undo" => act(sheet, Act::Undo),
         "redo" => act(sheet, Act::Redo),
+        "repeat" => act(sheet, Act::Repeat { redo_first: false }),
         "freeze" => match args.first().map(String::as_str) {
             Some("off") | Some("none") => act(sheet, Act::Unfreeze),
             Some("rows") => act(sheet, Act::FreezeAt { rows: number(args.get(1))?, cols: 0 }),
@@ -696,12 +695,20 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Result<Answe
                 }
                 Some("ok") => {
                     book.view.prompt = None;
-                    let mut verb = prompt.verb.clone();
-                    verb.push(prompt.text.clone());
-                    if let Some((_, second)) = &prompt.second {
-                        verb.push(second.clone());
-                    }
+                    let verb = prompt.answer();
                     run(sheet, &verb[0], &verb[1..])
+                }
+                Some("field") => {
+                    let name = words.get(1).ok_or("prompt field needs a field name and a value")?;
+                    let value = words[2.min(words.len())..].join(" ");
+                    let open = book.view.prompt.as_mut().expect("checked");
+                    let field = open.field_mut(name).ok_or_else(|| {
+                        let keys: Vec<String> =
+                            prompt.fields.iter().map(|f| f.key.clone()).collect();
+                        format!("the box has no field `{name}`; it has {}", keys.join(", "))
+                    })?;
+                    field.value = field_value(field, &value)?;
+                    Ok(said(String::new()))
                 }
                 _ => {
                     book.view.prompt.as_mut().expect("checked").text = words.join(" ");
@@ -743,6 +750,7 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Result<Answe
                         focus: true,
                         caret: None,
                         chosen: 0,
+                        no_complete: false,
                     });
                     Ok(said(format!("Typing into {}", at.a1())))
                 }
@@ -750,11 +758,38 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Result<Answe
         }
         // The window's own names for the menu entries that put something on the screen.
         "open-tab" | "open-pane" => Ok(said(String::new())),
-        other => Err(format!(
-            "there is no `{other}` command on `spreadsheet`: {}",
-            LIST.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")
-        )),
+        // The verbs round 2 added are in `verbs`, run once there.
+        other => super::verbs::run(sheet, other, args).unwrap_or_else(|| {
+            Err(format!(
+                "there is no `{other}` command on `spreadsheet`: {}",
+                LIST.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")
+            ))
+        }),
     }
+}
+
+/// What a field of a box is set to by the `prompt field` words: a switch takes on or off, a choice one of
+/// its words or labels, and a text field the text.
+fn field_value(field: &super::view::Field, value: &str) -> Result<String, String> {
+    use super::view::FieldKind;
+    Ok(match &field.kind {
+        FieldKind::Check => {
+            if matches!(value, "on" | "yes" | "true" | "1" | "") {
+                "on".to_owned()
+            } else {
+                String::new()
+            }
+        }
+        FieldKind::Choice(options) => options
+            .iter()
+            .find(|(l, w)| w.eq_ignore_ascii_case(value) || l.eq_ignore_ascii_case(value))
+            .map(|(_, w)| w.clone())
+            .ok_or_else(|| {
+                let words: Vec<String> = options.iter().map(|(_, w)| w.clone()).collect();
+                format!("`{value}` is not one of {}", words.join(", "))
+            })?,
+        FieldKind::Text => value.to_owned(),
+    })
 }
 
 fn number(arg: Option<&String>) -> Result<u32, String> {
@@ -1000,23 +1035,7 @@ fn validate_verb(sheet: &mut Spreadsheet, args: &[String]) -> Result<Answer, Str
 }
 
 fn blank_rule(kind: &str) -> CfRule {
-    CfRule {
-        kind: kind.to_owned(),
-        dxf: None,
-        priority: 1,
-        stop: false,
-        operator: None,
-        text: None,
-        rank: None,
-        percent: false,
-        bottom: false,
-        above_average: None,
-        formulas: Vec::new(),
-        color_scale: None,
-        data_bar: None,
-        attrs: Vec::new(),
-        raw_children: String::new(),
-    }
+    CfRule::new(kind)
 }
 
 /// A conditional format rule from words, with the look it applies.
@@ -1485,7 +1504,11 @@ pub fn view_value(sheet: &Spreadsheet) -> Json {
                 "menu": v.menu.is_some(),
                 "book_menu": v.book_menu.clone(),
                 "find": v.find.as_ref().map(|f| json!({ "text": f.text, "replace": f.replace })),
-                "prompt": v.prompt.as_ref().map(|p| json!({ "title": p.title, "text": p.text })),
+                "prompt": v.prompt.as_ref().map(|p| json!({
+                    "title": p.title,
+                    "text": p.text,
+                    "fields": p.fields.iter().map(|f| json!({ "key": f.key, "label": f.label, "value": f.value })).collect::<Vec<_>>(),
+                })),
                 "frozen": book.session.book.sheets[v.sheet].frozen.map(|(r, c)| json!({ "rows": r, "columns": c })),
                 "zoom": v.zoom,
                 "can_undo": book.session.can_undo(),
