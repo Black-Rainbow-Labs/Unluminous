@@ -153,6 +153,7 @@ pub enum OfPieKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SplitBy {
     #[default]
+    Auto,
     Position,
     Value,
     Percent,
@@ -233,7 +234,7 @@ impl Default for Group {
             size_represents: None,
             bubble_3d: false,
             of_pie: OfPieKind::Pie,
-            split_by: SplitBy::Position,
+            split_by: SplitBy::Auto,
             split_at: None,
             second_size: None,
             custom_split: None,

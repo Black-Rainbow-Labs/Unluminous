@@ -22,11 +22,10 @@ pub(super) fn child<'a, 'b>(n: Node<'a, 'b>, name: &str) -> Option<Node<'a, 'b>>
 }
 
 /// The child elements with a local name.
-pub(super) fn children<'a, 'b>(
-    n: Node<'a, 'b>,
-    name: &'b str,
-) -> impl Iterator<Item = Node<'a, 'b>> + 'b {
-    n.children().filter(move |c| c.is_element() && c.tag_name().name() == name)
+pub(super) fn children<'a, 'b>(n: Node<'a, 'b>, name: &str) -> std::vec::IntoIter<Node<'a, 'b>> {
+    let all: Vec<Node<'a, 'b>> =
+        n.children().filter(|c| c.is_element() && c.tag_name().name() == name).collect();
+    all.into_iter()
 }
 
 /// The `val` attribute of a child element.
@@ -46,12 +45,6 @@ fn number<T: std::str::FromStr>(n: Node, name: &str) -> Option<T> {
 /// The XML of a child element as it was written.
 fn raw_child(xml: &str, n: Node, name: &str) -> Option<String> {
     child(n, name).map(|c| raw(xml, c).to_owned())
-}
-
-/// Several child elements of one name, as the XML they were written as, joined.
-fn raw_all(xml: &str, n: Node, name: &str) -> Option<String> {
-    let all: Vec<&str> = children(n, name).map(|c| raw(xml, c)).collect();
-    (!all.is_empty()).then(|| all.concat())
 }
 
 /// The words of a rich text block: paragraphs joined by line breaks.
@@ -235,6 +228,7 @@ fn read_plot(xml: &str, plot: Node, spec: &mut ChartSpec, series: &mut Vec<Chart
             _ => {}
         }
     }
+}
 
 fn read_data_table(xml: &str, node: Node) -> DataTable {
     DataTable {
@@ -285,7 +279,8 @@ fn read_group(
         Some("val") => SplitBy::Value,
         Some("percent") => SplitBy::Percent,
         Some("cust") => SplitBy::Custom,
-        _ => SplitBy::Position,
+        Some("pos") => SplitBy::Position,
+        _ => SplitBy::Auto,
     };
     g.split_at = number(node, "splitPos");
     g.second_size = number(node, "secondPieSize");

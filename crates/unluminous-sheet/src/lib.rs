@@ -26,6 +26,9 @@
 pub mod calc;
 pub mod cellstyles;
 pub mod cfb;
+pub mod chartbuild;
+pub mod chartdata;
+pub mod chartlayout;
 pub mod chartspec;
 pub mod charttype;
 pub mod conditional;

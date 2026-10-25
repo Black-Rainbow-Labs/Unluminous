@@ -373,9 +373,11 @@ fn excel_opens_a_chart_made_here_beside_the_one_it_made_itself() {
             name: Some("Data!$C$1".to_owned()),
             categories: Some("Data!$A$2:$A$7".to_owned()),
             values: "Data!$C$2:$C$7".to_owned(),
+            ..Default::default()
         }],
         part: String::new(),
         new: true,
+        spec: Default::default(),
     };
     session.add_chart(sheet, chart).unwrap();
     let folder =

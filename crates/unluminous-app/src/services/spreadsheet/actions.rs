@@ -949,6 +949,7 @@ pub fn chart_over(
             name: header.then(|| absolute(Range::cell(CellRef::new(region.first.row, col)))),
             categories: categories.map(absolute),
             values: absolute(values),
+            ..Default::default()
         });
     }
     if series.is_empty() {
@@ -965,5 +966,6 @@ pub fn chart_over(
         series,
         part: String::new(),
         new: true,
+        spec: Default::default(),
     })
 }

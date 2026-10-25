@@ -171,7 +171,7 @@ fn title_xml(text: Option<&str>, format: &TitleFormat, auto: bool) -> String {
 }
 
 fn axis_title_xml(title: &AxisTitle) -> String {
-    title_xml(Some(&title.text).filter(|t| !t.is_empty()), &title.format, true)
+    title_xml(Some(title.text.as_str()).filter(|t| !t.is_empty()), &title.format, true)
 }
 
 fn legend_xml(legend: &Legend) -> String {
@@ -427,6 +427,7 @@ fn group_tail(g: &Group) -> String {
                 out.push_str(&num_val("gapWidth", w));
             }
             let split = match g.split_by {
+                SplitBy::Auto => "auto",
                 SplitBy::Position => "pos",
                 SplitBy::Value => "val",
                 SplitBy::Percent => "percent",

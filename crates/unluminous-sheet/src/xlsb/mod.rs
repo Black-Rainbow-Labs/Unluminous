@@ -201,7 +201,7 @@ fn read_sheet(
             }
         }
         if rel.kind == REL_DRAWING {
-            sheet.charts.extend(crate::xlsx::chart::read_charts(part, &rel.target, text));
+            sheet.charts.extend(crate::xlsx::chart::read_charts(part, &rel.target, text, &|_| None));
             sheet.pictures.extend(crate::xlsx::chart::read_pictures(part, &rel.target, text));
             let drawing = resolve(part, &rel.target);
             if drawing_can_be_kept(&drawing, text) {

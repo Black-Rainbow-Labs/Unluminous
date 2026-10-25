@@ -24,6 +24,8 @@ pub fn write(book: &Workbook) -> Result<Vec<u8>, String> {
     crate::zip::write(&w.entries)
 }
 
+mod charts;
+
 struct Writer<'a> {
     book: &'a Workbook,
     entries: Vec<Entry>,
@@ -34,6 +36,8 @@ struct Writer<'a> {
     taken: BTreeSet<String>,
     workbook_part: String,
     needs_metadata: bool,
+    /// Parts of charts that were removed, which are not written.
+    chart_dropped: BTreeSet<String>,
 }
 
 impl<'a> Writer<'a> {
@@ -52,6 +56,7 @@ impl<'a> Writer<'a> {
             taken,
             workbook_part,
             needs_metadata: false,
+            chart_dropped: charts::dropped_parts(book),
         }
     }
 
@@ -113,6 +118,11 @@ impl<'a> Writer<'a> {
         }
         for (index, sheet) in book.sheets.iter().enumerate() {
             if let Some(kept) = &sheet.kept_part {
+                let mut kept = kept.clone();
+                if kept.part.is_empty() {
+                    kept.part = self.new_chart_sheet(sheet);
+                }
+                let kept = &kept;
                 let id = next_id(&workbook_rels);
                 workbook_rels.push(Relationship {
                     id: id.clone(),
@@ -239,7 +249,8 @@ impl<'a> Writer<'a> {
             self.add("docProps/app.xml", Some(CT_APP), APP_XML.as_bytes().to_vec());
         }
         self.add("_rels/.rels", None, write_rels(&package).into_bytes());
-        // Kept parts.
+        // Charts changed here, then the kept parts.
+        self.write_changed_charts();
         for (path, bytes) in &book.kept.parts {
             if self.entries.iter().any(|e| &e.name == path) || self.dropped(path) {
                 continue;
@@ -260,6 +271,9 @@ impl<'a> Writer<'a> {
 
     /// Kept parts the writer has replaced: notes that changed take their comments and VML parts with them.
     fn dropped(&self, path: &str) -> bool {
+        if self.chart_dropped.contains(path) {
+            return true;
+        }
         for sheet in &self.book.sheets {
             if !sheet.notes_changed {
                 continue;
@@ -634,74 +648,9 @@ impl<'a> Writer<'a> {
                 out.push_str(&modelled);
             }
         }
-        // The drawing: kept as it was, with the charts made here added to it, or a new one holding them.
-        let new_charts: Vec<&crate::model::Chart> = sheet.charts.iter().filter(|c| c.new).collect();
-        if new_charts.is_empty() {
-            out.push_str(&raw("drawing"));
-        } else {
-            let existing = sheet.raw.rels.iter().find(|r| r.kind == REL_DRAWING).cloned();
-            let (drawing_part, mut drawing_rels, mut anchors, kept_xml) = match &existing {
-                Some(rel) => {
-                    let path = resolve(part, &rel.target);
-                    let xml = book
-                        .kept
-                        .get(&path)
-                        .map(|b| String::from_utf8_lossy(b).into_owned())
-                        .unwrap_or_default();
-                    let rels_bytes = book
-                        .kept
-                        .get(&rels_path(&path))
-                        .map(|b| String::from_utf8_lossy(b).into_owned())
-                        .unwrap_or_default();
-                    (path, parse_rels(&rels_bytes), String::new(), Some(xml))
-                }
-                None => (self.fresh("xl/drawings/drawing{}.xml"), Vec::new(), String::new(), None),
-            };
-            self.taken.insert(drawing_part.clone());
-            for (i, chart) in new_charts.iter().enumerate() {
-                let chart_part = self.fresh("xl/charts/chart{}.xml");
-                let text_categories = chart
-                    .series
-                    .first()
-                    .and_then(|s| s.categories.as_deref())
-                    .is_some_and(|c| categories_are_text(book, c));
-                self.add(
-                    &chart_part,
-                    Some(CT_CHART),
-                    super::chart::chart_xml(chart, text_categories).into_bytes(),
-                );
-                let id = next_id(&drawing_rels);
-                drawing_rels.push(Relationship {
-                    id: id.clone(),
-                    kind: REL_CHART.to_owned(),
-                    target: relative(&drawing_part, &chart_part),
-                    external: false,
-                });
-                anchors.push_str(&super::chart::anchor_xml(chart, &id, 1000 + i as u32));
-            }
-            let drawing = match kept_xml {
-                Some(xml) if xml.contains("</xdr:wsDr>") => {
-                    xml.replacen("</xdr:wsDr>", &format!("{anchors}</xdr:wsDr>"), 1)
-                }
-                _ => super::chart::drawing_xml(&anchors),
-            };
-            let content_type = if existing.is_some() { None } else { Some(CT_DRAWING) };
-            self.add(&drawing_part, content_type, drawing.into_bytes());
-            self.add(&rels_path(&drawing_part), None, write_rels(&drawing_rels).into_bytes());
-            match existing {
-                Some(_) => out.push_str(&raw("drawing")),
-                None => {
-                    let id = next_id(&rels);
-                    rels.push(Relationship {
-                        id: id.clone(),
-                        kind: REL_DRAWING.to_owned(),
-                        target: relative(part, &drawing_part),
-                        external: false,
-                    });
-                    out.push_str(&format!("<drawing {r}:id=\"{id}\"/>"));
-                }
-            }
-        }
+        // The drawing: kept as it was, unless a chart was added, moved or removed.
+        let drawing = self.chart_drawing(sheet, part, &mut rels, &r, raw("drawing"));
+        out.push_str(&drawing);
         // Notes: the kept legacy drawing, or new comments and VML parts when they changed.
         if sheet.notes_changed {
             if !sheet.notes.is_empty() {

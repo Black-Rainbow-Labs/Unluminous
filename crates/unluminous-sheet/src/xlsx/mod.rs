@@ -9,6 +9,10 @@ use crate::model::Relationship;
 
 pub mod cf;
 pub mod chart;
+pub mod chart_drawing;
+pub mod chart_read;
+pub mod chart_write;
+pub mod chartex;
 pub mod read;
 pub mod write;
 

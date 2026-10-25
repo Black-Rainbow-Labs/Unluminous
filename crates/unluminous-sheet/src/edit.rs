@@ -27,6 +27,7 @@ use crate::styles::{StyleChange, Styles};
 use crate::value::Value;
 
 mod cf_rules;
+pub mod charts;
 mod outline;
 mod subtotal;
 
@@ -1881,35 +1882,6 @@ impl Session {
     // Questions.
 
     /// Evaluate a formula as though it were in a cell, without changing anything.
-    /// Put a chart on a sheet. It is written as new drawing and chart parts when the workbook is saved.
-    pub fn add_chart(&mut self, sheet: usize, chart: Chart) -> Result<(), String> {
-        self.check_sheet(sheet)?;
-        self.allowed(sheet, Guard::Forbidden)?;
-        self.remember_whole("Chart");
-        self.book.sheets[sheet].charts.push(chart);
-        self.modified = true;
-        Ok(())
-    }
-
-    /// Take a chart off a sheet.
-    pub fn delete_chart(&mut self, sheet: usize, index: usize) -> Result<(), String> {
-        self.check_sheet(sheet)?;
-        self.allowed(sheet, Guard::Objects)?;
-        let Some(chart) = self.book.sheets[sheet].charts.get(index) else {
-            return Err(format!("there is no chart {} on this sheet", index + 1));
-        };
-        if !chart.new {
-            return Err(
-                "That chart was made in Excel and is kept exactly as it was; delete it in Excel."
-                    .to_owned(),
-            );
-        }
-        self.remember_whole("Delete chart");
-        self.book.sheets[sheet].charts.remove(index);
-        self.modified = true;
-        Ok(())
-    }
-
     pub fn evaluate_at(&self, sheet: usize, at: CellRef, formula: &str) -> Result<Value, String> {
         crate::eval::evaluate(&self.book, sheet, at, formula, self.now).map(|(v, _)| v)
     }

@@ -182,6 +182,13 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
                 kind: rel.kind.clone(),
                 content_type: overrides.get(&format!("/{part}")).cloned().unwrap_or_default(),
             });
+            if rel.kind == super::chart_drawing::REL_CHART_SHEET {
+                let names = |f: &str| book.names.iter().find(|n| n.name == f).map(|n| n.formula.clone());
+                let rels = parse_rels(&text(&rels_path(&part)).unwrap_or_default());
+                for r in rels.iter().filter(|r| r.kind == REL_DRAWING) {
+                    sheet.charts.extend(super::chart::read_charts(&part, &r.target, &text, &names));
+                }
+            }
             book.sheets.push(sheet);
             continue;
         }
@@ -1222,7 +1229,8 @@ fn read_sheet(
         }
         // Charts, read so they can be drawn; their parts are kept as they were.
         if rel.kind == REL_DRAWING {
-            sheet.charts.extend(super::chart::read_charts(part, &rel.target, text));
+            let names = |f: &str| book.names.iter().find(|n| n.name == f).map(|n| n.formula.clone());
+            sheet.charts.extend(super::chart::read_charts(part, &rel.target, text, &names));
             sheet.pictures.extend(super::chart::read_pictures(part, &rel.target, text));
         }
         let kept = !matches!(rel.kind.as_str(), REL_HYPERLINK | REL_TABLE);

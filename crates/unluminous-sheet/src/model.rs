@@ -669,6 +669,8 @@ pub struct Sheet {
     pub links: Vec<Hyperlink>,
     pub filter: Option<AutoFilter>,
     pub charts: Vec<Chart>,
+    /// Chart parts read from the file whose charts were deleted or moved off this sheet.
+    pub chart_removed: Vec<String>,
     /// Pictures a drawing places over the cells, read for drawing; their parts are kept.
     pub pictures: Vec<Picture>,
     pub state: Visibility,

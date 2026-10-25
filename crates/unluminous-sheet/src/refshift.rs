@@ -193,6 +193,19 @@ fn shift_modelled_text(book: &mut Workbook, sheet: usize, edit: &StructuralEdit)
                 *f = shift_formula_text(f, &own, edit);
             }
             series.values = shift_formula_text(&series.values, &own, edit);
+            if let Some(f) = &mut series.sizes {
+                *f = shift_formula_text(f, &own, edit);
+            }
+            for bars in &mut series.fmt.error_bars {
+                for source in [&mut bars.plus, &mut bars.minus].into_iter().flatten() {
+                    if let crate::chartspec::ErrorSource::Range(f) = source {
+                        *f = shift_formula_text(f, &own, edit);
+                    }
+                }
+            }
+        }
+        if let Some(t) = chart.title.as_mut().filter(|t| t.starts_with('=')) {
+            *t = format!("={}", shift_formula_text(&t[1..], &own, edit));
         }
         chart.from.0 = shift_anchor(chart.from.0, &own, edit);
         chart.to.0 = shift_anchor(chart.to.0, &own, edit);

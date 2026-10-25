@@ -1,7 +1,14 @@
 //! What kind of chart a [`Chart`] is, worked out from its groups and series.
 
 use crate::chartspec::{ChartType, GroupKind};
-use crate::model::{Chart, ChartKind};
+use crate::model::{Chart, ChartKind, ChartSeries};
+
+impl ChartSeries {
+    /// A series of a name, categories and values, in the first group, with no formatting.
+    pub fn new(name: Option<String>, categories: Option<String>, values: String) -> Self {
+        Self { name, categories, values, ..Self::default() }
+    }
+}
 
 impl Chart {
     /// The chart's type as Excel's Insert Chart dialog names it, with the stock variants told apart by

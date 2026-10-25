@@ -122,9 +122,11 @@ fn main() {
                 name: Some("Sheet1!$B$1".to_owned()),
                 categories: Some("Sheet1!$A$2:$A$3".to_owned()),
                 values: "Sheet1!$B$2:$B$3".to_owned(),
+                ..Default::default()
             }],
             part: String::new(),
             new: true,
+            spec: Default::default(),
         };
         s.add_chart(0, chart).unwrap();
         cases.push((name, s));
