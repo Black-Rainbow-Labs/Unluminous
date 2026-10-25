@@ -59,13 +59,59 @@ pub struct Applied {
     /// first. A property set by an earlier one is not changed by a later one.
     pub formats: Vec<u32>,
     pub scale: Option<Rgb>,
+    /// How many of `formats` have a higher priority than the colour scale, which they win a fill from.
+    pub scale_after: usize,
     pub bar: Option<BarShape>,
     pub icon: Option<IconPick>,
+}
+
+/// The cell properties the rules that hold set, the first to set one winning.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Look {
+    pub fill: Option<Rgb>,
+    pub font_color: Option<Rgb>,
+    pub bold: Option<bool>,
+    pub italic: Option<bool>,
+    pub strike: Option<bool>,
+    pub underline: Option<bool>,
+    pub number_format: Option<String>,
 }
 
 impl Applied {
     pub fn is_none(&self) -> bool {
         *self == Applied::default()
+    }
+
+    /// The formats and the colour scale merged into one look: where two rules set the same property, the
+    /// one with the higher priority sets it, and a rule that leaves a property alone leaves it to the next.
+    pub fn look(&self, book: &Workbook) -> Look {
+        let mut look = Look::default();
+        let theme = &book.styles.theme;
+        for (i, &index) in self.formats.iter().enumerate() {
+            if i == self.scale_after && look.fill.is_none() {
+                look.fill = self.scale;
+            }
+            let Some(dxf) = book.styles.dxfs.get(index as usize) else { continue };
+            if look.fill.is_none() {
+                look.fill = dxf.fill.and_then(|c| c.resolve(theme));
+            }
+            if look.font_color.is_none() {
+                look.font_color = dxf.font_color.and_then(|c| c.resolve(theme));
+            }
+            look.bold = look.bold.or(dxf.bold);
+            look.italic = look.italic.or(dxf.italic);
+            look.strike = look.strike.or(dxf.strike);
+            if look.underline.is_none() {
+                look.underline = dxf.underline.map(|u| u != crate::styles::Underline::None);
+            }
+            if look.number_format.is_none() {
+                look.number_format = dxf.num_fmt.clone();
+            }
+        }
+        if look.fill.is_none() {
+            look.fill = self.scale;
+        }
+        look
     }
 }
 
@@ -94,10 +140,14 @@ pub struct RuleSet {
 }
 
 fn key_of(v: &Value) -> String {
-    match v {
-        Value::Text(t) => format!("t{}", t.to_lowercase()),
-        other => format!("v{}", other.to_text()),
+    // Excel compares what the cells show: the number 1 and the text "1" are the same, and case does not matter.
+    // Text that reads as a number is that number: "01" is the same as 1.
+    if let Value::Text(t) = v {
+        if let Ok(n) = t.parse::<f64>() {
+            return crate::value::number_to_text(n);
+        }
     }
+    v.to_text().to_lowercase()
 }
 
 /// The cell a format's relative references are written against: the top left of its ranges.
@@ -295,8 +345,9 @@ fn apply_rule(
     match p.rule.kind.as_str() {
         "colorScale" => {
             let colour = color_scale(p, book, value);
-            if applied.scale.is_none() {
+            if applied.scale.is_none() && colour.is_some() {
                 applied.scale = colour;
+                applied.scale_after = applied.formats.len();
             }
             colour.is_some()
         }
@@ -353,6 +404,8 @@ fn holds(
     let rule = &p.rule;
     match rule.kind.as_str() {
         "cellIs" => cell_is(p, book, sheet, now, at, value),
+        // A cell with an error in it is not blank, whatever `LEN(TRIM())` makes of it.
+        "notContainsBlanks" if value.is_error() => true,
         "expression" | "containsText" | "notContainsText" | "beginsWith" | "endsWith"
         | "containsBlanks" | "notContainsBlanks" | "containsErrors" | "notContainsErrors"
         | "timePeriod" => {
@@ -515,17 +568,27 @@ fn rgb_of(book: &Workbook, c: &Color) -> Option<Rgb> {
 fn color_scale(p: &Prepared, book: &Workbook, value: &Value) -> Option<Rgb> {
     let Value::Number(n) = value else { return None };
     let stops = p.rule.color_scale.as_ref()?;
-    let points: Vec<(f64, Rgb)> = stops
+    let pairs: Vec<(f64, Rgb)> = stops
         .iter()
         .zip(&p.points)
         .filter(|(_, v)| !v.is_nan())
         .filter_map(|((_, colour), v)| Some((*v, rgb_of(book, colour)?)))
         .collect();
-    if points.len() < 2 {
+    if pairs.len() < 2 {
         return None;
     }
-    if *n <= points[0].0 {
-        return Some(points[0].1);
+    // Thresholds out of order are put in order, and the colours keep their places: a middle threshold
+    // below the lowest one is the lowest.
+    let mut values: Vec<f64> = pairs.iter().map(|(v, _)| *v).collect();
+    values.sort_by(f64::total_cmp);
+    let points: Vec<(f64, Rgb)> = values.into_iter().zip(pairs.iter().map(|(_, c)| *c)).collect();
+    let (first, last) = (points[0], points[points.len() - 1]);
+    // A number at or past the highest threshold has the highest colour, even when every number is the same.
+    if *n >= last.0 {
+        return Some(last.1);
+    }
+    if *n <= first.0 {
+        return Some(first.1);
     }
     for pair in points.windows(2) {
         let ((a, ca), (b, cb)) = (pair[0], pair[1]);
