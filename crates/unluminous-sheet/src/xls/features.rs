@@ -244,7 +244,7 @@ impl Collector {
         let range = Range::parse(text.rsplit('!').next()?.replace('$', "").as_str())?;
         let columns: BTreeMap<u32, FilterCriteria> =
             std::mem::take(&mut self.filter_entries).into_iter().collect();
-        Some(AutoFilter { range, columns })
+        Some(AutoFilter { range, columns, sort: Default::default() })
     }
 }
 

@@ -304,6 +304,7 @@ fn model_xf(xf: &RawXf, styles: &mut Styles, palette: &Palette) -> Xf {
         indent: xf.indent as u32,
         rotation: xf.rotation as i32,
         shrink: xf.shrink,
+        ..Default::default()
     };
     let fill_index = if xf.pattern == 0 { 0 } else { fill_slot(&mut styles.fills, fill) };
     Xf {
@@ -316,6 +317,7 @@ fn model_xf(xf: &RawXf, styles: &mut Styles, palette: &Palette) -> Xf {
         locked: (!xf.locked).then_some(false),
         hidden: xf.hidden.then_some(true),
         quote_prefix: xf.quote_prefix,
+        ..Default::default()
     }
 }
 

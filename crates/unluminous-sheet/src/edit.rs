@@ -17,6 +17,8 @@ use crate::model::*;
 use crate::styles::{StyleChange, Styles};
 use crate::value::Value;
 
+mod page_edits;
+
 /// What a change put back when undone.
 #[derive(Debug, Clone)]
 enum Before {
@@ -193,6 +195,72 @@ impl Session {
         self.engine.recalculate(&mut self.book, self.now, seed);
     }
 
+    /// Switch between automatic and manual calculation. Going back to automatic computes everything.
+    pub fn set_automatic_calculation(&mut self, automatic: bool) {
+        self.remember_whole("Calculation mode");
+        self.book.calc.automatic = automatic;
+        if automatic {
+            self.recalculate_all();
+        }
+    }
+
+    /// Turn iterative calculation on or off and set how many passes it makes and how small a change ends it.
+    /// A count below one is one, and a delta below zero is zero. With automatic calculation the workbook is
+    /// calculated again, so circular references settle at once.
+    pub fn set_iteration(&mut self, on: bool, count: u32, delta: f64) {
+        self.remember_whole("Iterative calculation");
+        let calc = &mut self.book.calc;
+        calc.iterate = on;
+        calc.iterate_count = count.max(1);
+        calc.iterate_delta = delta.max(0.0);
+        if calc.automatic {
+            self.recalculate_all();
+        }
+    }
+
+    /// Turn precision as displayed on or off. Turning it on rounds every number typed into a cell to what
+    /// its format shows, for good, as Excel does, and then calculates again; turning it off leaves the
+    /// numbers as they are.
+    pub fn set_precision_as_displayed(&mut self, on: bool) {
+        self.remember_whole("Precision as displayed");
+        self.book.calc.full_precision = !on;
+        if on {
+            self.round_constants_to_shown();
+            self.recalculate_all();
+        }
+    }
+
+    /// Round every constant number in the workbook to what its cell shows.
+    fn round_constants_to_shown(&mut self) {
+        let date1904 = self.book.date1904;
+        for sheet in 0..self.book.sheets.len() {
+            let changes: Vec<((u32, u32), f64)> = self.book.sheets[sheet]
+                .cells
+                .iter()
+                .filter(|(_, c)| c.formula.is_none())
+                .filter_map(|(k, c)| match c.value {
+                    Value::Number(n) => Some((*k, self.book.shown_number(c.style, n, date1904))),
+                    _ => None,
+                })
+                .collect();
+            for (key, n) in changes {
+                if let Some(cell) = self.book.sheets[sheet].cells.get_mut(&key) {
+                    cell.value = Value::Number(n);
+                }
+            }
+        }
+    }
+
+    /// A number typed into a cell, kept as the cell shows it when precision is as displayed.
+    fn as_stored(&self, style: u32, value: Value) -> Value {
+        match value {
+            Value::Number(n) if !self.book.calc.full_precision => {
+                Value::Number(self.book.shown_number(style, n, self.book.date1904))
+            }
+            other => other,
+        }
+    }
+
     fn push(&mut self, step: Step) {
         self.undo.push(step);
         if self.undo.len() > UNDO_LIMIT {
@@ -314,6 +382,7 @@ impl Session {
                         self.book.styles.derive(style, &StyleChange::NumberFormat(code.to_owned()));
                 }
             }
+            let value = if formula.is_none() { self.as_stored(style, value) } else { value };
             let cell = Cell { value, formula, style, rich: None, extra: old.extra.clone() };
             self.book.sheets[sheet].set(at, cell);
             self.engine.changed(&self.book, sheet, at);
@@ -352,7 +421,9 @@ impl Session {
         self.remember_cells("Set value", sheet, &[Range::cell(at)], false);
         let s = &mut self.book.sheets[sheet];
         let old = s.cells.get(&(at.row, at.col)).cloned().unwrap_or_default();
-        s.set(at, Cell { value, formula: None, style: old.style, rich: None, extra: old.extra });
+        let value = self.as_stored(old.style, value);
+        self.book.sheets[sheet]
+            .set(at, Cell { value, formula: None, style: old.style, rich: None, extra: old.extra });
         self.engine.changed(&self.book, sheet, at);
         self.recalculate();
         Ok(())
@@ -541,6 +612,7 @@ impl Session {
             ),
             _ => return Err("insert shifts cells down or right".to_owned()),
         };
+        self.refuse_structural(sheet, axis, at, count, band)?;
         self.remember_whole(match axis {
             Axis::Rows => "Insert rows",
             Axis::Columns => "Insert columns",
@@ -567,11 +639,62 @@ impl Session {
             ),
             _ => return Err("delete shifts cells up or left".to_owned()),
         };
+        self.refuse_structural(sheet, axis, at, count, band)?;
         self.remember_whole(match axis {
             Axis::Rows => "Delete rows",
             Axis::Columns => "Delete columns",
         });
         self.structural(sheet, axis, at, count, band);
+        Ok(())
+    }
+
+    /// Refuse an insert or a delete that Excel refuses, before anything changes: one that would change part
+    /// of a legacy array formula, and one that would delete a table's header row without the table.
+    fn refuse_structural(
+        &self,
+        sheet: usize,
+        axis: Axis,
+        at: u32,
+        count: i64,
+        band: Option<(u32, u32)>,
+    ) -> Result<(), String> {
+        let s = &self.book.sheets[sheet];
+        let span = |r: Range| match axis {
+            Axis::Rows => (r.first.row, r.last.row, r.first.col, r.last.col),
+            Axis::Columns => (r.first.col, r.last.col, r.first.row, r.last.row),
+        };
+        let in_band = |lo: u32, hi: u32| band.is_none_or(|(b0, b1)| hi >= b0 && lo <= b1);
+        for range in &s.array_formulas {
+            let (first, last, lo, hi) = span(*range);
+            if !in_band(lo, hi) {
+                continue;
+            }
+            let splits = if count > 0 {
+                at > first && at <= last
+            } else {
+                let end = at as i64 - count - 1;
+                let touches = (at as i64) <= last as i64 && end >= first as i64;
+                let whole = (at as i64) <= first as i64 && end >= last as i64;
+                touches && !whole
+            };
+            if splits {
+                return Err("You can't change part of an array.".to_owned());
+            }
+        }
+        if count < 0 {
+            let end = at as i64 - count - 1;
+            for t in self.book.tables.iter().filter(|t| t.sheet == sheet && t.header_row) {
+                let (first, last, lo, hi) = span(t.range);
+                if axis != Axis::Rows || !in_band(lo, hi) {
+                    continue;
+                }
+                let header_gone = (at as i64) <= first as i64 && end >= first as i64;
+                let all_gone = (at as i64) <= first as i64 && end >= last as i64;
+                if header_gone && !all_gone {
+                    return Err("This operation is not allowed. The operation is attempting to shift cells in a table on your worksheet.".to_owned());
+                }
+            }
+        }
         Ok(())
     }
 
@@ -586,6 +709,10 @@ impl Session {
         band: Option<(u32, u32)>,
     ) {
         let name = self.book.sheets[sheet].name.clone();
+        crate::refshift::shift_kept(
+            &mut self.book,
+            &crate::refshift::StructuralEdit::Lines { sheet: name.clone(), axis, at, count, band },
+        );
         let limit = match axis {
             Axis::Rows => MAX_ROWS,
             Axis::Columns => MAX_COLS,
@@ -604,11 +731,17 @@ impl Session {
                             adjust_band(&f.expr, &name, &names[si], axis, at, count, band)
                         }
                     };
-                    if adjusted != *f.expr {
-                        let dynamic = f.dynamic;
-                        let array = f.array;
+                    let array = f.array.and_then(|r| {
+                        if si != sheet {
+                            return Some(r);
+                        }
+                        crate::refshift::shift_range(r, axis, at, count, band)
+                    });
+                    if adjusted != *f.expr || array != f.array {
+                        let (dynamic, attrs) = (f.dynamic, f.attrs.clone());
                         *f = Formula::from_expr(adjusted, dynamic);
                         f.array = array;
+                        f.attrs = attrs;
                     }
                 }
             }
@@ -708,8 +841,22 @@ impl Session {
             .filter_map(|l| shift_range(l.range).map(|range| Hyperlink { range, ..l.clone() }))
             .collect();
         if let Some(f) = &s.filter {
-            s.filter =
-                shift_range(f.range).map(|range| AutoFilter { range, columns: f.columns.clone() });
+            s.filter = shift_range(f.range).map(|range| AutoFilter {
+                range,
+                columns: f.columns.clone(),
+                sort: f.sort.as_ref().and_then(|sort| {
+                    let mut sort = sort.clone();
+                    sort.range = shift_range(sort.range)?;
+                    sort.conditions.retain_mut(|c| match shift_range(c.range) {
+                        Some(r) => {
+                            c.range = r;
+                            true
+                        }
+                        None => false,
+                    });
+                    Some(sort)
+                }),
+            });
         }
         if band.is_none() {
             match axis {
@@ -734,14 +881,23 @@ impl Session {
                 }
             }
         }
-        s.spills = Spills::default();
-        for t in &mut self.book.tables {
-            if t.sheet == sheet {
-                if let Some(r) = shift_range(t.range) {
-                    t.range = r;
-                }
-            }
+        if band.is_none() {
+            page_edits::shift_page_breaks(&mut s.page, axis, at, count);
         }
+        s.spills = Spills::default();
+        // A table whose every row was deleted goes with them, as it does in Excel.
+        self.book.tables.retain_mut(|t| {
+            if t.sheet != sheet {
+                return true;
+            }
+            match shift_range(t.range) {
+                Some(r) => {
+                    t.range = r;
+                    true
+                }
+                None => false,
+            }
+        });
         self.engine.rebuild(&self.book);
         self.recalculate_all();
     }
@@ -776,6 +932,10 @@ impl Session {
         }
         self.remember_whole("Rename sheet");
         let old = self.book.sheets[sheet].name.clone();
+        crate::refshift::shift_kept(
+            &mut self.book,
+            &crate::refshift::StructuralEdit::Rename { from: old.clone(), to: name.to_owned() },
+        );
         self.book.sheets[sheet].name = name.to_owned();
         for s in &mut self.book.sheets {
             for cell in s.cells.values_mut() {
@@ -785,9 +945,10 @@ impl Session {
                     }
                     let renamed = f.expr.rename_sheet(&old, name);
                     if renamed != *f.expr {
-                        let (dynamic, array) = (f.dynamic, f.array);
+                        let (dynamic, array, attrs) = (f.dynamic, f.array, f.attrs.clone());
                         *f = Formula::from_expr(renamed, dynamic);
                         f.array = array;
+                        f.attrs = attrs;
                     }
                 }
             }
@@ -815,6 +976,20 @@ impl Session {
         }
         self.remember_whole("Delete sheet");
         let name = self.book.sheets[sheet].name.clone();
+        crate::refshift::shift_kept(
+            &mut self.book,
+            &crate::refshift::StructuralEdit::DeleteSheet { name: name.clone() },
+        );
+        for n in &mut self.book.names {
+            if n.scope == Some(sheet) {
+                continue;
+            }
+            n.formula = crate::refshift::shift_formula_text(
+                &n.formula,
+                "",
+                &crate::refshift::StructuralEdit::DeleteSheet { name: name.clone() },
+            );
+        }
         for s in &mut self.book.sheets {
             for cell in s.cells.values_mut() {
                 if let Some(f) = &mut cell.formula {
@@ -823,9 +998,10 @@ impl Session {
                         _ => Some(r.clone()),
                     });
                     if gone != *f.expr {
-                        let (dynamic, array) = (f.dynamic, f.array);
+                        let (dynamic, array, attrs) = (f.dynamic, f.array, f.attrs.clone());
                         *f = Formula::from_expr(gone, dynamic);
                         f.array = array;
+                        f.attrs = attrs;
                     }
                 }
             }
@@ -1030,8 +1206,75 @@ impl Session {
     pub fn freeze(&mut self, sheet: usize, rows: u32, cols: u32) -> Result<(), String> {
         self.check_sheet(sheet)?;
         self.remember_whole(if rows == 0 && cols == 0 { "Unfreeze" } else { "Freeze panes" });
-        self.book.sheets[sheet].frozen = (rows > 0 || cols > 0).then_some((rows, cols));
+        let s = &mut self.book.sheets[sheet];
+        s.frozen = (rows > 0 || cols > 0).then_some((rows, cols));
+        // The panes change, so what was chosen in each pane and where each pane was scrolled no longer
+        // name panes the sheet has.
+        s.view.split = None;
+        s.view.pane_top_left = None;
+        s.view.active_pane = None;
+        s.view.frozen_split = false;
+        s.view.selections.clear();
         Ok(())
+    }
+
+    /// Split the window into panes at a cell, as dragging the split bars does, or remove the split.
+    /// `x` and `y` are the split's distance from the top left of the grid in twentieths of a point.
+    pub fn split(
+        &mut self,
+        sheet: usize,
+        split: Option<crate::model::Split>,
+    ) -> Result<(), String> {
+        self.check_sheet(sheet)?;
+        self.remember_whole(if split.is_some() { "Split" } else { "Remove split" });
+        let s = &mut self.book.sheets[sheet];
+        s.frozen = None;
+        s.view.pane_top_left = None;
+        s.view.frozen_split = false;
+        s.view.selections.clear();
+        s.view.active_pane = split.as_ref().map(|sp| {
+            match (sp.x > 0.0, sp.y > 0.0) {
+                (true, true) => "bottomRight",
+                (false, true) => "bottomLeft",
+                _ => "topRight",
+            }
+            .to_owned()
+        });
+        s.view.split = split;
+        Ok(())
+    }
+
+    /// Change how a sheet is shown: the view kind, headings, zeros, formulas, right to left. Not an undo
+    /// step, as these are not in Excel, but saved with the file.
+    pub fn set_view(
+        &mut self,
+        sheet: usize,
+        change: impl FnOnce(&mut crate::model::SheetView),
+    ) -> Result<(), String> {
+        self.check_sheet(sheet)?;
+        change(&mut self.book.sheets[sheet].view);
+        self.modified = true;
+        Ok(())
+    }
+
+    /// Remember the selection and the scroll position, which are saved with the file. Not an undo step.
+    pub fn remember_selection(
+        &mut self,
+        sheet: usize,
+        active: CellRef,
+        ranges: Vec<Range>,
+        top_left: CellRef,
+    ) {
+        let Some(s) = self.book.sheets.get_mut(sheet) else { return };
+        let pane = match s.view.selections.last() {
+            Some(last) => last.pane.clone(),
+            None => frozen_or_split_pane(s),
+        };
+        s.view.selections.retain(|sel| sel.pane != pane);
+        s.view.selections.push(crate::model::Selection { pane, active, ranges });
+        if s.frozen.is_none() && s.view.split.is_none() {
+            s.view.top_left = (top_left != CellRef::new(0, 0)).then_some(top_left);
+        }
     }
 
     pub fn set_gridlines(&mut self, sheet: usize, shown: bool) -> Result<(), String> {
@@ -1659,10 +1902,7 @@ impl Session {
         let s = &mut self.book.sheets[sheet];
         match text {
             Some(t) => {
-                s.notes.insert(
-                    (at.row, at.col),
-                    Note { author: author.to_owned(), text: t.to_owned() },
-                );
+                s.notes.insert((at.row, at.col), Note::new(author, t));
             }
             None => {
                 s.notes.remove(&(at.row, at.col));
@@ -1877,8 +2117,11 @@ impl Session {
                 }
             }
         }
-        s.filter =
-            range.map(|r| AutoFilter { range: clip_to_used(s, r), columns: BTreeMap::new() });
+        s.filter = range.map(|r| AutoFilter {
+            range: clip_to_used(s, r),
+            columns: BTreeMap::new(),
+            sort: None,
+        });
         self.recalculate_all();
         Ok(())
     }
@@ -2330,8 +2573,16 @@ fn replace_ignoring_case(source: &str, find: &str, with: &str) -> String {
     out
 }
 
+/// The pane a selection belongs to when a sheet has panes: the active pane.
+fn frozen_or_split_pane(s: &Sheet) -> Option<String> {
+    if s.frozen.is_none() && s.view.split.is_none() {
+        return None;
+    }
+    s.view.active_pane.clone().or_else(|| Some("bottomRight".to_owned()))
+}
+
 /// A reference adjustment for inserting or deleting cells in a band of columns (rows) only.
-fn adjust_band(
+pub(crate) fn adjust_band(
     expr: &Expr,
     sheet: &str,
     own: &str,

@@ -217,7 +217,7 @@ pub const FUNCTIONS: [(&str, u8); 485] = [
     ("LEFTB", 2),              // 208
     ("RIGHTB", 2),             // 209
     ("MIDB", 3),               // 210
-    ("LENB", 3),               // 211
+    ("LENB", 1),               // 211
     ("ROUNDUP", 2),            // 212
     ("ROUNDDOWN", 2),          // 213
     ("ASC", 1),                // 214

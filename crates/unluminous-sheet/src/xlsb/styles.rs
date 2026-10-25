@@ -180,10 +180,12 @@ fn xf(data: &[u8]) -> Option<Xf> {
             indent: indent as u32,
             rotation: rotation as i32,
             shrink: flags & 0x100 != 0,
+            ..Default::default()
         },
         locked: (flags & 0x1000 == 0).then_some(false),
         hidden: (flags & 0x2000 != 0).then_some(true),
         quote_prefix: flags & 0x8000 != 0,
+        ..Default::default()
     })
 }
 

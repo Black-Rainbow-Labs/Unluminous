@@ -93,7 +93,11 @@ pub fn read(bytes: &[u8], sheet: &mut Sheet, ctx: &Context) {
         sheet.frozen = state.pane;
     }
     if let Some(range) = state.filter_range {
-        sheet.filter = Some(AutoFilter { range, columns: std::mem::take(&mut state.columns) });
+        sheet.filter = Some(AutoFilter {
+            range,
+            columns: std::mem::take(&mut state.columns),
+            sort: Default::default(),
+        });
     }
     if let Some(xml) = state.protection.take() {
         sheet.raw.elements.push(("sheetProtection".to_owned(), xml));

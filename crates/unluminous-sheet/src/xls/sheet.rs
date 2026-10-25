@@ -358,6 +358,7 @@ pub fn formula_from(decoded: Result<Decoded, String>) -> Option<Formula> {
             array: None,
             array_member: None,
             frozen: true,
+            attrs: Default::default(),
         }),
     }
 }
@@ -512,7 +513,7 @@ fn attach_notes(sheet: &mut Sheet, state: &State) {
     let mut notes: BTreeMap<(u32, u32), Note> = BTreeMap::new();
     for (row, col, object, author) in &state.notes {
         let text = state.text_boxes.get(object).cloned().unwrap_or_default();
-        notes.insert((*row, *col), Note { author: author.clone(), text });
+        notes.insert((*row, *col), Note { author: author.clone(), text, visible: false, attrs: Vec::new() });
     }
     // The notes are written out again when the sheet is saved as an .xlsx file.
     sheet.notes_changed = !notes.is_empty();

@@ -31,6 +31,10 @@ unluminous-sheet = { path = "crates/unluminous-sheet" }
 flate2 = "1.1"
 crc32fast = "1.5"
 roxmltree = "0.20"
+# The regular expressions REGEXTEST, REGEXEXTRACT and REGEXREPLACE run. Excel supports lookaround, back references and
+# atomic groups, which the `regex` crate does not, so the pattern goes to `fancy-regex`, which hands the parts that are
+# plain regular expressions to `regex` and runs the rest with a limit on how much it may backtrack.
+fancy-regex = "0.14"
 ttf-parser = "0.25"
 spellbook = "0.4.2"
 # Speech to text for the Agent-Chat prompt: the microphone, the "Sable" wake word, the local Moonshine model
