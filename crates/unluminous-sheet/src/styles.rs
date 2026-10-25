@@ -291,6 +291,10 @@ pub struct Alignment {
     pub indent: u32,
     pub rotation: i32,
     pub shrink: bool,
+    /// 0 follows the text, 1 is left to right, 2 is right to left.
+    pub reading_order: u8,
+    /// Other `alignment` attributes (`justifyLastLine`, `relativeIndent`), kept.
+    pub extra: Vec<(String, String)>,
 }
 
 impl Alignment {
@@ -312,6 +316,11 @@ pub struct Xf {
     pub locked: Option<bool>,
     pub hidden: Option<bool>,
     pub quote_prefix: bool,
+    /// The header cell of a pivot table, which draws the filter button.
+    pub pivot_button: bool,
+    /// The `apply` flags as the file had them, which say whether the format overrides its cell style.
+    /// A change to the format drops them, and the writer works them out again.
+    pub applies: Vec<(String, String)>,
 }
 
 /// A differential format, which conditional formats apply over a cell's own.
@@ -428,6 +437,7 @@ impl Styles {
             return *other;
         }
         let mut next = self.xf(xf);
+        next.applies.clear();
         match change {
             StyleChange::NumberFormat(code) => next.num_fmt = self.format_id(code),
             StyleChange::Font(edit) => {

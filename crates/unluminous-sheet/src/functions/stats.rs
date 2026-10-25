@@ -3,7 +3,7 @@
 use std::cmp::Ordering;
 
 use super::criteria::Criterion;
-use super::math::{aligned, clipped, ifs_mask};
+use super::math::{aligned, clipped, IfsParts};
 use super::{gather, gather_val, num, number, numbers_at, r, s, Function, Gather, MANY};
 use crate::eval::{Ctx, Val};
 use crate::formula::Expr;
@@ -75,8 +75,10 @@ pub const FUNCTIONS: &[Function] = &[
         MANY,
         "criteria_range1, criteria1, ...",
         "How many cells meet every criterion.",
-        |ctx, a| match ifs_mask(ctx, a, None) {
-            Ok((mask, ..)) => Val::number(mask.iter().filter(|m| **m).count() as f64),
+        |ctx, a| match IfsParts::read(ctx, a, None) {
+            Ok(parts) => {
+                parts.answer(ctx, |mask| Value::Number(mask.iter().filter(|m| **m).count() as f64))
+            }
             Err(e) => Val::error(e),
         },
     ),
@@ -89,7 +91,7 @@ pub const FUNCTIONS: &[Function] = &[
         MANY,
         "value1, [value2], ...",
         "The largest value, counting text as 0.",
-        |ctx, a| over(ctx, a, Gather::All, |n| Ok(max(n))),
+        |ctx, a| over(ctx, a, Gather::AllInRanges, |n| Ok(max(n))),
     ),
     r("MIN", 1, MANY, "number1, [number2], ...", "The smallest number.", |ctx, a| {
         over(ctx, a, Gather::Numbers, |n| Ok(min(n)))
@@ -100,7 +102,7 @@ pub const FUNCTIONS: &[Function] = &[
         MANY,
         "value1, [value2], ...",
         "The smallest value, counting text as 0.",
-        |ctx, a| over(ctx, a, Gather::All, |n| Ok(min(n))),
+        |ctx, a| over(ctx, a, Gather::AllInRanges, |n| Ok(min(n))),
     ),
     r("MEDIAN", 1, MANY, "number1, [number2], ...", "The middle number.", |ctx, a| {
         over(ctx, a, Gather::Numbers, |n| median(n).ok_or(ErrorKind::Num))
@@ -113,7 +115,7 @@ pub const FUNCTIONS: &[Function] = &[
         MANY,
         "number1, [number2], ...",
         "Every number that is most frequent, as a column.",
-        |ctx, a| match gather(ctx, a, Gather::Numbers) {
+        |ctx, a| match gather(ctx, a, Gather::OnlyNumbers) {
             Ok(n) => {
                 let m = modes(&n);
                 if m.is_empty() {
@@ -230,7 +232,9 @@ pub const FUNCTIONS: &[Function] = &[
         "value1, [value2], ...",
         "The standard deviation of a sample, counting text as 0.",
         |ctx, a| {
-            over(ctx, a, Gather::All, |n| sample_variance(n).map(f64::sqrt).ok_or(ErrorKind::Div0))
+            over(ctx, a, Gather::AllInRanges, |n| {
+                sample_variance(n).map(f64::sqrt).ok_or(ErrorKind::Div0)
+            })
         },
     ),
     r(
@@ -264,7 +268,7 @@ pub const FUNCTIONS: &[Function] = &[
         "value1, [value2], ...",
         "The standard deviation of a population, counting text as 0.",
         |ctx, a| {
-            over(ctx, a, Gather::All, |n| {
+            over(ctx, a, Gather::AllInRanges, |n| {
                 population_variance(n).map(f64::sqrt).ok_or(ErrorKind::Div0)
             })
         },
@@ -281,7 +285,7 @@ pub const FUNCTIONS: &[Function] = &[
         MANY,
         "value1, [value2], ...",
         "The variance of a sample, counting text as 0.",
-        |ctx, a| over(ctx, a, Gather::All, |n| sample_variance(n).ok_or(ErrorKind::Div0)),
+        |ctx, a| over(ctx, a, Gather::AllInRanges, |n| sample_variance(n).ok_or(ErrorKind::Div0)),
     ),
     r("VARP", 1, MANY, "number1, [number2], ...", "The variance of a population.", |ctx, a| {
         over(ctx, a, Gather::Numbers, |n| population_variance(n).ok_or(ErrorKind::Div0))
@@ -295,7 +299,9 @@ pub const FUNCTIONS: &[Function] = &[
         MANY,
         "value1, [value2], ...",
         "The variance of a population, counting text as 0.",
-        |ctx, a| over(ctx, a, Gather::All, |n| population_variance(n).ok_or(ErrorKind::Div0)),
+        |ctx, a| {
+            over(ctx, a, Gather::AllInRanges, |n| population_variance(n).ok_or(ErrorKind::Div0))
+        },
     ),
     r("AVEDEV", 1, MANY, "number1, [number2], ...", "The mean absolute deviation.", |ctx, a| {
         over(ctx, a, Gather::Numbers, |n| {
@@ -326,7 +332,10 @@ pub const FUNCTIONS: &[Function] = &[
     }),
     r("HARMEAN", 1, MANY, "number1, [number2], ...", "The harmonic mean.", |ctx, a| {
         over(ctx, a, Gather::Numbers, |n| {
-            if n.is_empty() || n.iter().any(|x| *x <= 0.0) {
+            if n.is_empty() {
+                return Err(ErrorKind::NA);
+            }
+            if n.iter().any(|x| *x <= 0.0) {
                 return Err(ErrorKind::Num);
             }
             Ok(n.len() as f64 / n.iter().map(|x| 1.0 / x).sum::<f64>())
@@ -349,6 +358,9 @@ pub const FUNCTIONS: &[Function] = &[
     r("SKEW.P", 1, MANY, "number1, [number2], ...", "The skewness of a population.", |ctx, a| {
         over(ctx, a, Gather::Numbers, |n| {
             let c = n.len() as f64;
+            if c < 3.0 {
+                return Err(ErrorKind::Div0);
+            }
             let m = mean(n).ok_or(ErrorKind::Div0)?;
             let sd = population_variance(n).ok_or(ErrorKind::Div0)?.sqrt();
             if sd == 0.0 {
@@ -452,14 +464,6 @@ pub const FUNCTIONS: &[Function] = &[
         "x, known_y's, known_x's",
         "A value on the regression line.",
         forecast,
-    ),
-    r(
-        "TREND",
-        1,
-        4,
-        "known_y's, [known_x's], [new_x's], [const]",
-        "Values on the regression line.",
-        trend,
     ),
     r(
         "FREQUENCY",
@@ -601,7 +605,7 @@ fn over(ctx: &mut Ctx, args: &[Expr], how: Gather, f: fn(&[f64]) -> Result<f64, 
 }
 
 fn mode_sngl(ctx: &mut Ctx, args: &[Expr]) -> Val {
-    match gather(ctx, args, Gather::Numbers) {
+    match gather(ctx, args, Gather::OnlyNumbers) {
         Ok(n) => modes(&n).first().map_or(Val::error(ErrorKind::NA), |m| Val::number(*m)),
         Err(e) => Val::error(e),
     }
@@ -650,22 +654,28 @@ fn ifs_over(ctx: &mut Ctx, args: &[Expr], f: fn(&[f64]) -> Result<f64, ErrorKind
         Val::Value(Value::Error(e)) => return Val::error(e),
         _ => return Val::error(ErrorKind::Value),
     };
-    let (mask, rows, cols) = match ifs_mask(ctx, &args[1..], Some(area)) {
-        Ok(m) => m,
+    let parts = match IfsParts::read(ctx, &args[1..], Some(area)) {
+        Ok(p) => p,
         Err(e) => return Val::error(e),
     };
-    let values = ctx.read_range(area.sheet, aligned(&area, rows, cols));
-    let mut numbers = Vec::new();
-    for (i, keep) in mask.iter().enumerate() {
-        if *keep {
-            match &values.data[i] {
-                Value::Number(n) => numbers.push(*n),
-                Value::Error(e) => return Val::error(*e),
-                _ => {}
+    let values = ctx.read_range(area.sheet, aligned(&area, parts.rows, parts.cols));
+    parts.answer(ctx, |mask| {
+        let mut numbers = Vec::new();
+        for (i, keep) in mask.iter().enumerate() {
+            if *keep {
+                match &values.data[i] {
+                    Value::Number(n) => numbers.push(*n),
+                    Value::Error(e) => return Value::Error(*e),
+                    _ => {}
+                }
             }
         }
-    }
-    f(&numbers).map_or_else(Val::error, Val::number)
+        match f(&numbers) {
+            Ok(n) if n.is_finite() => Value::Number(n),
+            Ok(_) => Value::Error(ErrorKind::Num),
+            Err(e) => Value::Error(e),
+        }
+    })
 }
 
 fn count(ctx: &mut Ctx, args: &[Expr]) -> Val {
@@ -775,7 +785,14 @@ fn rank(ctx: &mut Ctx, args: &[Expr], average: bool) -> Val {
         Some(e) => {
             let v = ctx.eval(e);
             let v = ctx.single(v);
-            !matches!(ctx.number(&v), Ok(n) if n == 0.0) && !v.is_empty()
+            if v.is_empty() {
+                false
+            } else {
+                match ctx.number(&v) {
+                    Ok(n) => n != 0.0,
+                    Err(e) => return Val::error(e),
+                }
+            }
         }
         None => false,
     };
@@ -815,7 +832,10 @@ fn percentrank(ctx: &mut Ctx, args: &[Expr], exclusive: bool) -> Val {
         },
         None => 3.0,
     };
-    if numbers.is_empty() || significance < 1.0 {
+    if numbers.is_empty() {
+        return Val::error(ErrorKind::NA);
+    }
+    if significance < 1.0 {
         return Val::error(ErrorKind::Num);
     }
     let n = numbers.len();
@@ -831,10 +851,11 @@ fn percentrank(ctx: &mut Ctx, args: &[Expr], exclusive: bool) -> Val {
         let hi = numbers[below];
         (below - 1) as f64 + (x - lo) / (hi - lo)
     };
-    let fraction = if exclusive {
-        (rank + 1.0) / (n as f64 + 1.0)
-    } else if n == 1 {
+    // Excel answers 1 for a list of one value, in both forms.
+    let fraction = if n == 1 {
         1.0
+    } else if exclusive {
+        (rank + 1.0) / (n as f64 + 1.0)
     } else {
         rank / (n - 1) as f64
     };
@@ -918,57 +939,6 @@ fn paired_line(ctx: &mut Ctx, ys: &Expr, xs: &Expr) -> Result<(f64, f64), ErrorK
     let (y, x): (Vec<f64>, Vec<f64>) =
         a.iter().zip(&b).filter_map(|(p, q)| Some(((*p)?, (*q)?))).unzip();
     line(&x, &y)
-}
-
-fn trend(ctx: &mut Ctx, args: &[Expr]) -> Val {
-    let (ys, rows, cols) = match numbers_at(ctx, &args[0]) {
-        Ok(v) => v,
-        Err(e) => return Val::error(e),
-    };
-    let xs: Vec<Option<f64>> = match args.get(1).filter(|e| !matches!(e, Expr::Missing)) {
-        Some(e) => match numbers_at(ctx, e) {
-            Ok((v, ..)) => v,
-            Err(e) => return Val::error(e),
-        },
-        None => (1..=ys.len()).map(|i| Some(i as f64)).collect(),
-    };
-    if xs.len() != ys.len() {
-        return Val::error(ErrorKind::Ref);
-    }
-    let with_constant = match args.get(3) {
-        Some(e) if !matches!(e, Expr::Missing) => {
-            let v = ctx.eval(e);
-            let v = ctx.single(v);
-            crate::eval::to_bool(&v).unwrap_or(true)
-        }
-        _ => true,
-    };
-    let (y, x): (Vec<f64>, Vec<f64>) =
-        ys.iter().zip(&xs).filter_map(|(p, q)| Some(((*p)?, (*q)?))).unzip();
-    let (slope, intercept) = if with_constant {
-        match line(&x, &y) {
-            Ok(l) => l,
-            Err(e) => return Val::error(e),
-        }
-    } else {
-        let sxx: f64 = x.iter().map(|a| a * a).sum();
-        if sxx == 0.0 {
-            return Val::error(ErrorKind::Div0);
-        }
-        (x.iter().zip(&y).map(|(a, b)| a * b).sum::<f64>() / sxx, 0.0)
-    };
-    let (new_x, nr, nc) = match args.get(2).filter(|e| !matches!(e, Expr::Missing)) {
-        Some(e) => match numbers_at(ctx, e) {
-            Ok(v) => v,
-            Err(e) => return Val::error(e),
-        },
-        None => (xs.clone(), rows, cols),
-    };
-    let data = new_x
-        .iter()
-        .map(|x| x.map_or(Value::Error(ErrorKind::Value), |x| Value::Number(slope * x + intercept)))
-        .collect();
-    Val::Array(Array::new(nr, nc, data))
 }
 
 fn frequency(ctx: &mut Ctx, args: &[Expr]) -> Val {

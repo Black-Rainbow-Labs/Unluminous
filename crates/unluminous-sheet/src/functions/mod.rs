@@ -13,18 +13,34 @@ use crate::eval::{to_bool, to_text, Ctx, Val};
 use crate::formula::Expr;
 use crate::value::{ErrorKind, Value};
 
+pub mod casemap;
+pub mod complex;
 pub mod criteria;
+pub mod database;
 pub mod date;
+pub mod discrete;
 pub mod dist;
 pub mod engineering;
+pub mod ets;
 pub mod financial;
+pub mod forecast;
+pub mod grouping;
+pub mod inference;
 pub mod info;
 pub mod logical;
 pub mod lookup;
 pub mod math;
 pub mod pivot;
+pub mod precise;
+pub mod regex;
+pub mod regression;
+pub mod services;
+pub mod securities;
 pub mod stats;
 pub mod text;
+pub mod text_bytes;
+pub mod web;
+mod xpath;
 
 pub type ScalarFn = fn(&mut Ctx, &[Value]) -> Result<Value, ErrorKind>;
 pub type RawFn = fn(&mut Ctx, &[Expr]) -> Val;
@@ -47,6 +63,9 @@ pub struct Function {
     /// One sentence.
     pub about: &'static str,
     pub category: &'static str,
+    /// The function needs a service of Excel's (a data connection, a cloud model, a stock feed). A cell
+    /// read from a file that holds one keeps the value the file saved, and one entered here is `#BLOCKED!`.
+    pub offline: bool,
 }
 
 impl std::fmt::Debug for Function {
@@ -67,7 +86,7 @@ pub const fn s(
     about: &'static str,
     f: ScalarFn,
 ) -> Function {
-    Function { name, min, max, imp: Imp::Scalar(f), args, about, category: "" }
+    Function { name, min, max, imp: Imp::Scalar(f), args, about, category: "", offline: false }
 }
 
 /// A raw function entry.
@@ -79,21 +98,59 @@ pub const fn r(
     about: &'static str,
     f: RawFn,
 ) -> Function {
-    Function { name, min, max, imp: Imp::Raw(f), args, about, category: "" }
+    Function { name, min, max, imp: Imp::Raw(f), args, about, category: "", offline: false }
+}
+
+/// A function that needs a service of Excel's: evaluating it is `#BLOCKED!`, and the hint says why.
+pub const fn offline(
+    name: &'static str,
+    min: usize,
+    max: usize,
+    args: &'static str,
+    about: &'static str,
+) -> Function {
+    Function {
+        name,
+        min,
+        max,
+        imp: Imp::Scalar(|_, _| Err(ErrorKind::Blocked)),
+        args,
+        about,
+        category: "",
+        offline: true,
+    }
 }
 
 const CATEGORIES: &[(&str, &[Function])] = &[
     ("Math", math::FUNCTIONS),
     ("Statistical", stats::FUNCTIONS),
     ("Statistical", dist::FUNCTIONS),
+    ("Statistical", discrete::FUNCTIONS),
+    ("Statistical", inference::FUNCTIONS),
+    ("Statistical", regression::FUNCTIONS),
+    ("Statistical", forecast::FUNCTIONS),
+    ("Database", database::FUNCTIONS),
     ("Logical", logical::FUNCTIONS),
     ("Lookup", lookup::FUNCTIONS),
+    ("Lookup", grouping::FUNCTIONS),
     ("Text", text::FUNCTIONS),
+    ("Text", text_bytes::FUNCTIONS),
+    ("Text", regex::FUNCTIONS),
+    ("Web", web::FUNCTIONS),
+    ("Cube", services::CUBE),
+    ("Add-in and Automation", services::ADD_IN),
+    ("Lookup", services::LOOKUP),
+    ("Text", services::TEXT),
+    ("Information", services::INFORMATION),
+    ("Web", services::WEB),
+    ("Other", services::OTHER),
     ("Date and time", date::FUNCTIONS),
     ("Financial", financial::FUNCTIONS),
+    ("Financial", securities::FUNCTIONS),
     ("Information", info::FUNCTIONS),
     ("Engineering", engineering::FUNCTIONS),
     ("Lookup", pivot::FUNCTIONS),
+    ("Engineering", complex::FUNCTIONS),
 ];
 
 /// Every function, with its category, sorted by name.
@@ -113,7 +170,11 @@ pub fn all() -> &'static [Function] {
 /// The function with this name, in upper case.
 pub fn find(name: &str) -> Option<&'static Function> {
     static BY_NAME: OnceLock<HashMap<&'static str, &'static Function>> = OnceLock::new();
-    BY_NAME.get_or_init(|| all().iter().map(|f| (f.name, f)).collect()).get(name).copied()
+    BY_NAME
+        .get_or_init(|| all().iter().map(|f| (f.name, f)).collect())
+        .get(name)
+        .copied()
+        .or_else(|| grouping::OPERATORS.iter().find(|f| f.name == name))
 }
 
 /// Functions whose value can change with nothing in the workbook changing.
@@ -180,6 +241,11 @@ pub enum Gather {
     Numbers,
     /// AVERAGEA, MAXA: text in ranges counts as 0 and logicals as 1 or 0.
     All,
+    /// MINA, MAXA, VARA: as `All` for cells of a range, but text and logicals inside an array written out
+    /// in the formula, such as `{1,"a",TRUE}`, are left out.
+    AllInRanges,
+    /// MODE: numbers only. Text and logicals are left out wherever they are, including when typed directly.
+    OnlyNumbers,
 }
 
 /// The numbers an aggregate reads from its arguments. An error anywhere is the answer.
@@ -194,18 +260,21 @@ pub fn gather(ctx: &mut Ctx, args: &[Expr], how: Gather) -> Result<Vec<f64>, Err
 
 pub fn gather_val(ctx: &mut Ctx, v: Val, how: Gather, out: &mut Vec<f64>) -> Result<(), ErrorKind> {
     let mut values = Vec::new();
+    let written_array = matches!(v, Val::Array(_));
     ctx.values_of(v, &mut values);
+    let counts_all = how == Gather::All || how == Gather::AllInRanges && !written_array;
     for (value, from_range) in values {
         match (&value, from_range) {
             (Value::Error(e), _) => return Err(*e),
             (Value::Number(n), _) => out.push(*n),
+            _ if how == Gather::OnlyNumbers => {}
             (Value::Bool(b), false) => out.push(f64::from(u8::from(*b))),
             (Value::Text(t), false) => {
                 out.push(crate::input::number_from_text(t, ctx.date1904()).ok_or(ErrorKind::Value)?)
             }
             (Value::Empty, false) => out.push(0.0),
-            (Value::Bool(b), true) if how == Gather::All => out.push(f64::from(u8::from(*b))),
-            (Value::Text(_), true) if how == Gather::All => out.push(0.0),
+            (Value::Bool(b), true) if counts_all => out.push(f64::from(u8::from(*b))),
+            (Value::Text(_), true) if counts_all => out.push(0.0),
             _ => {}
         }
     }
@@ -235,6 +304,50 @@ pub fn numbers_at(
         }
     }
     Ok((out, rows, cols))
+}
+
+/// What a function that reads a cell answers for every cell of a reference: one value for one cell, and an
+/// array the shape of the range for several, as Excel's dynamic arrays spill it.
+pub fn each_cell(
+    ctx: &mut Ctx,
+    area: &crate::eval::Area,
+    f: impl Fn(&mut Ctx, crate::coord::CellRef) -> Value,
+) -> Val {
+    let r = area.range;
+    if r.len() == 1 {
+        return Val::Value(f(ctx, r.first));
+    }
+    let (rows, cols) = (r.rows() as usize, r.cols() as usize);
+    if rows * cols > 4_000_000 {
+        return Val::error(ErrorKind::Num);
+    }
+    let mut data = Vec::with_capacity(rows * cols);
+    for row in r.first.row..=r.last.row {
+        for col in r.first.col..=r.last.col {
+            data.push(f(ctx, crate::coord::CellRef::new(row, col)));
+        }
+    }
+    Val::Array(crate::value::Array::new(rows, cols, data))
+}
+
+/// An argument with a range of several cells cut to its first cell, as `N` and `T` read one.
+pub fn first_cell(ctx: &mut Ctx, expr: &Expr) -> Val {
+    match ctx.eval(expr) {
+        Val::Ref(area) => Val::Ref(crate::eval::Area {
+            range: crate::coord::Range::cell(area.range.first),
+            sheet_last: area.sheet,
+            ..area
+        }),
+        Val::Refs(areas) => match areas.first() {
+            Some(area) => Val::Ref(crate::eval::Area {
+                range: crate::coord::Range::cell(area.range.first),
+                sheet_last: area.sheet,
+                ..*area
+            }),
+            None => Val::error(ErrorKind::Value),
+        },
+        other => other,
+    }
 }
 
 /// A function of one number, for the many entries that are only that.

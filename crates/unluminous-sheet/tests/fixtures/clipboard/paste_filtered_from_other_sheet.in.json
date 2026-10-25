@@ -1,0 +1,377 @@
+[
+ {
+  "name": "x_multi_7_of_7",
+  "formats": false,
+  "sheets": [
+   "Sheet2"
+  ],
+  "cells": {
+   "A1": "h",
+   "A2": 1,
+   "Sheet2!A1": 11,
+   "A3": 2,
+   "Sheet2!A2": 12,
+   "A4": 3,
+   "Sheet2!A3": 13,
+   "A5": 4,
+   "Sheet2!A4": 14,
+   "A6": 5,
+   "Sheet2!A5": 15,
+   "A7": 6,
+   "Sheet2!A6": 16,
+   "A8": 7,
+   "Sheet2!A7": 17
+  },
+  "steps": [
+   {
+    "do": "filter",
+    "at": "A1:A8",
+    "field": 1,
+    "criteria": "<>2",
+    "operator": 1,
+    "criteria2": "<>5"
+   },
+   {
+    "do": "copy",
+    "at": "Sheet2!A1:A7"
+   },
+   {
+    "do": "pastespecial",
+    "at": "A2:A8",
+    "paste": -4104
+   }
+  ],
+  "dump": [
+   "A1:B9",
+   "Sheet2!A1:B8"
+  ]
+ },
+ {
+  "name": "x_single_7",
+  "formats": false,
+  "sheets": [
+   "Sheet2"
+  ],
+  "cells": {
+   "A1": "h",
+   "A2": 1,
+   "Sheet2!A1": 11,
+   "A3": 2,
+   "Sheet2!A2": 12,
+   "A4": 3,
+   "Sheet2!A3": 13,
+   "A5": 4,
+   "Sheet2!A4": 14,
+   "A6": 5,
+   "Sheet2!A5": 15,
+   "A7": 6,
+   "Sheet2!A6": 16,
+   "A8": 7,
+   "Sheet2!A7": 17
+  },
+  "steps": [
+   {
+    "do": "filter",
+    "at": "A1:A8",
+    "field": 1,
+    "criteria": "<>2",
+    "operator": 1,
+    "criteria2": "<>5"
+   },
+   {
+    "do": "copy",
+    "at": "Sheet2!A1:A7"
+   },
+   {
+    "do": "pastespecial",
+    "at": "A2",
+    "paste": -4104
+   }
+  ],
+  "dump": [
+   "A1:B9",
+   "Sheet2!A1:B8"
+  ]
+ },
+ {
+  "name": "x_multi_5_of_7",
+  "formats": false,
+  "sheets": [
+   "Sheet2"
+  ],
+  "cells": {
+   "A1": "h",
+   "A2": 1,
+   "Sheet2!A1": 11,
+   "A3": 2,
+   "Sheet2!A2": 12,
+   "A4": 3,
+   "Sheet2!A3": 13,
+   "A5": 4,
+   "Sheet2!A4": 14,
+   "A6": 5,
+   "Sheet2!A5": 15,
+   "A7": 6,
+   "Sheet2!A6": 16,
+   "A8": 7,
+   "Sheet2!A7": 17
+  },
+  "steps": [
+   {
+    "do": "filter",
+    "at": "A1:A8",
+    "field": 1,
+    "criteria": "<>2",
+    "operator": 1,
+    "criteria2": "<>5"
+   },
+   {
+    "do": "copy",
+    "at": "Sheet2!A1:A5"
+   },
+   {
+    "do": "pastespecial",
+    "at": "A2:A8",
+    "paste": -4104
+   }
+  ],
+  "dump": [
+   "A1:B9",
+   "Sheet2!A1:B8"
+  ]
+ },
+ {
+  "name": "x_multi_visible5",
+  "formats": false,
+  "sheets": [
+   "Sheet2"
+  ],
+  "cells": {
+   "A1": "h",
+   "A2": 1,
+   "Sheet2!A1": 11,
+   "A3": 2,
+   "Sheet2!A2": 12,
+   "A4": 3,
+   "Sheet2!A3": 13,
+   "A5": 4,
+   "Sheet2!A4": 14,
+   "A6": 5,
+   "Sheet2!A5": 15,
+   "A7": 6,
+   "Sheet2!A6": 16,
+   "A8": 7,
+   "Sheet2!A7": 17
+  },
+  "steps": [
+   {
+    "do": "filter",
+    "at": "A1:A8",
+    "field": 1,
+    "criteria": "<>2",
+    "operator": 1,
+    "criteria2": "<>5"
+   },
+   {
+    "do": "copy",
+    "at": "Sheet2!A1:A5"
+   },
+   {
+    "do": "pastespecial",
+    "at": "A2:A6",
+    "paste": -4104
+   }
+  ],
+  "dump": [
+   "A1:B9",
+   "Sheet2!A1:B8"
+  ]
+ },
+ {
+  "name": "x_single_5",
+  "formats": false,
+  "sheets": [
+   "Sheet2"
+  ],
+  "cells": {
+   "A1": "h",
+   "A2": 1,
+   "Sheet2!A1": 11,
+   "A3": 2,
+   "Sheet2!A2": 12,
+   "A4": 3,
+   "Sheet2!A3": 13,
+   "A5": 4,
+   "Sheet2!A4": 14,
+   "A6": 5,
+   "Sheet2!A5": 15,
+   "A7": 6,
+   "Sheet2!A6": 16,
+   "A8": 7,
+   "Sheet2!A7": 17
+  },
+  "steps": [
+   {
+    "do": "filter",
+    "at": "A1:A8",
+    "field": 1,
+    "criteria": "<>2",
+    "operator": 1,
+    "criteria2": "<>5"
+   },
+   {
+    "do": "copy",
+    "at": "Sheet2!A1:A5"
+   },
+   {
+    "do": "pastespecial",
+    "at": "A2",
+    "paste": -4104
+   }
+  ],
+  "dump": [
+   "A1:B9",
+   "Sheet2!A1:B8"
+  ]
+ },
+ {
+  "name": "x_values_single_5",
+  "formats": false,
+  "sheets": [
+   "Sheet2"
+  ],
+  "cells": {
+   "A1": "h",
+   "A2": 1,
+   "Sheet2!A1": 11,
+   "A3": 2,
+   "Sheet2!A2": 12,
+   "A4": 3,
+   "Sheet2!A3": 13,
+   "A5": 4,
+   "Sheet2!A4": 14,
+   "A6": 5,
+   "Sheet2!A5": 15,
+   "A7": 6,
+   "Sheet2!A6": 16,
+   "A8": 7,
+   "Sheet2!A7": 17
+  },
+  "steps": [
+   {
+    "do": "filter",
+    "at": "A1:A8",
+    "field": 1,
+    "criteria": "<>2",
+    "operator": 1,
+    "criteria2": "<>5"
+   },
+   {
+    "do": "copy",
+    "at": "Sheet2!A1:A5"
+   },
+   {
+    "do": "pastespecial",
+    "at": "A2",
+    "paste": -4163
+   }
+  ],
+  "dump": [
+   "A1:B9",
+   "Sheet2!A1:B8"
+  ]
+ },
+ {
+  "name": "x_plain_single_5",
+  "formats": false,
+  "sheets": [
+   "Sheet2"
+  ],
+  "cells": {
+   "A1": "h",
+   "A2": 1,
+   "Sheet2!A1": 11,
+   "A3": 2,
+   "Sheet2!A2": 12,
+   "A4": 3,
+   "Sheet2!A3": 13,
+   "A5": 4,
+   "Sheet2!A4": 14,
+   "A6": 5,
+   "Sheet2!A5": 15,
+   "A7": 6,
+   "Sheet2!A6": 16,
+   "A8": 7,
+   "Sheet2!A7": 17
+  },
+  "steps": [
+   {
+    "do": "filter",
+    "at": "A1:A8",
+    "field": 1,
+    "criteria": "<>2",
+    "operator": 1,
+    "criteria2": "<>5"
+   },
+   {
+    "do": "copy",
+    "at": "Sheet2!A1:A5"
+   },
+   {
+    "do": "paste",
+    "at": "A2"
+   }
+  ],
+  "dump": [
+   "A1:B9",
+   "Sheet2!A1:B8"
+  ]
+ },
+ {
+  "name": "x_filtered_to_filtered",
+  "formats": false,
+  "sheets": [
+   "Sheet2"
+  ],
+  "cells": {
+   "A1": "h",
+   "A2": 1,
+   "Sheet2!A1": 11,
+   "A3": 2,
+   "Sheet2!A2": 12,
+   "A4": 3,
+   "Sheet2!A3": 13,
+   "A5": 4,
+   "Sheet2!A4": 14,
+   "A6": 5,
+   "Sheet2!A5": 15,
+   "A7": 6,
+   "Sheet2!A6": 16,
+   "A8": 7,
+   "Sheet2!A7": 17
+  },
+  "steps": [
+   {
+    "do": "filter",
+    "at": "A1:A8",
+    "field": 1,
+    "criteria": "<>2",
+    "operator": 1,
+    "criteria2": "<>5"
+   },
+   {
+    "do": "copy",
+    "at": "A2:A8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "A2:A8",
+    "paste": -4163
+   }
+  ],
+  "dump": [
+   "A1:B9",
+   "Sheet2!A1:B8"
+  ]
+ }
+]

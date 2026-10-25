@@ -1,0 +1,268 @@
+[
+ {
+  "name": "html_simple",
+  "formats": true,
+  "cells": {},
+  "steps": [
+   {
+    "do": "sethtml",
+    "value": "<table><tr><td>a</td><td>b</td></tr><tr><td>1</td><td>2.5</td></tr></table>"
+   },
+   {
+    "do": "pasteformat",
+    "at": "A1",
+    "format": "HTML"
+   }
+  ],
+  "dump": [
+   "A1:F8"
+  ]
+ },
+ {
+  "name": "html_spans",
+  "formats": true,
+  "cells": {},
+  "steps": [
+   {
+    "do": "sethtml",
+    "value": "<table><tr><td colspan=\"2\">wide</td><td>x</td></tr><tr><td rowspan=\"2\">tall</td><td>b</td><td>c</td></tr><tr><td>d</td><td>e</td></tr></table>"
+   },
+   {
+    "do": "pasteformat",
+    "at": "A1",
+    "format": "HTML"
+   }
+  ],
+  "dump": [
+   "A1:F8"
+  ]
+ },
+ {
+  "name": "html_styles",
+  "formats": true,
+  "cells": {},
+  "steps": [
+   {
+    "do": "sethtml",
+    "value": "<table><tr><td><b>bold</b></td><td><i>italic</i></td><td style=\"color:#ff0000\">red</td><td style=\"background:#00ff00\">green</td><td><u>under</u></td></tr></table>"
+   },
+   {
+    "do": "pasteformat",
+    "at": "A1",
+    "format": "HTML"
+   }
+  ],
+  "dump": [
+   "A1:F8"
+  ]
+ },
+ {
+  "name": "html_th",
+  "formats": true,
+  "cells": {},
+  "steps": [
+   {
+    "do": "sethtml",
+    "value": "<table><tr><th>Head</th><th>Two</th></tr><tr><td>1</td><td>2</td></tr></table>"
+   },
+   {
+    "do": "pasteformat",
+    "at": "A1",
+    "format": "HTML"
+   }
+  ],
+  "dump": [
+   "A1:F8"
+  ]
+ },
+ {
+  "name": "html_typed",
+  "formats": true,
+  "cells": {},
+  "steps": [
+   {
+    "do": "sethtml",
+    "value": "<table><tr><td>007</td><td>1/2/2023</td><td>1,234.5</td><td>TRUE</td><td>=1+2</td><td>50%</td></tr><tr><td>+5</td><td>-5</td><td>@x</td><td>1e3</td><td>12:30</td><td>$3.50</td></tr></table>"
+   },
+   {
+    "do": "pasteformat",
+    "at": "A1",
+    "format": "HTML"
+   }
+  ],
+  "dump": [
+   "A1:F8"
+  ]
+ },
+ {
+  "name": "html_entities",
+  "formats": true,
+  "cells": {},
+  "steps": [
+   {
+    "do": "sethtml",
+    "value": "<table><tr><td>a &amp; b</td><td>x&nbsp;y</td><td>&lt;tag&gt;</td><td>l1<br>l2</td></tr></table>"
+   },
+   {
+    "do": "pasteformat",
+    "at": "A1",
+    "format": "HTML"
+   }
+  ],
+  "dump": [
+   "A1:F8"
+  ]
+ },
+ {
+  "name": "html_align",
+  "formats": true,
+  "cells": {},
+  "steps": [
+   {
+    "do": "sethtml",
+    "value": "<table><tr><td align=\"right\">r</td><td align=\"center\">c</td><td style=\"text-align:left\">l</td></tr></table>"
+   },
+   {
+    "do": "pasteformat",
+    "at": "A1",
+    "format": "HTML"
+   }
+  ],
+  "dump": [
+   "A1:F8"
+  ]
+ },
+ {
+  "name": "html_two_tables",
+  "formats": true,
+  "cells": {},
+  "steps": [
+   {
+    "do": "sethtml",
+    "value": "<table><tr><td>first</td></tr></table><table><tr><td>second</td></tr></table>"
+   },
+   {
+    "do": "pasteformat",
+    "at": "A1",
+    "format": "HTML"
+   }
+  ],
+  "dump": [
+   "A1:F8"
+  ]
+ },
+ {
+  "name": "html_paragraphs",
+  "formats": true,
+  "cells": {},
+  "steps": [
+   {
+    "do": "sethtml",
+    "value": "<p>one</p><p>two</p><p>three</p>"
+   },
+   {
+    "do": "pasteformat",
+    "at": "A1",
+    "format": "HTML"
+   }
+  ],
+  "dump": [
+   "A1:F8"
+  ]
+ },
+ {
+  "name": "html_nested",
+  "formats": true,
+  "cells": {},
+  "steps": [
+   {
+    "do": "sethtml",
+    "value": "<table><tr><td><span style=\"font-weight:bold\">sp</span> <a href=\"http://x.y\">link</a></td><td><div>d1</div><div>d2</div></td></tr></table>"
+   },
+   {
+    "do": "pasteformat",
+    "at": "A1",
+    "format": "HTML"
+   }
+  ],
+  "dump": [
+   "A1:F8"
+  ]
+ },
+ {
+  "name": "html_x_num",
+  "formats": true,
+  "cells": {},
+  "steps": [
+   {
+    "do": "sethtml",
+    "value": "<table><tr><td x:num=\"45000\" style=\"mso-number-format:'yyyy\\-mm\\-dd'\">2023-03-15</td><td x:num=\"0.5\" style=\"mso-number-format:0%\">50%</td><td style=\"mso-number-format:'\\@'\">0012</td></tr></table>"
+   },
+   {
+    "do": "pasteformat",
+    "at": "A1",
+    "format": "HTML"
+   }
+  ],
+  "dump": [
+   "A1:F8"
+  ]
+ },
+ {
+  "name": "html_empty_cells",
+  "formats": true,
+  "cells": {},
+  "steps": [
+   {
+    "do": "sethtml",
+    "value": "<table><tr><td>a</td><td></td><td>c</td></tr><tr><td></td><td>&nbsp;</td><td>z</td></tr></table>"
+   },
+   {
+    "do": "pasteformat",
+    "at": "A1",
+    "format": "HTML"
+   }
+  ],
+  "dump": [
+   "A1:F8"
+  ]
+ },
+ {
+  "name": "html_font_tag",
+  "formats": true,
+  "cells": {},
+  "steps": [
+   {
+    "do": "sethtml",
+    "value": "<table><tr><td><font color=\"#0000ff\" size=\"5\" face=\"Arial\">blue</font></td><td bgcolor=\"#ffff00\">yellow</td></tr></table>"
+   },
+   {
+    "do": "pasteformat",
+    "at": "A1",
+    "format": "HTML"
+   }
+  ],
+  "dump": [
+   "A1:F8"
+  ]
+ },
+ {
+  "name": "html_width_height",
+  "formats": true,
+  "cells": {},
+  "steps": [
+   {
+    "do": "sethtml",
+    "value": "<table><tr><td width=\"200\" height=\"40\">w</td><td>n</td></tr></table>"
+   },
+   {
+    "do": "pasteformat",
+    "at": "A1",
+    "format": "HTML"
+   }
+  ],
+  "dump": [
+   "A1:F8"
+  ]
+ }
+]

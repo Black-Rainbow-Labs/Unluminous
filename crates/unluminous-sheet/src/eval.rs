@@ -41,6 +41,8 @@ impl Area {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Lambda {
     pub params: Vec<Arc<str>>,
+    /// How many of the leading parameters must be given; the rest were written `[name]` and may be left out.
+    pub required: usize,
     pub body: Arc<Expr>,
     pub scope: Vec<(Arc<str>, Val)>,
 }
@@ -106,6 +108,7 @@ pub struct Env {
 
 impl Env {
     pub fn new(now: f64, seed: u64) -> Self {
+        crate::input::use_clock(now);
         Self { now, seed: StdCell::new(seed | 1) }
     }
 
@@ -256,6 +259,11 @@ impl<'a> Ctx<'a> {
 
     /// A reference written in the formula, on the formula's own sheet or the one it names.
     pub fn reference(&mut self, r: &Reference) -> Val {
+        if r.sheet.is_none() {
+            if let Some(found) = self.reference_in_scope(r) {
+                return found;
+            }
+        }
         let sheet = match &r.sheet {
             None => self.sheet,
             Some(name) => match self.book.sheet_index(name) {
@@ -281,6 +289,24 @@ impl<'a> Ctx<'a> {
             _ => r.range(),
         };
         Val::Ref(Area { sheet, sheet_last, range })
+    }
+
+    /// A LET name may look like a cell, `LET(A1, 2, A1)`, and the name wins over the cell. While such a name
+    /// is in scope Excel cannot tell the cells of the formula from names, so every other cell written in
+    /// the formula is `#NAME?`.
+    fn reference_in_scope(&self, r: &Reference) -> Option<Val> {
+        if !self.scope.iter().any(|(n, _)| looks_like_a_cell(n)) {
+            return None;
+        }
+        if r.shape == Shape::Cell {
+            let name = cell_name(r.first.row, r.first.col);
+            if let Some((_, val)) =
+                self.scope.iter().rev().find(|(n, _)| n.eq_ignore_ascii_case(&name))
+            {
+                return Some(val.clone());
+            }
+        }
+        Some(Val::error(ErrorKind::Name))
     }
 
     fn name(&mut self, name: &Arc<str>) -> Val {
@@ -350,7 +376,7 @@ impl<'a> Ctx<'a> {
 
     /// Call a LAMBDA with values already computed, which is what MAP and REDUCE do.
     pub fn invoke_with(&mut self, lambda: &Lambda, values: Vec<Val>) -> Val {
-        if values.len() > lambda.params.len() {
+        if values.len() > lambda.params.len() || values.len() < lambda.required {
             return Val::error(ErrorKind::Value);
         }
         if self.depth > DEEPEST {
@@ -391,68 +417,10 @@ impl<'a> Ctx<'a> {
     }
 
     fn table(&mut self, t: &TableRef) -> Val {
-        let table = match &t.table {
-            Some(name) => self.book.table(name),
-            None => self.book.table_at(self.sheet, self.at),
-        };
-        let Some(table) = table else { return Val::error(ErrorKind::Ref) };
-        let range = table.range;
-        let has = |item: &str| t.items.iter().any(|i| &**i == item);
-        let (mut first_row, mut last_row) = (range.first.row, range.last.row);
-        let data_first = range.first.row + u32::from(table.header_row);
-        let data_last = range.last.row.saturating_sub(u32::from(table.totals_row));
-        if has("all") {
-        } else if has("this row") {
-            if self.at.row < data_first || self.at.row > data_last {
-                return Val::error(ErrorKind::Value);
-            }
-            first_row = self.at.row;
-            last_row = self.at.row;
-        } else {
-            let headers = has("headers");
-            let totals = has("totals");
-            let data = has("data") || !headers && !totals;
-            first_row = if headers {
-                range.first.row
-            } else if data {
-                data_first
-            } else {
-                data_last + 1
-            };
-            last_row = if totals {
-                range.last.row
-            } else if data {
-                data_last
-            } else {
-                range.first.row
-            };
-            if headers && !table.header_row || totals && !table.totals_row {
-                return Val::error(ErrorKind::Ref);
-            }
+        match table_area(self.book, t, self.sheet, Some(self.at)) {
+            Ok((sheet, range)) => Val::Ref(Area::new(sheet, range)),
+            Err(e) => Val::error(e),
         }
-        let column = |name: &Option<Arc<str>>| -> Option<Option<u32>> {
-            match name {
-                None => Some(None),
-                Some(n) => table
-                    .columns
-                    .iter()
-                    .position(|c| c.eq_ignore_ascii_case(n))
-                    .map(|i| Some(range.first.col + i as u32)),
-            }
-        };
-        let (Some(first_col), Some(last_col)) = (column(&t.first_column), column(&t.last_column))
-        else {
-            return Val::error(ErrorKind::Ref);
-        };
-        let first_col = first_col.unwrap_or(range.first.col);
-        let last_col = last_col.unwrap_or(range.last.col);
-        if last_row < first_row {
-            return Val::error(ErrorKind::Ref);
-        }
-        Val::Ref(Area::new(
-            table.sheet,
-            Range::new(CellRef::new(first_row, first_col), CellRef::new(last_row, last_col)),
-        ))
     }
 
     /// One value out of anything: a single cell, the first of an array, the cell of a range in the
@@ -509,6 +477,7 @@ impl<'a> Ctx<'a> {
             Val::Ref(area) if !area.is_3d() => {
                 Some((area.range.rows() as usize, area.range.cols() as usize))
             }
+            Val::Refs(areas) if areas.is_empty() => Some((1, 1)),
             _ => None,
         }
     }
@@ -532,6 +501,8 @@ impl<'a> Ctx<'a> {
                 )
             }
             Val::Lambda(_) => Value::Error(ErrorKind::Calc),
+            // An omitted LAMBDA parameter reads as an empty cell.
+            Val::Refs(ref areas) if areas.is_empty() => Value::Empty,
             Val::Refs(_) => Value::Error(ErrorKind::Value),
         }
     }
@@ -874,6 +845,16 @@ pub fn power(x: f64, y: f64) -> Result<f64, ErrorKind> {
 /// an array, with the array itself when there is one.
 /// One value from a parsed formula evaluated at a cell, which is what a conditional format rule's formula
 /// is, moved to each cell it covers.
+/// The name a cell is written with when it is also a LET name: `A1`.
+pub fn cell_name(row: u32, col: u32) -> String {
+    format!("{}{}", crate::coord::column_name(col), row + 1)
+}
+
+/// Whether a name is a cell address, which a LET name may be.
+fn looks_like_a_cell(name: &str) -> bool {
+    CellRef::parse(name).is_some_and(|at| cell_name(at.row, at.col).eq_ignore_ascii_case(name))
+}
+
 pub fn evaluate_expr(book: &Workbook, sheet: usize, at: CellRef, expr: &Expr, now: f64) -> Value {
     let env = Env::new(now, 0x2545_F491_4F6C_DD1D);
     let mut ctx = Ctx::new(book, sheet, at, &env);
@@ -896,10 +877,13 @@ pub fn evaluate(
     let mut ctx = Ctx::new(book, sheet, at, &env);
     let v = ctx.eval(&expr);
     Ok(match v {
-        Val::Array(a) => (a.data.first().cloned().unwrap_or(Value::Empty), Some(a)),
+        Val::Array(a) => spilled(at, a),
         Val::Ref(area) if area.range.len() > 1 && !area.is_3d() => {
+            if !fits(at, area.range.rows() as usize, area.range.cols() as usize) {
+                return Ok((Value::Error(ErrorKind::Spill), None));
+            }
             let a = ctx.array(Val::Ref(area)).unwrap_or_else(|e| Array::single(Value::Error(e)));
-            (a.data.first().cloned().unwrap_or(Value::Empty), Some(a))
+            spilled(at, a)
         }
         Val::Lambda(_) => (Value::Error(ErrorKind::Calc), None),
         other => {
@@ -907,4 +891,90 @@ pub fn evaluate(
             (if v.is_empty() { Value::Number(0.0) } else { v }, None)
         }
     })
+}
+
+/// The cells a structured reference names: its table's sheet and the rows and columns its items and
+/// columns choose. `at` is the cell the formula is in, which `[#This Row]` and `[@Col]` need; with no cell
+/// they name the whole data body, which is what a dependency is on.
+pub fn table_area(
+    book: &Workbook,
+    t: &TableRef,
+    sheet: usize,
+    at: Option<CellRef>,
+) -> Result<(usize, Range), ErrorKind> {
+    let table = match (&t.table, at) {
+        (Some(name), _) => book.table(name),
+        (None, Some(at)) => book.table_at(sheet, at),
+        (None, None) => None,
+    };
+    let table = table.ok_or(ErrorKind::Ref)?;
+    let range = table.range;
+    let has = |item: &str| t.items.iter().any(|i| &**i == item);
+    let data_first = range.first.row + u32::from(table.header_row);
+    let data_last = range.last.row.saturating_sub(u32::from(table.totals_row));
+    let (first_row, last_row) = if has("all") {
+        (range.first.row, range.last.row)
+    } else if has("this row") {
+        match at {
+            Some(at) if at.row < data_first || at.row > data_last => return Err(ErrorKind::Value),
+            Some(at) => (at.row, at.row),
+            None => (data_first, data_last),
+        }
+    } else {
+        let headers = has("headers");
+        let totals = has("totals");
+        let data = has("data") || !headers && !totals;
+        if headers && !table.header_row || totals && !table.totals_row {
+            return Err(ErrorKind::Ref);
+        }
+        let first = if headers {
+            range.first.row
+        } else if data {
+            data_first
+        } else {
+            data_last + 1
+        };
+        let last = if totals {
+            range.last.row
+        } else if data {
+            data_last
+        } else {
+            range.first.row
+        };
+        (first, last)
+    };
+    let column = |name: &Option<Arc<str>>| -> Option<u32> {
+        match name {
+            None => None,
+            Some(n) => table
+                .columns
+                .iter()
+                .position(|c| c.eq_ignore_ascii_case(n))
+                .map(|i| range.first.col + i as u32),
+        }
+    };
+    let missing = |name: &Option<Arc<str>>| name.is_some() && column(name).is_none();
+    if missing(&t.first_column) || missing(&t.last_column) || last_row < first_row {
+        return Err(ErrorKind::Ref);
+    }
+    let first_col = column(&t.first_column).unwrap_or(range.first.col);
+    let last_col = column(&t.last_column).or(column(&t.first_column)).unwrap_or(range.last.col);
+    Ok((
+        table.sheet,
+        Range::new(CellRef::new(first_row, first_col), CellRef::new(last_row, last_col)),
+    ))
+}
+
+/// An array answer anchored at a cell: its first value and the array, or `#SPILL!` when the array would
+/// run past the last row or column of the sheet.
+fn spilled(at: CellRef, array: Array) -> (Value, Option<Array>) {
+    if !fits(at, array.rows, array.cols) {
+        return (Value::Error(ErrorKind::Spill), None);
+    }
+    (array.data.first().cloned().unwrap_or(Value::Empty), Some(array))
+}
+
+/// Whether a block of cells anchored at `at` stays inside the sheet.
+pub fn fits(at: CellRef, rows: usize, cols: usize) -> bool {
+    rows == 0 || cols == 0 || at.offset(rows as i64 - 1, cols as i64 - 1).is_some()
 }

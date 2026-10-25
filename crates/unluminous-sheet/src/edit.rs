@@ -17,6 +17,10 @@ use crate::model::*;
 use crate::styles::{StyleChange, Styles};
 use crate::value::Value;
 
+pub mod clipboard;
+pub use clipboard::{ClipExtras, PasteKind, PasteOperation, PasteSpecial};
+mod page_edits;
+
 /// What a change put back when undone.
 #[derive(Debug, Clone)]
 enum Before {
@@ -49,37 +53,44 @@ pub struct Clip {
     pub cells: Vec<(u32, u32, Cell)>,
     /// A cut: pasting moves the cells and the references to them.
     pub cut: bool,
+    /// Notes, validation, conditional formats, merges, links, widths and cell formats that came with them.
+    pub extras: ClipExtras,
 }
 
 impl Clip {
-    /// The cells as tab separated text, which is what Excel puts on the clipboard and reads from it.
+    /// The cells as tab separated text, which is what Excel puts on the clipboard for other programs: every
+    /// row ends with a line break, a cell holding a tab or a line break is in quotes, and rows and columns
+    /// that are hidden are left out.
     pub fn to_text(&self, book: &Workbook) -> String {
         let mut out = String::new();
-        for r in 0..self.range.rows() {
-            if r > 0 {
-                out.push_str("\r\n");
+        // Only as far as the cells in use: rows and columns of blanks at the end are not copied.
+        let rows = self.cells.iter().map(|(r, _, _)| r + 1).max().unwrap_or(1);
+        let cols = self.cells.iter().map(|(_, c, _)| c + 1).max().unwrap_or(1);
+        let by_place: std::collections::HashMap<(u32, u32), &Cell> =
+            self.cells.iter().map(|(r, c, cell)| ((*r, *c), cell)).collect();
+        for r in 0..rows {
+            if self.extras.hidden_rows.contains(&(self.source_row(r) - self.range.first.row)) {
+                continue;
             }
-            for c in 0..self.range.cols() {
-                if c > 0 {
-                    out.push('\t');
-                }
-                if let Some((_, _, cell)) =
-                    self.cells.iter().find(|(rr, cc, _)| *rr == r && *cc == c)
-                {
-                    out.push_str(&shown_text(book, cell));
-                }
-            }
+            let shown: Vec<String> = (0..cols)
+                .filter(|c| !self.extras.hidden_columns.contains(c))
+                .map(|c| {
+                    by_place.get(&(r, c)).map_or_else(String::new, |cell| shown_text(book, cell))
+                })
+                .collect();
+            out.push_str(&shown.join("\t"));
+            out.push_str("\r\n");
         }
-        out.push_str("\r\n");
         out
     }
 }
 
-/// A cell as it is shown, with its number format: what copying to another program gives.
+/// A cell as it is shown, with its number format: what copying to another program gives. A cell holding a
+/// tab or a line break is in quotes, with any quote marks in it doubled; quote marks alone change nothing.
 pub fn shown_text(book: &Workbook, cell: &Cell) -> String {
     let code = book.styles.format_code(cell.style);
     let text = crate::numfmt::Format::parse(&code).render(&cell.value, book.date1904, 255).text;
-    if text.contains(['\t', '\n', '"']) {
+    if text.contains(['\t', '\n', '\r']) {
         format!("\"{}\"", text.replace('"', "\"\""))
     } else {
         text
@@ -191,6 +202,72 @@ impl Session {
         let seed = self.seed();
         self.engine.mark_all();
         self.engine.recalculate(&mut self.book, self.now, seed);
+    }
+
+    /// Switch between automatic and manual calculation. Going back to automatic computes everything.
+    pub fn set_automatic_calculation(&mut self, automatic: bool) {
+        self.remember_whole("Calculation mode");
+        self.book.calc.automatic = automatic;
+        if automatic {
+            self.recalculate_all();
+        }
+    }
+
+    /// Turn iterative calculation on or off and set how many passes it makes and how small a change ends it.
+    /// A count below one is one, and a delta below zero is zero. With automatic calculation the workbook is
+    /// calculated again, so circular references settle at once.
+    pub fn set_iteration(&mut self, on: bool, count: u32, delta: f64) {
+        self.remember_whole("Iterative calculation");
+        let calc = &mut self.book.calc;
+        calc.iterate = on;
+        calc.iterate_count = count.max(1);
+        calc.iterate_delta = delta.max(0.0);
+        if calc.automatic {
+            self.recalculate_all();
+        }
+    }
+
+    /// Turn precision as displayed on or off. Turning it on rounds every number typed into a cell to what
+    /// its format shows, for good, as Excel does, and then calculates again; turning it off leaves the
+    /// numbers as they are.
+    pub fn set_precision_as_displayed(&mut self, on: bool) {
+        self.remember_whole("Precision as displayed");
+        self.book.calc.full_precision = !on;
+        if on {
+            self.round_constants_to_shown();
+            self.recalculate_all();
+        }
+    }
+
+    /// Round every constant number in the workbook to what its cell shows.
+    fn round_constants_to_shown(&mut self) {
+        let date1904 = self.book.date1904;
+        for sheet in 0..self.book.sheets.len() {
+            let changes: Vec<((u32, u32), f64)> = self.book.sheets[sheet]
+                .cells
+                .iter()
+                .filter(|(_, c)| c.formula.is_none())
+                .filter_map(|(k, c)| match c.value {
+                    Value::Number(n) => Some((*k, self.book.shown_number(c.style, n, date1904))),
+                    _ => None,
+                })
+                .collect();
+            for (key, n) in changes {
+                if let Some(cell) = self.book.sheets[sheet].cells.get_mut(&key) {
+                    cell.value = Value::Number(n);
+                }
+            }
+        }
+    }
+
+    /// A number typed into a cell, kept as the cell shows it when precision is as displayed.
+    fn as_stored(&self, style: u32, value: Value) -> Value {
+        match value {
+            Value::Number(n) if !self.book.calc.full_precision => {
+                Value::Number(self.book.shown_number(style, n, self.book.date1904))
+            }
+            other => other,
+        }
     }
 
     fn push(&mut self, step: Step) {
@@ -314,6 +391,7 @@ impl Session {
                         self.book.styles.derive(style, &StyleChange::NumberFormat(code.to_owned()));
                 }
             }
+            let value = if formula.is_none() { self.as_stored(style, value) } else { value };
             let cell = Cell { value, formula, style, rich: None, extra: old.extra.clone() };
             self.book.sheets[sheet].set(at, cell);
             self.engine.changed(&self.book, sheet, at);
@@ -352,7 +430,9 @@ impl Session {
         self.remember_cells("Set value", sheet, &[Range::cell(at)], false);
         let s = &mut self.book.sheets[sheet];
         let old = s.cells.get(&(at.row, at.col)).cloned().unwrap_or_default();
-        s.set(at, Cell { value, formula: None, style: old.style, rich: None, extra: old.extra });
+        let value = self.as_stored(old.style, value);
+        self.book.sheets[sheet]
+            .set(at, Cell { value, formula: None, style: old.style, rich: None, extra: old.extra });
         self.engine.changed(&self.book, sheet, at);
         self.recalculate();
         Ok(())
@@ -541,6 +621,7 @@ impl Session {
             ),
             _ => return Err("insert shifts cells down or right".to_owned()),
         };
+        self.refuse_structural(sheet, axis, at, count, band)?;
         if let Some(why) = self.book.pivots.refuse_edit(sheet, axis == Axis::Rows, at, count, band) {
             return Err(why);
         }
@@ -570,6 +651,7 @@ impl Session {
             ),
             _ => return Err("delete shifts cells up or left".to_owned()),
         };
+        self.refuse_structural(sheet, axis, at, count, band)?;
         if let Some(why) = self.book.pivots.refuse_edit(sheet, axis == Axis::Rows, at, count, band) {
             return Err(why);
         }
@@ -578,6 +660,56 @@ impl Session {
             Axis::Columns => "Delete columns",
         });
         self.structural(sheet, axis, at, count, band);
+        Ok(())
+    }
+
+    /// Refuse an insert or a delete that Excel refuses, before anything changes: one that would change part
+    /// of a legacy array formula, and one that would delete a table's header row without the table.
+    fn refuse_structural(
+        &self,
+        sheet: usize,
+        axis: Axis,
+        at: u32,
+        count: i64,
+        band: Option<(u32, u32)>,
+    ) -> Result<(), String> {
+        let s = &self.book.sheets[sheet];
+        let span = |r: Range| match axis {
+            Axis::Rows => (r.first.row, r.last.row, r.first.col, r.last.col),
+            Axis::Columns => (r.first.col, r.last.col, r.first.row, r.last.row),
+        };
+        let in_band = |lo: u32, hi: u32| band.is_none_or(|(b0, b1)| hi >= b0 && lo <= b1);
+        for range in &s.array_formulas {
+            let (first, last, lo, hi) = span(*range);
+            if !in_band(lo, hi) {
+                continue;
+            }
+            let splits = if count > 0 {
+                at > first && at <= last
+            } else {
+                let end = at as i64 - count - 1;
+                let touches = (at as i64) <= last as i64 && end >= first as i64;
+                let whole = (at as i64) <= first as i64 && end >= last as i64;
+                touches && !whole
+            };
+            if splits {
+                return Err("You can't change part of an array.".to_owned());
+            }
+        }
+        if count < 0 {
+            let end = at as i64 - count - 1;
+            for t in self.book.tables.iter().filter(|t| t.sheet == sheet && t.header_row) {
+                let (first, last, lo, hi) = span(t.range);
+                if axis != Axis::Rows || !in_band(lo, hi) {
+                    continue;
+                }
+                let header_gone = (at as i64) <= first as i64 && end >= first as i64;
+                let all_gone = (at as i64) <= first as i64 && end >= last as i64;
+                if header_gone && !all_gone {
+                    return Err("This operation is not allowed. The operation is attempting to shift cells in a table on your worksheet.".to_owned());
+                }
+            }
+        }
         Ok(())
     }
 
@@ -592,6 +724,10 @@ impl Session {
         band: Option<(u32, u32)>,
     ) {
         let name = self.book.sheets[sheet].name.clone();
+        crate::refshift::shift_kept(
+            &mut self.book,
+            &crate::refshift::StructuralEdit::Lines { sheet: name.clone(), axis, at, count, band },
+        );
         let limit = match axis {
             Axis::Rows => MAX_ROWS,
             Axis::Columns => MAX_COLS,
@@ -610,11 +746,17 @@ impl Session {
                             adjust_band(&f.expr, &name, &names[si], axis, at, count, band)
                         }
                     };
-                    if adjusted != *f.expr {
-                        let dynamic = f.dynamic;
-                        let array = f.array;
+                    let array = f.array.and_then(|r| {
+                        if si != sheet {
+                            return Some(r);
+                        }
+                        crate::refshift::shift_range(r, axis, at, count, band)
+                    });
+                    if adjusted != *f.expr || array != f.array {
+                        let (dynamic, attrs) = (f.dynamic, f.attrs.clone());
                         *f = Formula::from_expr(adjusted, dynamic);
                         f.array = array;
+                        f.attrs = attrs;
                     }
                 }
             }
@@ -714,8 +856,22 @@ impl Session {
             .filter_map(|l| shift_range(l.range).map(|range| Hyperlink { range, ..l.clone() }))
             .collect();
         if let Some(f) = &s.filter {
-            s.filter =
-                shift_range(f.range).map(|range| AutoFilter { range, columns: f.columns.clone() });
+            s.filter = shift_range(f.range).map(|range| AutoFilter {
+                range,
+                columns: f.columns.clone(),
+                sort: f.sort.as_ref().and_then(|sort| {
+                    let mut sort = sort.clone();
+                    sort.range = shift_range(sort.range)?;
+                    sort.conditions.retain_mut(|c| match shift_range(c.range) {
+                        Some(r) => {
+                            c.range = r;
+                            true
+                        }
+                        None => false,
+                    });
+                    Some(sort)
+                }),
+            });
         }
         if band.is_none() {
             match axis {
@@ -740,16 +896,25 @@ impl Session {
                 }
             }
         }
-        s.spills = Spills::default();
-        for t in &mut self.book.tables {
-            if t.sheet == sheet {
-                if let Some(r) = shift_range(t.range) {
-                    t.range = r;
-                }
-            }
+        if band.is_none() {
+            page_edits::shift_page_breaks(&mut s.page, axis, at, count);
         }
         self.book.pivots.shift(sheet, &name, &shift_range);
         crate::pivot::xml::sync_dirty(&mut self.book);
+        s.spills = Spills::default();
+        // A table whose every row was deleted goes with them, as it does in Excel.
+        self.book.tables.retain_mut(|t| {
+            if t.sheet != sheet {
+                return true;
+            }
+            match shift_range(t.range) {
+                Some(r) => {
+                    t.range = r;
+                    true
+                }
+                None => false,
+            }
+        });
         self.engine.rebuild(&self.book);
         self.recalculate_all();
     }
@@ -784,6 +949,10 @@ impl Session {
         }
         self.remember_whole("Rename sheet");
         let old = self.book.sheets[sheet].name.clone();
+        crate::refshift::shift_kept(
+            &mut self.book,
+            &crate::refshift::StructuralEdit::Rename { from: old.clone(), to: name.to_owned() },
+        );
         self.book.sheets[sheet].name = name.to_owned();
         for s in &mut self.book.sheets {
             for cell in s.cells.values_mut() {
@@ -793,9 +962,10 @@ impl Session {
                     }
                     let renamed = f.expr.rename_sheet(&old, name);
                     if renamed != *f.expr {
-                        let (dynamic, array) = (f.dynamic, f.array);
+                        let (dynamic, array, attrs) = (f.dynamic, f.array, f.attrs.clone());
                         *f = Formula::from_expr(renamed, dynamic);
                         f.array = array;
+                        f.attrs = attrs;
                     }
                 }
             }
@@ -825,6 +995,20 @@ impl Session {
         }
         self.remember_whole("Delete sheet");
         let name = self.book.sheets[sheet].name.clone();
+        crate::refshift::shift_kept(
+            &mut self.book,
+            &crate::refshift::StructuralEdit::DeleteSheet { name: name.clone() },
+        );
+        for n in &mut self.book.names {
+            if n.scope == Some(sheet) {
+                continue;
+            }
+            n.formula = crate::refshift::shift_formula_text(
+                &n.formula,
+                "",
+                &crate::refshift::StructuralEdit::DeleteSheet { name: name.clone() },
+            );
+        }
         for s in &mut self.book.sheets {
             for cell in s.cells.values_mut() {
                 if let Some(f) = &mut cell.formula {
@@ -833,9 +1017,10 @@ impl Session {
                         _ => Some(r.clone()),
                     });
                     if gone != *f.expr {
-                        let (dynamic, array) = (f.dynamic, f.array);
+                        let (dynamic, array, attrs) = (f.dynamic, f.array, f.attrs.clone());
                         *f = Formula::from_expr(gone, dynamic);
                         f.array = array;
+                        f.attrs = attrs;
                     }
                 }
             }
@@ -1043,8 +1228,75 @@ impl Session {
     pub fn freeze(&mut self, sheet: usize, rows: u32, cols: u32) -> Result<(), String> {
         self.check_sheet(sheet)?;
         self.remember_whole(if rows == 0 && cols == 0 { "Unfreeze" } else { "Freeze panes" });
-        self.book.sheets[sheet].frozen = (rows > 0 || cols > 0).then_some((rows, cols));
+        let s = &mut self.book.sheets[sheet];
+        s.frozen = (rows > 0 || cols > 0).then_some((rows, cols));
+        // The panes change, so what was chosen in each pane and where each pane was scrolled no longer
+        // name panes the sheet has.
+        s.view.split = None;
+        s.view.pane_top_left = None;
+        s.view.active_pane = None;
+        s.view.frozen_split = false;
+        s.view.selections.clear();
         Ok(())
+    }
+
+    /// Split the window into panes at a cell, as dragging the split bars does, or remove the split.
+    /// `x` and `y` are the split's distance from the top left of the grid in twentieths of a point.
+    pub fn split(
+        &mut self,
+        sheet: usize,
+        split: Option<crate::model::Split>,
+    ) -> Result<(), String> {
+        self.check_sheet(sheet)?;
+        self.remember_whole(if split.is_some() { "Split" } else { "Remove split" });
+        let s = &mut self.book.sheets[sheet];
+        s.frozen = None;
+        s.view.pane_top_left = None;
+        s.view.frozen_split = false;
+        s.view.selections.clear();
+        s.view.active_pane = split.as_ref().map(|sp| {
+            match (sp.x > 0.0, sp.y > 0.0) {
+                (true, true) => "bottomRight",
+                (false, true) => "bottomLeft",
+                _ => "topRight",
+            }
+            .to_owned()
+        });
+        s.view.split = split;
+        Ok(())
+    }
+
+    /// Change how a sheet is shown: the view kind, headings, zeros, formulas, right to left. Not an undo
+    /// step, as these are not in Excel, but saved with the file.
+    pub fn set_view(
+        &mut self,
+        sheet: usize,
+        change: impl FnOnce(&mut crate::model::SheetView),
+    ) -> Result<(), String> {
+        self.check_sheet(sheet)?;
+        change(&mut self.book.sheets[sheet].view);
+        self.modified = true;
+        Ok(())
+    }
+
+    /// Remember the selection and the scroll position, which are saved with the file. Not an undo step.
+    pub fn remember_selection(
+        &mut self,
+        sheet: usize,
+        active: CellRef,
+        ranges: Vec<Range>,
+        top_left: CellRef,
+    ) {
+        let Some(s) = self.book.sheets.get_mut(sheet) else { return };
+        let pane = match s.view.selections.last() {
+            Some(last) => last.pane.clone(),
+            None => frozen_or_split_pane(s),
+        };
+        s.view.selections.retain(|sel| sel.pane != pane);
+        s.view.selections.push(crate::model::Selection { pane, active, ranges });
+        if s.frozen.is_none() && s.view.split.is_none() {
+            s.view.top_left = (top_left != CellRef::new(0, 0)).then_some(top_left);
+        }
     }
 
     pub fn set_gridlines(&mut self, sheet: usize, shown: bool) -> Result<(), String> {
@@ -1110,28 +1362,11 @@ impl Session {
     // Copy, paste, fill, sort.
 
     pub fn copy(&self, sheet: usize, range: Range, cut: bool) -> Clip {
-        let s = &self.book.sheets[sheet];
-        let mut cells = Vec::new();
-        for r in range.first.row..=range.last.row.min(last_row(s).max(range.first.row)) {
-            for c in range.first.col..=range.last.col.min(last_col(s).max(range.first.col)) {
-                let at = CellRef::new(r, c);
-                let cell = match s.cells.get(&(r, c)) {
-                    Some(cell) => cell.clone(),
-                    None => match s.spills.values.get(&(r, c)) {
-                        // A value a spill put there copies as a value.
-                        Some(v) => Cell::value(v.clone()),
-                        None => continue,
-                    },
-                };
-                let _ = at;
-                cells.push((r - range.first.row, c - range.first.col, cell));
-            }
-        }
-        Clip { sheet, range, cells, cut }
+        self.build_clip(sheet, range, cut)
     }
 
     /// Paste copied cells with their top left at `to`. A paste into a selection that is a whole multiple of
-    /// the copied block repeats it, as Excel does.
+    /// the copied block repeats it, as Excel does. [`Session::paste_special`] has every other choice.
     pub fn paste(
         &mut self,
         clip: &Clip,
@@ -1139,105 +1374,7 @@ impl Session {
         to: Range,
         mode: PasteMode,
     ) -> Result<Range, String> {
-        self.check_sheet(sheet)?;
-        let (rows, cols) = if mode == PasteMode::Transpose {
-            (clip.range.cols(), clip.range.rows())
-        } else {
-            (clip.range.rows(), clip.range.cols())
-        };
-        let repeat_r = if to.rows() > rows && to.rows() % rows == 0 { to.rows() / rows } else { 1 };
-        let repeat_c = if to.cols() > cols && to.cols() % cols == 0 { to.cols() / cols } else { 1 };
-        let target = Range::new(
-            to.first,
-            CellRef::new(
-                (to.first.row + rows * repeat_r - 1).min(MAX_ROWS - 1),
-                (to.first.col + cols * repeat_c - 1).min(MAX_COLS - 1),
-            ),
-        );
-        self.refuse_array_member(sheet, target)?;
-        if clip.cut {
-            self.remember_whole("Move cells");
-            self.move_cells(clip, sheet, target.first);
-            return Ok(target);
-        }
-        self.remember_cells("Paste", sheet, &[target], true);
-        for rr in 0..repeat_r {
-            for rc in 0..repeat_c {
-                // Clear the block first, so empty source cells paste as empty.
-                if mode == PasteMode::All || mode == PasteMode::Transpose {
-                    for r in 0..rows {
-                        for c in 0..cols {
-                            let key = (to.first.row + rr * rows + r, to.first.col + rc * cols + c);
-                            self.book.sheets[sheet].cells.remove(&key);
-                            self.engine.changed(&self.book, sheet, CellRef::new(key.0, key.1));
-                        }
-                    }
-                }
-                for (r, c, cell) in &clip.cells {
-                    let (r, c) = if mode == PasteMode::Transpose { (*c, *r) } else { (*r, *c) };
-                    let at =
-                        CellRef::new(to.first.row + rr * rows + r, to.first.col + rc * cols + c);
-                    if at.row >= MAX_ROWS || at.col >= MAX_COLS {
-                        continue;
-                    }
-                    let source = CellRef::new(
-                        clip.range.first.row + if mode == PasteMode::Transpose { c } else { r },
-                        clip.range.first.col + if mode == PasteMode::Transpose { r } else { c },
-                    );
-                    let shifted = |f: &Formula| -> Formula {
-                        let expr = formula::shifted(
-                            &f.expr,
-                            at.row as i64 - source.row as i64,
-                            at.col as i64 - source.col as i64,
-                        );
-                        let mut out = Formula::from_expr(expr, f.dynamic);
-                        out.array = None;
-                        out
-                    };
-                    let existing = self.book.sheets[sheet]
-                        .cells
-                        .get(&(at.row, at.col))
-                        .cloned()
-                        .unwrap_or_default();
-                    let pasted = match mode {
-                        PasteMode::All | PasteMode::Transpose => Cell {
-                            value: cell.value.clone(),
-                            formula: cell
-                                .formula
-                                .as_ref()
-                                .filter(|f| f.array.is_none())
-                                .map(shifted),
-                            style: cell.style,
-                            rich: cell.rich.clone(),
-                            extra: None,
-                        },
-                        PasteMode::Values => Cell {
-                            value: cell.value.clone(),
-                            formula: None,
-                            style: existing.style,
-                            rich: None,
-                            extra: None,
-                        },
-                        PasteMode::Formulas => Cell {
-                            value: if cell.formula.is_some() {
-                                Value::Empty
-                            } else {
-                                cell.value.clone()
-                            },
-                            formula: cell.formula.as_ref().map(shifted),
-                            style: existing.style,
-                            rich: None,
-                            extra: None,
-                        },
-                        PasteMode::Formats => Cell { style: cell.style, ..existing },
-                    };
-                    self.book.sheets[sheet].set(at, pasted);
-                    self.engine.changed(&self.book, sheet, at);
-                }
-            }
-        }
-        self.recalculate();
-        Ok(target)
+        self.paste_special(clip, sheet, to, &mode.into())
     }
 
     /// Cut and paste: the cells move and every formula that named them follows.
@@ -1353,95 +1490,6 @@ impl Session {
         if let Some(step) = self.undo.last_mut() {
             step.label = "Fill".to_owned();
         }
-        Ok(())
-    }
-
-    /// Extend a block of cells into a larger range the way dragging the fill handle does: numbers and
-    /// dates continue their step, text ending in a number counts on, day and month names continue,
-    /// formulas move their references, and anything else repeats.
-    pub fn fill_series(
-        &mut self,
-        sheet: usize,
-        source: Range,
-        target: Range,
-    ) -> Result<(), String> {
-        self.check_sheet(sheet)?;
-        if !target.contains(source.first) || !target.contains(source.last) {
-            return Err("the range to fill must contain the cells it starts from".to_owned());
-        }
-        let down = target.rows() > source.rows();
-        let up = down && target.first.row < source.first.row;
-        let left = !down && target.first.col < source.first.col;
-        self.remember_cells("Fill series", sheet, &[target], false);
-        let lines = if down { source.cols() } else { source.rows() };
-        for line in 0..lines {
-            // The source cells along this line, in fill order.
-            let sources: Vec<CellRef> = if down {
-                (source.first.row..=source.last.row)
-                    .map(|r| CellRef::new(r, source.first.col + line))
-                    .collect()
-            } else {
-                (source.first.col..=source.last.col)
-                    .map(|c| CellRef::new(source.first.row + line, c))
-                    .collect()
-            };
-            let cells: Vec<Cell> = sources
-                .iter()
-                .map(|at| self.book.sheets[sheet].cell(*at).cloned().unwrap_or_default())
-                .collect();
-            let series = Series::of(&cells, self.book.date1904);
-            let targets: Vec<CellRef> = if down {
-                let col = source.first.col + line;
-                if up {
-                    (target.first.row..source.first.row)
-                        .rev()
-                        .map(|r| CellRef::new(r, col))
-                        .collect()
-                } else {
-                    (source.last.row + 1..=target.last.row).map(|r| CellRef::new(r, col)).collect()
-                }
-            } else {
-                let row = source.first.row + line;
-                if left {
-                    (target.first.col..source.first.col)
-                        .rev()
-                        .map(|c| CellRef::new(row, c))
-                        .collect()
-                } else {
-                    (source.last.col + 1..=target.last.col).map(|c| CellRef::new(row, c)).collect()
-                }
-            };
-            let backwards = up || left;
-            for (k, at) in targets.iter().enumerate() {
-                let n = k + 1;
-                let template_index =
-                    if backwards { (cells.len() - 1) - (k % cells.len()) } else { k % cells.len() };
-                let template = &cells[template_index];
-                let template_at = sources[template_index];
-                let cell = match &template.formula {
-                    Some(f) => Cell {
-                        formula: Some(Formula::from_expr(
-                            formula::shifted(
-                                &f.expr,
-                                at.row as i64 - template_at.row as i64,
-                                at.col as i64 - template_at.col as i64,
-                            ),
-                            f.dynamic,
-                        )),
-                        style: template.style,
-                        ..Default::default()
-                    },
-                    None => Cell {
-                        value: series.value(n as i64, backwards, &cells, template_index),
-                        style: template.style,
-                        ..Default::default()
-                    },
-                };
-                self.book.sheets[sheet].set(*at, cell);
-                self.engine.changed(&self.book, sheet, *at);
-            }
-        }
-        self.recalculate();
         Ok(())
     }
 
@@ -1672,10 +1720,7 @@ impl Session {
         let s = &mut self.book.sheets[sheet];
         match text {
             Some(t) => {
-                s.notes.insert(
-                    (at.row, at.col),
-                    Note { author: author.to_owned(), text: t.to_owned() },
-                );
+                s.notes.insert((at.row, at.col), Note::new(author, t));
             }
             None => {
                 s.notes.remove(&(at.row, at.col));
@@ -1890,8 +1935,11 @@ impl Session {
                 }
             }
         }
-        s.filter =
-            range.map(|r| AutoFilter { range: clip_to_used(s, r), columns: BTreeMap::new() });
+        s.filter = range.map(|r| AutoFilter {
+            range: clip_to_used(s, r),
+            columns: BTreeMap::new(),
+            sort: None,
+        });
         self.recalculate_all();
         Ok(())
     }
@@ -2343,8 +2391,16 @@ fn replace_ignoring_case(source: &str, find: &str, with: &str) -> String {
     out
 }
 
+/// The pane a selection belongs to when a sheet has panes: the active pane.
+fn frozen_or_split_pane(s: &Sheet) -> Option<String> {
+    if s.frozen.is_none() && s.view.split.is_none() {
+        return None;
+    }
+    s.view.active_pane.clone().or_else(|| Some("bottomRight".to_owned()))
+}
+
 /// A reference adjustment for inserting or deleting cells in a band of columns (rows) only.
-fn adjust_band(
+pub(crate) fn adjust_band(
     expr: &Expr,
     sheet: &str,
     own: &str,
@@ -2367,158 +2423,6 @@ fn adjust_band(
         }
         formula::adjust_reference(r, axis, at, count)
     })
-}
-
-/// How a fill continues a block of cells.
-struct Series {
-    kind: SeriesKind,
-}
-
-enum SeriesKind {
-    /// Numbers (or dates) with a step.
-    Linear {
-        start: f64,
-        step: f64,
-    },
-    /// Text ending in a number that counts on.
-    Counted {
-        prefix: String,
-        start: i64,
-        step: i64,
-        width: usize,
-    },
-    /// Day or month names.
-    Names {
-        list: &'static [&'static str],
-        start: usize,
-        step: i64,
-        upper: bool,
-    },
-    Copy,
-}
-
-const DAYS_SHORT: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MONTHS_SHORT: [&str; 12] =
-    ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-impl Series {
-    fn of(cells: &[Cell], _date1904: bool) -> Series {
-        let numbers: Vec<f64> = cells.iter().filter_map(|c| c.value.as_number()).collect();
-        if numbers.len() == cells.len() && cells.iter().all(|c| c.formula.is_none()) {
-            if numbers.len() >= 2 {
-                // A straight line through the numbers, as Excel's series fill takes.
-                let n = numbers.len() as f64;
-                let mean_x = (n - 1.0) / 2.0;
-                let mean_y = numbers.iter().sum::<f64>() / n;
-                let sxx: f64 = (0..numbers.len()).map(|i| (i as f64 - mean_x).powi(2)).sum();
-                let sxy: f64 = numbers
-                    .iter()
-                    .enumerate()
-                    .map(|(i, y)| (i as f64 - mean_x) * (y - mean_y))
-                    .sum();
-                let step = sxy / sxx;
-                return Series {
-                    kind: SeriesKind::Linear {
-                        start: mean_y - step * mean_x + step * (n - 1.0),
-                        step,
-                    },
-                };
-            }
-            // One number copies, which is Excel's fill without Ctrl.
-            return Series { kind: SeriesKind::Copy };
-        }
-        let texts: Vec<String> = cells.iter().map(|c| c.value.to_text()).collect();
-        if cells.iter().all(|c| matches!(c.value, Value::Text(_))) {
-            for list in [
-                &crate::dates::DAYS[..],
-                &DAYS_SHORT[..],
-                &crate::dates::MONTHS[..],
-                &MONTHS_SHORT[..],
-            ] {
-                let positions: Vec<Option<usize>> = texts
-                    .iter()
-                    .map(|t| list.iter().position(|d| d.eq_ignore_ascii_case(t)))
-                    .collect();
-                if positions.iter().all(Option::is_some) {
-                    let p: Vec<i64> = positions.iter().map(|x| x.unwrap() as i64).collect();
-                    let step =
-                        if p.len() >= 2 { (p[1] - p[0]).rem_euclid(list.len() as i64) } else { 1 };
-                    let upper = texts[0].chars().all(|c| !c.is_lowercase());
-                    return Series {
-                        kind: SeriesKind::Names {
-                            list,
-                            start: *p.last().unwrap() as usize,
-                            step: if step == 0 { 1 } else { step },
-                            upper,
-                        },
-                    };
-                }
-            }
-            // Text ending in a number.
-            let split = |t: &str| -> Option<(String, i64, usize)> {
-                let digits: String = t
-                    .chars()
-                    .rev()
-                    .take_while(|c| c.is_ascii_digit())
-                    .collect::<Vec<_>>()
-                    .into_iter()
-                    .rev()
-                    .collect();
-                if digits.is_empty() || digits.len() > 15 {
-                    return None;
-                }
-                Some((t[..t.len() - digits.len()].to_owned(), digits.parse().ok()?, digits.len()))
-            };
-            let parts: Vec<Option<(String, i64, usize)>> = texts.iter().map(|t| split(t)).collect();
-            if parts.iter().all(Option::is_some) {
-                let p: Vec<(String, i64, usize)> = parts.into_iter().map(Option::unwrap).collect();
-                if p.iter().all(|x| x.0 == p[0].0) {
-                    let step = if p.len() >= 2 { p[1].1 - p[0].1 } else { 1 };
-                    let last = p.last().unwrap();
-                    return Series {
-                        kind: SeriesKind::Counted {
-                            prefix: last.0.clone(),
-                            start: last.1,
-                            step,
-                            width: p[0].2,
-                        },
-                    };
-                }
-            }
-        }
-        Series { kind: SeriesKind::Copy }
-    }
-
-    /// The value `n` steps past the block (or before it, going backwards).
-    fn value(&self, n: i64, backwards: bool, cells: &[Cell], template: usize) -> Value {
-        let len = cells.len() as i64;
-        match &self.kind {
-            SeriesKind::Linear { start, step } => {
-                let x = if backwards {
-                    start - step * (len - 1) as f64 - step * n as f64
-                } else {
-                    start + step * n as f64
-                };
-                Value::Number(crate::value::round_significant(x, 15))
-            }
-            SeriesKind::Counted { prefix, start, step, width } => {
-                let v =
-                    if backwards { start - step * (len - 1) - step * n } else { start + step * n };
-                Value::text(format!("{prefix}{:0width$}", v.max(0), width = *width))
-            }
-            SeriesKind::Names { list, start, step, upper } => {
-                let size = list.len() as i64;
-                let i = if backwards {
-                    (*start as i64 - step * (len - 1) - step * n).rem_euclid(size)
-                } else {
-                    (*start as i64 + step * n).rem_euclid(size)
-                };
-                let name = list[i as usize];
-                Value::text(if *upper { name.to_uppercase() } else { name.to_owned() })
-            }
-            SeriesKind::Copy => cells[template].value.clone(),
-        }
-    }
 }
 
 #[cfg(test)]

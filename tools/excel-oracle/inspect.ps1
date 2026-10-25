@@ -5,11 +5,14 @@
 # -Recalculate, Excel computes every formula first, so the values are Excel's own rather than the values
 # saved in the file.
 #
-#   pwsh tools/excel-oracle/inspect.ps1 -Path book.xlsx [-Recalculate] [-SaveAs copy.xlsx]
+# With -Seconds, a file that makes Excel stop answering ends that Excel by its process id after that long.
+#
+#   pwsh tools/excel-oracle/inspect.ps1 -Path book.xlsx [-Recalculate] [-SaveAs copy.xlsx] [-Seconds 120]
 param(
     [Parameter(Mandatory = $true)][string]$Path,
     [switch]$Recalculate,
-    [string]$SaveAs
+    [string]$SaveAs,
+    [int]$Seconds = 0
 )
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
@@ -18,6 +21,13 @@ $excel = New-Object -ComObject Excel.Application
 $excel.DisplayAlerts = $false
 $excel.Visible = $false
 $excel.AutomationSecurity = 3  # never run macros
+$watchdog = $null
+if ($Seconds -gt 0) {
+    Add-Type -Namespace Native -Name Window -MemberDefinition '[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern int GetWindowThreadProcessId(System.IntPtr hWnd, out int pid);'
+    $excelPid = 0
+    [Native.Window]::GetWindowThreadProcessId([IntPtr]$excel.Hwnd, [ref]$excelPid) | Out-Null
+    $watchdog = Start-Job -ScriptBlock { param($p, $s) Start-Sleep $s; Stop-Process -Id $p -Force -ErrorAction SilentlyContinue } -ArgumentList $excelPid, $Seconds
+}
 try {
     # A file Excel would offer to repair makes Open fail when alerts are off; opening it again with
     # CorruptLoad set to repair is how the repair is observed.
@@ -84,6 +94,7 @@ try {
     if ($SaveAs) { $book.SaveAs($SaveAs, 51) }
     $book.Close($false)
 } finally {
+    if ($watchdog) { Stop-Job $watchdog -ErrorAction SilentlyContinue; Remove-Job $watchdog -Force -ErrorAction SilentlyContinue }
     $excel.Quit()
     [System.Runtime.InteropServices.Marshal]::ReleaseComObject($excel) | Out-Null
 }

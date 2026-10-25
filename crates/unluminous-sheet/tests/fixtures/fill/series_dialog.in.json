@@ -1,0 +1,1019 @@
+[
+ {
+  "name": "ds_linear_step3",
+  "formats": false,
+  "cells": {
+   "A1": 5
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A8",
+    "rowcol": 2,
+    "type": -4132,
+    "step": 3
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_linear_stop",
+  "formats": false,
+  "cells": {
+   "A1": 5
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A12",
+    "rowcol": 2,
+    "type": -4132,
+    "step": 3,
+    "stop": 20
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_linear_stop_exact",
+  "formats": false,
+  "cells": {
+   "A1": 5
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A12",
+    "rowcol": 2,
+    "type": -4132,
+    "step": 5,
+    "stop": 25
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_linear_neg",
+  "formats": false,
+  "cells": {
+   "A1": 10
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A6",
+    "rowcol": 2,
+    "type": -4132,
+    "step": -2
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_linear_neg_stop",
+  "formats": false,
+  "cells": {
+   "A1": 10
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A12",
+    "rowcol": 2,
+    "type": -4132,
+    "step": -2,
+    "stop": 3
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_linear_two_seeds",
+  "formats": false,
+  "cells": {
+   "A1": 5,
+   "A2": 9
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A8",
+    "rowcol": 2,
+    "type": -4132,
+    "step": 3
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_linear_frac",
+  "formats": false,
+  "cells": {
+   "A1": 0.5
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A6",
+    "rowcol": 2,
+    "type": -4132,
+    "step": 0.25
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_linear_stop_below",
+  "formats": false,
+  "cells": {
+   "A1": 10
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A6",
+    "rowcol": 2,
+    "type": -4132,
+    "step": 1,
+    "stop": 5
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_linear_zero_step",
+  "formats": false,
+  "cells": {
+   "A1": 10
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A6",
+    "rowcol": 2,
+    "type": -4132,
+    "step": 0
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_growth_2",
+  "formats": false,
+  "cells": {
+   "A1": 1
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A8",
+    "rowcol": 2,
+    "type": 2,
+    "step": 2
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_growth_stop",
+  "formats": false,
+  "cells": {
+   "A1": 1
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A12",
+    "rowcol": 2,
+    "type": 2,
+    "step": 2,
+    "stop": 100
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_growth_15",
+  "formats": false,
+  "cells": {
+   "A1": 3
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A6",
+    "rowcol": 2,
+    "type": 2,
+    "step": 1.5
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_growth_neg_start",
+  "formats": false,
+  "cells": {
+   "A1": -2
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A6",
+    "rowcol": 2,
+    "type": 2,
+    "step": 2
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_growth_frac",
+  "formats": false,
+  "cells": {
+   "A1": 100
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A6",
+    "rowcol": 2,
+    "type": 2,
+    "step": 0.5
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_growth_zero_start",
+  "formats": false,
+  "cells": {
+   "A1": 0
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A6",
+    "rowcol": 2,
+    "type": 2,
+    "step": 2
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_date_day",
+  "formats": false,
+  "cells": {
+   "A1": {
+    "v": 44956,
+    "nf": "yyyy-mm-dd"
+   }
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A6",
+    "rowcol": 2,
+    "type": 3,
+    "date": 1,
+    "step": 1
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_date_day3",
+  "formats": false,
+  "cells": {
+   "A1": {
+    "v": 44956,
+    "nf": "yyyy-mm-dd"
+   }
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A6",
+    "rowcol": 2,
+    "type": 3,
+    "date": 1,
+    "step": 3
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_date_weekday",
+  "formats": false,
+  "cells": {
+   "A1": {
+    "v": 44931,
+    "nf": "yyyy-mm-dd"
+   }
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A8",
+    "rowcol": 2,
+    "type": 3,
+    "date": 2,
+    "step": 1
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_date_weekday2",
+  "formats": false,
+  "cells": {
+   "A1": {
+    "v": 44931,
+    "nf": "yyyy-mm-dd"
+   }
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A8",
+    "rowcol": 2,
+    "type": 3,
+    "date": 2,
+    "step": 2
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_date_month",
+  "formats": false,
+  "cells": {
+   "A1": {
+    "v": 44957,
+    "nf": "yyyy-mm-dd"
+   }
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A8",
+    "rowcol": 2,
+    "type": 3,
+    "date": 3,
+    "step": 1
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_date_month2",
+  "formats": false,
+  "cells": {
+   "A1": {
+    "v": 44941,
+    "nf": "yyyy-mm-dd"
+   }
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A8",
+    "rowcol": 2,
+    "type": 3,
+    "date": 3,
+    "step": 2
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_date_month_neg",
+  "formats": false,
+  "cells": {
+   "A1": {
+    "v": 45275,
+    "nf": "yyyy-mm-dd"
+   }
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A8",
+    "rowcol": 2,
+    "type": 3,
+    "date": 3,
+    "step": -1
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_date_year",
+  "formats": false,
+  "cells": {
+   "A1": {
+    "v": 43890,
+    "nf": "yyyy-mm-dd"
+   }
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A6",
+    "rowcol": 2,
+    "type": 3,
+    "date": 4,
+    "step": 1
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_date_year2",
+  "formats": false,
+  "cells": {
+   "A1": {
+    "v": 45092,
+    "nf": "yyyy-mm-dd"
+   }
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A6",
+    "rowcol": 2,
+    "type": 3,
+    "date": 4,
+    "step": 2
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_date_stop",
+  "formats": false,
+  "cells": {
+   "A1": {
+    "v": 44927,
+    "nf": "yyyy-mm-dd"
+   }
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A12",
+    "rowcol": 2,
+    "type": 3,
+    "date": 3,
+    "step": 1,
+    "stop": 45061
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_date_day_stop",
+  "formats": false,
+  "cells": {
+   "A1": {
+    "v": 44927,
+    "nf": "yyyy-mm-dd"
+   }
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A12",
+    "rowcol": 2,
+    "type": 3,
+    "date": 1,
+    "step": 2,
+    "stop": 44935
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_chrono_number",
+  "formats": false,
+  "cells": {
+   "A1": 5
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A6",
+    "rowcol": 2,
+    "type": 3,
+    "date": 1,
+    "step": 2
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_autofill_type",
+  "formats": false,
+  "cells": {
+   "A1": 1,
+   "A2": 3
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A8",
+    "rowcol": 2,
+    "type": 4,
+    "step": 100
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_autofill_text",
+  "formats": false,
+  "cells": {
+   "A1": "Item 1"
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A5",
+    "rowcol": 2,
+    "type": 4
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_autofill_month",
+  "formats": false,
+  "cells": {
+   "A1": "Jan"
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A5",
+    "rowcol": 2,
+    "type": 4
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_linear_text_seed",
+  "formats": false,
+  "cells": {
+   "A1": "abc"
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A5",
+    "rowcol": 2,
+    "type": -4132,
+    "step": 1
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_linear_empty_seed",
+  "formats": false,
+  "cells": {},
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A5",
+    "rowcol": 2,
+    "type": -4132,
+    "step": 1
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_trend_linear",
+  "formats": false,
+  "cells": {
+   "A1": 2,
+   "A2": 4,
+   "A3": 5
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A8",
+    "rowcol": 2,
+    "type": -4132,
+    "trend": true
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_trend_linear_exact",
+  "formats": false,
+  "cells": {
+   "A1": 1,
+   "A2": 2,
+   "A3": 3
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A6",
+    "rowcol": 2,
+    "type": -4132,
+    "trend": true
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_trend_growth",
+  "formats": false,
+  "cells": {
+   "A1": 2,
+   "A2": 4,
+   "A3": 9
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A7",
+    "rowcol": 2,
+    "type": 2,
+    "trend": true
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_trend_linear_one",
+  "formats": false,
+  "cells": {
+   "A1": 7
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A5",
+    "rowcol": 2,
+    "type": -4132,
+    "trend": true
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_trend_linear_stop",
+  "formats": false,
+  "cells": {
+   "A1": 2,
+   "A2": 4,
+   "A3": 5
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A12",
+    "rowcol": 2,
+    "type": -4132,
+    "trend": true,
+    "stop": 12
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_trend_growth_neg",
+  "formats": false,
+  "cells": {
+   "A1": -2,
+   "A2": -4,
+   "A3": -8
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A6",
+    "rowcol": 2,
+    "type": 2,
+    "trend": true
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_trend_date",
+  "formats": false,
+  "cells": {
+   "A1": {
+    "v": 44927,
+    "nf": "yyyy-mm-dd"
+   },
+   "A2": {
+    "v": 44929,
+    "nf": "yyyy-mm-dd"
+   }
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A6",
+    "rowcol": 2,
+    "type": 3,
+    "date": 1,
+    "trend": true
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_trend_autofill",
+  "formats": false,
+  "cells": {
+   "A1": 2,
+   "A2": 4,
+   "A3": 5
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A6",
+    "rowcol": 2,
+    "type": 4,
+    "trend": true
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_rows_linear",
+  "formats": false,
+  "cells": {
+   "A1": 5
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:H1",
+    "rowcol": 1,
+    "type": -4132,
+    "step": 2
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_rows_growth",
+  "formats": false,
+  "cells": {
+   "A1": 1
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:H1",
+    "rowcol": 1,
+    "type": 2,
+    "step": 3
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_columns_many",
+  "formats": false,
+  "cells": {
+   "A1": 1,
+   "B1": 10,
+   "C1": 100
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:C6",
+    "rowcol": 2,
+    "type": -4132,
+    "step": 5
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_rows_many",
+  "formats": false,
+  "cells": {
+   "A1": 1,
+   "A2": 10,
+   "A3": 100
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:F3",
+    "rowcol": 1,
+    "type": -4132,
+    "step": 5
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_columns_many_trend",
+  "formats": false,
+  "cells": {
+   "A1": 1,
+   "A2": 3,
+   "B1": 10,
+   "B2": 9
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:B6",
+    "rowcol": 2,
+    "type": -4132,
+    "trend": true
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_formula_seed",
+  "formats": false,
+  "cells": {
+   "A1": 1,
+   "A2": {
+    "f": "=A1*2"
+   }
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A6",
+    "rowcol": 2,
+    "type": -4132,
+    "step": 1
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_autofill_formula_seed",
+  "formats": false,
+  "cells": {
+   "A1": 1,
+   "A2": {
+    "f": "=A1*2"
+   }
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A6",
+    "rowcol": 2,
+    "type": 4
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_linear_in_middle",
+  "formats": false,
+  "cells": {
+   "A1": "x",
+   "A2": 5
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A2:A7",
+    "rowcol": 2,
+    "type": -4132,
+    "step": 1
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ },
+ {
+  "name": "ds_linear_second_blank",
+  "formats": false,
+  "cells": {
+   "A1": 5,
+   "A2": null,
+   "A3": 7
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A6",
+    "rowcol": 2,
+    "type": -4132,
+    "step": 1
+   }
+  ],
+  "dump": [
+   "A1:F12"
+  ]
+ }
+]

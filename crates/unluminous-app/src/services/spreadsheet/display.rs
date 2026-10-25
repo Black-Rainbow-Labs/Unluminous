@@ -163,7 +163,34 @@ fn section_color(name: &str) -> Option<Rgb> {
 pub fn shown(book: &Workbook, sheet: &Sheet, at: CellRef, chars: usize) -> Shown {
     let style = style_at(sheet, at);
     let value = value_at(sheet, at);
-    shown_with(book, style, &value, chars)
+    let mut shown = shown_with(book, style, &value, chars);
+    adjust_for_the_view(book, sheet, at, &value, &mut shown);
+    shown
+}
+
+/// What a sheet's view changes about how a cell shows: Show Formulas shows what was typed rather than what
+/// it computes, and a sheet that hides zeros shows a zero as an empty cell, as Excel does for both.
+pub fn adjust_for_the_view(
+    book: &Workbook,
+    sheet: &Sheet,
+    at: CellRef,
+    value: &Value,
+    shown: &mut Shown,
+) {
+    if sheet.view.show_formulas {
+        let typed = input_text(book, sheet, at);
+        if !typed.is_empty() || value.is_empty() {
+            let formula = typed.starts_with('=');
+            shown.text = typed;
+            shown.numeric = false;
+            shown.repeat = None;
+            if formula {
+                shown.across = Across::Left;
+            }
+        }
+    } else if !sheet.view.show_zeros && matches!(value, Value::Number(n) if *n == 0.0) {
+        shown.text = String::new();
+    }
 }
 
 /// How a value shows in a given style.

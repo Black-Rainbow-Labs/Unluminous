@@ -269,6 +269,9 @@ pub struct Formula {
     /// Not recalculated: it names a workbook outside this one or a function this version does not have,
     /// so the value the file saved is the best answer there is until the cell is edited.
     pub frozen: bool,
+    /// The `f` element's attributes the model does not use, such as `ca` (calculate always) and `aca`,
+    /// as XML attribute text, written back while the formula is the one the file had.
+    pub attrs: Option<Arc<str>>,
 }
 
 impl Formula {
@@ -283,6 +286,7 @@ impl Formula {
             array: None,
             array_member: None,
             frozen: false,
+            attrs: None,
         })
     }
 
@@ -296,6 +300,7 @@ impl Formula {
             array: None,
             array_member: None,
             frozen: false,
+            attrs: None,
         })
     }
 
@@ -308,6 +313,7 @@ impl Formula {
             array: None,
             array_member: None,
             frozen: false,
+            attrs: None,
         }
     }
 
