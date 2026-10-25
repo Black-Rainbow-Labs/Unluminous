@@ -1117,7 +1117,7 @@ fn read_sheet(
         // Charts, read so they can be drawn; their parts are kept as they were.
         if rel.kind == REL_DRAWING {
             sheet.charts.extend(super::chart::read_charts(part, &rel.target, text));
-            sheet.pictures.extend(super::chart::read_pictures(part, &rel.target, text));
+            read_drawing_objects(sheet, part, &rel.target, text);
         }
         let kept = !matches!(rel.kind.as_str(), REL_HYPERLINK | REL_TABLE);
         if kept {
@@ -1125,6 +1125,7 @@ fn read_sheet(
         }
     }
     sheet.raw.rels = kept_rels;
+    crate::objects::sparkline::extract(sheet);
     // The cells a dynamic array spilled into were saved as values; they are the spill now.
     for range in dynamic_ranges {
         let anchor = (range.first.row, range.first.col);
@@ -1283,6 +1284,20 @@ fn read_table(xml: &str, part: &str, sheet: usize) -> Option<Table> {
         part: part.to_owned(),
         xml: xml.to_owned(),
     })
+}
+
+/// The pictures, shapes and other objects a sheet's drawing holds, read so they can be drawn and edited.
+fn read_drawing_objects(
+    sheet: &mut Sheet,
+    sheet_part: &str,
+    target: &str,
+    text: &dyn Fn(&str) -> Option<String>,
+) {
+    let drawing_part = resolve(sheet_part, target);
+    let Some(xml) = text(&drawing_part) else { return };
+    let rels = parse_rels(&text(&rels_path(&drawing_part)).unwrap_or_default());
+    let objects = crate::objects::read::read_drawing(sheet, &xml, &rels, &drawing_part);
+    sheet.drawing.objects.extend(objects);
 }
 
 fn read_notes(xml: &str, sheet: &mut Sheet) {

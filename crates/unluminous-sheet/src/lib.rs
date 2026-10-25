@@ -35,6 +35,7 @@ pub mod input;
 pub mod json;
 pub mod model;
 pub mod numfmt;
+pub mod objects;
 pub mod ods;
 pub mod refshift;
 pub mod styles;

@@ -10,6 +10,7 @@ use crate::model::Relationship;
 pub mod chart;
 pub mod read;
 pub mod write;
+pub mod xmltree;
 
 pub use read::read;
 pub use write::write;
