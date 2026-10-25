@@ -19,6 +19,14 @@ const XML_HEAD: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"ye
 
 /// The workbook as the bytes of an `.xlsx` file. Its formulas' values should already be computed.
 pub fn write(book: &Workbook) -> Result<Vec<u8>, String> {
+    // A drawing whose objects changed is written from them first; the writer then keeps it like any part.
+    let synced;
+    let book = if crate::objects::write::needs_sync(book) {
+        synced = crate::objects::write::synced(book);
+        &synced
+    } else {
+        book
+    };
     let mut w = Writer::new(book);
     w.run()?;
     crate::zip::write(&w.entries)
@@ -831,10 +839,9 @@ impl<'a> Writer<'a> {
             }
             out.push_str("</tableParts>");
         }
-        out.push_str(&extension_list(
-            &raw("extLst"),
-            &super::cf::write_extension(sheet, &book.styles),
-        ));
+        let with_cf =
+            extension_list(&raw("extLst"), &super::cf::write_extension(sheet, &book.styles));
+        out.push_str(&crate::objects::sparkline::ext_list(sheet, &with_cf));
         out.push_str("</worksheet>");
         Ok((out, rels))
     }

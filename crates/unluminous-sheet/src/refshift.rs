@@ -14,7 +14,7 @@
 
 use crate::coord::{CellRef, Range, MAX_COLS, MAX_ROWS};
 use crate::formula::{self, Axis, Expr};
-use crate::model::Workbook;
+use crate::model::{Sheet, Workbook};
 
 /// One change that moves cells or sheets.
 #[derive(Debug, Clone)]
@@ -222,10 +222,64 @@ fn shift_modelled_text(book: &mut Workbook, sheet: usize, edit: &StructuralEdit)
             *at = shift_cell_range(Range::cell(*at), &own, edit).first;
         }
     }
-    for picture in &mut s.pictures {
-        picture.from.0 = shift_anchor(picture.from.0, &own, edit);
-        picture.to.0 = shift_anchor(picture.to.0, &own, edit);
+    shift_objects(s, &own, edit);
+    shift_sparklines(s, &own, edit);
+}
+
+/// The anchors of the sheet's drawing objects after the edit. An object that moves but does not size with
+/// the cells keeps its size, and one that does neither stays where it is.
+fn shift_objects(s: &mut Sheet, own: &str, edit: &StructuralEdit) {
+    use crate::objects::{AnchorKind, Placement};
+    let mut changed = false;
+    for o in &mut s.drawing.objects {
+        let a = &mut o.anchor;
+        if a.kind == AnchorKind::Absolute || a.placement == Placement::Fixed {
+            continue;
+        }
+        let before = a.clone();
+        let from = shift_anchor(a.from.0, own, edit);
+        if a.kind == AnchorKind::TwoCell {
+            a.to.0 = if a.placement == Placement::Move {
+                let (dr, dc) =
+                    (from.row as i64 - a.from.0.row as i64, from.col as i64 - a.from.0.col as i64);
+                a.to.0.offset(dr, dc).unwrap_or(a.to.0)
+            } else {
+                shift_anchor(a.to.0, own, edit)
+            };
+        }
+        a.from.0 = from;
+        changed |= *a != before;
     }
+    if changed {
+        s.drawing.changed = true;
+    }
+}
+
+/// Sparkline data ranges and locations after the edit. A sparkline whose cell was deleted goes with it.
+fn shift_sparklines(s: &mut Sheet, own: &str, edit: &StructuralEdit) {
+    for g in &mut s.sparklines {
+        for sp in &mut g.sparklines {
+            sp.data = shift_formula_text(&sp.data, own, edit);
+        }
+        if let Some(d) = &mut g.date_axis {
+            *d = shift_formula_text(d, own, edit);
+        }
+        let deleted = |at: CellRef| match edit {
+            StructuralEdit::Lines { sheet, axis, at: start, count, band: None }
+                if *count < 0 && own.eq_ignore_ascii_case(sheet) =>
+            {
+                let index = if matches!(axis, Axis::Rows) { at.row } else { at.col } as i64;
+                index >= *start as i64 && index < *start as i64 - count
+            }
+            _ => false,
+        };
+        g.sparklines.retain(|sp| !deleted(sp.location));
+        for sp in &mut g.sparklines {
+            let text = shift_sqref(&sp.location.a1(), own, edit);
+            sp.location = CellRef::parse(&text).unwrap_or(sp.location);
+        }
+    }
+    s.sparklines.retain(|g| !g.sparklines.is_empty());
 }
 
 /// A range on `own` after the edit, or `None` when it was wholly deleted.

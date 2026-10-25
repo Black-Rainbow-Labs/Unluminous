@@ -217,7 +217,7 @@ fn printed_extent(sheet: &Sheet) -> Option<(u32, u32)> {
     for chart in &sheet.charts {
         take(chart.to.0.row, chart.to.0.col);
     }
-    for picture in &sheet.pictures {
+    for picture in &sheet.pictures() {
         take(picture.to.0.row, picture.to.0.col);
     }
     last
@@ -264,7 +264,7 @@ fn page_has_content(sheet: &Sheet, body: &Range) -> bool {
     has_cell
         || sheet.merges.iter().any(|m| m.intersects(body))
         || sheet.charts.iter().any(|c| Range::new(c.from.0, c.to.0).intersects(body))
-        || sheet.pictures.iter().any(|p| Range::new(p.from.0, p.to.0).intersects(body))
+        || sheet.pictures().iter().any(|p| Range::new(p.from.0, p.to.0).intersects(body))
 }
 
 // ----------------------------------------------------------------------------------------------------

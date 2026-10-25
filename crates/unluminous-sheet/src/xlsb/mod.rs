@@ -128,6 +128,7 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
             book.kept.legacy.push((entry.name.clone(), Arc::new(entry.data.clone())));
         }
     }
+    crate::objects::geometry::set_metrics(&mut book);
     Ok(book)
 }
 
@@ -202,7 +203,7 @@ fn read_sheet(
         }
         if rel.kind == REL_DRAWING {
             sheet.charts.extend(crate::xlsx::chart::read_charts(part, &rel.target, text));
-            sheet.pictures.extend(crate::xlsx::chart::read_pictures(part, &rel.target, text));
+            crate::xlsx::read::read_drawing_objects(sheet, part, &rel.target, text);
             let drawing = resolve(part, &rel.target);
             if drawing_can_be_kept(&drawing, text) {
                 sheet.raw.rels.push(rel.clone());

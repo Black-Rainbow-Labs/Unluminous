@@ -678,8 +678,10 @@ pub struct Sheet {
     pub links: Vec<Hyperlink>,
     pub filter: Option<AutoFilter>,
     pub charts: Vec<Chart>,
-    /// Pictures a drawing places over the cells, read for drawing; their parts are kept.
-    pub pictures: Vec<Picture>,
+    /// The pictures, shapes and other objects the sheet's drawing places over the cells, bottom first.
+    pub drawing: crate::objects::Drawing,
+    /// The sparkline groups of the sheet.
+    pub sparklines: Vec<crate::objects::sparkline::SparklineGroup>,
     pub state: Visibility,
     pub tab_color: Option<crate::styles::Color>,
     pub zoom: u32,
@@ -897,6 +899,23 @@ pub struct SheetRaw {
 }
 
 impl Sheet {
+    /// The pictures of the drawing as the grid draws them: where each is and the part holding its image.
+    pub fn pictures(&self) -> Vec<Picture> {
+        use crate::objects::geometry::cell_at;
+        self.drawing
+            .objects
+            .iter()
+            .filter(|o| !o.hidden)
+            .filter_map(|o| {
+                let part = o.picture.as_ref()?.part.clone();
+                let r = o.frame_rect(self);
+                let end = cell_at(self, r.right(), r.bottom());
+                let start = cell_at(self, r.x, r.y);
+                Some(Picture { from: start, to: end, part })
+            })
+            .collect()
+    }
+
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),

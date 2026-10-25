@@ -13,6 +13,7 @@ pub mod chart;
 pub mod read;
 pub mod threads;
 pub mod write;
+pub mod xmltree;
 
 pub use read::read;
 pub use write::write;

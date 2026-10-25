@@ -13,6 +13,8 @@ pub mod grid;
 pub mod keys;
 pub mod keys_b;
 pub mod menus;
+pub mod objects;
+pub mod sparkline;
 pub mod overlay_a;
 pub mod panes_a;
 pub mod panes_b;

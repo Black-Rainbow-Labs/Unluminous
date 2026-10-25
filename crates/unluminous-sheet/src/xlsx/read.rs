@@ -103,9 +103,11 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
     }
     // Dynamic array metadata: which cm index means a dynamic array.
     let mut dynamic_cm: Option<u32> = None;
+    let mut rich_metadata = false;
     if let Some(path) = target_of(REL_METADATA) {
         if let Some(xml) = text(&path) {
             let (cm, only_dynamic) = read_metadata(&xml);
+            rich_metadata = xml.contains("XLRICHVALUE");
             dynamic_cm = cm;
             if only_dynamic {
                 regenerated_parts.insert(path);
@@ -218,7 +220,8 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
         .iter()
         .filter(|r| {
             let regenerated = REGENERATED.contains(&r.kind.as_str());
-            let unused_metadata = r.kind == REL_METADATA && book.dynamic_cm.is_none();
+            let unused_metadata =
+                r.kind == REL_METADATA && book.dynamic_cm.is_none() && !rich_metadata;
             !(regenerated || unused_metadata)
         })
         .filter(|r| {
@@ -245,6 +248,7 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
     }
     crate::pivot::xml::attach(&mut book);
     // Formulas read from a file are computed once now, except the ones that cannot be.
+    crate::objects::geometry::set_metrics(&mut book);
     Ok(book)
 }
 
@@ -1234,7 +1238,7 @@ fn read_sheet(
         // Charts, read so they can be drawn; their parts are kept as they were.
         if rel.kind == REL_DRAWING {
             sheet.charts.extend(super::chart::read_charts(part, &rel.target, text));
-            sheet.pictures.extend(super::chart::read_pictures(part, &rel.target, text));
+            read_drawing_objects(sheet, part, &rel.target, text);
         }
         let kept = !matches!(rel.kind.as_str(), REL_HYPERLINK | REL_TABLE);
         if kept {
@@ -1242,6 +1246,7 @@ fn read_sheet(
         }
     }
     sheet.raw.rels = kept_rels;
+    crate::objects::sparkline::extract(sheet);
     super::threads::drop_legacy_notes(sheet);
     // The cells a dynamic array spilled into were saved as values; they are the spill now.
     for range in dynamic_ranges {
@@ -1338,6 +1343,20 @@ fn read_table(xml: &str, part: &str, sheet: usize) -> Option<Table> {
         part: part.to_owned(),
         xml: xml.to_owned(),
     })
+}
+
+/// The pictures, shapes and other objects a sheet's drawing holds, read so they can be drawn and edited.
+pub(crate) fn read_drawing_objects(
+    sheet: &mut Sheet,
+    sheet_part: &str,
+    target: &str,
+    text: &dyn Fn(&str) -> Option<String>,
+) {
+    let drawing_part = resolve(sheet_part, target);
+    let Some(xml) = text(&drawing_part) else { return };
+    let rels = parse_rels(&text(&rels_path(&drawing_part)).unwrap_or_default());
+    let objects = crate::objects::read::read_drawing(&xml, &rels, &drawing_part);
+    sheet.drawing.objects.extend(objects);
 }
 
 fn read_notes(xml: &str, sheet: &mut Sheet) {
