@@ -29,11 +29,17 @@ pub mod verbs_a_review;
 pub mod verbs_a_whatif;
 pub mod view;
 pub mod view_a;
+pub mod view_c;
+pub mod verbs_c;
+pub mod verbs_c_spark;
+pub mod catalogue_c;
 
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod tests_a;
+#[cfg(test)]
+mod tests_c;
 
 use std::path::{Path, PathBuf};
 

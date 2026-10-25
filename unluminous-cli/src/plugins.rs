@@ -356,6 +356,24 @@ pub const SPREADSHEET: &[(&str, &str)] = &[
     ("sheet", "sheet show|add|rename|delete|move|duplicate|hide|unhide|color [name] [...]"),
     ("select", "select <range>[,<range>]"),
     ("selection", "what is chosen, the active cell, and sum, average and count"),
+    ("objects", "objects [selected]: pictures, shapes and text boxes with place and size in points"),
+    (
+        "object",
+        "object select|delete|move|frame|resize|rotate|flip|alt|name|placement|lock-aspect|order|align|distribute|group|ungroup|fill|outline|text|text-format|transparency|crop|reset [ids] ...: ids default to the chosen objects; sizes in points",
+    ),
+    (
+        "picture",
+        "picture pick|paste|in-cell|crop|reset|insert <file> [cell]: add a picture from the file picker, the clipboard or a file",
+    ),
+    (
+        "shape",
+        "shape rectangle|rounded|ellipse|line|arrow|textbox [left top width height]|draw <kind>: add a shape; draw makes the next drag draw one",
+    ),
+    ("sparklines", "sparklines: every sparkline group with its options and cells"),
+    (
+        "sparkline",
+        "sparkline insert|kind|points|color|weight|axis|haxis|dates|empty|hidden|data|group|ungroup|clear|clear-group ...: `insert line|column|winloss <data> <location>`; others act on the group at [cell]",
+    ),
     ("cell", "cell [cell]: value, formula, shown text, format and style"),
     ("read", "read [range] [values|formulas|text|formats]: rows, the used range by default"),
     ("write", "write <cell> <value or JSON rows>: type into cells from there"),
