@@ -204,7 +204,7 @@ fn shared_items(cache: &PivotCache, f: usize, used: &[bool], date1904: bool) -> 
     let items = if listed { listed_items(cache, f) } else { Vec::new() };
     let s = stats_of(cache.records.iter().map(|r| r[f].clone()).chain(items.iter().cloned()));
     let mut out = String::from("<sharedItems");
-    let semi = s.string || s.blank;
+    let semi = s.string || s.blank || s.error;
     if !semi {
         attr(&mut out, "containsSemiMixedTypes", "0");
     }
