@@ -32,11 +32,22 @@ pub fn page_tops(doc: &Doc, width: f32) -> (Vec<Pos2>, f32) {
     let margin = if has_comments(doc) { COMMENTS } else { 0.0 };
     let mut y = GAP;
     let mut tops = Vec::with_capacity(doc.pages.pages.len());
-    for page in &doc.pages.pages {
-        let w = page.width * zoom;
-        let x = ((width - w - margin) / 2.0).max(GAP);
-        tops.push(Pos2::new(x, y));
-        y += page.height * zoom + GAP;
+    // Multiple Pages: as many across as fit, each row as tall as its tallest page.
+    let widest = doc.pages.pages.iter().map(|p| p.width * zoom).fold(0.0f32, f32::max);
+    let across = match doc.view.multiple {
+        true => (((width - margin - GAP) / (widest + GAP)).floor() as usize).max(1),
+        false => 1,
+    };
+    for row in doc.pages.pages.chunks(across) {
+        let row_width: f32 = row.iter().map(|p| p.width * zoom + GAP).sum::<f32>() - GAP;
+        let mut x = ((width - row_width - margin) / 2.0).max(GAP);
+        let mut tallest = 0.0f32;
+        for page in row {
+            tops.push(Pos2::new(x, y));
+            x += page.width * zoom + GAP;
+            tallest = tallest.max(page.height * zoom);
+        }
+        y += tallest + GAP;
     }
     (tops, y)
 }
@@ -49,7 +60,10 @@ pub fn page_point(doc: &Doc, area: Rect, at: Pos2) -> Option<(usize, f32, f32)> 
     let mut best = None;
     for (index, (top, page)) in tops.iter().zip(&doc.pages.pages).enumerate() {
         let bottom = top.y + page.height * zoom + GAP / 2.0;
-        if local.y <= bottom || index + 1 == tops.len() {
+        // With pages side by side, a point belongs to the page in its row whose right edge it is before.
+        let same_row_next = tops.get(index + 1).is_some_and(|next| (next.y - top.y).abs() < 0.5);
+        let right = top.x + page.width * zoom + GAP / 2.0;
+        if (local.y <= bottom && (!same_row_next || local.x <= right)) || index + 1 == tops.len() {
             best = Some((index, (local.x - top.x) / zoom, (local.y - top.y) / zoom));
             break;
         }
@@ -112,6 +126,7 @@ pub fn show(
     let (tops, total) = page_tops(doc, area.width());
     doc.view.scroll = doc.view.scroll.clamp(0.0, (total - area.height()).max(0.0));
     doc.view.viewport_height = area.height();
+    doc.view.pane_width = area.width();
     if doc.view.reveal {
         reveal(doc, area, &tops);
         doc.view.reveal = false;
@@ -144,7 +159,12 @@ pub fn show(
         let paper = page
             .background
             .map_or(crate::theme::color::word_paper(), |c| Color32::from_rgb(c.0, c.1, c.2));
+        // `paper = theme` draws the sheet in the theme's own ground (TDD 5.5).
+        let paper = if doc.view.dark { look.palette.board_card } else { paper };
         painter.rect_filled(rect, 0.0, paper);
+        if doc.view.gridlines {
+            paint_gridlines(&painter, doc, page, origin, zoom);
+        }
         let to_screen = |x: f32, y: f32| origin + Vec2::new(x * zoom, y * zoom);
         paint_selection(&painter, page, &selection, zoom, origin);
         if doc.view.marks {
@@ -395,8 +415,10 @@ fn paint_items(
             let Item::Text(text) = item else { continue };
             let mut style = fonts.drawn(&text.style);
             style.size *= zoom;
-            let color =
-                Color32::from_rgb(text.style.color.r, text.style.color.g, text.style.color.b);
+            let color = ink(
+                Color32::from_rgb(text.style.color.r, text.style.color.g, text.style.color.b),
+                doc.view.dark,
+            );
             for (character, x) in text.text.chars().zip(&text.xs) {
                 if character.is_whitespace() {
                     continue;
@@ -597,6 +619,42 @@ pub fn caret_point(doc: &Doc, area: Rect) -> Option<Pos2> {
     let origin = area.min + Vec2::new(tops[index].x, tops[index].y - doc.view.scroll);
     let x = line.x_of(doc.session.selection.head.offset);
     Some(origin + Vec2::new(x * zoom, (line.top + line.height) * zoom))
+}
+
+/// A colour of text on the page: as it is, or on a page drawn in the theme's dark ground, a dark colour
+/// turned light so it reads there, its hue kept.
+fn ink(color: Color32, dark: bool) -> Color32 {
+    if !dark {
+        return color;
+    }
+    let luminance = 0.2126 * f32::from(color.r()) + 0.7152 * f32::from(color.g()) + 0.0722 * f32::from(color.b());
+    if luminance >= 110.0 {
+        return color;
+    }
+    let lift = |c: u8| 255 - (f32::from(c) * 0.55) as u8;
+    Color32::from_rgb(lift(color.r()), lift(color.g()), lift(color.b()))
+}
+
+/// The drawing grid: a line every line pitch of the section's `w:docGrid` (18 points when it names
+/// none), across the text column.
+fn paint_gridlines(painter: &egui::Painter, doc: &Doc, page: &unluminous_word::layout::Page, origin: Pos2, zoom: f32) {
+    let pitch = doc
+        .session
+        .document
+        .section
+        .child("w:docGrid")
+        .and_then(|g| g.attr("w:linePitch"))
+        .and_then(|p| p.parse::<f32>().ok())
+        .map_or(18.0, |twips| twips / 20.0)
+        .max(4.0);
+    let stroke = Stroke::new(0.5, Color32::from_rgba_unmultiplied(80, 120, 200, 70)); // any ground: a faint blue grid on paper
+    let (left, right) = (origin.x + page.body.x * zoom, origin.x + (page.body.x + page.body.w) * zoom);
+    let mut y = page.body.y;
+    while y <= page.body.y + page.body.h {
+        let sy = origin.y + y * zoom;
+        painter.line_segment([Pos2::new(left, sy), Pos2::new(right, sy)], stroke);
+        y += pitch;
+    }
 }
 
 /// Scroll the caret onto the screen.

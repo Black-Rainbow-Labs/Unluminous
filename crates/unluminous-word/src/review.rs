@@ -265,6 +265,46 @@ impl Session {
 
     /// Mark the selection as written in a language (`en-US`, `fr-FR`, `de-DE`), `w:lang`. Spelling
     /// checks only English (United States), so text in another language is left alone.
+    /// The language of the text at the caret, as the status area names it: the run's own `w:lang`, its
+    /// style's, or the document's default, with the common tags spelled out.
+    pub fn language_at_caret(&self) -> String {
+        let head = &self.selection.head;
+        let resolver = crate::styles::Resolver::new(&self.document);
+        let mut tag: Option<String> = None;
+        if let Some(paragraph) = crate::position::paragraph(&self.document, &head.story, &head.path) {
+            let (props, _) = crate::edit::props_at(paragraph, head.offset);
+            tag = props.child("w:lang").and_then(|l| l.attr("w:val")).map(str::to_owned);
+            if tag.is_none() {
+                if let Some(style) = resolver.paragraph_style_id(&paragraph.props) {
+                    tag = resolver
+                        .chain(style)
+                        .into_iter()
+                        .rev()
+                        .find_map(|s| s.child("w:rPr")?.child("w:lang")?.attr("w:val").map(str::to_owned));
+                }
+            }
+        }
+        let tag = tag.or_else(|| {
+            let styles = self.document.styles.as_ref()?;
+            let defaults = styles.root.child("w:docDefaults")?.child("w:rPrDefault")?.child("w:rPr")?;
+            defaults.child("w:lang")?.attr("w:val").map(str::to_owned)
+        });
+        let tag = tag.unwrap_or_else(|| "en-US".into());
+        match tag.as_str() {
+            "en-US" => "English (United States)".into(),
+            "en-GB" => "English (United Kingdom)".into(),
+            "en-CA" => "English (Canada)".into(),
+            "en-AU" => "English (Australia)".into(),
+            "fr-FR" => "French (France)".into(),
+            "de-DE" => "German (Germany)".into(),
+            "es-ES" => "Spanish (Spain)".into(),
+            "it-IT" => "Italian (Italy)".into(),
+            "ja-JP" => "Japanese".into(),
+            "zh-CN" => "Chinese (Simplified)".into(),
+            other => other.to_owned(),
+        }
+    }
+
     pub fn set_language(&mut self, tag: &str) {
         let tag = tag.to_owned();
         self.format(move |rpr| {

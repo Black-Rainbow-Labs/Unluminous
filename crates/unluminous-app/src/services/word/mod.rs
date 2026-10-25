@@ -42,6 +42,8 @@ pub struct Config {
     pub autocorrect: unluminous_word::autocorrect::Rules,
     /// Chords a person moved: `chord.<action> = <chord>` lines, `none` taking a chord away.
     pub chords: Vec<(String, String)>,
+    /// `paper = theme` draws the page in the theme's colours; `light`, the default, as white paper.
+    pub dark_paper: bool,
 }
 
 impl Default for Config {
@@ -53,6 +55,7 @@ impl Default for Config {
             spelling: true,
             autocorrect: Default::default(),
             chords: Vec::new(),
+            dark_paper: false,
         }
     }
 }
@@ -78,6 +81,7 @@ impl Config {
                 "zoom" => config.zoom = value.parse::<f32>().unwrap_or(1.0).clamp(0.25, 5.0),
                 "marks" => config.marks = value == "true",
                 "spelling" => config.spelling = value != "false",
+                "paper" => config.dark_paper = value == "theme",
                 // The rules switched off, by name.
                 "autocorrect.off" => {
                     for name in value.split(',').map(str::trim) {
@@ -105,12 +109,13 @@ impl Config {
             .filter(|name| self.autocorrect.get(name) == Some(false))
             .collect();
         let text = format!(
-            "# The Word plugin's settings. The author is the name on comments and tracked changes.\nauthor = {}\nzoom = {}\nmarks = {}\nspelling = {}\nautocorrect.off = {}\n",
+            "# The Word plugin's settings. The author is the name on comments and tracked changes.\nauthor = {}\nzoom = {}\nmarks = {}\nspelling = {}\nautocorrect.off = {}\npaper = {}\n",
             self.author,
             self.zoom,
             self.marks,
             self.spelling,
-            off.join(", ")
+            off.join(", "),
+            if self.dark_paper { "theme" } else { "light" }
         );
         let mut text = text;
         for (action, chord) in &self.chords {
@@ -118,6 +123,23 @@ impl Config {
         }
         crate::services::store::write_atomically(&folder.join(Self::FILE), text.as_bytes())
             .map_err(|e| format!("{} could not be written: {e}", folder.join(Self::FILE).display()))
+    }
+}
+
+/// How the document is shown: as pages, as screens of text to read, or as its outline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Mode {
+    #[default]
+    Print,
+    Read,
+    Outline,
+}
+
+/// A tab's key and, for a second window onto a document (`word:<path>#2`), the window's number.
+pub fn split_window_key(key: &str) -> (&str, Option<u32>) {
+    match key.rsplit_once('#') {
+        Some((base, n)) if n.parse::<u32>().is_ok() => (base, n.parse().ok()),
+        _ => (key, None),
     }
 }
 
@@ -276,6 +298,32 @@ pub struct View {
     pub extend: u8,
     /// How tall the pages' area was when it was last drawn, in screen points.
     pub viewport_height: f32,
+    /// Print Layout, Read Mode or Outline view.
+    pub mode: Mode,
+    /// The ruler over the pages.
+    pub ruler: bool,
+    /// The kind of tab stop a press on the ruler adds.
+    pub ruler_tab: unluminous_word::props::TabKind,
+    /// A drag on the ruler, while it lasts.
+    pub ruler_drag: Option<crate::components::word::views::RulerDrag>,
+    /// Pages side by side, as many as fit across.
+    pub multiple: bool,
+    /// The drawing grid over the text.
+    pub gridlines: bool,
+    /// The page drawn in the theme's colours rather than as white paper.
+    pub dark: bool,
+    /// Outline view: the deepest level shown, 10 for body text too.
+    pub outline_level: u8,
+    /// Outline view: the headings folded shut, by path.
+    pub outline_collapsed: std::collections::HashSet<Vec<u32>>,
+    /// Outline view: body text as its first line only.
+    pub first_line_only: bool,
+    /// Read Mode: the screen's size in points, which the text is laid out at.
+    pub read_size: Option<(f32, f32)>,
+    /// How wide the pages' area was when it was last drawn, in screen points, for Fit Width.
+    pub pane_width: f32,
+    /// New Window was asked for; the tab asks the window for the second tab.
+    pub new_window: bool,
     /// The right click menu, while it is open.
     pub context_menu: Option<ContextMenu>,
     /// Shift+F10 asked for the menu at the caret; the page view opens it, because it knows where that is.
@@ -486,6 +534,19 @@ impl View {
             carrying: false,
             object_drag: None,
             context_menu: None,
+            mode: Mode::Print,
+            ruler: false,
+            ruler_tab: unluminous_word::props::TabKind::Left,
+            ruler_drag: None,
+            multiple: false,
+            gridlines: false,
+            dark: false,
+            outline_level: 10,
+            outline_collapsed: Default::default(),
+            first_line_only: false,
+            read_size: None,
+            pane_width: 800.0,
+            new_window: false,
             edits: Vec::new(),
             extend: 0,
             viewport_height: 600.0,
@@ -516,6 +577,10 @@ pub struct Doc {
     pub drawn: u64,
     /// On the last frame: whether the tab held the keyboard, and whether a field of its own had it instead.
     pub keyboard: (bool, bool),
+    /// The other windows onto this document (New Window): each tab's key and how it looks at the pages.
+    pub windows: Vec<(String, View)>,
+    /// The Read Mode screen the pages were last laid out on, in whole points.
+    pub laid_reading: Option<(i32, i32)>,
 }
 
 impl std::fmt::Debug for Doc {
@@ -531,9 +596,12 @@ impl std::fmt::Debug for Doc {
 impl Doc {
     /// Lay the document out again if it changed since it was last laid out.
     pub fn lay_out(&mut self, renderer: &crate::services::text_renderer::TextRenderer) {
-        if self.laid == self.session.revision && !self.pages.pages.is_empty() {
+        let reading = (self.view.mode == Mode::Read).then_some(self.view.read_size).flatten();
+        let reading_key = reading.map(|(w, h)| (w.round() as i32, h.round() as i32));
+        if self.laid == self.session.revision && !self.pages.pages.is_empty() && reading_key == self.laid_reading {
             return;
         }
+        self.laid_reading = reading_key;
         let fonts = fonts::WordFonts::new(renderer);
         self.pages = layout::lay_out(
             &self.session.document,
@@ -542,6 +610,7 @@ impl Doc {
                 show_marks: self.view.marks,
                 show_codes: self.view.codes,
                 markup: self.view.markup,
+                reading,
             },
         );
         self.laid = self.session.revision;
@@ -677,6 +746,8 @@ impl Word {
             session,
             pages: Pages::default(),
             laid: 0,
+            windows: Vec::new(),
+            laid_reading: None,
             view: View::new(&self.config),
             saved: 1,
             formatted_text: None,
@@ -715,6 +786,8 @@ impl Word {
             session,
             pages: Pages::default(),
             laid: 0,
+            windows: Vec::new(),
+            laid_reading: None,
             view: View::new(&self.config),
             saved: 0,
             formatted_text: None,
@@ -788,9 +861,26 @@ impl UiProvider for Word {
         self.add_office_fonts(look.renderer);
         self.current = Some(key.to_owned());
         let config = self.config.clone();
-        match self.doc(key) {
+        // A second window onto a document is its own tab with its own view of the same pages.
+        let (base, window) = split_window_key(key);
+        match self.doc(base) {
             Ok(doc) => {
-                let requests = crate::components::word::show(doc, &config, ui, look);
+                let requests = match window {
+                    Some(_) => {
+                        let index = match doc.windows.iter().position(|(k, _)| k == key) {
+                            Some(index) => index,
+                            None => {
+                                doc.windows.push((key.to_owned(), doc.view.clone()));
+                                doc.windows.len() - 1
+                            }
+                        };
+                        std::mem::swap(&mut doc.view, &mut doc.windows[index].1);
+                        let requests = crate::components::word::show(doc, &config, ui, look);
+                        std::mem::swap(&mut doc.view, &mut doc.windows[index].1);
+                        requests
+                    }
+                    None => crate::components::word::show(doc, &config, ui, look),
+                };
                 // A rule switched in the Proofing level is every document's, and is written down.
                 let rules = doc.session.autocorrect_rules.clone();
                 if rules != self.config.autocorrect {
@@ -840,10 +930,12 @@ impl UiProvider for Word {
     }
 
     fn modified(&self, key: &str) -> bool {
+        let (key, _) = split_window_key(key);
         self.docs.iter().any(|doc| doc.key == key && doc.modified())
     }
 
     fn save(&mut self, key: &str) -> Result<String, String> {
+        let (key, _) = split_window_key(key);
         // A document with no file yet asks where to go.
         if self.doc(key)?.path.is_none() {
             let start = self.project.clone();
@@ -872,6 +964,13 @@ impl UiProvider for Word {
     }
 
     fn closed(&mut self, key: &str) {
+        // Closing a second window leaves the document open in the first.
+        if let (base, Some(_)) = split_window_key(key) {
+            if let Some(doc) = self.docs.iter_mut().find(|d| d.key == base) {
+                doc.windows.retain(|(k, _)| k != key);
+            }
+            return;
+        }
         self.docs.retain(|doc| doc.key != key);
         if self.current.as_deref() == Some(key) {
             self.current = self.docs.last().map(|d| d.key.clone());

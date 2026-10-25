@@ -1542,13 +1542,35 @@ fn document(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
             doc.session.modified = true;
         }
     }
-    heading(ui, "View");
-    actions_row(
-        ui,
-        doc,
-        requests,
-        &["formatting-marks", "navigation", "zoom-out", "zoom-100", "zoom-in"],
-    );
+    heading(ui, "Views");
+    actions_row(ui, doc, requests, &["read-mode", "print-layout", "outline-view", "new-window"]);
+    heading(ui, "Show");
+    actions_row(ui, doc, requests, &["ruler", "gridlines", "formatting-marks", "navigation", "field-codes"]);
+    heading(ui, "Zoom");
+    let mut percent = doc.view.fields.get("zoom").cloned().unwrap_or_else(|| format!("{:.0}", doc.view.zoom * 100.0));
+    let mut set = false;
+    ui.horizontal(|ui| {
+        ui.label("Percent");
+        set = ui.add(egui::TextEdit::singleline(&mut percent).desired_width(48.0)).lost_focus();
+        set |= ui.button("Set").clicked();
+    });
+    doc.view.fields.insert("zoom", percent.clone());
+    if set {
+        if let Ok(value) = percent.trim().trim_end_matches('%').parse::<f32>() {
+            doc.view.zoom = (value / 100.0).clamp(0.1, 5.0);
+        }
+        doc.view.fields.remove("zoom");
+    }
+    ui.horizontal_wrapped(|ui| {
+        for value in [50.0, 75.0, 100.0, 150.0, 200.0] {
+            if ui.button(format!("{value}%")).clicked() {
+                doc.view.zoom = value / 100.0;
+                doc.view.multiple = false;
+                doc.view.fields.remove("zoom");
+            }
+        }
+    });
+    actions_row(ui, doc, requests, &["fit-width", "fit-page", "multiple-pages", "zoom-out", "zoom-in"]);
     heading(ui, "Find");
     actions_row(ui, doc, requests, &["find", "replace"]);
     heading(ui, "Export");

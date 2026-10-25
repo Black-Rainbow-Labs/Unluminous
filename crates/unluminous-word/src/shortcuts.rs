@@ -124,6 +124,51 @@ impl Session {
         Ok(())
     }
 
+    /// Outline view's Move Up and Move Down on a collapsed heading: the heading and everything under it,
+    /// up to the next heading of its level or higher, swapped with the section of the same level before
+    /// or after it. The caret goes with it.
+    pub fn move_section(&mut self, up: bool) -> Result<(), String> {
+        let head = self.selection.head.clone();
+        if head.story != crate::position::StoryId::Body || head.path.len() != 1 {
+            return Err("Outline view moves headings in the body".into());
+        }
+        let resolver = crate::styles::Resolver::new(&self.document);
+        let levels: Vec<u8> = self
+            .document
+            .body
+            .iter()
+            .map(|block| match block {
+                Block::Paragraph(p) => resolver.paragraph(&p.props, None).outline_level.map_or(10, |l| l + 1),
+                _ => 10,
+            })
+            .collect();
+        let i = head.path[0] as usize;
+        let level = levels[i];
+        let end_of = |from: usize| (from + 1..levels.len()).find(|k| levels[*k] <= level).unwrap_or(levels.len());
+        let j = end_of(i);
+        let (start, middle, end) = if up {
+            let p = (0..i).rev().find(|k| levels[*k] <= level).ok_or("this is the first section")?;
+            if levels[p] < level {
+                return Err("the heading above is a higher level".into());
+            }
+            (p, i, j)
+        } else {
+            if j >= levels.len() || levels[j] < level {
+                return Err("this is the last section at its level".into());
+            }
+            (i, j, end_of(j))
+        };
+        drop(resolver);
+        self.change(Scope::Story, move |document, selection, _| {
+            document.body[start..end].rotate_left(middle - start);
+            // The moved heading is now at `start` when it went up, and after the other section when down.
+            let at = if up { start } else { start + (end - middle) };
+            let moved = |p: &Pos| Pos { story: p.story.clone(), path: vec![at as u32], offset: p.offset };
+            Selection { anchor: moved(&selection.anchor), head: moved(&selection.head) }
+        });
+        Ok(())
+    }
+
     /// F11 and Shift+F11: select the next field after the caret, or the one before it, in the story.
     pub fn select_next_field(&mut self, forward: bool) -> Result<(), String> {
         let head = self.selection.ordered().1.clone();
@@ -283,6 +328,25 @@ mod tests {
         session.select(Pos::new(vec![1], 0), Pos::new(vec![1], 0));
         session.promote_heading(true).unwrap();
         assert_eq!(session.paragraph_at_caret().style, "Heading2");
+    }
+
+    #[test]
+    fn a_section_moves_with_its_heading() {
+        let mut session = typed("One
+under one
+Two
+under two");
+        for (n, style) in [(0, "Heading1"), (2, "Heading1")] {
+            session.select(Pos::new(vec![n], 0), Pos::new(vec![n], 0));
+            session.apply_style(style).unwrap();
+        }
+        session.select(Pos::new(vec![2], 0), Pos::new(vec![2], 0));
+        session.move_section(true).unwrap();
+        let texts: Vec<String> = (0..4).map(|n| text_of(&session, n)).collect();
+        assert_eq!(texts, ["Two", "under two", "One", "under one"]);
+        assert_eq!(session.selection.head.path, vec![0]);
+        session.move_section(false).unwrap();
+        assert_eq!(text_of(&session, 0), "One");
     }
 
     #[test]

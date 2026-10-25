@@ -71,6 +71,29 @@ fn paragraph_toggle(doc: &mut Doc, name: &'static str) -> Result<String, String>
     Ok(String::new())
 }
 
+/// Fit Width and One Page: the zoom that makes the page as wide as the pane, or the whole page fit.
+fn fit(doc: &mut Doc, whole: bool) {
+    let Some(page) = doc.pages.pages.first() else { return };
+    let across = (doc.view.pane_width - 48.0) / page.width;
+    let down = (doc.view.viewport_height - 32.0) / page.height;
+    doc.view.zoom = if whole { across.min(down) } else { across }.clamp(0.1, 5.0);
+    doc.view.multiple = false;
+}
+
+/// Outline view's Move Up and Move Down: a folded heading takes its whole section, anything else moves alone.
+fn outline_move(doc: &mut Doc, up: bool) -> Result<String, String> {
+    let head = doc.session.selection.head.clone();
+    if doc.view.outline_collapsed.contains(&head.path) {
+        let old = head.path.clone();
+        doc.session.move_section(up)?;
+        doc.view.outline_collapsed.remove(&old);
+        doc.view.outline_collapsed.insert(doc.session.selection.head.path.clone());
+    } else {
+        doc.session.move_paragraph(up)?;
+    }
+    Ok(String::new())
+}
+
 fn underline_kind(doc: &mut Doc, kind: &'static str) -> Result<String, String> {
     let on = doc.session.look_at_caret().underline != props::Underline::parse(kind);
     doc.session.format(move |rpr| props::set_val(rpr, "w:u", on.then_some(kind)));
@@ -1882,6 +1905,156 @@ pub const ACTIONS: &[Action] = &[
         level: Level::Document,
         slash: false,
         run: |d| super::print::print(d, &super::print::PrintOptions::default()),
+    },
+    Action {
+        id: "ruler",
+        label: "Ruler",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.ruler = !d.view.ruler;
+            done("")
+        },
+    },
+    Action {
+        id: "read-mode",
+        label: "Read Mode",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.mode = super::Mode::Read;
+            d.laid = u64::MAX;
+            done("")
+        },
+    },
+    Action {
+        id: "print-layout",
+        label: "Print Layout",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.mode = super::Mode::Print;
+            d.laid = u64::MAX;
+            done("")
+        },
+    },
+    Action {
+        id: "outline-view",
+        label: "Outline",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.mode = super::Mode::Outline;
+            done("")
+        },
+    },
+    Action {
+        id: "fit-width",
+        label: "Page width",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            fit(d, false);
+            done("")
+        },
+    },
+    Action {
+        id: "fit-page",
+        label: "One page",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            fit(d, true);
+            done("")
+        },
+    },
+    Action {
+        id: "multiple-pages",
+        label: "Multiple pages",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.multiple = !d.view.multiple;
+            done("")
+        },
+    },
+    Action {
+        id: "gridlines",
+        label: "Gridlines",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.gridlines = !d.view.gridlines;
+            done("")
+        },
+    },
+    Action {
+        id: "new-window",
+        label: "New Window",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.new_window = true;
+            done("")
+        },
+    },
+    Action {
+        id: "zoom-dialog",
+        label: "Zoom",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Document];
+            done("")
+        },
+    },
+    Action {
+        id: "outline-to-heading-1",
+        label: "Promote to Heading 1",
+        level: Level::Styles,
+        slash: false,
+        run: |d| style(d, "Heading1"),
+    },
+    Action {
+        id: "outline-to-body",
+        label: "Demote to body text",
+        level: Level::Styles,
+        slash: false,
+        run: |d| style(d, "Normal"),
+    },
+    Action {
+        id: "outline-move-up",
+        label: "Move up",
+        level: Level::Styles,
+        slash: false,
+        run: |d| outline_move(d, true),
+    },
+    Action {
+        id: "outline-move-down",
+        label: "Move down",
+        level: Level::Styles,
+        slash: false,
+        run: |d| outline_move(d, false),
+    },
+    Action {
+        id: "outline-expand",
+        label: "Expand",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            crate::components::word::outline::fold_at_caret(d, true);
+            done("")
+        },
+    },
+    Action {
+        id: "outline-collapse",
+        label: "Collapse",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            crate::components::word::outline::fold_at_caret(d, false);
+            done("")
+        },
     },
 ];
 

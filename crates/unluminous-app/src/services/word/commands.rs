@@ -355,6 +355,25 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
             let text = unluminous_word::export::to_text(&session.document);
             Ok(Answer::said(format!("{} characters", text.chars().count())).with(json!(text)))
         }
+        "outline" if !arguments.is_empty() => {
+            // outline promote|demote|move-up|move-down|expand|collapse|heading-1|body|level <n>
+            let id = match arguments[0].as_str() {
+                "promote" => "promote-heading",
+                "demote" => "demote-heading",
+                "move-up" => "outline-move-up",
+                "move-down" => "outline-move-down",
+                "expand" => "outline-expand",
+                "collapse" => "outline-collapse",
+                "heading-1" => "outline-to-heading-1",
+                "body" => "outline-to-body",
+                "level" => {
+                    doc.view.outline_level = arguments.get(1).and_then(|n| n.parse().ok()).unwrap_or(10).clamp(1, 10);
+                    return Ok(Answer::said(format!("Showing level {}", doc.view.outline_level)));
+                }
+                other => return Err(format!("outline takes promote, demote, move-up, move-down, expand, collapse, heading-1, body or level <n>, not {other}")),
+            };
+            (super::actions::find(id).expect("an outline action").run)(doc).map(Answer::said)
+        }
         "outline" => {
             doc.ensure_pages();
             let entries: Vec<serde_json::Value> = doc
@@ -877,9 +896,35 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
                 Some("navigation") => {
                     doc.view.navigation = on(arguments.get(1)).unwrap_or(!doc.view.navigation)
                 }
-                _ => {}
+                Some("thumbnails") => {
+                    doc.view.navigation = on(arguments.get(1)).unwrap_or(true);
+                    doc.view.navigation_tab = 1;
+                }
+                Some("ruler") => doc.view.ruler = on(arguments.get(1)).unwrap_or(!doc.view.ruler),
+                Some("gridlines") => doc.view.gridlines = on(arguments.get(1)).unwrap_or(!doc.view.gridlines),
+                Some("multiple") => doc.view.multiple = on(arguments.get(1)).unwrap_or(!doc.view.multiple),
+                Some(mode @ ("read" | "outline" | "print")) => {
+                    doc.view.mode = match mode {
+                        "read" => super::Mode::Read,
+                        "outline" => super::Mode::Outline,
+                        _ => super::Mode::Print,
+                    };
+                    doc.laid = u64::MAX;
+                }
+                Some(id @ ("fit-width" | "fit-page" | "new-window")) => {
+                    let id = id.to_owned();
+                    (super::actions::find(&id).expect("a view action").run)(doc)?;
+                }
+                Some("paper") => doc.view.dark = arguments.get(1).map(String::as_str) == Some("theme"),
+                Some(other) => return Err(format!("view takes zoom, marks, navigation, thumbnails, ruler, gridlines, multiple, read, outline, print, fit-width, fit-page, new-window or paper, not {other}")),
+                None => {}
             }
-            Ok(Answer::said("View").with(json!({ "zoom": doc.view.zoom, "marks": doc.view.marks, "navigation": doc.view.navigation })))
+            let mode = match doc.view.mode {
+                super::Mode::Print => "print",
+                super::Mode::Read => "read",
+                super::Mode::Outline => "outline",
+            };
+            Ok(Answer::said("View").with(json!({ "zoom": doc.view.zoom, "marks": doc.view.marks, "navigation": doc.view.navigation, "ruler": doc.view.ruler, "mode": mode, "multiple": doc.view.multiple, "gridlines": doc.view.gridlines, "paper": if doc.view.dark { "theme" } else { "light" } })))
         }
         "panel" => {
             match arguments.first().map(String::as_str) {

@@ -59,33 +59,33 @@ pub fn show(
     });
 }
 
-/// The Pages tab: each page, its number and the first words on it, a press going to it.
+/// The Pages tab: a small picture of each page, its text drawn as grey lines, with its number under
+/// it, a press going to it (TDD 5.5). Only the pictures on the screen are drawn.
 fn pages(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc) {
     let mut chosen = None;
+    let current = doc.pages.find(&doc.session.selection.head).map(|(i, _)| i);
     egui::ScrollArea::vertical().id_salt("word-navigation-pages").auto_shrink([false, false]).show(
         ui,
         |ui| {
+            let width = (ui.available_width() - 20.0).clamp(60.0, 160.0);
             for (index, page) in doc.pages.pages.iter().enumerate() {
-                let first = page.first.clone();
-                let words = first
-                    .as_ref()
-                    .and_then(|pos| {
-                        unluminous_word::position::paragraph(
-                            &doc.session.document,
-                            &pos.story,
-                            &pos.path,
-                        )
-                    })
-                    .map(|p| p.visible_text().chars().take(40).collect::<String>())
-                    .unwrap_or_default();
-                let response = ui.selectable_label(
-                    false,
-                    RichText::new(format!("Page {}  {}", page.number, words))
-                        .size(look.font_size * 0.92),
+                let scale = width / page.width.max(1.0);
+                let height = page.height * scale;
+                let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), height + 22.0), egui::Sense::click());
+                let sheet = Rect::from_min_size(egui::pos2(rect.center().x - width / 2.0, rect.top()), Vec2::new(width, height));
+                if ui.is_rect_visible(sheet) {
+                    paint_thumbnail(ui.painter(), page, sheet, scale, current == Some(index));
+                }
+                ui.painter().text(
+                    egui::pos2(rect.center().x, sheet.bottom() + 11.0),
+                    egui::Align2::CENTER_CENTER,
+                    page.number.to_string(),
+                    egui::FontId::proportional(look.font_size * 0.85),
+                    look.palette.text_dim,
                 );
+                response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Page {}", page.number)));
                 if response.clicked() {
-                    chosen = first.or(Some(Pos::new(vec![0], 0)));
-                    let _ = index;
+                    chosen = page.first.clone().or(Some(Pos::new(vec![0], 0)));
                 }
             }
         },
@@ -93,6 +93,46 @@ fn pages(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc) {
     if let Some(at) = chosen {
         doc.session.select(at.clone(), at);
         doc.view.reveal = true;
+    }
+}
+
+/// One page drawn small: the sheet, a grey line for each run of text, a box for each picture and shape,
+/// and the rules.
+fn paint_thumbnail(painter: &egui::Painter, page: &unluminous_word::layout::Page, sheet: Rect, scale: f32, here: bool) {
+    use unluminous_word::layout::Item;
+    let paper = crate::theme::color::word_paper();
+    painter.rect_filled(sheet.translate(Vec2::new(0.0, 1.5)), 1.0, egui::Color32::from_black_alpha(60)); // any ground: the sheet's shadow
+    painter.rect_filled(sheet, 0.0, paper);
+    let at = |x: f32, y: f32| sheet.min + Vec2::new(x * scale, y * scale);
+    let grey = egui::Color32::from_gray(150); // any ground: text drawn on the white sheet
+    for item in &page.items {
+        match item {
+            Item::Text(text) => {
+                let (Some(first), Some(last)) = (text.xs.first(), text.xs.last()) else { continue };
+                let size = (text.style.size * scale * 0.55).max(0.6);
+                let y = text.baseline - text.style.size * 0.35;
+                let width = (last - first + text.style.size * 0.5).max(1.0);
+                let color = if text.style.bold { egui::Color32::from_gray(110) } else { grey }; // any ground: on the sheet
+                painter.rect_filled(Rect::from_min_size(at(*first, y), Vec2::new(width * scale, size)), 0.0, color);
+            }
+            Item::Picture { rect, .. } | Item::Shape { rect, .. } | Item::Placeholder { rect, .. } => {
+                painter.rect_filled(Rect::from_min_size(at(rect.x, rect.y), Vec2::new(rect.w * scale, rect.h * scale)), 0.0, egui::Color32::from_gray(205)); // any ground: on the sheet
+            }
+            Item::Fill { rect, color } => {
+                painter.rect_filled(
+                    Rect::from_min_size(at(rect.x, rect.y), Vec2::new(rect.w * scale, rect.h * scale)),
+                    0.0,
+                    egui::Color32::from_rgb(color.0, color.1, color.2),
+                );
+            }
+            Item::Rule { x0, y0, x1, y1, .. } => {
+                painter.line_segment([at(*x0, *y0), at(*x1, *y1)], Stroke::new(0.5, grey));
+            }
+            Item::Object { .. } => {}
+        }
+    }
+    if here {
+        painter.rect_stroke(sheet.expand(2.0), 2.0, Stroke::new(2.0, crate::theme::color::accent()), egui::StrokeKind::Outside);
     }
 }
 

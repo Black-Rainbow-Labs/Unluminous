@@ -436,6 +436,9 @@ pub struct Options {
     pub show_codes: bool,
     /// Simple Markup, All Markup, No Markup or Original.
     pub markup: crate::review::Markup,
+    /// Read Mode: every section laid out on screens of this width and height in points, with narrow
+    /// margins and no headers or footers, so the text reflows to the pane (TDD 5.5).
+    pub reading: Option<(f32, f32)>,
 }
 
 /// The pages of a document.
@@ -531,7 +534,12 @@ pub fn lay_out(document: &Document, metrics: &dyn FontMetrics, options: Options)
         hyphenation: paragraph::Hyphenation::of(document),
         shrink_justified: compatibility_mode(document) >= 15,
     };
-    let sections = sections(document);
+    let mut sections = sections(document);
+    if let Some((width, height)) = options.reading {
+        for (_, geometry) in &mut sections {
+            read_mode(geometry, width, height);
+        }
+    }
     let mut pages = flow_document(&mut ctx, &sections, &references, endnote_options.section_end);
     // Footnotes numbered again on each page can only be numbered once the pages are known, and a mark
     // of another width can move a line, so the body is laid out a second time with those numbers.
@@ -660,6 +668,26 @@ fn measure_bands(ctx: &mut Ctx) -> HashMap<(usize, String), (f32, f32)> {
 }
 
 /// The body split into its sections: the blocks of each, by their index in the body, and its page.
+/// A section's page turned into a Read Mode screen: the pane's size, narrow margins, one column, no
+/// headers or footers.
+fn read_mode(geometry: &mut Geometry, width: f32, height: f32) {
+    geometry.width = width.max(144.0);
+    geometry.height = height.max(144.0);
+    geometry.left = 36.0;
+    geometry.right = 36.0;
+    geometry.top = 24.0;
+    geometry.bottom = 24.0;
+    geometry.gutter = 0.0;
+    geometry.header = 0.0;
+    geometry.footer = 0.0;
+    geometry.headers.clear();
+    geometry.footers.clear();
+    geometry.title_page = false;
+    geometry.vertical_center = false;
+    let text = geometry.width - 72.0;
+    geometry.columns = vec![section::Column { width: text, space: 0.0 }];
+}
+
 fn sections(document: &Document) -> Vec<(Vec<(usize, &Block)>, Geometry)> {
     let mut out = Vec::new();
     let mut current: Vec<(usize, &Block)> = Vec::new();

@@ -85,7 +85,8 @@ fn typing_formats_with_words_chords_and_undoes() {
     let read = paragraphs(&mut harness);
     assert_eq!(read[0]["style"], "Heading 1", "# and a space make a heading");
     assert_eq!(read[0]["text"], "A heading");
-    assert_eq!(read[1]["text"], "plain bold plain");
+    // Autocorrect capitalizes the first word of a sentence, as Word does.
+    assert_eq!(read[1]["text"], "Plain bold plain");
     let bold: Vec<&str> = read[1]["runs"]
         .as_array()
         .unwrap()
@@ -97,11 +98,11 @@ fn typing_formats_with_words_chords_and_undoes() {
     chord(&mut harness, Key::Z);
     assert_eq!(
         paragraphs(&mut harness)[1]["text"],
-        "plain bold",
+        "Plain bold",
         "Ctrl+Z takes the last word back"
     );
     chord(&mut harness, Key::Y);
-    assert_eq!(paragraphs(&mut harness)[1]["text"], "plain bold plain");
+    assert_eq!(paragraphs(&mut harness)[1]["text"], "Plain bold plain");
     harness.snapshot(shot("word_typed"));
 }
 
@@ -117,7 +118,7 @@ fn the_arrows_and_shift_select_and_backspace_deletes_the_selection() {
     harness.key_press(Key::Home);
     steady(&mut harness);
     type_text(&mut harness, ">");
-    assert_eq!(paragraphs(&mut harness)[0]["text"], ">one two ");
+    assert_eq!(paragraphs(&mut harness)[0]["text"], ">One two ", "autocorrect capitalized the sentence");
 }
 
 /// **The bubble over a selection takes a click.** The page under the bubble used to take the press as
