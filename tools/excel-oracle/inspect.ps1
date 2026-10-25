@@ -18,6 +18,7 @@ $excel = New-Object -ComObject Excel.Application
 $excel.DisplayAlerts = $false
 $excel.Visible = $false
 $excel.AutomationSecurity = 3  # never run macros
+$seed = $excel.Workbooks.Add(); try { $excel.ActivePrinter = 'Microsoft Print to PDF on Ne00:' } catch { }  # the default printer can be offline and stalls Excel
 try {
     # A file Excel would offer to repair makes Open fail when alerts are off; opening it again with
     # CorruptLoad set to repair is how the repair is observed.
@@ -31,6 +32,8 @@ try {
         # Every argument up to CorruptLoad, which is 1, repair.
         $book = $excel.Workbooks.Open($full, 0, $true, 5, '', '', $true, 2, '', $false, $false, 0, $false, $false, 1)
     }
+    # Reading page setup and windows asks the active printer, which may be offline.
+    try { $excel.ActivePrinter = 'Microsoft Print to PDF on Ne00:' } catch { }
     $caption = $book.Windows.Item(1).Caption
     $repaired = $repaired -or ($caption -match 'Repaired')
     if ($Recalculate) { $excel.CalculateFull() }
