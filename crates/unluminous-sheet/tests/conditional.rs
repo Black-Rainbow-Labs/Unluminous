@@ -134,10 +134,6 @@ fn the_oracle_covers_every_kind_of_rule() {
     assert_eq!(periods.len(), 10, "{periods:?}");
 }
 
-fn session(book: &str) -> Session {
-    Session::new(open(book), 46319.5)
-}
-
 fn rule_of(kind: &str, formula: &str, fill: u32) -> CfRule {
     CfRule {
         dxf: Some(fill),
