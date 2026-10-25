@@ -42,6 +42,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 4,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -85,6 +87,8 @@
           "manual": false
         }
       ],
+      "hcount": 3,
+      "vcount": 3,
       "attempts": 1,
       "paper": 9,
       "orientation": 2,
@@ -96,6 +100,8 @@
       "pages": 1,
       "hbreaks": [],
       "vbreaks": [],
+      "hcount": 0,
+      "vcount": 0,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -113,9 +119,15 @@
         }
       ],
       "vbreaks": [
-        null
+        {
+          "row": 1,
+          "col": 21,
+          "manual": false
+        }
       ],
-      "attempts": 6,
+      "hcount": 1,
+      "vcount": 2,
+      "attempts": 4,
       "paper": 1,
       "orientation": 1,
       "zoom": "False"
@@ -148,6 +160,8 @@
           "manual": false
         }
       ],
+      "hcount": 1,
+      "vcount": 3,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -196,6 +210,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 5,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -259,6 +275,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 8,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,

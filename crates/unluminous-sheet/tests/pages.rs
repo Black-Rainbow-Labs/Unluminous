@@ -19,34 +19,33 @@ fn folder() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/pages")
 }
 
-/// What is known to differ from Excel, with the reason. Each is a sheet whose answer Excel computes in a way the
-/// paginator does not model. A sheet is listed by `group/sheet`.
+/// Sheets whose answer the paginator is known not to give, with the reason. All are a fit to pages in a default font
+/// other than Calibri 11: the scale Excel chooses is one or two percent from the paginator's, and the rule Excel
+/// uses was not found. Calibri gives the same scale as Excel in all of about a hundred and fifty combinations of
+/// columns and pages (`min(largest scale that fits, estimate)` in `pages::paginate`), and the other fonts agree in
+/// every case but these five, where the scale decision does not follow from column width alone.
 const KNOWN_DIFFERENCES: &[(&str, &str)] = &[
-    ("pages-calibri.json/fit-2x3", FIT_MORE_THAN_ONE_WIDE),
-    ("pages-calibri.json/fit-2x0", FIT_MORE_THAN_ONE_WIDE),
-    ("pages-calibri.json/titles-fit-2x3", FIT_MORE_THAN_ONE_WIDE),
-    ("pages-calibri.json/fit-4x4", FIT_MORE_THAN_ONE_WIDE),
-    ("pages-aptos-narrow.json/fit-1x1", FIT_MORE_THAN_ONE_WIDE),
-    ("pages-times.json/fit-1x1", FIT_MORE_THAN_ONE_WIDE),
-    (
-        "pages-calibri.json/break-fit",
-        "Excel lists only the manual break for a sheet fitted to pages, and lays the pages out as if there were none;          the paginator lists the automatic breaks of that layout",
-    ),
+    ("pages-aptos-narrow.json/fit-1x1", FIT_IN_ANOTHER_FONT),
+    ("pages-aptos-narrow.json/fit-2x3", FIT_IN_ANOTHER_FONT),
+    ("pages-arial.json/fit-2x3", FIT_IN_ANOTHER_FONT),
+    ("pages-times.json/fit-1x1", FIT_IN_ANOTHER_FONT),
+    ("pages-times.json/fit-2x3", FIT_IN_ANOTHER_FONT),
 ];
 
-/// Why a sheet fitted to pages differs. Measured (see the notes on fitting in `pages::paginate`): fitting to one
-/// page wide gives Excel's scale every time, but when the columns fill the last of several pages exactly, Excel
-/// takes a scale 1% to 8% below the largest at which the pages fit. Its scale depends on the number of columns and
-/// pages and not on the rows, and its page breaks at the scale it chose are the ones the paginator makes at the
-/// same scale.
-const FIT_MORE_THAN_ONE_WIDE: &str =
-    "Excel's scale for a fit to several pages wide is below the largest that fits";
+const FIT_IN_ANOTHER_FONT: &str = "Excel's fitted scale differs by one or two percent";
 
 /// The one based rows or columns of a list of breaks in Excel's answer.
 fn locations(answer: &Value, key: &str, axis: &str) -> Vec<u32> {
     answer[key].as_array().map_or_else(Vec::new, |list| {
         list.iter().map(|b| b[axis].as_u64().unwrap() as u32).collect()
     })
+}
+
+/// Whether our breaks are the ones Excel listed: as many, and the same where Excel could hand them out (it cannot
+/// give the location of a few, the break after the data among them).
+fn breaks_match(ours: &[u32], answer: &Value, list: &str, count: &str, axis: &str) -> bool {
+    let theirs = locations(answer, list, axis);
+    answer[count].as_u64() == Some(ours.len() as u64) && ours.starts_with(&theirs)
 }
 
 /// Every group's answers, with the group's name.
@@ -76,11 +75,6 @@ fn every_sheet_breaks_where_excel_breaks_it() {
             if answer["pages"].is_null() || !answer["failure"].as_str().unwrap_or("").is_empty() {
                 continue;
             }
-            // Excel could not hand out the break locations of a few sheets ("Invalid index" from `Item`); for those
-            // only the page count is compared.
-            let unreadable = ["hbreaks", "vbreaks"]
-                .iter()
-                .any(|key| answer[*key].as_array().is_none_or(|l| l.iter().any(Value::is_null)));
             let key = format!("{name}/{sheet_name}");
             if KNOWN_DIFFERENCES.iter().any(|(k, _)| key.ends_with(k)) {
                 continue;
@@ -89,20 +83,32 @@ fn every_sheet_breaks_where_excel_breaks_it() {
             let layout = paginate(&book, index, &Options::default());
             compared += 1;
             let ours = (layout.row_break_rows(), layout.col_break_cols(), layout.page_count());
-            let excel = (
-                if unreadable { Vec::new() } else { locations(answer, "hbreaks", "row") },
-                if unreadable { Vec::new() } else { locations(answer, "vbreaks", "col") },
-                answer["pages"].as_u64().unwrap() as usize,
-            );
+            let pages = answer["pages"].as_u64().unwrap() as usize;
             // Several print areas print on pages of their own and Excel lists no breaks for them.
             let several_areas = unluminous_sheet::pages::print_area(&book, index).len() > 1;
-            let breaks_agree =
-                several_areas || unreadable || (ours.0 == excel.0 && ours.1 == excel.1);
-            if !breaks_agree || ours.2 != excel.2 {
-                wrong.push(format!("{key}: ours rows {:?} cols {:?} pages {} (scale {}), Excel rows {:?} cols {:?} pages {}", ours.0, ours.1, ours.2, layout.scale, excel.0, excel.1, excel.2));
+            let breaks_agree = several_areas
+                || breaks_match(&ours.0, answer, "hbreaks", "hcount", "row")
+                    && breaks_match(&ours.1, answer, "vbreaks", "vcount", "col");
+            let ours_listed = (ours.0.len(), ours.1.len());
+            let excel_listed = (answer["hcount"].as_u64(), answer["vcount"].as_u64());
+            if !breaks_agree || ours.2 != pages {
+                wrong.push(format!(
+                    "{key}: ours rows {:?} cols {:?} pages {} (scale {}), Excel rows {:?} cols {:?} ({excel_listed:?} listed, ours {ours_listed:?}) pages {pages}",
+                    ours.0,
+                    ours.1,
+                    ours.2,
+                    layout.scale,
+                    locations(answer, "hbreaks", "row"),
+                    locations(answer, "vbreaks", "col"),
+                ));
             }
         }
     }
+    println!(
+        "{compared} sheets compared, {} match, {} known differences",
+        compared - wrong.len(),
+        KNOWN_DIFFERENCES.len()
+    );
     assert!(compared > 100, "only {compared} sheets were compared");
     assert!(
         wrong.is_empty(),
