@@ -429,6 +429,82 @@ pub struct Ctx<'a> {
     /// A justified line may take a word that fits once its spaces are shrunk to four fifths, which is
     /// what Word does in its 2013 layout (compatibility mode 15 and later) (task-2359, C5).
     pub shrink_justified: bool,
+    /// The paragraphs laid out by the last layout, which this one takes again when a paragraph has not
+    /// changed (task-2359, TDD 5.2: a keystroke lays out the paragraph it changed).
+    pub cache: Option<&'a std::cell::RefCell<LayoutCache>>,
+}
+
+/// Body paragraphs already laid out, by what they are and the width and list label they were laid out
+/// at. The flow still places every paragraph, which is cheap; the shaping and the line breaking, which
+/// are not, are done again only for a paragraph that changed.
+#[derive(Debug, Default)]
+pub struct LayoutCache {
+    /// What every paragraph depends on beside itself: the styles, the lists, the settings, the theme,
+    /// the options and the font measurer. A change to any of them empties the cache.
+    document: u64,
+    entries: HashMap<u64, (Vec<u32>, LaidParagraph)>,
+    used: std::collections::HashSet<u64>,
+    /// How many paragraphs the last layout took from the cache and how many it laid out again.
+    pub hits: usize,
+    pub misses: usize,
+}
+
+impl LayoutCache {
+    pub fn new() -> Self {
+        LayoutCache::default()
+    }
+}
+
+/// What a document's paragraphs depend on besides themselves.
+fn document_key(document: &Document, options: &Options, metrics_tag: u64) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let xml = |part: &Option<crate::model::XmlPart>| part.as_ref().map(|p| p.root.to_xml()).unwrap_or_default();
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    xml(&document.styles).hash(&mut hasher);
+    xml(&document.numbering).hash(&mut hasher);
+    xml(&document.settings).hash(&mut hasher);
+    document.package.part("word/theme/theme1.xml").map(|b| b.len()).unwrap_or(0).hash(&mut hasher);
+    options.show_marks.hash(&mut hasher);
+    options.show_codes.hash(&mut hasher);
+    format!("{:?}", options.markup).hash(&mut hasher);
+    metrics_tag.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// Whether a paragraph's layout depends only on itself, its width and its list label: no field, no
+/// note reference, no picture or shape, no equation, nothing that the page or the pass decides.
+fn cacheable(paragraph: &crate::model::Paragraph) -> bool {
+    use crate::model::Content;
+    paragraph.runs.iter().all(|run| {
+        let plain = match &run.content {
+            Content::Text(_) | Content::Tab | Content::Break(_) => true,
+            Content::Object(el) => matches!(el.name.as_str(), "w:sym" | "w:noBreakHyphen" | "w:softHyphen" | "w:ptab"),
+            Content::FieldChar(_) | Content::Instr(_) | Content::ParagraphObject(_) => false,
+        };
+        plain && !run.wraps.iter().any(|w| w.el.name == "w:fldSimple")
+    })
+}
+
+/// A body paragraph's own identity: its properties, its runs and their wrappers, and its marks.
+fn paragraph_key(paragraph: &crate::model::Paragraph, width: f32, label: &str, document: u64) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    document.hash(&mut hasher);
+    width.to_bits().hash(&mut hasher);
+    label.hash(&mut hasher);
+    paragraph.props.to_xml().hash(&mut hasher);
+    for run in &paragraph.runs {
+        run.props.to_xml().hash(&mut hasher);
+        format!("{:?}", run.content).hash(&mut hasher);
+        for wrap in &run.wraps {
+            wrap.el.to_xml().hash(&mut hasher);
+        }
+    }
+    for mark in &paragraph.marks {
+        mark.offset.hash(&mut hasher);
+        mark.el.name.hash(&mut hasher);
+    }
+    hasher.finish()
 }
 
 /// The `compatibilityMode` a document's settings name: 15 for a document Word 2013 or later made, 14
@@ -529,6 +605,43 @@ fn default_tab(document: &Document) -> f32 {
 
 /// Lay the whole document out into pages.
 pub fn lay_out(document: &Document, metrics: &dyn FontMetrics, options: Options) -> Pages {
+    lay_out_inner(document, metrics, options, None)
+}
+
+/// [`lay_out`], taking again every paragraph `cache` holds from the last layout that has not changed.
+/// `metrics_tag` names the font measurer, so pages laid out with one are not taken for another's.
+pub fn lay_out_cached(
+    document: &Document,
+    metrics: &dyn FontMetrics,
+    options: Options,
+    cache: &std::cell::RefCell<LayoutCache>,
+    metrics_tag: u64,
+) -> Pages {
+    let key = document_key(document, &options, metrics_tag);
+    {
+        let mut cache = cache.borrow_mut();
+        if cache.document != key {
+            cache.entries.clear();
+            cache.document = key;
+        }
+        cache.used.clear();
+        cache.hits = 0;
+        cache.misses = 0;
+    }
+    let pages = lay_out_inner(document, metrics, options, Some(cache));
+    // What this layout did not use is let go, so the cache holds one document's paragraphs.
+    let mut cache = cache.borrow_mut();
+    let used = std::mem::take(&mut cache.used);
+    cache.entries.retain(|k, _| used.contains(k));
+    pages
+}
+
+fn lay_out_inner(
+    document: &Document,
+    metrics: &dyn FontMetrics,
+    options: Options,
+    cache: Option<&std::cell::RefCell<LayoutCache>>,
+) -> Pages {
     let resolver = Resolver::new(document);
     let references = notes::references(document);
     let footnote_options = notes::NoteOptions::of(document, false);
@@ -553,6 +666,7 @@ pub fn lay_out(document: &Document, metrics: &dyn FontMetrics, options: Options)
         body_pages: HashMap::new(),
         hyphenation: paragraph::Hyphenation::of(document),
         shrink_justified: compatibility_mode(document) >= 15,
+        cache,
     };
     let mut sections = sections(document);
     if let Some((width, height)) = options.reading {
@@ -752,6 +866,46 @@ fn flow_block(flow: &mut Flow, ctx: &Ctx, counters: &mut Counters, block: &Block
                 return;
             }
             let width = flow.column_width();
+            // A paragraph that has not changed since the last layout is taken from the cache.
+            if let (Some(cache), false) = (ctx.cache, flow.wraps_here()) {
+                if cacheable(paragraph) {
+                    let mut probe = counters.clone();
+                    let look = ctx.resolver.paragraph(&paragraph.props, None);
+                    let label = look
+                        .numbering
+                        .and_then(|(num, level)| probe.next(&ctx.resolver.numbering, num, level))
+                        .map(|l| format!("{}{:?}", l.text, l.picture))
+                        .unwrap_or_default();
+                    let document_key = cache.borrow().document;
+                    let key = paragraph_key(paragraph, width, &label, document_key);
+                    let found = cache.borrow().entries.get(&key).cloned();
+                    if let Some((old_path, mut laid)) = found {
+                        for chunk in &mut laid.lines {
+                            for line in &mut chunk.carets {
+                                if line.story == StoryId::Body && line.path == old_path {
+                                    line.path = path.clone();
+                                }
+                            }
+                        }
+                        let mut cache = cache.borrow_mut();
+                        cache.used.insert(key);
+                        cache.hits += 1;
+                        drop(cache);
+                        *counters = probe;
+                        flow.place_paragraph(laid);
+                        return;
+                    }
+                    let prepared = paragraph::prepare(ctx, counters, paragraph, &StoryId::Body, &path, width, None);
+                    let laid = prepared.laid(ctx);
+                    let mut cache = cache.borrow_mut();
+                    cache.entries.insert(key, (path.clone(), laid.clone()));
+                    cache.used.insert(key);
+                    cache.misses += 1;
+                    drop(cache);
+                    flow.place_paragraph(laid);
+                    return;
+                }
+            }
             let prepared =
                 paragraph::prepare(ctx, counters, paragraph, &StoryId::Body, &path, width, None);
             if flow.wraps_here() || prepared.floats().iter().any(Float::wraps) {

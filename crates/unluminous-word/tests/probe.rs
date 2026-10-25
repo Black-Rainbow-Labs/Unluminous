@@ -233,3 +233,18 @@ fn tops_probe() {
         );
     }
 }
+
+/// How long laying out a fixture takes with the real fonts, for the performance work.
+#[test]
+#[ignore]
+fn layout_time_probe() {
+    let fonts = common::RealFonts::new();
+    let name = std::env::var("PROBE_FIXTURE").unwrap_or_else(|_| "long".into());
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/fixtures/{name}.docx"));
+    let document = unluminous_word::read::open(&std::fs::read(&path).unwrap()).unwrap();
+    for _ in 0..3 {
+        let started = std::time::Instant::now();
+        let pages = unluminous_word::layout::lay_out(&document, &fonts, Default::default());
+        println!("{} pages in {:?}", pages.pages.len(), started.elapsed());
+    }
+}

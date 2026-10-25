@@ -649,6 +649,8 @@ pub struct Doc {
     pub windows: Vec<(String, View)>,
     /// The Read Mode screen the pages were last laid out on, in whole points.
     pub laid_reading: Option<(i32, i32)>,
+    /// The paragraphs the last layout laid out, which a keystroke's layout takes again.
+    pub layout_cache: std::cell::RefCell<layout::LayoutCache>,
 }
 
 impl std::fmt::Debug for Doc {
@@ -671,7 +673,7 @@ impl Doc {
         }
         self.laid_reading = reading_key;
         let fonts = fonts::WordFonts::new(renderer);
-        self.pages = layout::lay_out(
+        self.pages = layout::lay_out_cached(
             &self.session.document,
             &fonts,
             layout::Options {
@@ -680,6 +682,8 @@ impl Doc {
                 markup: self.view.markup,
                 reading,
             },
+            &self.layout_cache,
+            1,
         );
         self.laid = self.session.revision;
         self.formatted_text = Some("window".into());
@@ -816,6 +820,7 @@ impl Word {
             laid: 0,
             windows: Vec::new(),
             laid_reading: None,
+            layout_cache: Default::default(),
             view: View::new(&self.config),
             saved: 1,
             formatted_text: None,
@@ -856,6 +861,7 @@ impl Word {
             laid: 0,
             windows: Vec::new(),
             laid_reading: None,
+            layout_cache: Default::default(),
             view: View::new(&self.config),
             saved: 0,
             formatted_text: None,
