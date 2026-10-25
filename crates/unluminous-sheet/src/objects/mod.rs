@@ -15,8 +15,8 @@
 pub mod geometry;
 pub mod make;
 pub mod props;
-pub mod richdata;
 pub mod read;
+pub mod richdata;
 pub mod sparkline;
 pub mod write;
 
@@ -207,6 +207,97 @@ impl ShapeColor {
     pub fn transparency(&self) -> f64 {
         100.0 - self.alpha as f64 / 1000.0
     }
+
+    /// The colour as red, green, blue and opacity, given the workbook theme's twelve colours in file order.
+    pub fn resolve(&self, theme: &[u32]) -> (u8, u8, u8, u8) {
+        let (r, g, b) = match &self.base {
+            ColorBase::Rgb(r, g, b) => (*r, *g, *b),
+            ColorBase::Scheme(name) => {
+                let at = match name.as_str() {
+                    "dk1" | "tx1" => 0,
+                    "lt1" | "bg1" => 1,
+                    "dk2" | "tx2" => 2,
+                    "lt2" | "bg2" => 3,
+                    "accent1" => 4,
+                    "accent2" => 5,
+                    "accent3" => 6,
+                    "accent4" => 7,
+                    "accent5" => 8,
+                    "accent6" => 9,
+                    "hlink" => 10,
+                    "folHlink" => 11,
+                    _ => 0,
+                };
+                let v =
+                    theme.get(at).or(crate::styles::DEFAULT_THEME.get(at)).copied().unwrap_or(0);
+                ((v >> 16) as u8, (v >> 8) as u8, v as u8)
+            }
+        };
+        let (mut h, mut s, mut l) = rgb_to_hsl(r, g, b);
+        let (mut r, mut g, mut b) = (r as f64, g as f64, b as f64);
+        for (name, value) in &self.mods {
+            let f = *value as f64 / 100_000.0;
+            match name.as_str() {
+                "lumMod" => l = (l * f).clamp(0.0, 1.0),
+                "lumOff" => l = (l + f).clamp(0.0, 1.0),
+                "satMod" => s = (s * f).clamp(0.0, 1.0),
+                "shade" => {
+                    (r, g, b) = (r * f, g * f, b * f);
+                    (h, s, l) = rgb_to_hsl(r as u8, g as u8, b as u8);
+                }
+                "tint" => {
+                    let lift = |c: f64| c * f + 255.0 * (1.0 - f);
+                    (r, g, b) = (lift(r), lift(g), lift(b));
+                    (h, s, l) = rgb_to_hsl(r as u8, g as u8, b as u8);
+                }
+                _ => {}
+            }
+        }
+        let (r, g, b) = hsl_to_rgb(h, s, l);
+        (r, g, b, (self.alpha as f64 / 100_000.0 * 255.0).round() as u8)
+    }
+}
+
+fn rgb_to_hsl(r: u8, g: u8, b: u8) -> (f64, f64, f64) {
+    let (r, g, b) = (r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0);
+    let (max, min) = (r.max(g).max(b), r.min(g).min(b));
+    let l = (max + min) / 2.0;
+    if max == min {
+        return (0.0, 0.0, l);
+    }
+    let d = max - min;
+    let s = if l > 0.5 { d / (2.0 - max - min) } else { d / (max + min) };
+    let h = if max == r {
+        (g - b) / d + if g < b { 6.0 } else { 0.0 }
+    } else if max == g {
+        (b - r) / d + 2.0
+    } else {
+        (r - g) / d + 4.0
+    };
+    (h / 6.0, s, l)
+}
+
+fn hsl_to_rgb(h: f64, s: f64, l: f64) -> (u8, u8, u8) {
+    if s == 0.0 {
+        let v = (l * 255.0).round() as u8;
+        return (v, v, v);
+    }
+    let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
+    let p = 2.0 * l - q;
+    let channel = |mut t: f64| {
+        t = t.rem_euclid(1.0);
+        let v = if t < 1.0 / 6.0 {
+            p + (q - p) * 6.0 * t
+        } else if t < 0.5 {
+            q
+        } else if t < 2.0 / 3.0 {
+            p + (q - p) * (2.0 / 3.0 - t) * 6.0
+        } else {
+            p
+        };
+        (v * 255.0).round() as u8
+    };
+    (channel(h + 1.0 / 3.0), channel(h), channel(h - 1.0 / 3.0))
 }
 
 /// What fills a shape.
@@ -388,7 +479,15 @@ pub struct TextRun {
 
 impl TextRun {
     pub fn plain(text: &str) -> Self {
-        Self { text: text.to_owned(), size: None, bold: false, italic: false, underline: false, color: None, font: None }
+        Self {
+            text: text.to_owned(),
+            size: None,
+            bold: false,
+            italic: false,
+            underline: false,
+            color: None,
+            font: None,
+        }
     }
 }
 

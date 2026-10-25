@@ -216,7 +216,8 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
         .iter()
         .filter(|r| {
             let regenerated = REGENERATED.contains(&r.kind.as_str());
-            let unused_metadata = r.kind == REL_METADATA && book.dynamic_cm.is_none() && !rich_metadata;
+            let unused_metadata =
+                r.kind == REL_METADATA && book.dynamic_cm.is_none() && !rich_metadata;
             !(regenerated || unused_metadata)
         })
         .filter(|r| {

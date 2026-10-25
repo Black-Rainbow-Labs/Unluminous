@@ -62,7 +62,12 @@ fn drawing_part(book: &mut Workbook, index: usize) -> (String, bool) {
     if !sheet.raw.namespaces.iter().any(|(_, uri)| uri == REL_NS) {
         sheet.raw.namespaces.push((prefix.clone(), REL_NS.to_owned()));
     }
-    sheet.raw.rels.push(Relationship { id: id.clone(), kind: REL_DRAWING.to_owned(), target, external: false });
+    sheet.raw.rels.push(Relationship {
+        id: id.clone(),
+        kind: REL_DRAWING.to_owned(),
+        target,
+        external: false,
+    });
     sheet.raw.elements.retain(|(n, _)| n != "drawing");
     sheet.raw.elements.push(("drawing".to_owned(), format!("<drawing {prefix}:id=\"{id}\"/>")));
     book.kept.overrides.push((format!("/{part}"), CT_DRAWING.to_owned()));
@@ -88,7 +93,9 @@ fn wrap_in_anchor(obj: &DrawingObject) -> Elem {
     let mut anchor = Elem::new(&format!("{p}{local}"));
     write_anchor(&mut anchor, &obj.anchor);
     let mut tree = obj.tree.clone();
-    tree.attrs.retain(|(n, v)| !((n == "xmlns:xdr" && v == SPREADSHEET_DRAWING_NS) || (n == "xmlns:a" && v == DRAWING_NS)));
+    tree.attrs.retain(|(n, v)| {
+        !((n == "xmlns:xdr" && v == SPREADSHEET_DRAWING_NS) || (n == "xmlns:a" && v == DRAWING_NS))
+    });
     anchor.push(tree);
     let mut client = Elem::new(&format!("{p}clientData"));
     if !obj.locked {
@@ -141,8 +148,10 @@ fn object_element(
         flip_v: obj.flip_v,
         ..Xfrm::default()
     };
-    let child_space = (obj.kind == ObjectKind::Group)
-        .then_some(((obj.child_space.x, obj.child_space.y), (obj.child_space.w, obj.child_space.h)));
+    let child_space = (obj.kind == ObjectKind::Group).then_some((
+        (obj.child_space.x, obj.child_space.y),
+        (obj.child_space.w, obj.child_space.h),
+    ));
     props::write_xfrm(&mut obj.tree, &t, child_space);
     props::patch(&mut obj, &mut |part| image_rel(rels, drawing_part, part));
     wrap_in_anchor(&obj)
@@ -216,16 +225,16 @@ fn drop_unused_media(book: &mut Workbook, _index: usize) {
         .filter(|p| p.starts_with("xl/media/"))
         .collect();
     for part in media {
-        let used = book.kept.parts.iter().filter(|(p, _)| p.ends_with(".rels")).any(|(rp, bytes)| {
-            let owner = owner_of_rels(rp);
-            parse_rels(&String::from_utf8_lossy(bytes))
-                .iter()
-                .any(|r| !r.external && resolve(&owner, &r.target) == part)
+        let used =
+            book.kept.parts.iter().filter(|(p, _)| p.ends_with(".rels")).any(|(rp, bytes)| {
+                let owner = owner_of_rels(rp);
+                parse_rels(&String::from_utf8_lossy(bytes))
+                    .iter()
+                    .any(|r| !r.external && resolve(&owner, &r.target) == part)
+            });
+        let in_sheet_rels = book.sheets.iter().any(|s| {
+            s.raw.rels.iter().any(|r| !r.external && resolve(&s.raw.part, &r.target) == part)
         });
-        let in_sheet_rels = book
-            .sheets
-            .iter()
-            .any(|s| s.raw.rels.iter().any(|r| !r.external && resolve(&s.raw.part, &r.target) == part));
         if !used && !in_sheet_rels {
             book.kept.remove(&part);
         }

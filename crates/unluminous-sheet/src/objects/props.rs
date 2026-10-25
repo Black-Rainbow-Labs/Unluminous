@@ -9,14 +9,37 @@ use crate::xlsx::xmltree::{Elem, Node};
 
 /// The children of `xdr:spPr`, in the order the schema requires.
 const SP_PR_ORDER: &[&str] = &[
-    "xfrm", "custGeom", "prstGeom", "noFill", "solidFill", "gradFill", "blipFill", "pattFill",
-    "grpFill", "ln", "effectLst", "effectDag", "scene3d", "sp3d", "extLst",
+    "xfrm",
+    "custGeom",
+    "prstGeom",
+    "noFill",
+    "solidFill",
+    "gradFill",
+    "blipFill",
+    "pattFill",
+    "grpFill",
+    "ln",
+    "effectLst",
+    "effectDag",
+    "scene3d",
+    "sp3d",
+    "extLst",
 ];
 const FILL_NAMES: &[&str] = &["noFill", "solidFill", "gradFill", "blipFill", "pattFill", "grpFill"];
 /// The children of `a:ln`, in the order the schema requires.
 const LN_ORDER: &[&str] = &[
-    "noFill", "solidFill", "gradFill", "pattFill", "prstDash", "custDash", "round", "bevel", "miter",
-    "headEnd", "tailEnd", "extLst",
+    "noFill",
+    "solidFill",
+    "gradFill",
+    "pattFill",
+    "prstDash",
+    "custDash",
+    "round",
+    "bevel",
+    "miter",
+    "headEnd",
+    "tailEnd",
+    "extLst",
 ];
 
 /// The `a:` prefix this element's family uses, found from a child that must be in that namespace.
@@ -261,7 +284,8 @@ fn read_runs(p: &Elem) -> Vec<TextRun> {
                     run.italic = pr.attr("i") == Some("1");
                     run.underline = pr.attr("u").is_some_and(|u| u != "none");
                     run.color = pr.child("solidFill").and_then(color_in);
-                    run.font = pr.child("latin").and_then(|l| l.attr("typeface")).map(str::to_owned);
+                    run.font =
+                        pr.child("latin").and_then(|l| l.attr("typeface")).map(str::to_owned);
                 }
                 runs.push(run);
             }
@@ -282,7 +306,8 @@ fn read_text(content: &Elem) -> Option<TextBody> {
         wrap: props.and_then(|b| b.attr("wrap")) != Some("none"),
     };
     for p in body.elems().filter(|e| e.local() == "p") {
-        let align = p.child("pPr").and_then(|pp| pp.attr("algn")).map_or(HAlign::Left, HAlign::parse);
+        let align =
+            p.child("pPr").and_then(|pp| pp.attr("algn")).map_or(HAlign::Left, HAlign::parse);
         text.paragraphs.push(TextParagraph { align, runs: read_runs(p) });
     }
     Some(text)
@@ -308,7 +333,9 @@ pub fn read_shape(content: &Elem) -> Option<ShapeData> {
         text: read_text(content),
         style_fill: style_color(style, "fillRef"),
         style_line: style_color(style, "lnRef"),
-        style_text: style.and_then(|s| s.child("fontRef")).and_then(|f| f.elems().find_map(read_color)),
+        style_text: style
+            .and_then(|s| s.child("fontRef"))
+            .and_then(|f| f.elems().find_map(read_color)),
     })
 }
 
@@ -487,23 +514,31 @@ pub fn read_picture(content: &Elem) -> Option<(String, Crop, Option<String>)> {
         let get = |n: &str| r.attr(n).and_then(|v| v.parse().ok()).unwrap_or(0);
         Crop { left: get("l"), top: get("t"), right: get("r"), bottom: get("b") }
     });
-    let svg = blip
-        .find("svgBlip")
-        .and_then(|s| s.attr_local("embed"))
-        .map(str::to_owned);
+    let svg = blip.find("svgBlip").and_then(|s| s.attr_local("embed")).map(str::to_owned);
     Some((embed, crop, svg))
 }
 
 /// Write a picture's crop and the relationship ids of its image and SVG.
 pub fn patch_picture(content: &mut Elem, crop: Crop, embed: &str, svg: Option<&str>) {
     let Some(blip_fill) = content.child_mut("blipFill") else { return };
-    let a = blip_fill.elems().next().map(|e| e.prefix().to_owned()).unwrap_or_else(|| "a".to_owned());
+    let a =
+        blip_fill.elems().next().map(|e| e.prefix().to_owned()).unwrap_or_else(|| "a".to_owned());
     if let Some(blip) = blip_fill.child_mut("blip") {
-        if let Some((n, _)) = blip.attrs.iter().find(|(n, _)| super::super::xlsx::xmltree::local_name(n) == "embed").cloned() {
+        if let Some((n, _)) = blip
+            .attrs
+            .iter()
+            .find(|(n, _)| super::super::xlsx::xmltree::local_name(n) == "embed")
+            .cloned()
+        {
             blip.set_attr(&n, embed);
         }
         if let (Some(id), Some(s)) = (svg, blip.find_mut("svgBlip")) {
-            if let Some((n, _)) = s.attrs.iter().find(|(n, _)| super::super::xlsx::xmltree::local_name(n) == "embed").cloned() {
+            if let Some((n, _)) = s
+                .attrs
+                .iter()
+                .find(|(n, _)| super::super::xlsx::xmltree::local_name(n) == "embed")
+                .cloned()
+            {
                 s.set_attr(&n, id);
             }
         }
@@ -539,9 +574,9 @@ pub fn set_identity(content: &mut Elem, id: ObjectId, obj_name: &str, descr: &st
 pub fn read_lock(content: &Elem) -> bool {
     let nv = content.elems().find(|c| c.local().starts_with("nv"));
     let locks = nv.and_then(|n| {
-        n.elems().find(|c| c.local().starts_with("cNv") && c.local() != "cNvPr").and_then(|c| {
-            c.elems().find(|l| l.local().ends_with("Locks"))
-        })
+        n.elems()
+            .find(|c| c.local().starts_with("cNv") && c.local() != "cNvPr")
+            .and_then(|c| c.elems().find(|l| l.local().ends_with("Locks")))
     });
     locks.is_some_and(|l| l.attr("noChangeAspect") == Some("1"))
 }
@@ -550,7 +585,10 @@ pub fn read_lock(content: &Elem) -> bool {
 pub fn write_lock(content: &mut Elem, locked: bool) {
     let a = content.child("spPr").map(drawing_prefix).unwrap_or_else(|| "a".to_owned());
     let Some(nv) = content.elems_mut().find(|c| c.local().starts_with("nv")) else { return };
-    let Some(cnv) = nv.elems_mut().find(|c| c.local().starts_with("cNv") && c.local() != "cNvPr") else { return };
+    let Some(cnv) = nv.elems_mut().find(|c| c.local().starts_with("cNv") && c.local() != "cNvPr")
+    else {
+        return;
+    };
     let locks_name = match cnv.local() {
         "cNvPicPr" => "picLocks",
         "cNvGrpSpPr" => "grpSpLocks",
@@ -585,4 +623,26 @@ pub fn patch(obj: &mut DrawingObject, embed_for: &mut dyn FnMut(&str) -> String)
         patch_picture(&mut tree, p.crop, &embed, svg.as_deref());
     }
     obj.tree = tree;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn colours_resolve_through_the_theme_and_their_changes() {
+        let theme = crate::styles::DEFAULT_THEME.to_vec();
+        assert_eq!(ShapeColor::rgb(1, 2, 3).resolve(&theme), (1, 2, 3, 255));
+        let white =
+            ShapeColor { mods: vec![("lumMod".to_owned(), 50_000)], ..ShapeColor::scheme("bg1") };
+        let (r, g, b, _) = white.resolve(&theme);
+        assert!((127..=128).contains(&r) && r == g && g == b, "{r} {g} {b}");
+        let half = ShapeColor::rgb(0, 0, 0).with_transparency(50.0);
+        assert_eq!(half.resolve(&theme).3, 128);
+        let accent = ShapeColor::scheme("accent1").resolve(&theme);
+        assert_eq!(
+            (accent.0, accent.1, accent.2),
+            ((theme[4] >> 16) as u8, (theme[4] >> 8) as u8, theme[4] as u8)
+        );
+    }
 }

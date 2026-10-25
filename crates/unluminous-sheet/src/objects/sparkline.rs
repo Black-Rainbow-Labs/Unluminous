@@ -148,7 +148,10 @@ fn read_color(e: &Elem) -> Option<Color> {
         return u32::from_str_radix(rgb, 16).ok().map(Color::Rgb);
     }
     if let Some(theme) = e.attr("theme").and_then(|v| v.parse().ok()) {
-        return Some(Color::Theme(theme, e.attr("tint").and_then(|v| v.parse().ok()).unwrap_or(0.0)));
+        return Some(Color::Theme(
+            theme,
+            e.attr("tint").and_then(|v| v.parse().ok()).unwrap_or(0.0),
+        ));
     }
     e.attr("indexed").and_then(|v| v.parse().ok()).map(Color::Indexed)
 }
@@ -156,7 +159,9 @@ fn read_color(e: &Elem) -> Option<Color> {
 fn read_bound(e: &Elem, kind_attr: &str, manual_attr: &str) -> AxisBound {
     match e.attr(kind_attr) {
         Some("group") => AxisBound::SameForAll,
-        Some("custom") => AxisBound::Custom(e.attr(manual_attr).and_then(|v| v.parse().ok()).unwrap_or(0.0)),
+        Some("custom") => {
+            AxisBound::Custom(e.attr(manual_attr).and_then(|v| v.parse().ok()).unwrap_or(0.0))
+        }
         _ => AxisBound::Automatic,
     }
 }
@@ -190,11 +195,30 @@ fn read_group(e: &Elem) -> SparklineGroup {
         ..SparklineGroup::default()
     };
     const MODELLED: &[&str] = &[
-        "type", "lineWeight", "displayEmptyCellsAs", "markers", "high", "low", "first", "last", "negative",
-        "displayXAxis", "displayHidden", "rightToLeft", "minAxisType", "maxAxisType", "manualMin",
-        "manualMax", "dateAxis",
+        "type",
+        "lineWeight",
+        "displayEmptyCellsAs",
+        "markers",
+        "high",
+        "low",
+        "first",
+        "last",
+        "negative",
+        "displayXAxis",
+        "displayHidden",
+        "rightToLeft",
+        "minAxisType",
+        "maxAxisType",
+        "manualMin",
+        "manualMax",
+        "dateAxis",
     ];
-    g.extra = e.attrs.iter().filter(|(n, _)| !MODELLED.contains(&n.as_str()) && !n.starts_with("xmlns")).cloned().collect();
+    g.extra = e
+        .attrs
+        .iter()
+        .filter(|(n, _)| !MODELLED.contains(&n.as_str()) && !n.starts_with("xmlns"))
+        .cloned()
+        .collect();
     for c in e.elems() {
         match c.local() {
             "colorSeries" => g.colors.series = read_color(c),
@@ -209,7 +233,8 @@ fn read_group(e: &Elem) -> SparklineGroup {
             "sparklines" => {
                 for s in c.elems().filter(|s| s.local() == "sparkline") {
                     let data = s.child("f").map(Elem::text).unwrap_or_default();
-                    let at = s.child("sqref").map(Elem::text).and_then(|t| CellRef::parse(t.trim()));
+                    let at =
+                        s.child("sqref").map(Elem::text).and_then(|t| CellRef::parse(t.trim()));
                     if let Some(location) = at {
                         g.sparklines.push(Sparkline { data, location });
                     }
@@ -230,7 +255,9 @@ pub fn extract(sheet: &mut Sheet) {
         .elems()
         .filter(|e| is_ours(e))
         .filter_map(|e| e.child("sparklineGroups"))
-        .flat_map(|g| g.elems().filter(|e| e.local() == "sparklineGroup").map(read_group).collect::<Vec<_>>())
+        .flat_map(|g| {
+            g.elems().filter(|e| e.local() == "sparklineGroup").map(read_group).collect::<Vec<_>>()
+        })
         .collect();
     if groups.is_empty() {
         return;
@@ -407,7 +434,12 @@ fn data_cells(book: &Workbook, home: usize, formula: &str) -> Option<(usize, Ran
     Some((sheet, Range::parse(&range.replace('$', ""))?))
 }
 
-fn read_values(book: &Workbook, home: usize, group: &SparklineGroup, sp: &Sparkline) -> Vec<Option<f64>> {
+fn read_values(
+    book: &Workbook,
+    home: usize,
+    group: &SparklineGroup,
+    sp: &Sparkline,
+) -> Vec<Option<f64>> {
     let Some((si, range)) = data_cells(book, home, &sp.data) else { return Vec::new() };
     let sheet = &book.sheets[si];
     let mut out = Vec::new();
@@ -457,7 +489,12 @@ impl SparklineData {
 
 /// The numbers a drawing needs for the sparkline at `index` of group `group`, or `None` when its data cannot
 /// be found.
-pub fn sparkline_data(book: &Workbook, sheet: usize, group: usize, index: usize) -> Option<SparklineData> {
+pub fn sparkline_data(
+    book: &Workbook,
+    sheet: usize,
+    group: usize,
+    index: usize,
+) -> Option<SparklineData> {
     let g = book.sheets.get(sheet)?.sparklines.get(group)?;
     let sp = g.sparklines.get(index)?;
     let mut values = read_values(book, sheet, g, sp);
@@ -485,12 +522,13 @@ pub fn sparkline_data(book: &Workbook, sheet: usize, group: usize, index: usize)
         (lo, hi)
     };
     let (auto_lo, auto_hi) = automatic_bounds(g.kind, own.0, own.1);
-    let (group_lo, group_hi) = if matches!(g.min, AxisBound::SameForAll) || matches!(g.max, AxisBound::SameForAll) {
-        let (l, h) = all();
-        automatic_bounds(g.kind, l, h)
-    } else {
-        (auto_lo, auto_hi)
-    };
+    let (group_lo, group_hi) =
+        if matches!(g.min, AxisBound::SameForAll) || matches!(g.max, AxisBound::SameForAll) {
+            let (l, h) = all();
+            automatic_bounds(g.kind, l, h)
+        } else {
+            (auto_lo, auto_hi)
+        };
     let axis_min = match g.min {
         AxisBound::Automatic => auto_lo,
         AxisBound::SameForAll => group_lo,
@@ -508,7 +546,12 @@ pub fn sparkline_data(book: &Workbook, sheet: usize, group: usize, index: usize)
     Some(SparklineData {
         high: position_of(own.1).or_else(|| last_of(own.1)),
         low: position_of(own.0),
-        negatives: values.iter().enumerate().filter(|(_, v)| v.is_some_and(|n| n < 0.0)).map(|(i, _)| i).collect(),
+        negatives: values
+            .iter()
+            .enumerate()
+            .filter(|(_, v)| v.is_some_and(|n| n < 0.0))
+            .map(|(i, _)| i)
+            .collect(),
         values,
         axis_min,
         axis_max,
@@ -541,7 +584,13 @@ mod tests {
         assert!(g.markers && g.negative && !g.high);
         assert_eq!(g.colors.series, Some(Color::Rgb(0xFF376092)));
         assert_eq!(g.colors.negative, Some(Color::Theme(5, -0.25)));
-        assert_eq!(g.sparklines, vec![Sparkline { data: "Spark!B2:E2".to_owned(), location: CellRef::parse("F2").unwrap() }]);
+        assert_eq!(
+            g.sparklines,
+            vec![Sparkline {
+                data: "Spark!B2:E2".to_owned(),
+                location: CellRef::parse("F2").unwrap()
+            }]
+        );
         assert_eq!(s.raw.elements[0].1, "<extLst><ext uri=\"{OTHER}\"/></extLst>");
     }
 

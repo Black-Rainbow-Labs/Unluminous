@@ -14,9 +14,7 @@ const ANCHOR_PARTS: &[&str] = &["from", "to", "pos", "ext", "clientData"];
 pub fn is_chart_anchor(anchor: &Elem) -> bool {
     let mut frames = Vec::new();
     anchor.find_all("graphicData", &mut frames);
-    frames
-        .iter()
-        .any(|g| g.attr("uri").is_some_and(|u| u == CHART_NS || u.contains("chartex")))
+    frames.iter().any(|g| g.attr("uri").is_some_and(|u| u == CHART_NS || u.contains("chartex")))
 }
 
 /// The anchor element of a top level child of the drawing: the child itself, or the anchor inside an
@@ -26,7 +24,9 @@ pub fn anchor_of(child: &Elem) -> Option<&Elem> {
         return Some(child);
     }
     if child.local() == "AlternateContent" {
-        return child.child("Choice").and_then(|c| c.elems().find(|e| ANCHORS.contains(&e.local())));
+        return child
+            .child("Choice")
+            .and_then(|c| c.elems().find(|e| ANCHORS.contains(&e.local())));
     }
     None
 }
@@ -83,7 +83,9 @@ pub fn read_anchor(e: &Elem) -> Anchor {
 
 fn corner_elem(prefix: &str, local: &str, c: (CellRef, i64, i64)) -> Elem {
     let mut e = Elem::new(&format!("{prefix}{local}"));
-    for (n, v) in [("col", c.0.col as i64), ("colOff", c.1), ("row", c.0.row as i64), ("rowOff", c.2)] {
+    for (n, v) in
+        [("col", c.0.col as i64), ("colOff", c.1), ("row", c.0.row as i64), ("rowOff", c.2)]
+    {
         let mut child = Elem::new(&format!("{prefix}{n}"));
         child.set_text(&v.to_string());
         e.push(child);
@@ -200,10 +202,7 @@ fn fallback_picture(tree: &Elem, rels: &[Relationship], drawing_part: &str) -> O
     if blips.is_empty() {
         tree.find_all("blip", &mut blips);
     }
-    blips
-        .iter()
-        .find_map(|b| b.attr_local("embed"))
-        .and_then(|id| part_of(rels, drawing_part, id))
+    blips.iter().find_map(|b| b.attr_local("embed")).and_then(|id| part_of(rels, drawing_part, id))
 }
 
 /// Everything needed to turn elements into objects.
@@ -213,7 +212,12 @@ pub struct Context<'a> {
 }
 
 /// One object from the element it is in. `anchor` is `None` for an object inside a group.
-fn build(cx: &Context, tree: Elem, anchor: Option<(Anchor, &Elem)>, wrapped: bool) -> DrawingObject {
+fn build(
+    cx: &Context,
+    tree: Elem,
+    anchor: Option<(Anchor, &Elem)>,
+    wrapped: bool,
+) -> DrawingObject {
     let probe = if wrapped { inner_content(&tree).unwrap_or(&tree) } else { &tree };
     let kind = classify(&tree, wrapped);
     let nv = props::non_visual(probe).or_else(|| tree.find("cNvPr"));
@@ -222,7 +226,8 @@ fn build(cx: &Context, tree: Elem, anchor: Option<(Anchor, &Elem)>, wrapped: boo
         Some((a, client)) => (a, Some(client)),
         None => (Anchor::default(), None),
     };
-    let flag = |n: &str| client.and_then(|c| c.child("clientData")).and_then(|d| d.attr(n)) != Some("0");
+    let flag =
+        |n: &str| client.and_then(|c| c.child("clientData")).and_then(|d| d.attr(n)) != Some("0");
     let t = if wrapped { props::Xfrm::default() } else { read_xfrm(&tree) };
     let mut obj = DrawingObject {
         id: attr("id").parse().unwrap_or(0),
@@ -314,7 +319,6 @@ mod tests {
 
     #[test]
     fn a_shape_is_read_with_its_anchor_looks_and_text() {
-        let sheet = Sheet::new("S");
         let objects = read_drawing(DRAWING, &[], "xl/drawings/drawing1.xml");
         assert_eq!(objects.len(), 1);
         let o = &objects[0];
@@ -324,7 +328,10 @@ mod tests {
         assert_eq!(o.anchor.from, (CellRef::new(3, 2), 10, 20));
         let shape = o.shape.as_ref().unwrap();
         assert_eq!((shape.preset.as_str(), shape.adjust), ("roundRect", Some(30000)));
-        assert_eq!(shape.fill, Fill::Solid(ShapeColor { alpha: 50_000, ..ShapeColor::rgb(255, 0, 0) }));
+        assert_eq!(
+            shape.fill,
+            Fill::Solid(ShapeColor { alpha: 50_000, ..ShapeColor::rgb(255, 0, 0) })
+        );
         assert_eq!(shape.line.width, Some(19050));
         assert_eq!(shape.line.dash, Dash::Dash);
         let text = shape.text.as_ref().unwrap();

@@ -12,13 +12,18 @@ use crate::value::{ErrorKind, Value};
 use crate::xlsx::xmltree::{self, Elem};
 use crate::xlsx::{next_id, parse_rels, relative, rels_path, resolve, write_rels};
 
-const REL_TYPES: &str = "http://schemas.microsoft.com/office/2017/06/relationships/rdRichValueTypes";
-const REL_STRUCTURE: &str = "http://schemas.microsoft.com/office/2017/06/relationships/rdRichValueStructure";
+const REL_TYPES: &str =
+    "http://schemas.microsoft.com/office/2017/06/relationships/rdRichValueTypes";
+const REL_STRUCTURE: &str =
+    "http://schemas.microsoft.com/office/2017/06/relationships/rdRichValueStructure";
 const REL_VALUE: &str = "http://schemas.microsoft.com/office/2017/06/relationships/rdRichValue";
-const REL_VALUE_REL: &str = "http://schemas.microsoft.com/office/2022/10/relationships/richValueRel";
-const REL_METADATA: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/sheetMetadata";
+const REL_VALUE_REL: &str =
+    "http://schemas.microsoft.com/office/2022/10/relationships/richValueRel";
+const REL_METADATA: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/sheetMetadata";
 const REL_IMAGE: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
-const CT_METADATA: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheetMetadata+xml";
+const CT_METADATA: &str =
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheetMetadata+xml";
 const CT_TYPES: &str = "application/vnd.ms-excel.rdrichvaluetypes+xml";
 const CT_STRUCTURE: &str = "application/vnd.ms-excel.rdrichvaluestructure+xml";
 const CT_VALUE: &str = "application/vnd.ms-excel.rdrichvalue+xml";
@@ -34,7 +39,11 @@ const TYPES_XML: &str = include_str!("rdrichvaluetypes.xml");
 const LOCAL_IMAGE: &str = "_localImage";
 
 fn workbook_part(book: &Workbook) -> String {
-    if book.part.is_empty() { "xl/workbook.xml".to_owned() } else { book.part.clone() }
+    if book.part.is_empty() {
+        "xl/workbook.xml".to_owned()
+    } else {
+        book.part.clone()
+    }
 }
 
 /// The part a workbook relationship of this type names, if the workbook has one.
@@ -53,7 +62,12 @@ fn ensure_part(book: &mut Workbook, kind: &str, default: &str, content_type: &st
     }
     let id = next_id(&book.kept.workbook_rels);
     let target = relative(&workbook_part(book), default);
-    book.kept.workbook_rels.push(Relationship { id, kind: kind.to_owned(), target, external: false });
+    book.kept.workbook_rels.push(Relationship {
+        id,
+        kind: kind.to_owned(),
+        target,
+        external: false,
+    });
     book.kept.overrides.push((format!("/{default}"), content_type.to_owned()));
     default.to_owned()
 }
@@ -84,7 +98,8 @@ fn bump_count(e: &mut Elem) -> usize {
 
 /// Add `_localImage` to the rich value structures unless they have it. Returns its index.
 fn local_image_structure(book: &mut Workbook) -> usize {
-    let part = ensure_part(book, REL_STRUCTURE, "xl/richData/rdrichvaluestructure.xml", CT_STRUCTURE);
+    let part =
+        ensure_part(book, REL_STRUCTURE, "xl/richData/rdrichvaluestructure.xml", CT_STRUCTURE);
     let mut tree = read_tree(book, &part).unwrap_or_else(|| root("rvStructures", NS_RICH, &[]));
     if let Some(i) = tree.elems().position(|s| s.attr("t") == Some(LOCAL_IMAGE)) {
         return i;
@@ -112,9 +127,18 @@ fn add_image_relationship(book: &mut Workbook, image_part: &str) -> usize {
         r
     });
     let rels_part = rels_path(&part);
-    let mut rels = book.kept.get(&rels_part).map(|b| parse_rels(&String::from_utf8_lossy(b))).unwrap_or_default();
+    let mut rels = book
+        .kept
+        .get(&rels_part)
+        .map(|b| parse_rels(&String::from_utf8_lossy(b)))
+        .unwrap_or_default();
     let id = next_id(&rels);
-    rels.push(Relationship { id: id.clone(), kind: REL_IMAGE.to_owned(), target: relative(&part, image_part), external: false });
+    rels.push(Relationship {
+        id: id.clone(),
+        kind: REL_IMAGE.to_owned(),
+        target: relative(&part, image_part),
+        external: false,
+    });
     let index = tree.elems().count();
     let mut rel = Elem::new("rel");
     rel.set_attr("r:id", &id);
@@ -145,7 +169,18 @@ fn metadata_type(name: &str, cell_meta: bool) -> Elem {
     let mut t = Elem::new("metadataType");
     t.set_attr("name", name);
     t.set_attr("minSupportedVersion", "120000");
-    for a in ["copy", "pasteAll", "pasteValues", "merge", "splitFirst", "rowColShift", "clearFormats", "clearComments", "assign", "coerce"] {
+    for a in [
+        "copy",
+        "pasteAll",
+        "pasteValues",
+        "merge",
+        "splitFirst",
+        "rowColShift",
+        "clearFormats",
+        "clearComments",
+        "assign",
+        "coerce",
+    ] {
         t.set_attr(a, "1");
     }
     if cell_meta {
@@ -196,7 +231,10 @@ fn new_metadata(book: &mut Workbook, rich_value: usize) -> Elem {
     let mut dyn_ext = Elem::new("ext");
     dyn_ext.set_attr("uri", "{bdbb8cdc-fa1e-496e-a857-3c3f30c029c3}");
     let mut props = Elem::new("xda:dynamicArrayProperties");
-    props.set_attr("xmlns:xda", "http://schemas.microsoft.com/office/spreadsheetml/2017/dynamicarray");
+    props.set_attr(
+        "xmlns:xda",
+        "http://schemas.microsoft.com/office/spreadsheetml/2017/dynamicarray",
+    );
     props.set_attr("fDynamic", "1");
     props.set_attr("fCollapsed", "0");
     dyn_ext.push(props);
@@ -219,7 +257,9 @@ fn new_metadata(book: &mut Workbook, rich_value: usize) -> Elem {
 
 /// Add a rich value to existing metadata. Returns the index of the `valueMetadata` entry.
 fn merge_metadata(m: &mut Elem, rich_value: usize) -> usize {
-    let found = m.child("metadataTypes").and_then(|t| t.elems().position(|e| e.attr("name") == Some("XLRICHVALUE")));
+    let found = m
+        .child("metadataTypes")
+        .and_then(|t| t.elems().position(|e| e.attr("name") == Some("XLRICHVALUE")));
     let type_index = match found {
         Some(i) => i + 1,
         None => {
@@ -235,7 +275,8 @@ fn merge_metadata(m: &mut Elem, rich_value: usize) -> usize {
     if m.attr("xmlns:xlrd").is_none() {
         m.set_attr("xmlns:xlrd", NS_RICH);
     }
-    let is_future = |e: &Elem| e.local() == "futureMetadata" && e.attr("name") == Some("XLRICHVALUE");
+    let is_future =
+        |e: &Elem| e.local() == "futureMetadata" && e.attr("name") == Some("XLRICHVALUE");
     let exists = m.elems().any(is_future);
     let future_index = if exists {
         let f = m.elems_mut().find(|e| is_future(e)).expect("checked above");
@@ -267,8 +308,18 @@ fn merge_metadata(m: &mut Elem, rich_value: usize) -> usize {
 }
 
 /// Place an image in a cell: the cell shows the picture and holds `#VALUE!`, as Excel's Place in Cell leaves it.
-pub fn place(book: &mut Workbook, sheet: usize, at: CellRef, image_part: &str, alt: &str) -> Result<(), String> {
-    if book.sheets[sheet].cells.get(&(at.row, at.col)).is_some_and(|c| !c.value.is_empty() || c.formula.is_some()) {
+pub fn place(
+    book: &mut Workbook,
+    sheet: usize,
+    at: CellRef,
+    image_part: &str,
+    alt: &str,
+) -> Result<(), String> {
+    if book.sheets[sheet]
+        .cells
+        .get(&(at.row, at.col))
+        .is_some_and(|c| !c.value.is_empty() || c.formula.is_some())
+    {
         return Err("Place in Cell needs an empty cell.".to_owned());
     }
     let structure = local_image_structure(book);
@@ -288,7 +339,9 @@ pub fn place(book: &mut Workbook, sheet: usize, at: CellRef, image_part: &str, a
         }
     };
     ensure_part(book, REL_TYPES, "xl/richData/rdRichValueTypes.xml", CT_TYPES);
-    if book.kept.get("xl/richData/rdRichValueTypes.xml").is_none() && part_of(book, REL_TYPES).as_deref() == Some("xl/richData/rdRichValueTypes.xml") {
+    if book.kept.get("xl/richData/rdRichValueTypes.xml").is_none()
+        && part_of(book, REL_TYPES).as_deref() == Some("xl/richData/rdRichValueTypes.xml")
+    {
         book.kept.set("xl/richData/rdRichValueTypes.xml", TYPES_XML.as_bytes().to_vec());
     }
     let cell = book.sheets[sheet].cells.entry((at.row, at.col)).or_default();
@@ -300,16 +353,21 @@ pub fn place(book: &mut Workbook, sheet: usize, at: CellRef, image_part: &str, a
 /// The image part a cell shows, when the cell holds a picture placed in it.
 pub fn cell_image(book: &Workbook, sheet: usize, at: CellRef) -> Option<String> {
     let extra = book.sheets.get(sheet)?.cells.get(&(at.row, at.col))?.extra.as_deref()?;
-    let vm: usize = extra.split_whitespace().find_map(|a| a.strip_prefix("vm=\"")?.strip_suffix('"')?.parse().ok())?;
+    let vm: usize = extra
+        .split_whitespace()
+        .find_map(|a| a.strip_prefix("vm=\"")?.strip_suffix('"')?.parse().ok())?;
     let meta = read_tree(book, &part_of(book, REL_METADATA)?)?;
     let value_meta = meta.child("valueMetadata")?;
     let rc = value_meta.elems().nth(vm.checked_sub(1)?)?.child("rc")?;
     let (t, v): (usize, usize) = (rc.attr("t")?.parse().ok()?, rc.attr("v")?.parse().ok()?);
-    let name = meta.child("metadataTypes")?.elems().nth(t.checked_sub(1)?)?.attr("name")?.to_owned();
+    let name =
+        meta.child("metadataTypes")?.elems().nth(t.checked_sub(1)?)?.attr("name")?.to_owned();
     if name != "XLRICHVALUE" {
         return None;
     }
-    let future = meta.elems().find(|e| e.local() == "futureMetadata" && e.attr("name") == Some("XLRICHVALUE"))?;
+    let future = meta
+        .elems()
+        .find(|e| e.local() == "futureMetadata" && e.attr("name") == Some("XLRICHVALUE"))?;
     let rich_index: usize = future.elems().nth(v)?.find("rvb")?.attr("i")?.parse().ok()?;
     let values = read_tree(book, &part_of(book, REL_VALUE)?)?;
     let rv = values.elems().nth(rich_index)?;

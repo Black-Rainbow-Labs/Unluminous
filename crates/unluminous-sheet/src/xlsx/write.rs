@@ -799,7 +799,8 @@ impl<'a> Writer<'a> {
             }
             out.push_str("</tableParts>");
         }
-        let with_cf = extension_list(&raw("extLst"), &super::cf::write_extension(sheet, &book.styles));
+        let with_cf =
+            extension_list(&raw("extLst"), &super::cf::write_extension(sheet, &book.styles));
         out.push_str(&crate::objects::sparkline::ext_list(sheet, &with_cf));
         out.push_str("</worksheet>");
         Ok((out, rels))

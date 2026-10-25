@@ -240,7 +240,8 @@ fn shift_objects(s: &mut Sheet, own: &str, edit: &StructuralEdit) {
         let from = shift_anchor(a.from.0, own, edit);
         if a.kind == AnchorKind::TwoCell {
             a.to.0 = if a.placement == Placement::Move {
-                let (dr, dc) = (from.row as i64 - a.from.0.row as i64, from.col as i64 - a.from.0.col as i64);
+                let (dr, dc) =
+                    (from.row as i64 - a.from.0.row as i64, from.col as i64 - a.from.0.col as i64);
                 a.to.0.offset(dr, dc).unwrap_or(a.to.0)
             } else {
                 shift_anchor(a.to.0, own, edit)

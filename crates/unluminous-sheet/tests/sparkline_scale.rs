@@ -13,18 +13,31 @@ use unluminous_sheet::objects::sparkline::{sparkline_data, SparklineKind};
 
 #[test]
 fn column_sparkline_bars_are_where_excel_drew_them() {
-    let sets: [[f64; 4]; 5] =
-        [[5.0, 7.0, 9.0, 6.0], [1.0, -2.0, 3.0, -4.0], [2.0, 2.0, 2.0, 2.0], [-3.0, -5.0, -4.0, -9.0], [0.0, 0.0, 4.0, 0.0]];
+    let sets: [[f64; 4]; 5] = [
+        [5.0, 7.0, 9.0, 6.0],
+        [1.0, -2.0, 3.0, -4.0],
+        [2.0, 2.0, 2.0, 2.0],
+        [-3.0, -5.0, -4.0, -9.0],
+        [0.0, 0.0, 4.0, 0.0],
+    ];
     let mut s = Session::new(Workbook::new(), 46318.5);
     for (r, set) in sets.iter().enumerate() {
         for (c, v) in set.iter().enumerate() {
-            s.set_value(0, CellRef::new(r as u32, c as u32), unluminous_sheet::Value::Number(*v)).unwrap();
+            s.set_value(0, CellRef::new(r as u32, c as u32), unluminous_sheet::Value::Number(*v))
+                .unwrap();
         }
     }
     let g = s
-        .insert_sparklines(0, SparklineKind::Column, 0, Range::parse("A1:D5").unwrap(), Range::parse("F1:F5").unwrap())
+        .insert_sparklines(
+            0,
+            SparklineKind::Column,
+            0,
+            Range::parse("A1:D5").unwrap(),
+            Range::parse("F1:F5").unwrap(),
+        )
         .unwrap();
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/objects/column-sparkline-bars.txt");
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/objects/column-sparkline-bars.txt");
     let expected = std::fs::read_to_string(path).unwrap();
     for (row, line) in expected.lines().enumerate() {
         let data = sparkline_data(&s.book, 0, g, row).unwrap();

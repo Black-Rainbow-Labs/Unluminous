@@ -58,7 +58,12 @@ impl Rect {
         let bw = (w * cos.abs() + h * sin.abs()).round() as i64;
         let bh = (w * sin.abs() + h * cos.abs()).round() as i64;
         let (cx, cy) = self.centre();
-        Rect::new((cx - bw as f64 / 2.0).round() as i64, (cy - bh as f64 / 2.0).round() as i64, bw, bh)
+        Rect::new(
+            (cx - bw as f64 / 2.0).round() as i64,
+            (cy - bh as f64 / 2.0).round() as i64,
+            bw,
+            bh,
+        )
     }
 }
 
@@ -140,7 +145,8 @@ pub fn row_at(sheet: &Sheet, y: i64) -> (u32, i64) {
     let mut top = y.max(0);
     let default = (sheet.default_row_height * EMU_PER_POINT as f64).round().max(1.0) as i64;
     let mut row = 0u32;
-    let customs: Vec<(u32, i64)> = sheet.rows.iter().map(|(&r, _)| (r, row_units(sheet, r))).collect();
+    let customs: Vec<(u32, i64)> =
+        sheet.rows.iter().map(|(&r, _)| (r, row_units(sheet, r))).collect();
     for (r, height) in customs {
         let before = (r - row) as i64 * default;
         if top < before {

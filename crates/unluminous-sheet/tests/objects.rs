@@ -8,16 +8,19 @@
 use std::path::{Path, PathBuf};
 
 use unluminous_sheet::coord::{CellRef, Range};
-use unluminous_sheet::edit::{Alignment, Distribution, Session, Shift, SparklinePoints, TextFormat, ZOrder};
+use unluminous_sheet::edit::{
+    Alignment, Distribution, Session, Shift, SparklinePoints, TextFormat, ZOrder,
+};
 use unluminous_sheet::model::Workbook;
-use unluminous_sheet::objects::geometry::{EMU_PER_POINT, Rect};
+use unluminous_sheet::objects::geometry::{Rect, EMU_PER_POINT};
 use unluminous_sheet::objects::make::NewShape;
 use unluminous_sheet::objects::sparkline::{AxisBound, EmptyCells, SparklineKind};
 use unluminous_sheet::objects::*;
 use unluminous_sheet::styles::Color;
 
 fn fixture(name: &str) -> Vec<u8> {
-    std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/objects").join(name)).unwrap()
+    std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/objects").join(name))
+        .unwrap()
 }
 
 fn at(a: &str) -> CellRef {
@@ -43,7 +46,11 @@ fn reread(session: &Session) -> Workbook {
 fn blank() -> Session {
     let mut s = Session::new(Workbook::new(), 46318.5);
     for r in 0..3u32 {
-        for (c, v) in [[5.0, 7.0, 9.0, 6.0], [1.0, -2.0, 3.0, -4.0], [2.0, 2.0, 2.0, 2.0]][r as usize].iter().enumerate() {
+        for (c, v) in [[5.0, 7.0, 9.0, 6.0], [1.0, -2.0, 3.0, -4.0], [2.0, 2.0, 2.0, 2.0]]
+            [r as usize]
+            .iter()
+            .enumerate()
+        {
             s.set_value(0, CellRef::new(r, c as u32), unluminous_sheet::Value::Number(*v)).unwrap();
         }
     }
@@ -55,7 +62,8 @@ fn blank() -> Session {
 #[test]
 fn the_objects_excel_wrote_are_read_with_their_kinds_and_places() {
     let s = session("15-shapes.xlsx");
-    let kinds: Vec<_> = s.book.sheets[0].drawing.objects.iter().map(|o| (o.name.as_str(), o.kind)).collect();
+    let kinds: Vec<_> =
+        s.book.sheets[0].drawing.objects.iter().map(|o| (o.name.as_str(), o.kind)).collect();
     assert_eq!(
         kinds,
         vec![
@@ -171,11 +179,20 @@ fn deleting_the_only_user_of_an_image_drops_the_image_from_the_file() {
 // ----------------------------------------------------------------------------------------------- shapes
 
 fn five_shapes(s: &mut Session) -> Vec<ObjectId> {
-    let kinds = [NewShape::Rectangle, NewShape::RoundedRectangle, NewShape::Ellipse, NewShape::Line, NewShape::Arrow];
+    let kinds = [
+        NewShape::Rectangle,
+        NewShape::RoundedRectangle,
+        NewShape::Ellipse,
+        NewShape::Line,
+        NewShape::Arrow,
+    ];
     kinds
         .iter()
         .enumerate()
-        .map(|(i, k)| s.insert_shape(0, *k, Rect::new(pt(100 + 120 * i as i64), pt(60), pt(80), pt(40))).unwrap())
+        .map(|(i, k)| {
+            s.insert_shape(0, *k, Rect::new(pt(100 + 120 * i as i64), pt(60), pt(80), pt(40)))
+                .unwrap()
+        })
         .collect()
 }
 
@@ -183,11 +200,15 @@ fn five_shapes(s: &mut Session) -> Vec<ObjectId> {
 fn every_kind_of_shape_is_made_and_read_back() {
     let mut s = blank();
     let ids = five_shapes(&mut s);
-    let tb = s.insert_shape(0, NewShape::TextBox, Rect::new(pt(10), pt(150), pt(120), pt(30))).unwrap();
+    let tb =
+        s.insert_shape(0, NewShape::TextBox, Rect::new(pt(10), pt(150), pt(120), pt(30))).unwrap();
     s.set_shape_text(0, tb, "Hello\nthere").unwrap();
     let back = reread(&s);
     let sheet = &back.sheets[0];
-    let presets: Vec<_> = ids.iter().map(|id| sheet.drawing.find(*id).unwrap().shape.as_ref().unwrap().preset.clone()).collect();
+    let presets: Vec<_> = ids
+        .iter()
+        .map(|id| sheet.drawing.find(*id).unwrap().shape.as_ref().unwrap().preset.clone())
+        .collect();
     assert_eq!(presets, ["rect", "roundRect", "ellipse", "line", "straightConnector1"]);
     let t = sheet.drawing.find(tb).unwrap();
     assert_eq!(t.kind, ObjectKind::TextBox);
@@ -197,20 +218,36 @@ fn every_kind_of_shape_is_made_and_read_back() {
 #[test]
 fn fill_line_and_text_are_set_and_survive_a_save() {
     let mut s = blank();
-    let id = s.insert_shape(0, NewShape::Rectangle, Rect::new(pt(100), pt(100), pt(100), pt(50))).unwrap();
+    let id = s
+        .insert_shape(0, NewShape::Rectangle, Rect::new(pt(100), pt(100), pt(100), pt(50)))
+        .unwrap();
     s.set_shape_fill(0, id, Fill::Solid(ShapeColor::rgb(0, 128, 255))).unwrap();
     s.set_shape_transparency(0, id, 40.0).unwrap();
     s.set_shape_line(
         0,
         id,
-        Line { stroke: Stroke::Solid(ShapeColor::rgb(255, 0, 0)), width: Some(pt(3)), dash: Dash::Dash, head: LineEnd::None, tail: LineEnd::None },
+        Line {
+            stroke: Stroke::Solid(ShapeColor::rgb(255, 0, 0)),
+            width: Some(pt(3)),
+            dash: Dash::Dash,
+            head: LineEnd::None,
+            tail: LineEnd::None,
+        },
     )
     .unwrap();
     s.set_shape_text(0, id, "Box").unwrap();
     s.format_shape_text(
         0,
         id,
-        TextFormat { size: Some(18.0), bold: Some(true), italic: Some(true), color: Some(ShapeColor::rgb(0, 0, 0)), align: Some(HAlign::Right), valign: Some(VAlign::Bottom), ..TextFormat::default() },
+        TextFormat {
+            size: Some(18.0),
+            bold: Some(true),
+            italic: Some(true),
+            color: Some(ShapeColor::rgb(0, 0, 0)),
+            align: Some(HAlign::Right),
+            valign: Some(VAlign::Bottom),
+            ..TextFormat::default()
+        },
     )
     .unwrap();
     let back = reread(&s);
@@ -251,7 +288,8 @@ fn objects_are_stacked_aligned_and_distributed() {
     s.align_objects(0, &three, Alignment::Top).unwrap();
     s.align_objects(0, &three, Alignment::Left).unwrap();
     let sheet = &s.book.sheets[0];
-    let lefts: Vec<_> = three.iter().map(|i| sheet.drawing.find(*i).unwrap().bounds(sheet).x).collect();
+    let lefts: Vec<_> =
+        three.iter().map(|i| sheet.drawing.find(*i).unwrap().bounds(sheet).x).collect();
     assert!(lefts.iter().all(|x| *x == lefts[0]));
     s.move_object(0, ids[1], pt(100), pt(0)).unwrap();
     s.move_object(0, ids[2], pt(300), pt(0)).unwrap();
@@ -266,7 +304,10 @@ fn objects_are_stacked_aligned_and_distributed() {
 fn objects_are_grouped_and_ungrouped_where_they_were() {
     let mut s = blank();
     let ids = five_shapes(&mut s);
-    let before: Vec<Rect> = ids[..3].iter().map(|i| s.book.sheets[0].drawing.find(*i).unwrap().bounds(&s.book.sheets[0])).collect();
+    let before: Vec<Rect> = ids[..3]
+        .iter()
+        .map(|i| s.book.sheets[0].drawing.find(*i).unwrap().bounds(&s.book.sheets[0]))
+        .collect();
     let g = s.group_objects(0, &ids[..3]).unwrap();
     assert_eq!(s.book.sheets[0].drawing.objects.len(), 3);
     let back = reread(&s);
@@ -286,14 +327,18 @@ fn objects_are_grouped_and_ungrouped_where_they_were() {
 #[test]
 fn rotation_alt_text_names_and_placement_are_kept() {
     let mut s = blank();
-    let id = s.insert_shape(0, NewShape::Ellipse, Rect::new(pt(100), pt(100), pt(100), pt(50))).unwrap();
+    let id =
+        s.insert_shape(0, NewShape::Ellipse, Rect::new(pt(100), pt(100), pt(100), pt(50))).unwrap();
     s.rotate_object(0, id, 30.0).unwrap();
     s.set_alt_text(0, id, "A circle").unwrap();
     s.set_object_name(0, id, "Moon").unwrap();
     s.set_placement(0, id, Placement::Fixed).unwrap();
     let back = reread(&s);
     let o = back.sheets[0].drawing.find(id).unwrap();
-    assert_eq!((o.rotation, o.descr.as_str(), o.name.as_str(), o.anchor.placement), (30.0, "A circle", "Moon", Placement::Fixed));
+    assert_eq!(
+        (o.rotation, o.descr.as_str(), o.name.as_str(), o.anchor.placement),
+        (30.0, "A circle", "Moon", Placement::Fixed)
+    );
     let frame = o.frame_rect(&back.sheets[0]);
     assert_eq!((frame.w, frame.h), (pt(100), pt(50)));
     assert!(s.set_object_name(0, id, "").is_err());
@@ -302,7 +347,9 @@ fn rotation_alt_text_names_and_placement_are_kept() {
 #[test]
 fn an_object_follows_its_cells_when_rows_are_inserted() {
     let mut s = blank();
-    let id = s.insert_shape(0, NewShape::Rectangle, Rect::new(pt(100), pt(100), pt(100), pt(50))).unwrap();
+    let id = s
+        .insert_shape(0, NewShape::Rectangle, Rect::new(pt(100), pt(100), pt(100), pt(50)))
+        .unwrap();
     let before = s.book.sheets[0].drawing.find(id).unwrap().anchor.from.0.row;
     s.insert(0, rows(0, 2), Shift::WholeRows).unwrap();
     let sheet = &s.book.sheets[0];
@@ -343,18 +390,58 @@ fn a_structural_edit_and_a_rename_move_sparkline_references() {
     let back = reread(&s);
     assert_eq!(back.sheets[0].sparklines[0].sparklines[0].data, "Renamed!B5:E5");
     s.delete(0, rows(4, 1), Shift::WholeRows).unwrap();
-    assert_eq!(s.book.sheets[0].sparklines[2].sparklines.len(), 3, "the sparkline in the deleted row goes");
+    assert_eq!(
+        s.book.sheets[0].sparklines[2].sparklines.len(),
+        3,
+        "the sparkline in the deleted row goes"
+    );
 }
 
 #[test]
 fn sparklines_are_inserted_edited_grouped_and_cleared() {
     let mut s = blank();
-    let g = s.insert_sparklines(0, SparklineKind::Line, 0, Range::parse("A1:D3").unwrap(), Range::parse("F1:F3").unwrap()).unwrap();
+    let g = s
+        .insert_sparklines(
+            0,
+            SparklineKind::Line,
+            0,
+            Range::parse("A1:D3").unwrap(),
+            Range::parse("F1:F3").unwrap(),
+        )
+        .unwrap();
     assert_eq!(s.book.sheets[0].sparklines[g].sparklines[1].data, "Sheet1!A2:D2");
-    assert!(s.insert_sparklines(0, SparklineKind::Column, 0, Range::parse("A1:D3").unwrap(), Range::parse("F1:F3").unwrap()).is_err());
-    let w = s.insert_sparklines(0, SparklineKind::WinLoss, 0, Range::parse("A1:D3").unwrap(), Range::parse("G1:G3").unwrap()).unwrap();
+    assert!(s
+        .insert_sparklines(
+            0,
+            SparklineKind::Column,
+            0,
+            Range::parse("A1:D3").unwrap(),
+            Range::parse("F1:F3").unwrap()
+        )
+        .is_err());
+    let w = s
+        .insert_sparklines(
+            0,
+            SparklineKind::WinLoss,
+            0,
+            Range::parse("A1:D3").unwrap(),
+            Range::parse("G1:G3").unwrap(),
+        )
+        .unwrap();
     assert!(s.book.sheets[0].sparklines[w].negative);
-    s.set_sparkline_points(0, g, SparklinePoints { markers: true, high: true, low: true, first: true, last: true, negative: true }).unwrap();
+    s.set_sparkline_points(
+        0,
+        g,
+        SparklinePoints {
+            markers: true,
+            high: true,
+            low: true,
+            first: true,
+            last: true,
+            negative: true,
+        },
+    )
+    .unwrap();
     s.set_sparkline_axis(0, g, AxisBound::Custom(-10.0), AxisBound::SameForAll).unwrap();
     s.set_sparkline_hidden_and_empty(0, g, EmptyCells::Span, true).unwrap();
     s.set_sparkline_weight(0, g, 2.25).unwrap();
@@ -374,7 +461,15 @@ fn sparklines_are_inserted_edited_grouped_and_cleared() {
 #[test]
 fn a_sparkline_gives_a_drawing_its_values_and_scale() {
     let mut s = blank();
-    let line = s.insert_sparklines(0, SparklineKind::Line, 0, Range::parse("A1:D3").unwrap(), Range::parse("F1:F3").unwrap()).unwrap();
+    let line = s
+        .insert_sparklines(
+            0,
+            SparklineKind::Line,
+            0,
+            Range::parse("A1:D3").unwrap(),
+            Range::parse("F1:F3").unwrap(),
+        )
+        .unwrap();
     let d = unluminous_sheet::objects::sparkline::sparkline_data(&s.book, 0, line, 1).unwrap();
     assert_eq!(d.values, vec![Some(1.0), Some(-2.0), Some(3.0), Some(-4.0)]);
     assert_eq!((d.axis_min, d.axis_max), (-4.0, 3.0));
@@ -419,13 +514,17 @@ fn excel_or_skip(what: &str) -> bool {
     if excel_is_installed() {
         return true;
     }
-    assert!(std::env::var("UNLUMINOUS_REQUIRE_EXCEL").is_err(), "UNLUMINOUS_REQUIRE_EXCEL is set and Excel is not installed");
+    assert!(
+        std::env::var("UNLUMINOUS_REQUIRE_EXCEL").is_err(),
+        "UNLUMINOUS_REQUIRE_EXCEL is set and Excel is not installed"
+    );
     println!("Excel is not installed here, so {what} was not checked");
     false
 }
 
 fn temp_folder(name: &str) -> PathBuf {
-    let folder = std::env::temp_dir().join(format!("unluminous-objects-{name}-{}", std::process::id()));
+    let folder =
+        std::env::temp_dir().join(format!("unluminous-objects-{name}-{}", std::process::id()));
     std::fs::create_dir_all(&folder).unwrap();
     folder
 }
@@ -452,7 +551,8 @@ fn excel_opens_the_feature_workbooks_unchanged_and_after_each_kind_of_edit() {
     s.set_shape_fill(0, 4, Fill::Solid(ShapeColor::rgb(255, 0, 0))).unwrap();
     s.reorder_object(0, 3, ZOrder::ToFront).unwrap();
     s.set_alt_text(0, 6, "Words").unwrap();
-    let g = s.insert_shape(0, NewShape::Ellipse, Rect::new(pt(300), pt(300), pt(50), pt(50))).unwrap();
+    let g =
+        s.insert_shape(0, NewShape::Ellipse, Rect::new(pt(300), pt(300), pt(50), pt(50))).unwrap();
     s.group_objects(0, &[4, g]).unwrap();
     let path = folder.join("edited-15-shapes.xlsx");
     std::fs::write(&path, unluminous_sheet::xlsx::write(&s.book).unwrap()).unwrap();
@@ -470,7 +570,10 @@ fn excel_opens_the_feature_workbooks_unchanged_and_after_each_kind_of_edit() {
         assert_eq!(r["repaired"], false, "{}: {}", r["file"], r["problem"]);
     }
     // Untouched files show what the originals show.
-    let originals = inspect(&[&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/objects/15-shapes.xlsx"), &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/objects/16-sparklines.xlsx")]);
+    let originals = inspect(&[
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/objects/15-shapes.xlsx"),
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/objects/16-sparklines.xlsx"),
+    ]);
     for (a, b) in originals.iter().zip(&results) {
         assert_eq!(a["sheets"], b["sheets"], "{}", a["file"]);
     }
@@ -478,10 +581,19 @@ fn excel_opens_the_feature_workbooks_unchanged_and_after_each_kind_of_edit() {
     let by_name = |n: &str| edited.as_array().unwrap().iter().find(|s| s["name"] == n).cloned();
     assert_eq!(by_name("Line1").unwrap()["alt"], "Words");
     let count = edited.as_array().unwrap().len() as i64;
-    assert_eq!(by_name("Pic1").unwrap()["z"], count - 1, "the picture was brought to the front, below the group made after it");
+    assert_eq!(
+        by_name("Pic1").unwrap()["z"],
+        count - 1,
+        "the picture was brought to the front, below the group made after it"
+    );
     let group = edited.as_array().unwrap().iter().find(|s| s["type"] == 6).expect("a group");
     assert!(group["items"].as_str().unwrap().contains("Rect1"), "{group}");
-    let moved = results[3]["sheets"][0]["sparklines"].as_array().unwrap().iter().find(|g| g["type"] == 1).unwrap();
+    let moved = results[3]["sheets"][0]["sparklines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|g| g["type"] == 1)
+        .unwrap();
     assert_eq!(moved["each"], "F4=B4:E4;F5=B5:E5;F6=B6:E6;F7=B7:E7");
     assert_eq!(results[3]["sheets"][0]["name"], "Moved");
     for p in written {
@@ -491,7 +603,12 @@ fn excel_opens_the_feature_workbooks_unchanged_and_after_each_kind_of_edit() {
 }
 
 fn find<'a>(shapes: &'a serde_json::Value, name: &str) -> &'a serde_json::Value {
-    shapes.as_array().unwrap().iter().find(|s| s["name"] == name).unwrap_or_else(|| panic!("no shape {name} in {shapes}"))
+    shapes
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["name"] == name)
+        .unwrap_or_else(|| panic!("no shape {name} in {shapes}"))
 }
 
 #[test]
@@ -503,31 +620,103 @@ fn excel_reads_back_everything_a_workbook_made_from_nothing_says() {
     let pic = s.insert_picture(0, &fixture("probe-picture.png"), at("B8")).unwrap();
     s.set_alt_text(0, pic, "A probe").unwrap();
     s.crop_picture(0, pic, Crop { left: 10_000, top: 5_000, right: 0, bottom: 20_000 }).unwrap();
-    let rect = s.insert_shape(0, NewShape::Rectangle, Rect::new(pt(300), pt(40), pt(100), pt(50))).unwrap();
+    let rect = s
+        .insert_shape(0, NewShape::Rectangle, Rect::new(pt(300), pt(40), pt(100), pt(50)))
+        .unwrap();
     s.set_shape_fill(0, rect, Fill::Solid(ShapeColor::rgb(0, 128, 255))).unwrap();
     s.set_shape_transparency(0, rect, 40.0).unwrap();
-    s.set_shape_line(0, rect, Line { stroke: Stroke::Solid(ShapeColor::rgb(255, 0, 0)), width: Some(pt(3)), dash: Dash::Dash, ..Line::default() }).unwrap();
+    s.set_shape_line(
+        0,
+        rect,
+        Line {
+            stroke: Stroke::Solid(ShapeColor::rgb(255, 0, 0)),
+            width: Some(pt(3)),
+            dash: Dash::Dash,
+            ..Line::default()
+        },
+    )
+    .unwrap();
     s.set_shape_text(0, rect, "Box").unwrap();
-    s.format_shape_text(0, rect, TextFormat { size: Some(18.0), bold: Some(true), italic: Some(true), align: Some(HAlign::Right), valign: Some(VAlign::Bottom), ..TextFormat::default() }).unwrap();
-    let round = s.insert_shape(0, NewShape::RoundedRectangle, Rect::new(pt(420), pt(40), pt(80), pt(50))).unwrap();
-    let oval = s.insert_shape(0, NewShape::Ellipse, Rect::new(pt(300), pt(120), pt(90), pt(60))).unwrap();
+    s.format_shape_text(
+        0,
+        rect,
+        TextFormat {
+            size: Some(18.0),
+            bold: Some(true),
+            italic: Some(true),
+            align: Some(HAlign::Right),
+            valign: Some(VAlign::Bottom),
+            ..TextFormat::default()
+        },
+    )
+    .unwrap();
+    let round = s
+        .insert_shape(0, NewShape::RoundedRectangle, Rect::new(pt(420), pt(40), pt(80), pt(50)))
+        .unwrap();
+    let oval =
+        s.insert_shape(0, NewShape::Ellipse, Rect::new(pt(300), pt(120), pt(90), pt(60))).unwrap();
     s.rotate_object(0, oval, 30.0).unwrap();
-    let line = s.insert_shape(0, NewShape::Line, Rect::new(pt(420), pt(120), pt(100), pt(40))).unwrap();
-    let arrow = s.insert_shape(0, NewShape::Arrow, Rect::new(pt(420), pt(180), pt(100), pt(0))).unwrap();
-    let text = s.insert_shape(0, NewShape::TextBox, Rect::new(pt(300), pt(200), pt(120), pt(30))).unwrap();
+    let line =
+        s.insert_shape(0, NewShape::Line, Rect::new(pt(420), pt(120), pt(100), pt(40))).unwrap();
+    let arrow =
+        s.insert_shape(0, NewShape::Arrow, Rect::new(pt(420), pt(180), pt(100), pt(0))).unwrap();
+    let text =
+        s.insert_shape(0, NewShape::TextBox, Rect::new(pt(300), pt(200), pt(120), pt(30))).unwrap();
     s.set_shape_text(0, text, "Notes").unwrap();
     s.set_placement(0, text, Placement::Fixed).unwrap();
     s.reorder_object(0, rect, ZOrder::ToFront).unwrap();
     let g = s.group_objects(0, &[round, line]).unwrap();
     s.set_object_name(0, g, "Pair").unwrap();
-    let a = s.insert_sparklines(0, SparklineKind::Line, 0, Range::parse("A1:D3").unwrap(), Range::parse("F1:F3").unwrap()).unwrap();
-    s.set_sparkline_points(0, a, SparklinePoints { markers: true, high: true, low: true, first: false, last: true, negative: true }).unwrap();
+    let a = s
+        .insert_sparklines(
+            0,
+            SparklineKind::Line,
+            0,
+            Range::parse("A1:D3").unwrap(),
+            Range::parse("F1:F3").unwrap(),
+        )
+        .unwrap();
+    s.set_sparkline_points(
+        0,
+        a,
+        SparklinePoints {
+            markers: true,
+            high: true,
+            low: true,
+            first: false,
+            last: true,
+            negative: true,
+        },
+    )
+    .unwrap();
     s.set_sparkline_axis(0, a, AxisBound::Custom(-10.0), AxisBound::SameForAll).unwrap();
     s.set_sparkline_weight(0, a, 2.25).unwrap();
     s.set_sparkline_hidden_and_empty(0, a, EmptyCells::Span, true).unwrap();
-    s.set_sparkline_colors(0, a, unluminous_sheet::objects::sparkline::SparklineColors { series: Some(Color::Rgb(0xFF00_8000)), ..Default::default() }).unwrap();
-    s.insert_sparklines(0, SparklineKind::Column, 0, Range::parse("A1:D3").unwrap(), Range::parse("G1:G3").unwrap()).unwrap();
-    s.insert_sparklines(0, SparklineKind::WinLoss, 0, Range::parse("A1:D3").unwrap(), Range::parse("H1:H3").unwrap()).unwrap();
+    s.set_sparkline_colors(
+        0,
+        a,
+        unluminous_sheet::objects::sparkline::SparklineColors {
+            series: Some(Color::Rgb(0xFF00_8000)),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    s.insert_sparklines(
+        0,
+        SparklineKind::Column,
+        0,
+        Range::parse("A1:D3").unwrap(),
+        Range::parse("G1:G3").unwrap(),
+    )
+    .unwrap();
+    s.insert_sparklines(
+        0,
+        SparklineKind::WinLoss,
+        0,
+        Range::parse("A1:D3").unwrap(),
+        Range::parse("H1:H3").unwrap(),
+    )
+    .unwrap();
     let folder = temp_folder("scratch");
     let path = folder.join("from-nothing.xlsx");
     std::fs::write(&path, unluminous_sheet::xlsx::write(&s.book).unwrap()).unwrap();
@@ -539,11 +728,23 @@ fn excel_reads_back_everything_a_workbook_made_from_nothing_says() {
     let p = find(shapes, &format!("Picture {}", pic - 1));
     assert_eq!(p["type"], 13);
     assert_eq!(p["alt"], "A probe");
-    assert!(near(&p["left"], b(pic).x as f64 / 12700.0) && near(&p["width"], b(pic).w as f64 / 12700.0), "{p}");
-    assert!(p["cropLeft"].as_f64().unwrap() > 0.0 && p["cropBottom"].as_f64().unwrap() > 0.0, "{p}");
+    assert!(
+        near(&p["left"], b(pic).x as f64 / 12700.0) && near(&p["width"], b(pic).w as f64 / 12700.0),
+        "{p}"
+    );
+    assert!(
+        p["cropLeft"].as_f64().unwrap() > 0.0 && p["cropBottom"].as_f64().unwrap() > 0.0,
+        "{p}"
+    );
     let rc = find(shapes, &format!("Rectangle {}", rect - 1));
     assert_eq!((rc["type"].as_i64(), rc["auto"].as_i64()), (Some(1), Some(1)));
-    assert!(near(&rc["left"], 300.0) && near(&rc["top"], 40.0) && near(&rc["width"], 100.0) && near(&rc["height"], 50.0), "{rc}");
+    assert!(
+        near(&rc["left"], 300.0)
+            && near(&rc["top"], 40.0)
+            && near(&rc["width"], 100.0)
+            && near(&rc["height"], 50.0),
+        "{rc}"
+    );
     assert_eq!(rc["fillRgb"], 0xFF8000, "BGR of 0,128,255");
     assert!(near(&rc["fillTransparency"], 0.4), "{rc}");
     assert_eq!((rc["lineRgb"].as_i64(), rc["lineWeight"].as_f64()), (Some(255), Some(3.0)));
@@ -558,7 +759,10 @@ fn excel_reads_back_everything_a_workbook_made_from_nothing_says() {
     assert!(near(&ov["rotation"], 30.0), "{ov}");
     assert!(near(&ov["width"], 90.0) && near(&ov["height"], 60.0), "{ov}");
     let tb = find(shapes, &format!("TextBox {}", text - 1));
-    assert_eq!((tb["type"].as_i64(), tb["text"].as_str(), tb["placement"].as_i64()), (Some(17), Some("Notes"), Some(3)));
+    assert_eq!(
+        (tb["type"].as_i64(), tb["text"].as_str(), tb["placement"].as_i64()),
+        (Some(17), Some("Notes"), Some(3))
+    );
     let ar = find(shapes, &format!("Straight Arrow Connector {}", arrow - 1));
     assert_eq!(ar["type"], 1);
     assert_eq!(ar["endArrow"], 2, "a triangle at the end");
@@ -570,15 +774,38 @@ fn excel_reads_back_everything_a_workbook_made_from_nothing_says() {
     let line_group = groups.iter().find(|g| g["type"] == 1).unwrap();
     assert_eq!(line_group["location"], "F1:F3");
     assert_eq!(line_group["source"], "A1:D3");
-    assert_eq!((line_group["markers"].as_bool(), line_group["high"].as_bool(), line_group["low"].as_bool()), (Some(true), Some(true), Some(true)));
-    assert_eq!((line_group["first"].as_bool(), line_group["last"].as_bool(), line_group["negative"].as_bool()), (Some(false), Some(true), Some(true)));
+    assert_eq!(
+        (
+            line_group["markers"].as_bool(),
+            line_group["high"].as_bool(),
+            line_group["low"].as_bool()
+        ),
+        (Some(true), Some(true), Some(true))
+    );
+    assert_eq!(
+        (
+            line_group["first"].as_bool(),
+            line_group["last"].as_bool(),
+            line_group["negative"].as_bool()
+        ),
+        (Some(false), Some(true), Some(true))
+    );
     assert_eq!(line_group["weight"].as_f64(), Some(2.25));
-    assert_eq!((line_group["minType"].as_i64(), line_group["minCustom"].as_f64(), line_group["maxType"].as_i64()), (Some(3), Some(-10.0), Some(1)));
+    assert_eq!(
+        (
+            line_group["minType"].as_i64(),
+            line_group["minCustom"].as_f64(),
+            line_group["maxType"].as_i64()
+        ),
+        (Some(3), Some(-10.0), Some(1))
+    );
     assert_eq!(line_group["displayHidden"], true);
     assert_eq!(line_group["displayBlanksAs"], 3, "span");
     assert_eq!(line_group["seriesColor"], 0x008000, "BGR of 0,128,0");
     assert!(groups.iter().any(|g| g["type"] == 2 && g["location"] == "G1:G3"));
-    assert!(groups.iter().any(|g| g["type"] == 3 && g["location"] == "H1:H3" && g["negative"] == true));
+    assert!(groups
+        .iter()
+        .any(|g| g["type"] == 3 && g["location"] == "H1:H3" && g["negative"] == true));
     let _ = std::fs::remove_file(&path);
     let _ = std::fs::remove_dir(&folder);
 }

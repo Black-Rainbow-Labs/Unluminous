@@ -46,7 +46,13 @@ fn png(b: &[u8]) -> Option<ImageInfo> {
         }
         at += 12 + len;
     }
-    Some(ImageInfo { extension: "png", content_type: "image/png", width, height, dpi: dpi.round().max(1.0) })
+    Some(ImageInfo {
+        extension: "png",
+        content_type: "image/png",
+        width,
+        height,
+        dpi: dpi.round().max(1.0),
+    })
 }
 
 fn jpeg(b: &[u8]) -> Option<ImageInfo> {
@@ -73,7 +79,13 @@ fn jpeg(b: &[u8]) -> Option<ImageInfo> {
         if matches!(marker, 0xC0..=0xC3 | 0xC5..=0xC7 | 0xC9..=0xCB | 0xCD..=0xCF) {
             let height = u16::from_be_bytes([*b.get(at + 5)?, *b.get(at + 6)?]) as u32;
             let width = u16::from_be_bytes([*b.get(at + 7)?, *b.get(at + 8)?]) as u32;
-            return Some(ImageInfo { extension: "jpeg", content_type: "image/jpeg", width, height, dpi: dpi.round().max(1.0) });
+            return Some(ImageInfo {
+                extension: "jpeg",
+                content_type: "image/jpeg",
+                width,
+                height,
+                dpi: dpi.round().max(1.0),
+            });
         }
         at += 2 + len;
     }
@@ -91,7 +103,13 @@ fn bmp(b: &[u8]) -> Option<ImageInfo> {
     let (w, h) = (le32(18)?, le32(22)?);
     let per_metre = le32(38).unwrap_or(0) as f64;
     let dpi = if per_metre > 0.0 { (per_metre * 0.0254).round() } else { 96.0 };
-    Some(ImageInfo { extension: "bmp", content_type: "image/bmp", width: w.unsigned_abs(), height: h.unsigned_abs(), dpi })
+    Some(ImageInfo {
+        extension: "bmp",
+        content_type: "image/bmp",
+        width: w.unsigned_abs(),
+        height: h.unsigned_abs(),
+        dpi,
+    })
 }
 
 fn svg(b: &[u8]) -> Option<ImageInfo> {
@@ -108,13 +126,19 @@ fn svg(b: &[u8]) -> Option<ImageInfo> {
         _ => {
             let at = tag.find("viewBox=\"")? + 9;
             let nums: Vec<f64> = tag[at..at + tag[at..].find('"')?]
-                .split(|c: char| c == ' ' || c == ',')
+                .split([' ', ','])
                 .filter_map(|n| n.parse().ok())
                 .collect();
             (*nums.get(2)?, *nums.get(3)?)
         }
     };
-    Some(ImageInfo { extension: "svg", content_type: "image/svg+xml", width: w.round() as u32, height: h.round() as u32, dpi: 96.0 })
+    Some(ImageInfo {
+        extension: "svg",
+        content_type: "image/svg+xml",
+        width: w.round() as u32,
+        height: h.round() as u32,
+        dpi: 96.0,
+    })
 }
 
 /// What an image is, or `None` when the bytes are not a picture this version knows (PNG, JPEG, GIF, BMP, SVG).
@@ -138,7 +162,13 @@ fn el(xml: &str) -> Elem {
 }
 
 /// The content element of a new picture. `embed` is the relationship id of its image.
-pub fn picture_tree(id: ObjectId, name: &str, embed: &str, svg_embed: Option<&str>, size: (i64, i64)) -> Elem {
+pub fn picture_tree(
+    id: ObjectId,
+    name: &str,
+    embed: &str,
+    svg_embed: Option<&str>,
+    size: (i64, i64),
+) -> Elem {
     let blip = match svg_embed {
         Some(s) => format!(
             "<a:blip xmlns:r=\"{R}\" r:embed=\"{embed}\"><a:extLst><a:ext uri=\"{{96DAC541-7B7A-43D3-8B79-37D633B846F1}}\"><asvg:svgBlip xmlns:asvg=\"http://schemas.microsoft.com/office/drawing/2016/SVG/main\" r:embed=\"{s}\"/></a:ext></a:extLst></a:blip>"
@@ -195,7 +225,10 @@ const STYLE_LINE: &str = "<xdr:style><a:lnRef idx=\"1\"><a:schemeClr val=\"accen
 
 /// The content element of a new shape.
 pub fn shape_tree(kind: NewShape, id: ObjectId, name: &str, size: (i64, i64)) -> Elem {
-    let xfrm = format!("<a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"{}\" cy=\"{}\"/></a:xfrm>", size.0, size.1);
+    let xfrm = format!(
+        "<a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"{}\" cy=\"{}\"/></a:xfrm>",
+        size.0, size.1
+    );
     let xml = match kind {
         NewShape::Line | NewShape::Arrow => {
             let (prst, ln) = if kind == NewShape::Line {
@@ -257,7 +290,8 @@ mod tests {
 
     #[test]
     fn images_are_told_apart_and_measured() {
-        let mut png = vec![0x89, b'P', b'N', b'G', 13, 10, 26, 10, 0, 0, 0, 13, b'I', b'H', b'D', b'R'];
+        let mut png =
+            vec![0x89, b'P', b'N', b'G', 13, 10, 26, 10, 0, 0, 0, 13, b'I', b'H', b'D', b'R'];
         png.extend_from_slice(&[0, 0, 0, 40, 0, 0, 0, 20]);
         png.extend_from_slice(&[8, 6, 0, 0, 0, 0, 0, 0, 0]);
         let info = image_info(&png).unwrap();

@@ -357,7 +357,8 @@ mod tests {
 
     #[test]
     fn a_tree_writes_back_what_it_read() {
-        let xml = "<a:p xmlns:a=\"u\" x=\"1 &amp; 2\"><a:r><a:t>Hi &lt;there&gt;</a:t></a:r><a:e/></a:p>";
+        let xml =
+            "<a:p xmlns:a=\"u\" x=\"1 &amp; 2\"><a:r><a:t>Hi &lt;there&gt;</a:t></a:r><a:e/></a:p>";
         assert_eq!(parse(xml).unwrap().to_xml(), xml);
     }
 

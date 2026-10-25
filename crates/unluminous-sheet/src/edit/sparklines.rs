@@ -23,7 +23,8 @@ fn default_colors() -> SparklineColors {
 
 /// The text of a data reference on a sheet: `Sheet1!A1:D1`, quoted when the name needs it.
 fn reference(sheet: &str, range: Range) -> String {
-    let plain = sheet.chars().all(|c| c.is_alphanumeric() || c == '_') && !sheet.starts_with(|c: char| c.is_ascii_digit());
+    let plain = sheet.chars().all(|c| c.is_alphanumeric() || c == '_')
+        && !sheet.starts_with(|c: char| c.is_ascii_digit());
     let name = if plain { sheet.to_owned() } else { format!("'{}'", sheet.replace('\'', "''")) };
     format!("{name}!{}", range.a1())
 }
@@ -31,7 +32,10 @@ fn reference(sheet: &str, range: Range) -> String {
 /// The data range for each location cell: a column of locations takes a row of data each, a row of
 /// locations takes a column each, and one cell takes the whole range.
 fn pair_up(data: Range, location: Range) -> Result<Vec<(Range, CellRef)>, String> {
-    let bad = || "The location reference is not valid because the dimensions do not match the data.".to_owned();
+    let bad = || {
+        "The location reference is not valid because the dimensions do not match the data."
+            .to_owned()
+    };
     let cells: Vec<CellRef> = location.cells().collect();
     if cells.len() == 1 {
         return Ok(vec![(data, cells[0])]);
@@ -73,9 +77,16 @@ impl Session {
         self.check_sheet(sheet)?;
         self.check_sheet(data_sheet)?;
         let pairs = pair_up(data, location)?;
-        let taken = |at: CellRef| self.book.sheets[sheet].sparklines.iter().any(|g| g.sparklines.iter().any(|s| s.location == at));
+        let taken = |at: CellRef| {
+            self.book.sheets[sheet]
+                .sparklines
+                .iter()
+                .any(|g| g.sparklines.iter().any(|s| s.location == at))
+        };
         if pairs.iter().any(|(_, c)| taken(*c)) {
-            return Err("A sparkline already exists in the location range. Clear it first.".to_owned());
+            return Err(
+                "A sparkline already exists in the location range. Clear it first.".to_owned()
+            );
         }
         let data_name = self.book.sheets[data_sheet].name.clone();
         let group = SparklineGroup {
@@ -96,7 +107,9 @@ impl Session {
     /// The group a cell holds a sparkline of, and the sparkline's place in it.
     pub fn sparkline_at(&self, sheet: usize, at: CellRef) -> Option<(usize, usize)> {
         let groups = &self.book.sheets.get(sheet)?.sparklines;
-        groups.iter().enumerate().find_map(|(g, grp)| grp.sparklines.iter().position(|s| s.location == at).map(|s| (g, s)))
+        groups.iter().enumerate().find_map(|(g, grp)| {
+            grp.sparklines.iter().position(|s| s.location == at).map(|s| (g, s))
+        })
     }
 
     /// Change a group's options with a function; the group is checked to be there first.
@@ -116,12 +129,22 @@ impl Session {
     }
 
     /// Change a group to line, column or win/loss.
-    pub fn set_sparkline_kind(&mut self, sheet: usize, group: usize, kind: SparklineKind) -> Result<(), String> {
+    pub fn set_sparkline_kind(
+        &mut self,
+        sheet: usize,
+        group: usize,
+        kind: SparklineKind,
+    ) -> Result<(), String> {
         self.update_sparkline_group(sheet, group, |g| g.kind = kind)
     }
 
     /// Show or hide the points a group highlights: markers, high, low, first, last and negative.
-    pub fn set_sparkline_points(&mut self, sheet: usize, group: usize, points: SparklinePoints) -> Result<(), String> {
+    pub fn set_sparkline_points(
+        &mut self,
+        sheet: usize,
+        group: usize,
+        points: SparklinePoints,
+    ) -> Result<(), String> {
         self.update_sparkline_group(sheet, group, |g| {
             g.markers = points.markers;
             g.high = points.high;
@@ -133,7 +156,12 @@ impl Session {
     }
 
     /// Set the colours of a group. A colour left `None` is not changed.
-    pub fn set_sparkline_colors(&mut self, sheet: usize, group: usize, colors: SparklineColors) -> Result<(), String> {
+    pub fn set_sparkline_colors(
+        &mut self,
+        sheet: usize,
+        group: usize,
+        colors: SparklineColors,
+    ) -> Result<(), String> {
         self.update_sparkline_group(sheet, group, |g| {
             let c = &mut g.colors;
             c.series = colors.series.or(c.series);
@@ -148,7 +176,12 @@ impl Session {
     }
 
     /// Set the line weight of a group in points.
-    pub fn set_sparkline_weight(&mut self, sheet: usize, group: usize, weight: f64) -> Result<(), String> {
+    pub fn set_sparkline_weight(
+        &mut self,
+        sheet: usize,
+        group: usize,
+        weight: f64,
+    ) -> Result<(), String> {
         if !(0.0..=10.0).contains(&weight) {
             return Err("The line weight must be between 0 and 10 points.".to_owned());
         }
@@ -156,7 +189,13 @@ impl Session {
     }
 
     /// Set the vertical axis of a group.
-    pub fn set_sparkline_axis(&mut self, sheet: usize, group: usize, min: AxisBound, max: AxisBound) -> Result<(), String> {
+    pub fn set_sparkline_axis(
+        &mut self,
+        sheet: usize,
+        group: usize,
+        min: AxisBound,
+        max: AxisBound,
+    ) -> Result<(), String> {
         if let (AxisBound::Custom(lo), AxisBound::Custom(hi)) = (min, max) {
             if lo >= hi {
                 return Err("The minimum must be less than the maximum.".to_owned());
@@ -171,7 +210,13 @@ impl Session {
     }
 
     /// Show the horizontal axis, and plot right to left.
-    pub fn set_sparkline_horizontal_axis(&mut self, sheet: usize, group: usize, show: bool, right_to_left: bool) -> Result<(), String> {
+    pub fn set_sparkline_horizontal_axis(
+        &mut self,
+        sheet: usize,
+        group: usize,
+        show: bool,
+        right_to_left: bool,
+    ) -> Result<(), String> {
         self.update_sparkline_group(sheet, group, |g| {
             g.show_axis = show;
             g.right_to_left = right_to_left;
@@ -179,13 +224,24 @@ impl Session {
     }
 
     /// Use a range of dates as the horizontal axis, or none.
-    pub fn set_sparkline_date_axis(&mut self, sheet: usize, group: usize, dates: Option<&str>) -> Result<(), String> {
+    pub fn set_sparkline_date_axis(
+        &mut self,
+        sheet: usize,
+        group: usize,
+        dates: Option<&str>,
+    ) -> Result<(), String> {
         let dates = dates.map(str::to_owned);
         self.update_sparkline_group(sheet, group, |g| g.date_axis = dates)
     }
 
     /// Choose how empty cells show and whether hidden cells are plotted.
-    pub fn set_sparkline_hidden_and_empty(&mut self, sheet: usize, group: usize, empty: EmptyCells, hidden: bool) -> Result<(), String> {
+    pub fn set_sparkline_hidden_and_empty(
+        &mut self,
+        sheet: usize,
+        group: usize,
+        empty: EmptyCells,
+        hidden: bool,
+    ) -> Result<(), String> {
         self.update_sparkline_group(sheet, group, |g| {
             g.empty = empty;
             g.hidden_cells = hidden;
@@ -193,7 +249,13 @@ impl Session {
     }
 
     /// Point a sparkline at other data.
-    pub fn set_sparkline_data(&mut self, sheet: usize, at: CellRef, data_sheet: usize, data: Range) -> Result<(), String> {
+    pub fn set_sparkline_data(
+        &mut self,
+        sheet: usize,
+        at: CellRef,
+        data_sheet: usize,
+        data: Range,
+    ) -> Result<(), String> {
         self.check_sheet(data_sheet)?;
         let (g, s) = self.sparkline_at(sheet, at).ok_or("There is no sparkline in that cell.")?;
         let text = reference(&self.book.sheets[data_sheet].name, data);
@@ -207,7 +269,10 @@ impl Session {
         self.check_sheet(sheet)?;
         let mut found = Vec::new();
         for &c in cells {
-            found.push(self.sparkline_at(sheet, c).ok_or("Select cells that hold sparklines to group them.")?);
+            found.push(
+                self.sparkline_at(sheet, c)
+                    .ok_or("Select cells that hold sparklines to group them.")?,
+            );
         }
         if found.len() < 2 {
             return Err("Select two or more sparklines to group them.".to_owned());

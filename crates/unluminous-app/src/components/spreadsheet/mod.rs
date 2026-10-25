@@ -12,6 +12,8 @@ pub mod editor;
 pub mod grid;
 pub mod keys;
 pub mod menus;
+pub mod objects;
+pub mod sparkline;
 
 use egui::{CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 use unluminous_sheet::coord::{column_name, CellRef};

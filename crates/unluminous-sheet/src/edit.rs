@@ -11,11 +11,11 @@
 use std::collections::BTreeMap;
 
 mod cellstyles;
+mod objects;
 mod protect;
+mod sparklines;
 mod theme;
 mod whatif;
-mod objects;
-mod sparklines;
 pub use objects::{Alignment, Distribution, TextFormat, ZOrder};
 pub use sparklines::SparklinePoints;
 
