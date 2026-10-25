@@ -195,7 +195,10 @@ fn is_ignored(s: &Sheet, at: CellRef, rule: ErrorRule) -> bool {
 /// Whether a rule flags a cell.
 fn flags(book: &Workbook, si: usize, s: &Sheet, at: CellRef, cell: &Cell, rule: ErrorRule) -> bool {
     match rule {
-        ErrorRule::EvalError => cell.formula.is_some() && matches!(cell.value, Value::Error(_)),
+        ErrorRule::EvalError => {
+            cell.formula.is_some()
+                && matches!(cell.value, Value::Error(e) if e != crate::value::ErrorKind::NA)
+        }
         ErrorRule::NumberAsText => number_as_text(book, cell),
         ErrorRule::TwoDigitTextYear => two_digit_year(cell),
         ErrorRule::UnlockedFormula => {
@@ -222,15 +225,22 @@ fn number_as_text(book: &Workbook, cell: &Cell) -> bool {
         && typed.format.is_none_or(|f| !f.contains(['d', 'h', 'y']))
 }
 
-/// Text that reads as a date written with two digits for the year.
+/// Text that reads as a date written with two digits for the year: `1/2/30`, `5-Jan-25` or `Jan 5 25`.
 fn two_digit_year(cell: &Cell) -> bool {
+    const MONTHS: [&str; 12] =
+        ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
     let Some(text) = text_of(cell) else { return false };
-    let parts: Vec<&str> = text.trim().split(['/', '-']).collect();
-    parts.len() == 3
-        && parts[2].len() == 2
-        && parts[2].bytes().all(|b| b.is_ascii_digit())
-        && parts[..2].iter().all(|p| !p.is_empty())
-        && crate::input::read(text.trim(), false, 2000).value != Value::text(text.trim())
+    let parts: Vec<&str> = text.trim().split(['/', '-', ' ']).filter(|p| !p.is_empty()).collect();
+    let numeric = |p: &str, most: u32| p.parse::<u32>().is_ok_and(|n| (1..=most).contains(&n));
+    let month_name =
+        |p: &str| p.len() >= 3 && MONTHS.contains(&p[..3].to_ascii_lowercase().as_str());
+    let [a, b, year] = parts[..] else { return false };
+    if year.len() != 2 || !year.bytes().all(|c| c.is_ascii_digit()) {
+        return false;
+    }
+    (numeric(a, 12) && numeric(b, 31))
+        || (numeric(a, 31) && month_name(b))
+        || (month_name(a) && numeric(b, 31))
 }
 
 /// The formula in a cell compared with the formula in another as if one were copied to the other.
@@ -291,13 +301,23 @@ fn refers_to_empty(book: &Workbook, si: usize, cell: &Cell) -> bool {
     let Some(formula) = cell.formula.as_ref() else { return false };
     crate::calc::precedents_of(book, si, &formula.expr).into_iter().any(|(first, last, range)| {
         first == last
-            && book.sheets.get(first).is_some_and(|t| {
-                range.len() < 100_000
-                    && range.cells().any(|p| {
-                        t.value_at(p).is_empty() && t.cell(p).is_none_or(|c| c.formula.is_none())
-                    })
-            })
+            && book
+                .sheets
+                .get(first)
+                .is_some_and(|t| range.len() < 100_000 && reads_empty(t, range))
     })
+}
+
+/// Whether a range read by a formula is empty in the way Excel flags: every cell of it is empty, or just
+/// the last one is, which is the range that reaches one cell past its data.
+fn reads_empty(sheet: &Sheet, range: Range) -> bool {
+    let empty = |p: CellRef| {
+        sheet.value_at(p).is_empty() && sheet.cell(p).is_none_or(|c| c.formula.is_none())
+    };
+    range.cells().all(empty)
+        || (range.len() > 1
+            && empty(range.last)
+            && range.cells().filter(|p| *p != range.last).all(|p| !empty(p)))
 }
 
 /// A cell in a table column whose formula differs from the column's calculated column formula.

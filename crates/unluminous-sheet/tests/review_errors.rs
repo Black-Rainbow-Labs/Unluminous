@@ -20,7 +20,9 @@ fn flags_here(session: &unluminous_sheet::edit::Session) -> BTreeMap<String, Vec
 
 #[test]
 fn every_rule_flags_the_cells_excel_flags() {
-    let session = fixture_session("errors.xlsx");
+    // Excel's `Errors.Item(i).Value` is true for an error that was ignored too; ignoring is its own flag.
+    let mut session = fixture_session("errors.xlsx");
+    session.book.sheets[0].ignored_errors.clear();
     let expected = fixture_json("errors-expected.json");
     let theirs: BTreeMap<String, Vec<u64>> = expected["flags"]
         .as_object()
@@ -50,6 +52,20 @@ fn an_ignored_error_is_read_written_and_left_out() {
     let session = fixture_session("errors.xlsx");
     let sheet = &session.book.sheets[0];
     assert_eq!(sheet.ignored_errors.len(), 2, "{:?}", sheet.ignored_errors);
+    let ignored = fixture_json("errors-expected.json")["ignored"].clone();
+    for (cell, number) in ignored.as_object().unwrap() {
+        let rule = ErrorRule::ALL
+            .iter()
+            .find(|r| u64::from(r.number()) == number.as_u64().unwrap())
+            .unwrap();
+        assert!(
+            sheet.ignored_errors.iter().any(|row| {
+                row.ranges.iter().any(|r| r.contains(at(cell)))
+                    && row.rules.iter().any(|a| a == rule.attribute())
+            }),
+            "{cell}"
+        );
+    }
     let at_b3 = session.check_errors(
         None,
         Some(unluminous_sheet::Range::parse("B3").unwrap()),

@@ -99,7 +99,8 @@ impl Session {
             for at in self.formula_cells_in(s, range) {
                 for (target, read) in reads_of(&self.book, s, at) {
                     push_unique(&mut out, sheet, target, read);
-                    if all_levels {
+                    // The trace does not carry on into another sheet, as Excel's does not.
+                    if all_levels && target == sheet {
                         queue.push_back((target, read));
                     }
                 }
@@ -132,7 +133,7 @@ impl Session {
                     reads[i].iter().any(|(rs, range)| *rs == s && range.intersects(&target));
                 if reads_it && done.insert(i) {
                     push_unique(&mut out, sheet, *fs, *fills);
-                    if all_levels {
+                    if all_levels && *fs == sheet {
                         queue.push_back((*fs, *fills));
                     }
                 }

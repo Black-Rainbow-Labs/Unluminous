@@ -67,12 +67,22 @@ fn every_option_selects_the_cells_excel_selects() {
         };
         if !same {
             let show = |v: &[CellRef]| v.iter().map(CellRef::a1).collect::<Vec<_>>().join(",");
+            let only = |x: &[CellRef], y: &[CellRef]| {
+                show(&x.iter().filter(|c| !y.contains(c)).copied().collect::<Vec<_>>())
+            };
+            let here = ours.clone().unwrap_or_default();
+            let there = theirs.clone().unwrap_or_default();
             wrong.push(format!(
-                "{kind} on {} (active {}): Excel {}, here {}",
+                "{kind} on {} (active {}): only Excel [{}], only here [{}] {}",
                 row["selection"],
                 row["active"],
-                theirs.as_deref().map_or(format!("error {}", row["error"]), show),
-                ours.as_ref().map_or_else(|e| format!("error {e}"), |c| show(c)),
+                only(&there, &here),
+                only(&here, &there),
+                if theirs.is_none() {
+                    format!("(Excel: error {})", row["error"])
+                } else {
+                    String::new()
+                },
             ));
         }
     }
@@ -95,7 +105,9 @@ fn drawing_objects_are_counted_as_excel_counts_shapes() {
         .iter()
         .map(|o| format!("{}|{}", o.from.a1(), o.to.a1()))
         .collect();
-    assert_eq!(ours.len(), theirs.len(), "{ours:?} against {theirs:?}");
+    // Excel counts the box of each note among the shapes; the objects here are the drawing's own.
+    let notes = session.book.sheets[0].notes.len();
+    assert_eq!(ours.len() + notes, theirs.len(), "{ours:?} against {theirs:?}");
     for (o, t) in ours.iter().zip(&theirs) {
         // Excel names the cell a shape's corner is in, and the file names the cell the anchor starts the
         // corner at, which can be the cell beside it when the corner is on a boundary.

@@ -109,12 +109,14 @@ fn fold(c: char, case: bool) -> char {
     }
 }
 
-/// The end of the longest match of a pattern that starts at a place in the text.
+/// The end of the shortest match of a pattern that starts at a place in the text, which is the stretch
+/// Excel replaces for a `*`.
 fn match_from(pattern: &[Piece], text: &[char], start: usize, case: bool) -> Option<usize> {
     match pattern.split_first() {
         None => Some(start),
+        Some((Piece::Run, [])) => Some(text.len().max(start)),
         Some((Piece::Run, rest)) => {
-            (start..=text.len()).rev().find_map(|end| match_from(rest, text, end, case))
+            (start..=text.len()).find_map(|end| match_from(rest, text, end, case))
         }
         Some((Piece::Any, rest)) => {
             if start < text.len() {
@@ -173,7 +175,10 @@ pub fn wildcard_replace(
     match_case: bool,
     whole: bool,
 ) -> Option<String> {
-    if what.is_empty() {
+    // Excel does nothing when the replacement is the text it finds in other letter case.
+    if what.is_empty()
+        || (!what.contains(['*', '?', '~']) && what.to_lowercase() == with.to_lowercase())
+    {
         return None;
     }
     if whole {
@@ -209,13 +214,30 @@ pub fn wildcard_replace(
 pub fn formula_text(book: &Workbook, cell: &Cell) -> String {
     match &cell.formula {
         Some(f) => format!("={}", print(&f.expr, false)),
-        None => typed_text(book, &cell.value),
+        None => typed_text(book, cell),
     }
 }
 
 /// A value as the formula bar shows it for a cell with no formula.
-fn typed_text(_book: &Workbook, value: &Value) -> String {
-    value.to_text()
+fn typed_text(book: &Workbook, cell: &Cell) -> String {
+    let code = book.styles.format_code(cell.style);
+    match &cell.value {
+        // A number formatted as a percentage is typed as one.
+        Value::Number(n) if code.contains('%') && !code.contains('"') => {
+            format!("{}%", Value::Number(n * 100.0).to_text())
+        }
+        other => other.to_text(),
+    }
+}
+
+/// Whether a search looks at a cell at all: not at the empty cells a merged area covers, and with Look in
+/// set to values not at cells in hidden rows or columns.
+fn is_searched(sheet: &Sheet, key: (u32, u32), look: LookIn) -> bool {
+    let at = CellRef::new(key.0, key.1);
+    if sheet.merge_at(at).is_some_and(|m| m.first != at) {
+        return false;
+    }
+    look != LookIn::Values || !(sheet.is_row_hidden(key.0) || sheet.is_column_hidden(key.1))
 }
 
 /// What a cell shows, with its number format applied and no limit on the width.
@@ -282,6 +304,9 @@ pub fn find_all(book: &Workbook, opts: &FindOptions) -> Vec<Hit> {
         }
         for key in keys_in_order(sheet, opts) {
             let cell = sheet.cells.get(&key);
+            if !is_searched(sheet, key, opts.look_in) {
+                continue;
+            }
             if let Some(template) = opts.format {
                 if !cell.is_some_and(|c| same_format(book, c.style, template)) {
                     continue;
@@ -291,7 +316,9 @@ pub fn find_all(book: &Workbook, opts: &FindOptions) -> Vec<Hit> {
                 opts.format.is_some()
             } else {
                 texts_of(book, sheet, key, cell, opts.look_in).iter().any(|text| {
-                    wildcard_find(&opts.what, text, opts.match_case, opts.entire_cell).is_some()
+                    !text.is_empty()
+                        && wildcard_find(&opts.what, text, opts.match_case, opts.entire_cell)
+                            .is_some()
                 })
             };
             if hit {

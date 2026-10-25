@@ -6,7 +6,7 @@
 
 use crate::coord::{CellRef, Range};
 use crate::edit::{clip_to_used, Session};
-use crate::model::{Cell, Sheet};
+use crate::model::Sheet;
 use crate::value::Value;
 
 /// Which kinds of value Constants and Formulas take.
@@ -96,13 +96,19 @@ impl Session {
             Special::Comments => {
                 cells_where(s, &area, |s, at| s.threads.contains_key(&(at.row, at.col)))
             }
-            Special::Constants(kinds) => cells_where(s, &area, |s, at| {
-                s.cell(at).is_some_and(|c| {
-                    c.formula.is_none() && !c.value.is_empty() && kinds.admits(&c.value)
-                })
-            }),
+            Special::Constants(kinds) => with_merged(
+                s,
+                cells_where(s, &area, |s, at| {
+                    !in_array(s, at)
+                        && s.cell(at).is_some_and(|c| {
+                            c.formula.is_none() && !c.value.is_empty() && kinds.admits(&c.value)
+                        })
+                }),
+            ),
             Special::Formulas(kinds) => cells_where(s, &area, |s, at| {
-                s.cell(at).is_some_and(|c| c.formula.is_some() && kinds.admits(&c.value))
+                s.cell(at).is_some_and(|c| {
+                    (c.formula.is_some() || in_array(s, at)) && kinds.admits(&c.value)
+                })
             }),
             Special::Blanks => blank_cells(s, &area),
             Special::CurrentRegion => vec![current_region(s, active)]
@@ -119,7 +125,17 @@ impl Session {
                 self.traced_cells(sheet, selection, active, all_levels, false)
             }
             Special::LastCell => last_cell(s).into_iter().collect(),
-            Special::VisibleCells => cells_in(&area).filter(|at| visible(s, *at)).collect(),
+            Special::VisibleCells => {
+                let whole = if selection.len() == 1
+                    && selection[0].len() > 1
+                    && selection[0].len() < 1_000_000
+                {
+                    selection.to_vec()
+                } else {
+                    area.clone()
+                };
+                cells_in(&whole).filter(|at| visible(s, *at)).collect()
+            }
             Special::ConditionalFormats { same } => formats_where(s, &area, active, same),
             Special::Validation { same } => validation_where(self, sheet, &area, active, same),
         };
@@ -129,14 +145,13 @@ impl Session {
         Ok(found)
     }
 
-    /// The range of the legacy array formula a cell is part of, or the range a dynamic array filled.
+    /// The range of the legacy array formula a cell is part of. A dynamic array's spill is not one.
     fn current_array(&self, sheet: usize, at: CellRef) -> Vec<CellRef> {
         let s = &self.book.sheets[sheet];
         if let Some(range) = s.array_formulas.iter().find(|r| r.contains(at)) {
             return range.cells().collect();
         }
-        let anchor = s.spills.owner.get(&(at.row, at.col)).copied().unwrap_or((at.row, at.col));
-        s.spills.range_of(anchor).map(|r| r.cells().collect()).unwrap_or_default()
+        Vec::new()
     }
 
     /// The cells on the sheet that precedents or dependents of the selection are, as Excel selects them.
@@ -264,12 +279,39 @@ fn cells_where(s: &Sheet, area: &[Range], test: impl Fn(&Sheet, CellRef) -> bool
     out
 }
 
+/// Whether a cell is part of a legacy array formula's range.
+fn in_array(s: &Sheet, at: CellRef) -> bool {
+    s.array_formulas.iter().any(|r| r.contains(at))
+}
+
+/// The cells with every cell of the merged areas they are in: Excel selects a merged area whole.
+fn with_merged(s: &Sheet, cells: Vec<CellRef>) -> Vec<CellRef> {
+    let mut out = cells.clone();
+    for at in cells {
+        if let Some(m) = s.merge_at(at) {
+            out.extend(m.cells());
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
 fn is_blank(s: &Sheet, at: CellRef) -> bool {
     s.value_at(at).is_empty() && s.cell(at).is_none_or(|c| c.formula.is_none())
 }
 
 fn blank_cells(s: &Sheet, area: &[Range]) -> Vec<CellRef> {
-    cells_in(area).filter(|at| is_blank(s, *at)).collect()
+    let mut out: Vec<CellRef> = cells_in(area).filter(|at| is_blank(s, *at)).collect();
+    // Excel lists the top left cell of a merged area among the blanks too.
+    for merge in &s.merges {
+        if cells_in(area).any(|at| at == merge.first) {
+            out.push(merge.first);
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
 }
 
 fn visible(s: &Sheet, at: CellRef) -> bool {
@@ -308,26 +350,39 @@ pub fn current_region(s: &Sheet, active: CellRef) -> Range {
     }
 }
 
+/// What a cell holds as a comparison sees it: its formula and where that formula is written, or its value.
+/// A cell a dynamic array spilled into holds the formula of the cell that spilled.
+fn content(
+    s: &Sheet,
+    at: CellRef,
+) -> (Option<std::sync::Arc<crate::formula::Expr>>, CellRef, Value) {
+    if let Some(cell) = s.cell(at) {
+        return (cell.formula.as_ref().map(|f| f.expr.clone()), at, cell.value.clone());
+    }
+    match s.spills.owner.get(&(at.row, at.col)) {
+        Some(&(row, col)) => {
+            let anchor = CellRef::new(row, col);
+            let expr = s.cell(anchor).and_then(|c| c.formula.as_ref()).map(|f| f.expr.clone());
+            (expr, anchor, s.value_at(at))
+        }
+        None => (None, at, Value::Empty),
+    }
+}
+
 /// Whether two cells hold the same thing: the same formula as if one were copied to the other, or the same
 /// constant.
-fn same_content(a: Option<&Cell>, a_at: CellRef, b: Option<&Cell>, b_at: CellRef) -> bool {
-    match (a.and_then(|c| c.formula.as_ref()), b.and_then(|c| c.formula.as_ref())) {
+fn same_content(s: &Sheet, a_at: CellRef, b_at: CellRef) -> bool {
+    let ((fa, pa, va), (fb, pb, vb)) = (content(s, a_at), content(s, b_at));
+    match (fa, fb) {
         (Some(fa), Some(fb)) => {
             let moved = crate::formula::shifted(
-                &fa.expr,
-                b_at.row as i64 - a_at.row as i64,
-                b_at.col as i64 - a_at.col as i64,
+                &fa,
+                pb.row as i64 - pa.row as i64,
+                pb.col as i64 - pa.col as i64,
             );
-            moved == *fb.expr
+            moved == *fb
         }
-        (None, None) => {
-            let (va, vb) = (a.map(|c| &c.value), b.map(|c| &c.value));
-            match (va, vb) {
-                (Some(x), Some(y)) => crate::eval::equal(x, y) && x.is_empty() == y.is_empty(),
-                (None, None) => true,
-                (Some(x), None) | (None, Some(x)) => x.is_empty(),
-            }
-        }
+        (None, None) => crate::eval::equal(&va, &vb) && va.is_empty() == vb.is_empty(),
         _ => false,
     }
 }
@@ -336,7 +391,7 @@ fn same_content(a: Option<&Cell>, a_at: CellRef, b: Option<&Cell>, b_at: CellRef
 /// active cell's column (or row).
 fn differences(s: &Sheet, selection: &[Range], active: CellRef, by_row: bool) -> Vec<CellRef> {
     let mut out = Vec::new();
-    for range in selection.iter().filter(|r| r.len() > 1) {
+    for range in selection.iter().filter(|r| r.len() > 1).map(|r| clip_to_used(s, *r)) {
         for at in range.cells() {
             let base = if by_row {
                 CellRef::new(at.row, active.col)
@@ -346,7 +401,7 @@ fn differences(s: &Sheet, selection: &[Range], active: CellRef, by_row: bool) ->
             if base == at {
                 continue;
             }
-            if !same_content(s.cell(base), base, s.cell(at), at) {
+            if !same_content(s, base, at) {
                 out.push(at);
             }
         }

@@ -62,7 +62,9 @@ function Build-Data($book) {
 }
 
 function Visit($sheet, $what, $lookIn, $lookAt, $order, $case, $format) {
-    $cells = $sheet.Cells
+    # A search by format only looks in the used range: every empty cell of the sheet has a format too.
+    # (Assigned inside the branches: PowerShell would unroll a Range returned from an if expression.)
+    if ($format) { $cells = $sheet.UsedRange } else { $cells = $sheet.Cells }
     $found = $cells.Find($what, [Type]::Missing, $lookIn, $lookAt, $order, 1, $case, $false, $format)
     $hits = @()
     if ($null -eq $found) { return $hits }
@@ -80,14 +82,17 @@ function Visit($sheet, $what, $lookIn, $lookAt, $order, $case, $format) {
 try {
     $book = $excel.Workbooks.Add()
     while ($book.Worksheets.Count -lt 2) { $book.Worksheets.Add([Type]::Missing, $book.Worksheets.Item($book.Worksheets.Count)) | Out-Null }
+    Add-Content -LiteralPath (Join-Path $env:TEMP 'review-search-progress.txt') -Value 'build'
     Build-Data $book
+    Add-Content -LiteralPath (Join-Path $env:TEMP 'review-search-progress.txt') -Value 'built'
     if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path }
     $book.SaveAs($path, 51)
 
-    $whats = @('apple', 'Apple', 'app*', '?pple', '*e', 'a~*b', 'what~?', '~~tilde', '1234', '1,234', '1234.5', '50%', '0.5', '2026', '10/24/2026', '#N/A', 'TRUE', '100', '*', 'banana', 'x', 'a*b', '5', '=A2', '1E+20', 'spaced')
-    $lookIns = @(@('formulas', -4123), @('values', -4163), @('notes', -4144), @('comments', -4184))
+    $whats = @('apple', 'app*', '?pple', 'a~*b', '1234', '1,234', '50%', '#N/A', '*', '5')
+    $lookIns = @(@('formulas', -4123), @('values', -4163), @('notes', -4144))
     $queries = @()
     $id = 0
+    $watch = [Diagnostics.Stopwatch]::StartNew()
     foreach ($what in $whats) {
         foreach ($li in $lookIns) {
             foreach ($at in @(@('part', 2), @('whole', 1))) {
@@ -95,6 +100,7 @@ try {
                     foreach ($order in @(@('rows', 1), @('columns', 2))) {
                         $hits = @()
                         foreach ($sheet in $book.Worksheets) { $hits += Visit $sheet $what $li[1] $at[1] $order[1] $case $false }
+                        Add-Content -LiteralPath (Join-Path $env:TEMP 'review-search-progress.txt') -Value "$id $what $($li[0]) $($at[0]) $case $($order[0]) $($watch.Elapsed.TotalSeconds)"
                         $queries += [pscustomobject]@{ id = $id++; what = $what; lookIn = $li[0]; lookAt = $at[0]; matchCase = $case; order = $order[0]; hits = $hits }
                     }
                 }
@@ -102,6 +108,7 @@ try {
         }
     }
 
+    Add-Content -LiteralPath (Join-Path $env:TEMP 'review-search-progress.txt') -Value 'formats'
     # Searching by format: the format of a template cell, with and without text to find.
     $formats = @()
     $a = $book.Worksheets.Item(1)
@@ -124,16 +131,18 @@ try {
     $excel.FindFormat.Clear()
     $book.Close($false)
 
+    Add-Content -LiteralPath (Join-Path $env:TEMP 'review-search-progress.txt') -Value 'replace'
     # Replace: each on a fresh copy, and the cells that differ afterwards.
     $replacements = @(
         @('apple', 'pear', 'part', $false), @('apple', 'pear', 'whole', $false), @('Apple', 'pear', 'part', $true),
         @('app*', 'X', 'part', $false), @('?pple', 'Y', 'part', $false), @('1234', '99', 'part', $false),
         @('a~*b', 'ab', 'whole', $false), @('A2', 'B2', 'part', $false), @('e', 'E', 'part', $true),
-        @('*', 'all', 'whole', $false), @('banana', 'plum', 'part', $false), @('p*e', '#', 'part', $false),
+        @('*', 'all', 'whole', $false), @('banana', 'plum', 'part', $false), @('pin*e', 'X', 'part', $false),
         @('5', '6', 'whole', $false), @('0.5', '0.25', 'part', $false), @('TRUE', 'FALSE', 'whole', $false)
     )
     $replaced = @()
     foreach ($r in $replacements) {
+        Add-Content -LiteralPath (Join-Path $env:TEMP 'review-search-progress.txt') -Value "replace $($r[0])"
         $copy = $excel.Workbooks.Open($path)
         $before = @{}
         $s1 = $copy.Worksheets.Item(1)

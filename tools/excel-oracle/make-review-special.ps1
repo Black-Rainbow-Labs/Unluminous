@@ -19,7 +19,7 @@ function Cells-Of($range) {
     return $out
 }
 function Try-Cells($script) {
-    try { $r = & $script; if ($null -eq $r) { return @{ error = 'none' } }; return @{ cells = @(Cells-Of $r) } }
+    try { $script:found = $null; & $script; $r = $script:found; if ($null -eq $r) { return @{ error = 'none' } }; return @{ cells = @(Cells-Of $r) } }
     catch { return @{ error = $_.Exception.Message } }
 }
 try {
@@ -78,26 +78,25 @@ try {
     foreach ($sel in $selections) {
         foreach ($ty in $types) {
             $range = $s.Range($sel[0])
-            $s.Range($sel[1]).Select() | Out-Null
-            $range.Select() | Out-Null
-            $s.Range($sel[1]).Activate() | Out-Null
-            $r = Try-Cells { if ($null -eq $ty[2]) { $range.SpecialCells($ty[1]) } else { $range.SpecialCells($ty[1], $ty[2]) } }
+            # Visible cells of a single cell is the whole sheet, which is too many to list.
+            if ($ty[0] -eq 'visible' -and $range.Cells.Count -eq 1) { continue }
+            $r = Try-Cells { if ($null -eq $ty[2]) { $script:found = $range.SpecialCells($ty[1]) } else { $script:found = $range.SpecialCells($ty[1], $ty[2]) } }
             $rows += [pscustomobject]@{ kind = $ty[0]; selection = $sel[0]; active = $sel[1]; cells = $r.cells; error = $r.error }
         }
         $active = $s.Range($sel[1])
         $range = $s.Range($sel[0])
-        $r = Try-Cells { $active.CurrentRegion }
+        $r = Try-Cells { $script:found = $active.CurrentRegion }
         $rows += [pscustomobject]@{ kind = 'current-region'; selection = $sel[0]; active = $sel[1]; cells = $r.cells; error = $r.error }
-        $r = Try-Cells { $active.CurrentArray }
+        $r = Try-Cells { $script:found = $active.CurrentArray }
         $rows += [pscustomobject]@{ kind = 'current-array'; selection = $sel[0]; active = $sel[1]; cells = $r.cells; error = $r.error }
         if ($range.Cells.Count -gt 1) {
-            $r = Try-Cells { $range.RowDifferences($active) }
+            $r = Try-Cells { $script:found = $range.RowDifferences($active) }
             $rows += [pscustomobject]@{ kind = 'row-differences'; selection = $sel[0]; active = $sel[1]; cells = $r.cells; error = $r.error }
-            $r = Try-Cells { $range.ColumnDifferences($active) }
+            $r = Try-Cells { $script:found = $range.ColumnDifferences($active) }
             $rows += [pscustomobject]@{ kind = 'column-differences'; selection = $sel[0]; active = $sel[1]; cells = $r.cells; error = $r.error }
         }
         foreach ($tr in @(@('precedents-direct', 'DirectPrecedents'), @('precedents-all', 'Precedents'), @('dependents-direct', 'DirectDependents'), @('dependents-all', 'Dependents'))) {
-            $r = Try-Cells { $range.($tr[1]) }
+            $r = Try-Cells { $script:found = $range.($tr[1]) }
             $rows += [pscustomobject]@{ kind = $tr[0]; selection = $sel[0]; active = $sel[1]; cells = $r.cells; error = $r.error }
         }
     }

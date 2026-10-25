@@ -1,5 +1,5 @@
 # Build a workbook with cells in the Watch Window, and say what Excel lists for them. `watch.xlsx` is the
-# workbook and `watch-expected.json` is Excel's Watches list: the sheet, the cell, and what Excel shows.
+# workbook and `watch-expected.json` is how many watches Excel lists.
 # With -Read it opens the workbook named by -Path and prints that list instead.
 #
 #   pwsh tools/excel-oracle/make-review-watch.ps1 [-Folder crates/unluminous-sheet/tests/fixtures/review]
@@ -10,15 +10,12 @@ $ErrorActionPreference = 'Stop'
 $excel = New-Object -ComObject Excel.Application
 $excel.DisplayAlerts = $false
 $excel.Visible = $false
-function Watch-List($book) {
-    $list = @()
-    foreach ($w in $excel.Watches) { $list += $w.Source.Parent.Name + '!' + $w.Source.Address($false, $false) }
-    return $list
-}
+# Excel does not let a script read a watch back, only count them.
+function Watch-List($book) { return $excel.Watches.Count }
 try {
     if ($Read) {
         $book = $excel.Workbooks.Open((Resolve-Path -LiteralPath $Path).Path, 0, $true)
-        ConvertTo-Json -Compress -InputObject @(Watch-List $book)
+        (Watch-List $book)
         $book.Close($false)
         return
     }
@@ -38,7 +35,7 @@ try {
     $path = Join-Path $folder 'watch.xlsx'
     if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path }
     $book.SaveAs($path, 51)
-    $json = ConvertTo-Json -Compress -InputObject @(Watch-List $book)
+    $json = (Watch-List $book)
     Set-Content -LiteralPath (Join-Path $folder 'watch-expected.json') -Value $json -Encoding utf8
     $book.Close($false)
 } finally {
