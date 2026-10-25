@@ -527,7 +527,7 @@ fn draw_cartesian(painter: &egui::Painter, body: Rect, plot: &Plot, chart: &Char
         return;
     }
     let frame = Frame2d { inner };
-    draw_axes(painter, &frame, plot, chart, colours, m, horizontal_bars);
+    draw_axes(painter, &frame, plot, chart, colours, m);
     // Areas behind bars behind lines, each group in the order the chart lists it.
     let rank = |g: &Group| match g.kind {
         GroupKind::Area => 0,
@@ -551,93 +551,89 @@ fn group_axes<'a>(plot: &'a Plot, chart: &Chart, group: &Group) -> (Option<&'a P
     (find(group.axes.first()), find(group.axes.get(1)))
 }
 
-fn draw_axes(painter: &egui::Painter, f: &Frame2d, plot: &Plot, chart: &Chart, colours: &Colours, m: &Metrics, horizontal_bars: bool) {
+fn draw_axes(painter: &egui::Painter, f: &Frame2d, plot: &Plot, chart: &Chart, colours: &Colours, m: &Metrics) {
     let inner = f.inner;
     painter.rect_filled(inner, 0, colours.paper);
     for (axis, p) in chart.spec.axes.iter().zip(&plot.axes) {
-        let vertical = matches!(axis.position, AxisPosition::Left | AxisPosition::Right);
-        if let (Some(scale), true) = (p.scale, p.kind == AxisKind::Value) {
-            if axis.deleted {
-                continue;
-            }
-            for (v, text) in &p.ticks {
-                let t = geo::along(*v, scale.min, scale.max, scale.log, p.reverse);
-                let (a, b) = if vertical {
-                    let y = inner.bottom() - inner.height() * t;
-                    (Pos2::new(inner.left(), y), Pos2::new(inner.right(), y))
-                } else {
-                    let x = inner.left() + inner.width() * t;
-                    (Pos2::new(x, inner.top()), Pos2::new(x, inner.bottom()))
-                };
-                if axis.major_gridlines.is_some() {
-                    painter.line_segment([a, b], Stroke::new(m.line(), colours.grid));
-                }
-                if axis.tick_labels != TickLabels::Hidden {
-                    let (pos, anchor) = if vertical {
-                        match axis.position {
-                            AxisPosition::Left => (Pos2::new(inner.left() - 5.0, a.y), egui::Align2::RIGHT_CENTER),
-                            _ => (Pos2::new(inner.right() + 5.0, a.y), egui::Align2::LEFT_CENTER),
-                        }
-                    } else {
-                        (Pos2::new(a.x, inner.bottom() + 3.0), egui::Align2::CENTER_TOP)
-                    };
-                    painter.text(pos, anchor, text, m.label(), colours.dim);
-                }
-            }
-            if axis.minor_gridlines.is_some() {
-                let minor = scale.minor.max(f64::MIN_POSITIVE);
-                let mut v = scale.min;
-                let mut guard = 0;
-                while v <= scale.max && guard < 500 && !scale.log {
-                    let t = geo::along(v, scale.min, scale.max, false, p.reverse);
-                    let (a, b) = if vertical {
-                        let y = inner.bottom() - inner.height() * t;
-                        (Pos2::new(inner.left(), y), Pos2::new(inner.right(), y))
-                    } else {
-                        let x = inner.left() + inner.width() * t;
-                        (Pos2::new(x, inner.top()), Pos2::new(x, inner.bottom()))
-                    };
-                    painter.line_segment([a, b], Stroke::new(0.5 * m.line(), colours.grid));
-                    v += minor;
-                    guard += 1;
-                }
-            }
-        } else if !axis.deleted && p.kind != AxisKind::Value && axis.tick_labels != TickLabels::Hidden {
-            let count = p.categories.len().max(1);
-            let length = if vertical { inner.height() } else { inner.width() };
-            let band = length / count as f32;
-            let step = ((14.0 * m.zoom * if vertical { 1.0 } else { 3.0 }) / band).ceil().max(1.0) as usize;
-            for (i, c) in p.categories.iter().enumerate().step_by(step) {
-                let along = geo::band_centre(i, count, length);
-                let text = unluminous_sheet_trim(c, if vertical { 12 } else { 10 });
-                if vertical {
-                    let y = if p.reverse { inner.top() + along } else { inner.bottom() - along };
-                    painter.text(Pos2::new(inner.left() - 5.0, y), egui::Align2::RIGHT_CENTER, text, m.label(), colours.dim);
-                } else {
-                    let x = if p.reverse { inner.right() - along } else { inner.left() + along };
-                    painter.text(Pos2::new(x, inner.bottom() + 3.0), egui::Align2::CENTER_TOP, text, m.label(), colours.dim);
-                }
+        if !axis.deleted {
+            match (p.scale, p.kind) {
+                (Some(scale), AxisKind::Value) => draw_value_axis(painter, inner, axis, p, scale, colours, m),
+                _ => draw_category_axis(painter, inner, axis, p, colours, m),
             }
         }
         if let Some(title) = &axis.title {
             draw_axis_title(painter, inner, axis, &title.text, colours, m);
         }
     }
-    // The axis lines, where each axis is crossed.
     let line = Stroke::new(m.line(), colours.dim);
-    for (axis, p) in chart.spec.axes.iter().zip(&plot.axes) {
-        if axis.deleted {
-            continue;
-        }
-        let vertical = matches!(axis.position, AxisPosition::Left | AxisPosition::Right);
-        let other = plot.axes.iter().find(|o| o.id == axis.cross_axis);
-        let at = other.and_then(|o| o.scale.map(|s| (s, o.cross_at, o.reverse)));
-        let _ = (p, at);
-        let pos = axis_line_position(inner, axis, plot);
-        if vertical {
-            painter.line_segment([Pos2::new(pos, inner.top()), Pos2::new(pos, inner.bottom())], line);
+    for axis in chart.spec.axes.iter().filter(|a| !a.deleted) {
+        let at = axis_line_position(inner, axis, plot);
+        if matches!(axis.position, AxisPosition::Left | AxisPosition::Right) {
+            painter.line_segment([Pos2::new(at, inner.top()), Pos2::new(at, inner.bottom())], line);
         } else {
-            painter.line_segment([Pos2::new(inner.left(), pos), Pos2::new(inner.right(), pos)], line);
+            painter.line_segment([Pos2::new(inner.left(), at), Pos2::new(inner.right(), at)], line);
+        }
+    }
+}
+
+/// The two ends of the gridline for a value, as a fraction along an axis across the plot.
+fn gridline(inner: Rect, vertical_axis: bool, t: f32) -> [Pos2; 2] {
+    if vertical_axis {
+        let y = inner.bottom() - inner.height() * t;
+        [Pos2::new(inner.left(), y), Pos2::new(inner.right(), y)]
+    } else {
+        let x = inner.left() + inner.width() * t;
+        [Pos2::new(x, inner.top()), Pos2::new(x, inner.bottom())]
+    }
+}
+
+/// Gridlines and tick labels of a value axis.
+fn draw_value_axis(painter: &egui::Painter, inner: Rect, axis: &Axis, p: &PlotAxis, scale: unluminous_sheet::plot::AxisScale, colours: &Colours, m: &Metrics) {
+    let vertical = matches!(axis.position, AxisPosition::Left | AxisPosition::Right);
+    for (v, text) in &p.ticks {
+        let t = geo::along(*v, scale.min, scale.max, scale.log, p.reverse);
+        let [a, b] = gridline(inner, vertical, t);
+        if axis.major_gridlines.is_some() {
+            painter.line_segment([a, b], Stroke::new(m.line(), colours.grid));
+        }
+        if axis.tick_labels != TickLabels::Hidden {
+            let (pos, anchor) = match (vertical, axis.position) {
+                (true, AxisPosition::Left) => (Pos2::new(inner.left() - 5.0, a.y), egui::Align2::RIGHT_CENTER),
+                (true, _) => (Pos2::new(inner.right() + 5.0, a.y), egui::Align2::LEFT_CENTER),
+                (false, _) => (Pos2::new(a.x, inner.bottom() + 3.0), egui::Align2::CENTER_TOP),
+            };
+            painter.text(pos, anchor, text, m.label(), colours.dim);
+        }
+    }
+    if axis.minor_gridlines.is_some() && !scale.log {
+        let minor = scale.minor.max(f64::MIN_POSITIVE);
+        let count = (((scale.max - scale.min) / minor).floor() as usize).min(500);
+        for i in 0..=count {
+            let t = geo::along(scale.min + minor * i as f64, scale.min, scale.max, false, p.reverse);
+            painter.line_segment(gridline(inner, vertical, t), Stroke::new(0.5 * m.line(), colours.grid));
+        }
+    }
+}
+
+/// The labels of a category axis, thinned out to fit.
+fn draw_category_axis(painter: &egui::Painter, inner: Rect, axis: &Axis, p: &PlotAxis, colours: &Colours, m: &Metrics) {
+    if p.kind == AxisKind::Value || axis.tick_labels == TickLabels::Hidden {
+        return;
+    }
+    let vertical = matches!(axis.position, AxisPosition::Left | AxisPosition::Right);
+    let count = p.categories.len().max(1);
+    let length = if vertical { inner.height() } else { inner.width() };
+    let band = length / count as f32;
+    let step = ((14.0 * m.zoom * if vertical { 1.0 } else { 3.0 }) / band).ceil().max(1.0) as usize;
+    for (i, c) in p.categories.iter().enumerate().step_by(step) {
+        let along = geo::band_centre(i, count, length);
+        let text = unluminous_sheet_trim(c, if vertical { 12 } else { 10 });
+        if vertical {
+            let y = if p.reverse { inner.top() + along } else { inner.bottom() - along };
+            painter.text(Pos2::new(inner.left() - 5.0, y), egui::Align2::RIGHT_CENTER, text, m.label(), colours.dim);
+        } else {
+            let x = if p.reverse { inner.right() - along } else { inner.left() + along };
+            painter.text(Pos2::new(x, inner.bottom() + 3.0), egui::Align2::CENTER_TOP, text, m.label(), colours.dim);
         }
     }
 }
@@ -1189,20 +1185,16 @@ fn draw_pies(painter: &egui::Painter, body: Rect, plot: &Plot, chart: &Chart, co
     let group = chart.spec.groups.first().cloned().unwrap_or_default();
     let Some(series) = plot.series.first() else { return };
     let values: Vec<f64> = series.values.iter().map(|v| v.unwrap_or(0.0)).collect();
-    let (first_pie, second_pie): (Vec<usize>, Vec<usize>) = if group.kind == GroupKind::OfPie {
-        let n = values.len();
-        let tail = ((n as f32 / 3.0).ceil() as usize).clamp(1, n.saturating_sub(1).max(1));
-        ((0..n - tail).collect(), (n - tail..n).collect())
-    } else {
-        ((0..values.len()).collect(), Vec::new())
-    };
-    let three_d = group.three_d;
-    let squash = if three_d { 0.62 } else { 1.0 };
+    let n = values.len();
+    let tail = if group.kind == GroupKind::OfPie { ((n as f32 / 3.0).ceil() as usize).clamp(1, n.saturating_sub(1).max(1)) } else { 0 };
+    let (first_pie, second_pie): (Vec<usize>, Vec<usize>) = ((0..n - tail).collect(), (n - tail..n).collect());
+    let squash = if group.three_d { 0.62 } else { 1.0 };
     let (main_area, side_area) = if second_pie.is_empty() {
         (body, None)
     } else {
         let w = body.width() * 0.55;
-        (Rect::from_min_size(body.min, Vec2::new(w, body.height())), Some(Rect::from_min_max(Pos2::new(body.left() + w, body.top()), body.max)))
+        let side = Rect::from_min_max(Pos2::new(body.left() + w, body.top()), body.max);
+        (Rect::from_min_size(body.min, Vec2::new(w, body.height())), Some(side))
     };
     let mut primary = values.clone();
     if !second_pie.is_empty() {
@@ -1211,98 +1203,144 @@ fn draw_pies(painter: &egui::Painter, body: Rect, plot: &Plot, chart: &Chart, co
         primary.push(other);
     }
     let radius = (main_area.width().min(main_area.height() / squash) / 2.0 - 6.0).max(4.0);
-    let centre = main_area.center();
-    pie(painter, centre, radius, squash, &primary, chart, series, group.first_slice_angle.unwrap_or(0) as f32, group.kind == GroupKind::Doughnut, group.hole_size.unwrap_or(50) as f32 / 100.0, three_d, colours, m, &first_pie, true);
+    let doughnut = group.kind == GroupKind::Doughnut;
+    let main = PieGeometry {
+        centre: main_area.center(),
+        radius,
+        squash,
+        hole: if doughnut { group.hole_size.unwrap_or(50) as f32 / 100.0 } else { 0.0 },
+        three_d: group.three_d,
+    };
+    let first = group.first_slice_angle.unwrap_or(0) as f32;
+    pie(painter, &main, &primary, first, chart, series, &first_pie, !second_pie.is_empty(), colours, m);
     if let Some(side) = side_area {
         let rest: Vec<f64> = second_pie.iter().map(|i| values[*i]).collect();
         let r2 = (radius * group.second_size.unwrap_or(75) as f32 / 100.0).min(side.width() / 2.0 - 4.0);
-        pie(painter, side.center(), r2, squash, &rest, chart, series, 0.0, false, 0.0, three_d, colours, m, &second_pie, false);
+        let small = PieGeometry { centre: side.center(), radius: r2, hole: 0.0, ..main };
+        pie(painter, &small, &rest, 0.0, chart, series, &second_pie, false, colours, m);
     }
 }
 
+/// Where and how big a pie is drawn.
+#[derive(Clone, Copy)]
+struct PieGeometry {
+    centre: Pos2,
+    radius: f32,
+    /// The pie's height as a fraction of its width, below one for a 3D pie seen at a slant.
+    squash: f32,
+    /// The hole of a doughnut as a fraction of the radius; zero for a pie.
+    hole: f32,
+    three_d: bool,
+}
+
+impl PieGeometry {
+    /// A point of the flat pie as it is seen.
+    fn place(&self, p: Pos2) -> Pos2 {
+        Pos2::new(p.x, self.centre.y + (p.y - self.centre.y) * self.squash)
+    }
+
+    /// The convex pieces of one slice, each at most a quarter turn, moved out by `offset`.
+    fn slice(&self, from: f64, to: f64, offset: Vec2) -> Vec<Vec<Pos2>> {
+        let pieces = (((to - from) / std::f64::consts::FRAC_PI_2).ceil() as usize).max(1);
+        (0..pieces)
+            .map(|p| {
+                let (a0, a1) = (from + (to - from) * p as f64 / pieces as f64, from + (to - from) * (p + 1) as f64 / pieces as f64);
+                let arc = |radius: f32, reverse: bool| -> Vec<Pos2> {
+                    let mut points: Vec<Pos2> = (0..=20)
+                        .map(|s| self.place(geo::on_circle(self.centre, radius, a0 + (a1 - a0) * s as f64 / 20.0) + offset))
+                        .collect();
+                    if reverse {
+                        points.reverse();
+                    }
+                    points
+                };
+                let mut ring = arc(self.radius, false);
+                if self.hole > 0.0 {
+                    ring.extend(arc(self.radius * self.hole, true));
+                } else {
+                    ring.push(self.place(self.centre + offset));
+                }
+                ring
+            })
+            .collect()
+    }
+}
+
+/// One pie or doughnut: the slices, the side of a 3D one, and the data labels.
 #[allow(clippy::too_many_arguments)]
 fn pie(
     painter: &egui::Painter,
-    centre: Pos2,
-    radius: f32,
-    squash: f32,
+    g: &PieGeometry,
     values: &[f64],
+    first: f32,
     chart: &Chart,
     series: &PlotSeries,
-    first: f32,
-    doughnut: bool,
-    hole: f32,
-    three_d: bool,
-    colours: &Colours,
-    m: &Metrics,
     point_index: &[usize],
     has_other: bool,
+    colours: &Colours,
+    m: &Metrics,
 ) {
     let spans = geo::slices(values, first);
     let fmt = &chart.series[series.index].fmt;
-    let explosion = fmt.explosion.unwrap_or(0) as f32 / 100.0;
-    let thickness = if three_d { 10.0 * m.zoom } else { 0.0 };
-    let place = |p: Pos2| Pos2::new(p.x, centre.y + (p.y - centre.y) * squash);
-    for pass in 0..2 {
+    let thickness = if g.three_d { 10.0 * m.zoom } else { 0.0 };
+    for solid in [false, true] {
         for (k, (a0, a1)) in spans.iter().enumerate() {
-            let other = has_other && k == spans.len() - 1 && point_index.len() < spans.len();
             let index = point_index.get(k).copied().unwrap_or(k);
+            let other = has_other && k == spans.len() - 1;
             let colour = if other { colours.dim } else { point_colour(chart, series, index, colours) };
-            let mid = (a0 + a1) / 2.0;
-            let shift = fmt.points.iter().find(|p| p.index as usize == index).and_then(|p| p.explosion).map_or(explosion, |e| e as f32 / 100.0);
-            let offset = geo::on_circle(Pos2::ZERO, radius * shift, mid).to_vec2();
-            let pieces = (((a1 - a0) / std::f64::consts::FRAC_PI_2).ceil() as usize).max(1);
-            for p in 0..pieces {
-                let (b0, b1) = (a0 + (a1 - a0) * p as f64 / pieces as f64, a0 + (a1 - a0) * (p + 1) as f64 / pieces as f64);
-                let mut ring = Vec::new();
-                let inner_r = if doughnut { radius * hole } else { 0.0 };
-                for s in 0..=20 {
-                    let a = b0 + (b1 - b0) * s as f64 / 20.0;
-                    ring.push(place(geo::on_circle(centre, radius, a) + offset));
-                }
-                if doughnut {
-                    for s in (0..=20).rev() {
-                        let a = b0 + (b1 - b0) * s as f64 / 20.0;
-                        ring.push(place(geo::on_circle(centre, inner_r, a) + offset));
-                    }
-                } else {
-                    ring.push(place(centre + offset));
-                }
-                if pass == 0 && three_d {
+            let shift = fmt.points.iter().find(|p| p.index as usize == index).and_then(|p| p.explosion).or(fmt.explosion).unwrap_or(0);
+            let offset = geo::on_circle(Pos2::ZERO, g.radius * shift as f32 / 100.0, (a0 + a1) / 2.0).to_vec2();
+            for ring in g.slice(*a0, *a1, offset) {
+                if solid {
+                    painter.add(Shape::convex_polygon(ring, colour, Stroke::new(1.0, colours.paper)));
+                } else if g.three_d {
                     let down: Vec<Pos2> = ring.iter().map(|q| *q + Vec2::new(0.0, thickness)).collect();
                     painter.add(Shape::convex_polygon(down, shade(colour, 0.65), Stroke::NONE));
-                } else if pass == 1 {
-                    painter.add(Shape::convex_polygon(ring, colour, Stroke::new(1.0, colours.paper)));
                 }
             }
         }
     }
     if let Some(l) = fmt.labels.as_ref().filter(|l| !l.delete && l.fields.shows_anything()) {
-        let total: f64 = values.iter().map(|v| v.max(0.0)).sum();
-        for (k, (a0, a1)) in spans.iter().enumerate() {
-            let index = point_index.get(k).copied().unwrap_or(k);
-            let mut parts = Vec::new();
-            if l.fields.show_series {
-                parts.push(series.name.clone());
-            }
-            if l.fields.show_category {
-                parts.push(series.labels.get(index).cloned().unwrap_or_default());
-            }
-            if l.fields.show_value {
-                parts.push(unluminous_sheet::numfmt::general(values[k], 8));
-            }
-            if l.fields.show_percent && total > 0.0 {
-                parts.push(format!("{:.0}%", values[k].max(0.0) / total * 100.0));
-            }
-            if parts.is_empty() {
-                continue;
-            }
-            let mid = (a0 + a1) / 2.0;
-            let outside = matches!(l.fields.position, Some(LabelPosition::OutsideEnd | LabelPosition::BestFit));
-            let r = if doughnut { radius * (1.0 + hole) / 2.0 } else if outside { radius * 1.12 } else { radius * 0.65 };
-            let p = place(geo::on_circle(centre, r, mid));
-            painter.text(p, egui::Align2::CENTER_CENTER, parts.join(l.fields.separator.as_deref().unwrap_or(", ")), m.label(), colours.text);
+        draw_pie_labels(painter, g, &spans, values, series, l, point_index, colours, m);
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw_pie_labels(
+    painter: &egui::Painter,
+    g: &PieGeometry,
+    spans: &[(f64, f64)],
+    values: &[f64],
+    series: &PlotSeries,
+    l: &DataLabels,
+    point_index: &[usize],
+    colours: &Colours,
+    m: &Metrics,
+) {
+    let total: f64 = values.iter().map(|v| v.max(0.0)).sum();
+    for (k, (a0, a1)) in spans.iter().enumerate() {
+        let index = point_index.get(k).copied().unwrap_or(k);
+        let f = &l.fields;
+        let mut parts = Vec::new();
+        if f.show_series {
+            parts.push(series.name.clone());
         }
+        if f.show_category {
+            parts.push(series.labels.get(index).cloned().unwrap_or_default());
+        }
+        if f.show_value {
+            parts.push(unluminous_sheet::numfmt::general(values[k], 8));
+        }
+        if f.show_percent && total > 0.0 {
+            parts.push(format!("{:.0}%", values[k].max(0.0) / total * 100.0));
+        }
+        if parts.is_empty() {
+            continue;
+        }
+        let outside = matches!(f.position, Some(LabelPosition::OutsideEnd | LabelPosition::BestFit));
+        let r = if g.hole > 0.0 { g.radius * (1.0 + g.hole) / 2.0 } else if outside { g.radius * 1.12 } else { g.radius * 0.65 };
+        let at = g.place(geo::on_circle(g.centre, r, (a0 + a1) / 2.0));
+        painter.text(at, egui::Align2::CENTER_CENTER, parts.join(f.separator.as_deref().unwrap_or(", ")), m.label(), colours.text);
     }
 }
 
