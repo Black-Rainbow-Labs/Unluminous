@@ -58,11 +58,25 @@ were made, and what is left, ranked by the hours each one saves.
      the test failed whenever the server was one frame slower than the test.
    - The glass shapes test failed in `copy_out_of_the_repository` with "The system cannot find the
      file specified". It copies `sample_folder()`, and a file listed by `read_dir` was gone by the
-     time it was copied: another test was writing into the shared folder and taking the file away
-     again. Same cause as the first.
+     time it was copied.
+   - **What was writing into the shared folder is the code index.** Atrius writes a fence file,
+     `atrius-index-fence-<n>`, into the root of a project that is not a git repository and removes
+     it 250 ms later (`atrius_index::freshness`). Every window a test opens on `sample_folder()`
+     starts the index, so the folder gained and lost a file at moments nobody chose. The explorer
+     has hidden the fence since task-2247; the tests that count or copy a project did not. The
+     read only guard on `sample_folder()` (section 3) named it on its first loaded run.
+   - Under load, kittest gave up on pictures with `PollError: The requested Wait timed out before
+     the submission was completed`. A render waits ten seconds for the graphics card, and every
+     test thread in a binary submits to the eight devices the binary shares.
    - `word.rs a_picture_is_resized_by_its_handle_and_wrapped_from_its_menu` depended on when the
      folder watch next looked (fixed in task-2359).
-5. **The release ran the gate under 80% processor load** with Word and the kernels in a lane beside
+5. **A fault the old test path hid.** `did()` used to run a held command synchronously in the test
+   (`answer_git_status_now`) instead of through frames. With `did()` answering through frames like a
+   real request, `a_recording_played_live_fills_the_prompt_as_it_plays` showed the caret left at the
+   start of the prompt after live dictation: egui keeps a text box's caret where it was when its text
+   is replaced from outside, so the next key a person pressed went in front of the dictated words.
+   Fixed: dictated words leave the caret after them (`PaneState::caret_to_the_end`).
+6. **The release ran the gate under 80% processor load** with Word and the kernels in a lane beside
    clippy and the test build, which is the load under which the Word hang happened.
 
 ## 2. Measurements
@@ -92,6 +106,14 @@ These are written into `CLAUDE.md` as well, under "Tests".
    the machine gets a variable of the same kind.
 6. **A test that is ignored says why.** `#[ignore = "<reason>"]`, and a flaky test that has been
    taken out of the gate says `#[ignore = "quarantined: task-N <what fails>"]`.
+7. **A test that lists or copies a project leaves out what the explorer leaves out**, the code
+   index's fence above all (`common::is_the_code_index_fence`).
+8. **No single test holds a binary open.** A binary takes as long as its longest test, so a sweep
+   over many cases that each open their own window is split into one test per case, which libtest
+   runs side by side.
+9. **Every picture goes through `PatientRenderer`**, the renderer `common::builder` gives every
+   harness: at most four renders in flight in a binary, and a render that failed (not a picture
+   that differs) tried up to three times.
 
 ## 4. The gate (`tools/test.mjs`)
 
@@ -128,6 +150,21 @@ things the bare `cargo test` left to whoever typed it:
 `--only word,git` runs some binaries, `--repeat N` runs the suite N times and prints which tests
 failed in which runs, and `--load N` runs `tools/perf-smooth/load.mjs` beside it with N threads,
 which is how a release's load is reproduced.
+
+`--jobs N` builds the suite once and runs N test executables at a time, each with its own run folder
+and `RUST_TEST_THREADS` set to its share of the processors. Giving each of three binaries all 19 test
+threads made each take three to four times as long as it took alone.
+
+**Where the window tests' fixtures are.** The fixtures used to be folders with fixed names straight
+under `%TEMP%`, and their full paths are drawn in ten accepted pictures (the chat pane's project row,
+the run dialog's directory, the new file prompt, the project tabs' list). A run folder with a time
+stamp in it would change those pictures on every run. So every fixture is now under
+`%TEMP%\unluminous-window\<binary>` (`common::fixtures_root`), worked out from the machine's
+temporary folder (`UNLUMINOUS_MACHINE_TEMP` under a runner), so a test run by hand and one run by the
+runner draw the same path, and two binaries never share a fixture. The ten pictures were accepted
+again after checking that the path was the only difference. The binary's lock
+(`tests/common/turn.rs`) is in that folder, and taking it empties the folder once, so fixtures named
+with a process id no longer pile up.
 
 Receipts:
 

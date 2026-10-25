@@ -83,7 +83,7 @@ fn head() -> Option<String> {
 ///
 /// `std::env::current_exe` is `…/deps/window_and_chrome-<hash>.exe`, so the hash comes off. The
 /// binary name is what `cargo test --test <name>` takes and what the release script's list holds.
-fn binary_name() -> String {
+pub fn binary_name() -> String {
     let path = std::env::current_exe().expect("the test binary's own path");
     let stem = path.file_stem().map(|stem| stem.to_string_lossy().into_owned()).unwrap_or_default();
     match stem.rsplit_once('-') {

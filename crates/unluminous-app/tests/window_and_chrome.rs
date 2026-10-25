@@ -1154,7 +1154,7 @@ fn opening_a_folder_shows_it_in_the_explorer() {
     let mut harness = harness("");
     // The picker itself is the operating system's, so the action is run directly rather than clicking
     // through a modal dialog that a test cannot answer.
-    let other = std::env::temp_dir().join("unluminous-other-folder");
+    let other = fixtures_root().join("unluminous-other-folder");
     std::fs::create_dir_all(other.join("inner")).expect("make the other folder");
     std::fs::write(other.join("alpha.md"), "# alpha\n").expect("write alpha.md");
     std::fs::write(other.join("inner/beta.txt"), "beta\n").expect("write inner/beta.txt");
@@ -1186,7 +1186,7 @@ fn opening_a_folder_shows_it_in_the_explorer() {
 #[test]
 fn the_explorer_draws_only_the_rows_that_are_on_screen() {
     let mut harness = harness("");
-    let folder = std::env::temp_dir().join(format!("unluminous-many-rows-{}", std::process::id()));
+    let folder = fixtures_root().join(format!("unluminous-many-rows-{}", std::process::id()));
     std::fs::create_dir_all(&folder).expect("make the folder");
     // Named so they sort in the order they are numbered, because the explorer sorts by name and
     // `entry100` sorts before `entry2`.
@@ -1280,7 +1280,7 @@ fn a_rust_file_opens_as_plain_text() {
 fn save_as_and_save_are_reachable_without_the_menu() {
     // `Save` on a document that has never been saved asks where it goes (`task-2336`), offering `untitled.md` in
     // the project folder, and answering the dialog writes it there. This checks the action and the answer.
-    let folder = std::env::temp_dir().join("unluminous-save-action");
+    let folder = fixtures_root().join("unluminous-save-action");
     std::fs::create_dir_all(&folder).expect("make the folder");
     let text = "saved through the File menu";
     let owned = folder.clone();
@@ -1582,7 +1582,7 @@ fn the_mcp_page_holds_the_install_buttons_the_server_and_the_configuration_to_co
     // configuration, so a folder of its own is what makes the buttons read `Install for ...`
     // whatever this machine happens to have; `UNLUMINOUS_CLI_BIN` is the path written into the
     // configuration blocks, which would otherwise be wherever this checkout is.
-    let home = std::env::temp_dir().join("unluminous-mcp-page-home");
+    let home = fixtures_root().join("unluminous-mcp-page-home");
     std::fs::remove_dir_all(&home).ok();
     std::fs::create_dir_all(&home).expect("make the folder");
     std::env::set_var("UNLUMINOUS_HOME", &home);
@@ -1634,7 +1634,7 @@ fn ticking_the_mcp_box_is_a_setting_and_not_a_listener_in_a_test() {
     // either — the rule `open_control_channel` already keeps, for the same reason: a test must not
     // open a port or leave a listener behind when it ends. What the tick box does here is change
     // the setting, which is what is checked.
-    let home = std::env::temp_dir().join("unluminous-mcp-tick-home");
+    let home = fixtures_root().join("unluminous-mcp-tick-home");
     std::fs::remove_dir_all(&home).ok();
     std::fs::create_dir_all(&home).expect("make the folder");
     std::env::set_var("UNLUMINOUS_HOME", &home);
@@ -1980,7 +1980,7 @@ fn window_commands_including_resize(harness: &Harness<'static, UnluminousApp>) -
 /// `New -> Folder`, which the explorer had no way to do at all.
 #[test]
 fn the_explorer_can_make_a_folder() {
-    let folder = std::env::temp_dir().join("unluminous-new-folder-test");
+    let folder = fixtures_root().join("unluminous-new-folder-test");
     std::fs::remove_dir_all(&folder).ok();
     std::fs::create_dir_all(&folder).expect("make the project");
     std::fs::write(folder.join("readme.md"), "# here\n").expect("write a file");
@@ -2009,7 +2009,7 @@ fn the_explorer_can_make_a_folder() {
 /// `task-1693` reported was missing: an agent's new file was invisible until the tree was reloaded.
 #[test]
 fn a_file_made_by_another_program_appears_in_the_explorer() {
-    let folder = std::env::temp_dir().join("unluminous-watch-test");
+    let folder = fixtures_root().join("unluminous-watch-test");
     std::fs::remove_dir_all(&folder).ok();
     std::fs::create_dir_all(&folder).expect("make the project");
     std::fs::write(folder.join("readme.md"), "# here\n").expect("write a file");
@@ -2046,10 +2046,10 @@ fn there_is_no_new_file_button_beside_the_project_name() {
 fn the_recent_projects_are_remembered_across_windows() {
     // The store is pointed at a folder of its own, so this neither reads nor writes the settings of the
     // person running the tests.
-    let store_folder = std::env::temp_dir().join("unluminous-recent-projects-test");
+    let store_folder = fixtures_root().join("unluminous-recent-projects-test");
     std::fs::remove_dir_all(&store_folder).ok();
-    let first = std::env::temp_dir().join("unluminous-project-one");
-    let second = std::env::temp_dir().join("unluminous-project-two");
+    let first = fixtures_root().join("unluminous-project-one");
+    let second = fixtures_root().join("unluminous-project-two");
     std::fs::create_dir_all(&first).expect("make the first project");
     std::fs::create_dir_all(&second).expect("make the second project");
 
@@ -2080,7 +2080,7 @@ fn the_recent_projects_are_remembered_across_windows() {
 
 #[test]
 fn a_setting_is_written_and_read_back_by_the_next_window() {
-    let store_folder = std::env::temp_dir().join("unluminous-settings-across-windows");
+    let store_folder = fixtures_root().join("unluminous-settings-across-windows");
     std::fs::remove_dir_all(&store_folder).ok();
 
     let mut first_window = harness("");
@@ -2240,7 +2240,7 @@ fn the_rest_of_the_menu_still_works_while_a_text_box_has_the_keyboard() {
     // Only undo, redo and select all belong to the box. Everything else on every menu keeps working,
     // which is what stops the guard from being too broad: control and S in a search box saves the
     // file in every other editor and has to save it here.
-    let folder = std::env::temp_dir().join("unluminous-save-while-filtering");
+    let folder = fixtures_root().join("unluminous-save-while-filtering");
     std::fs::remove_dir_all(&folder).ok();
     std::fs::create_dir_all(&folder).expect("make the folder");
     let text = "saved while the filter box had the keyboard";
@@ -2277,7 +2277,7 @@ fn the_rest_of_the_menu_still_works_while_a_text_box_has_the_keyboard() {
 
 #[test]
 fn typing_a_new_name_in_the_rename_prompt_leaves_the_document_alone() {
-    let folder = std::env::temp_dir().join("unluminous-rename-prompt-keyboard");
+    let folder = fixtures_root().join("unluminous-rename-prompt-keyboard");
     std::fs::remove_dir_all(&folder).ok();
     std::fs::create_dir_all(&folder).expect("make the folder");
     std::fs::write(folder.join("before.md"), "# before\n").expect("write it");
@@ -2440,7 +2440,7 @@ fn the_recent_projects_menu_opens_a_project_without_closing_this_one() {
     // and that the entry is there to be chosen.
     let mut harness = harness("");
     harness.state_mut().menu_placement = MenuPlacement::InWindow;
-    let other = std::env::temp_dir().join("unluminous-recent-open-test");
+    let other = fixtures_root().join("unluminous-recent-open-test");
     std::fs::create_dir_all(&other).expect("make the other project");
     harness.state_mut().recent = vec![other.clone()];
     steady(&mut harness);
@@ -2696,7 +2696,7 @@ fn the_explorers_own_menu_holds_what_can_be_done_to_a_file() {
 
 #[test]
 fn making_a_file_from_the_explorers_menu_opens_it() {
-    let folder = std::env::temp_dir().join("unluminous-screenshot-new-file");
+    let folder = fixtures_root().join("unluminous-screenshot-new-file");
     std::fs::remove_dir_all(&folder).ok();
     std::fs::create_dir_all(&folder).expect("make the folder");
     let mut harness = harness_in(&folder);
@@ -2719,7 +2719,7 @@ fn making_a_file_from_the_explorers_menu_opens_it() {
 
 #[test]
 fn renaming_a_file_moves_it_and_the_tab_follows() {
-    let folder = std::env::temp_dir().join("unluminous-screenshot-rename");
+    let folder = fixtures_root().join("unluminous-screenshot-rename");
     std::fs::remove_dir_all(&folder).ok();
     std::fs::create_dir_all(&folder).expect("make the folder");
     std::fs::write(folder.join("before.md"), "# before\n").expect("write it");
@@ -2743,7 +2743,7 @@ fn renaming_a_file_moves_it_and_the_tab_follows() {
 
 #[test]
 fn cutting_a_file_and_pasting_it_into_a_folder_moves_it() {
-    let folder = std::env::temp_dir().join("unluminous-screenshot-clipboard");
+    let folder = fixtures_root().join("unluminous-screenshot-clipboard");
     std::fs::remove_dir_all(&folder).ok();
     std::fs::create_dir_all(folder.join("inner")).expect("make the folders");
     std::fs::write(folder.join("note.md"), "# note\n").expect("write it");
@@ -3310,7 +3310,7 @@ fn a_modal_cannot_be_dragged_out_of_the_window() {
 /// **Not [`fixture`], because `picture.png` is not text**, and a Markdown document about a picture
 /// needs the picture beside it.
 fn picture_document_folder() -> std::path::PathBuf {
-    let root = std::env::temp_dir().join("unluminous-preview-pictures");
+    let root = fixtures_root().join("unluminous-preview-pictures");
     std::fs::create_dir_all(&root).expect("make the folder");
     write_sample_picture(&root.join("picture.png"));
     std::fs::write(
@@ -3383,7 +3383,7 @@ fn the_line_holding_a_picture_is_as_tall_as_the_picture() {
 
 #[test]
 fn a_wide_picture_is_scaled_down_to_the_width_of_the_pane() {
-    let folder = std::env::temp_dir().join("unluminous-preview-wide-picture");
+    let folder = fixtures_root().join("unluminous-preview-wide-picture");
     std::fs::create_dir_all(&folder).expect("make the folder");
     // Four thousand pixels across, which is wider than any pane in a 1180 point window.
     let wide = image::RgbaImage::from_pixel(4000, 1000, image::Rgba([0x30, 0x70, 0xC0, 255]));
@@ -5467,12 +5467,19 @@ fn every_step() -> Vec<Step> {
     steps
 }
 
-/// Every `Action` runs, and every one of them changes the window or says why it cannot.
+/// How many tests the walk of every action is split across.
 ///
-/// `task-1922` §5.4. Read the section comment above this one for what the signature is and why the
-/// exclusion list is written down rather than skipped.
+/// `task-2364`. The walk was one test that opened a window for each of several hundred actions, one after
+/// another, and it was most of the 405 s `window_and_chrome` took: a binary takes as long as its longest
+/// test. Each step opens a window of its own, so the steps are independent, and split across this many
+/// tests libtest runs them side by side. [`every_action_is_walked_or_excluded`] keeps the checks on the
+/// list itself, which need every step at once.
+const ACTION_SHARDS: usize = 8;
+
+/// Every `Action` is walked or on `CANNOT_BE_DRIVEN`, each is walked once, and nothing excluded is
+/// walked anyway. The walk itself is [`walk_the_actions`], split into [`ACTION_SHARDS`] tests.
 #[test]
-fn every_action_changes_the_window_or_says_why_it_cannot() {
+fn every_action_is_walked_or_excluded() {
     let steps = every_step();
     let mut faults: Vec<String> = Vec::new();
 
@@ -5582,9 +5589,25 @@ fn every_action_changes_the_window_or_says_why_it_cannot() {
         &mut faults,
     );
 
-    // Then the walk itself. A window of its own for each, because an action that leaves a modal
-    // open, a tab closed or a panel somewhere else is the next action's starting state otherwise,
-    // and a walk whose preparation quietly stopped working would report faults that are not there.
+    assert!(faults.is_empty(), "{} faults:\n  {}", faults.len(), faults.join("\n  "));
+}
+
+/// Every `Action` runs, and every one of them changes the window or says why it cannot: the steps whose
+/// place in [`every_step`] leaves `shard` when divided by [`ACTION_SHARDS`].
+///
+/// `task-1922` §5.4. Read the section comment above this one for what the signature is and why the
+/// exclusion list is written down rather than skipped.
+fn walk_the_actions(shard: usize) {
+    let steps: Vec<Step> = every_step()
+        .into_iter()
+        .enumerate()
+        .filter(|(index, _)| index % ACTION_SHARDS == shard)
+        .map(|(_, step)| step)
+        .collect();
+    let mut faults: Vec<String> = Vec::new();
+    // A window of its own for each, because an action that leaves a modal open, a tab closed or a panel
+    // somewhere else is the next action's starting state otherwise, and a walk whose preparation quietly
+    // stopped working would report faults that are not there.
     let began = std::time::Instant::now();
     for step in &steps {
         let name = step.action.name();
@@ -5619,12 +5642,51 @@ fn every_action_changes_the_window_or_says_why_it_cannot() {
     }
 
     println!(
-        "{} actions walked in {:.1}s, {} of them excluded",
+        "{} actions walked in {:.1}s in shard {shard}",
         steps.len(),
-        began.elapsed().as_secs_f32(),
-        CANNOT_BE_DRIVEN.len()
+        began.elapsed().as_secs_f32()
     );
     assert!(faults.is_empty(), "{} faults:\n  {}", faults.len(), faults.join("\n  "));
+}
+
+#[test]
+fn every_action_changes_the_window_or_says_why_it_cannot_0() {
+    walk_the_actions(0);
+}
+
+#[test]
+fn every_action_changes_the_window_or_says_why_it_cannot_1() {
+    walk_the_actions(1);
+}
+
+#[test]
+fn every_action_changes_the_window_or_says_why_it_cannot_2() {
+    walk_the_actions(2);
+}
+
+#[test]
+fn every_action_changes_the_window_or_says_why_it_cannot_3() {
+    walk_the_actions(3);
+}
+
+#[test]
+fn every_action_changes_the_window_or_says_why_it_cannot_4() {
+    walk_the_actions(4);
+}
+
+#[test]
+fn every_action_changes_the_window_or_says_why_it_cannot_5() {
+    walk_the_actions(5);
+}
+
+#[test]
+fn every_action_changes_the_window_or_says_why_it_cannot_6() {
+    walk_the_actions(6);
+}
+
+#[test]
+fn every_action_changes_the_window_or_says_why_it_cannot_7() {
+    walk_the_actions(7);
 }
 
 // -------------------------------------------------------------------------------------- task-1984
@@ -6251,8 +6313,8 @@ fn a_selection_over_prose_sits_on_the_letters() {
 
 /// A small picture in a folder of its own, to attach to a report the way a person attaches a screenshot.
 fn a_picture_to_attach(name: &str) -> std::path::PathBuf {
-    let folder = std::env::temp_dir()
-        .join(format!("unluminous-report-fixture-{name}-{}", std::process::id()));
+    let folder =
+        fixtures_root().join(format!("unluminous-report-fixture-{name}-{}", std::process::id()));
     std::fs::create_dir_all(&folder).expect("make the folder");
     let path = folder.join(format!("{name}.png"));
     let picture = image::RgbaImage::from_fn(160, 100, |x, y| {
@@ -6605,7 +6667,7 @@ fn words_in_chips_tabs_and_rows_are_centred_by_their_ink() {
     let moved = unluminous_app::theme::capital_shift(&face, 0).unwrap_or(0.0);
     assert!(moved > 0.0, "the face has to be one the tweak moves, or this measures nothing");
 
-    let folder = std::env::temp_dir().join("unluminous-ink-centring");
+    let folder = fixtures_root().join("unluminous-ink-centring");
     std::fs::remove_dir_all(&folder).ok();
     std::fs::create_dir_all(&folder).expect("make the folder");
     std::fs::write(folder.join("TODO.TXT"), "WORK\n").expect("write the file");
@@ -6858,7 +6920,7 @@ mod setup_dialog {
 
     /// A folder of the test's own to choose as a first project.
     fn a_first_project(name: &str) -> std::path::PathBuf {
-        let folder = std::env::temp_dir().join(format!("unluminous-first-project-{name}"));
+        let folder = fixtures_root().join(format!("unluminous-first-project-{name}"));
         std::fs::create_dir_all(&folder).expect("make the folder");
         std::fs::write(folder.join("README.md"), "# A first project\n").expect("write a file");
         folder
@@ -7034,8 +7096,8 @@ fn a_tab_with_no_file_asks_where_to_save_it() {
 /// new template uses it.
 #[test]
 fn the_templates_manager_lists_edits_and_writes_templates() {
-    let project = std::env::temp_dir().join("unluminous-templates-manager");
-    let settings = std::env::temp_dir().join("unluminous-templates-manager-settings");
+    let project = fixtures_root().join("unluminous-templates-manager");
+    let settings = fixtures_root().join("unluminous-templates-manager-settings");
     let _ = std::fs::remove_dir_all(&project);
     let _ = std::fs::remove_dir_all(&settings);
     std::fs::create_dir_all(project.join("docs")).expect("make the project");

@@ -6905,7 +6905,15 @@ release again. The rules:
   `--only word,git`, `--repeat N` and `--load N` (that many busy threads beside it) are for measuring.
 - **Every test writes only in a folder of its own.** `sample_folder()` is read only, and it panics naming the
   file when a test has added or removed one. A test that changes a project copies it first
-  (`copy_out_of_the_repository`, `fixture(name)`).
+  (`copy_out_of_the_repository`, `fixture(name)`). The code index writes `atrius-index-fence-<n>` into the root
+  of a project that is not a git repository for 250 ms; a test that lists or copies a project leaves it out, as
+  the explorer does (`common::is_the_code_index_fence`).
+- **No single test holds a binary open.** A binary takes as long as its longest test, so a sweep over cases that
+  each open a window is one test per case (`every_action_changes_the_window_or_says_why_it_cannot_<n>`,
+  `every_drop_lands_where_the_preview_said_it_would_<n>_...`). libtest prints `has been running for over 60
+  seconds` for a test that needs splitting.
+- **Every picture is rendered through `common::PatientRenderer`**: at most four renders in flight in a binary,
+  and a render that failed (`PollError` under load, never a picture that differs) tried three times.
 - **Nothing depends on `%TEMP%`.** `tools/test.mjs` and the runner point `TMP`, `TEMP` and `TMPDIR` at a run
   folder under `%TEMP%\unluminous-tests`, so a test, Python and PowerShell all write there, and a run removes
   its own folder. `node tools/clean-test-leftovers.mjs [--delete]` is for what earlier runs left.
@@ -6922,6 +6930,9 @@ release again. The rules:
   `#[ignore = "quarantined: task-N <what fails>"]` until it is.
 - **A receipt is only written by a run of the whole binary**, or by the runner's retry. Other crates'
   `tests/*.rs` do not make a receipt stale; test fixtures and `sample-diagrams/` do.
+- **Merge `origin/main` into the ticket's branch before the gate and the window suite**, not after. The release
+  merges it before it checks the receipts, so a suite run on a branch that main has since moved past is run
+  again. `git -C <worktree> fetch` and `git -C <worktree> merge origin/main`, then the gate, then the suite.
 
 ### Driving the real window must never leave a key held down
 

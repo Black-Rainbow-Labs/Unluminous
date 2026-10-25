@@ -495,7 +495,7 @@ fn a_kernel_killed_from_outside_fails_the_running_cell_and_says_so_in_it() {
 #[test]
 fn a_python_without_ipykernel_is_reported_with_what_is_missing() {
     let Some(python) = kernel_python() else { return };
-    let bare = std::env::temp_dir().join(format!("unluminous-bare-venv-{}", std::process::id()));
+    let bare = fixtures_root().join(format!("unluminous-bare-venv-{}", std::process::id()));
     let made = std::process::Command::new(&python)
         .args(["-m", "venv", "--without-pip"])
         .arg(&bare)

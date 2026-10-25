@@ -107,7 +107,9 @@ export function startRunTemp(label) {
   fs.mkdirSync(folder, { recursive: true });
   return {
     folder,
-    environment: { TMP: folder, TEMP: folder, TMPDIR: folder, UNLUMINOUS_MACHINE_TEMP: machineTemp() },
+    // `RUST_BACKTRACE` so that a binary that aborts says where: an abort is rare, and the run it happened
+    // in is the only chance to see it.
+    environment: { TMP: folder, TEMP: folder, TMPDIR: folder, UNLUMINOUS_MACHINE_TEMP: machineTemp(), RUST_BACKTRACE: '1' },
   };
 }
 
@@ -197,10 +199,20 @@ export function readLibtest(output) {
       continue;
     }
     if (!current) continue;
+    if (!current.died && /panicked at|^error: process didn't exit successfully|STATUS_[A-Z_]+/.test(line)) current.died = line.trim();
     const failed = /^test (.+?) \.\.\. FAILED$/.exec(line);
-    if (failed) current.failed.push(failed[1]);
+    if (failed && !current.failed.includes(failed[1])) current.failed.push(failed[1]);
+    // **The summary's list is read as well (`task-2364`).** A test that starts a copy of its own binary has
+    // that copy's output land between `test <name> ... ` and its `FAILED`, so the line above misses it. The
+    // list after `failures:` that ends the binary names every failed test, four spaces in, on its own line.
+    if (/^failures:$/.test(line)) current.inList = true;
+    else if (current.inList && /^ {4}\S+$/.test(raw)) {
+      const name = raw.trim();
+      if (!current.failed.includes(name)) current.failed.push(name);
+    } else if (current.inList && line !== '') current.inList = /^ {4}/.test(raw);
     const result = /^test result: (ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored.*finished in ([0-9.]+)s/.exec(line);
     if (result) {
+      current.inList = false;
       current.result = { ok: result[1] === 'ok', passed: Number(result[2]), failed: Number(result[3]), ignored: Number(result[4]), seconds: Number(result[5]) };
     }
   }
@@ -257,7 +269,7 @@ export function readRecords(repo, name) {
  * Runs each failed test once more, on its own and on one thread, and answers which passed.
  *
  * A binary that crashed is not retried test by test, because libtest did not say which test it was
- * in; it counts as a failure. A test that passes alone is a flake, and is written to `flakes.jsonl`
+ * in; it is run again whole. A test that passes alone is a flake, and is written to `flakes.jsonl`
  * with what it failed with, so `node tools/flakes.mjs` can name the tests that do it most.
  * @param options - `{ repo, crate, binaries, manifest, environment, log, commit, retryEnvironment }`
  */
@@ -271,7 +283,26 @@ export async function retryFailures(options) {
       continue;
     }
     if (binary.crashed) {
-      stillFailing.push(`${crate} ${binary.source} (ended without a result)`);
+      // A binary that ended without libtest finishing aborted, so which test it was in is not known: it is
+      // run once more, whole. One that passes then is recorded as a flake with the line it died on, which
+      // is what the next person looking at it needs (`task-2364`: `notebooks` aborted once in a
+      // `windows-core` COM call, "misaligned pointer dereference", and did not again in six runs).
+      const args = ['test', '--manifest-path', manifest, '-p', crate, ...targetOf(binary), '--no-fail-fast'];
+      console.log(`\n  ${crate} ${binary.source} ended without a result; running it again, whole.`);
+      const again = await cargoWithOutput(args, { ...environment, ...retryEnvironment }, log);
+      if (again.code === 0) {
+        flaky.push(`${binary.source} (ended without a result)`);
+        appendRecord(repo, 'flakes.jsonl', {
+          at: new Date().toISOString(),
+          commit,
+          crate,
+          target: binary.source,
+          test: '(the whole binary ended without a result)',
+          died: binary.died ?? null,
+        });
+      } else {
+        stillFailing.push(`${crate} ${binary.source} (ended without a result, twice)`);
+      }
       continue;
     }
     if (binary.failed.length === 0) continue;

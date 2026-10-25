@@ -401,6 +401,15 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
         if std::mem::take(&mut parts.state.focus_the_prompt) {
             response.request_focus();
         }
+        // Dictated words leave the caret after them, so the next key a person presses carries on from the
+        // end of what was said. See `PaneState::caret_to_the_end`.
+        if std::mem::take(&mut parts.state.caret_to_the_end) {
+            if let Some(mut text) = egui::TextEdit::load_state(ui.ctx(), prompt_id) {
+                let end = egui::text::CCursor::new(parts.draft.chars().count());
+                text.cursor.set_char_range(Some(egui::text::CCursorRange::one(end)));
+                text.store(ui.ctx(), prompt_id);
+            }
+        }
         // Recorded so the paste knows whose key press it is reading — see `PaneState::prompt_focused`.
         //
         // Asked of egui's memory rather than of `Response::has_focus`, which also asks whether the operating

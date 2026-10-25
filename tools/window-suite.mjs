@@ -18,6 +18,7 @@
 
 import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { versionless, workspaceMembersInLock } from './versionless.mjs';
@@ -337,11 +338,20 @@ function lastSeconds() {
  * @param exe - its path
  * @param temp - the run's temporary folder
  * @param log - the run's log, which the binary's whole output is appended to when it ends
+ * @param threads - how many test threads it may run
  */
-function runExecutable(name, exe, temp, log) {
+function runExecutable(name, exe, temp, log, threads) {
   const folder = path.join(temp.folder, name);
   fs.mkdirSync(folder, { recursive: true });
-  const environment = { ...process.env, ...temp.environment, TMP: folder, TEMP: folder, TMPDIR: folder, CARGO_MANIFEST_DIR: path.join(repo, 'crates', 'unluminous-app') };
+  const environment = {
+    ...process.env,
+    ...temp.environment,
+    TMP: folder,
+    TEMP: folder,
+    TMPDIR: folder,
+    CARGO_MANIFEST_DIR: path.join(repo, 'crates', 'unluminous-app'),
+    RUST_TEST_THREADS: String(threads),
+  };
   const started = Date.now();
   return new Promise((resolve) => {
     const child = spawn(exe, [], { cwd: path.join(repo, 'crates', 'unluminous-app'), env: environment, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -386,13 +396,18 @@ async function runSideBySide(only, jobs, temp, log) {
   const executables = testExecutables(built.output);
   const before = lastSeconds();
   const queue = [...executables.keys()].sort((left, right) => (before.get(right) ?? 1e9) - (before.get(left) ?? 1e9));
-  console.log(`\n  Running ${queue.length} window test binaries, ${jobs} at a time, the longest first.`);
+  // **The processors are shared between the binaries, not given to each** (`task-2364`). Three binaries with 19
+  // test threads each took three to four times as long as each did alone; libtest's threads are what a binary
+  // spends its processors on, so each gets its share of them.
+  const processors = Number(process.env.RUST_TEST_THREADS) || os.availableParallelism();
+  const threads = Math.max(4, Math.ceil(processors / jobs));
+  console.log(`\n  Running ${queue.length} window test binaries, ${jobs} at a time with ${threads} test threads each, the longest first.`);
   const outputs = [];
   let failed = false;
   const worker = async () => {
     while (queue.length > 0) {
       const name = queue.shift();
-      const result = await runExecutable(name, executables.get(name), temp, log);
+      const result = await runExecutable(name, executables.get(name), temp, log, threads);
       outputs.push(result.output);
       if (result.code !== 0) failed = true;
     }

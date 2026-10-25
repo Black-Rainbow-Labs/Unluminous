@@ -223,18 +223,22 @@ fn a_contributed_tab_opens_in_the_editing_area_beside_the_file_tabs() {
     assert_eq!(board["modified"], false, "a plugin tab is never modified");
     // And saving it writes nothing, rather than writing an empty `untitled.md` into the project.
     // Counted in this window's own project (`task-2364`): it used to count `sample_folder()`, which
-    // other tests in this binary open windows on at the same time, and it failed 8 against 7 when one
-    // of them wrote there while this test was between its two counts.
-    let before: Vec<std::path::PathBuf> = std::fs::read_dir(&folder)
-        .expect("the project folder")
-        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
-        .collect();
+    // other tests in this binary open windows on at the same time, and it failed 8 against 7 when the
+    // code index wrote its fence file there between the two counts. The fence is left out here as the
+    // explorer leaves it out.
+    let listed = |folder: &std::path::Path| -> Vec<std::path::PathBuf> {
+        std::fs::read_dir(folder)
+            .expect("the project folder")
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .filter(|path| {
+                !is_the_code_index_fence(&path.file_name().unwrap_or_default().to_string_lossy())
+            })
+            .collect()
+    };
+    let before = listed(&folder);
     did(&mut harness, "action run save");
     steady(&mut harness);
-    let after: Vec<std::path::PathBuf> = std::fs::read_dir(&folder)
-        .expect("the project folder")
-        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
-        .collect();
+    let after = listed(&folder);
     assert_eq!(before, after, "saving a plugin tab wrote a file");
 
     // **`--open` opens and never closes**, whatever is showing: a command named for what it does has to do
@@ -834,7 +838,7 @@ fn the_board_keeps_add_task_at_the_width_the_rail_appears_at() {
 /// `use_store` is what answers it, and it needs no new mechanism: it already points the plugin's own
 /// folder at the store's, which is what `the_pane_is_moved_and_put_away_from_the_command_line` does.
 fn a_window_with_its_own_board(name: &str) -> Harness<'static, UnluminousApp> {
-    let folder = std::env::temp_dir().join("unluminous-boards").join(name);
+    let folder = fixtures_root().join("unluminous-boards").join(name);
     std::fs::remove_dir_all(&folder).ok();
     std::fs::create_dir_all(&folder).expect("a folder for this test's board");
     let mut harness = harness("");
@@ -1346,7 +1350,7 @@ fn resume_session_is_refused_for_a_codex_ticket_and_says_what_to_press_instead()
     // resumed one would be the one outcome every check on this board exists to prevent.
     //
     // Codex's records are an empty folder here, so nothing is found. Only this test names the variable.
-    let codex = std::env::temp_dir().join(format!("unluminous-no-codex-{}", std::process::id()));
+    let codex = fixtures_root().join(format!("unluminous-no-codex-{}", std::process::id()));
     std::fs::create_dir_all(&codex).expect("a folder");
     std::env::set_var("UNLUMINOUS_CODEX_HOME", &codex);
     let mut harness = harness("");
@@ -2697,8 +2701,7 @@ fn the_prompt_has_a_microphone_inside_its_left_end() {
 #[test]
 fn the_speech_model_dialog_over_a_ticket_says_a_failed_download_and_opens_voice_settings() {
     use unluminous_app::components::microphone_dialog::VoiceDialog;
-    let home =
-        std::env::temp_dir().join(format!("unluminous-voice-failing-{}", std::process::id()));
+    let home = fixtures_root().join(format!("unluminous-voice-failing-{}", std::process::id()));
     std::fs::create_dir_all(&home).expect("a voice folder");
     let mut harness = harness("");
     did(&mut harness, "plugins run agent-tasks new-task Dictate into me");
@@ -3003,7 +3006,7 @@ fn a_tool_call_can_take_a_screenshot_of_the_window() {
     did(&mut harness, "plugins run agent-chat use local");
     did(&mut harness, "plugins run agent-chat tools on");
     let picture =
-        std::env::temp_dir().join(format!("unluminous-tool-screenshot-{}.png", std::process::id()));
+        fixtures_root().join(format!("unluminous-tool-screenshot-{}.png", std::process::id()));
     let _ = std::fs::remove_file(&picture);
     let arguments = serde_json::json!({
         "command": "screenshot",
@@ -3216,7 +3219,7 @@ fn a_refusal_is_drawn_in_the_servers_own_words() {
 fn agents_on_the_path() {
     static ONCE: std::sync::OnceLock<()> = std::sync::OnceLock::new();
     ONCE.get_or_init(|| {
-        let folder = std::env::temp_dir().join("unluminous-screenshot-agents");
+        let folder = fixtures_root().join("unluminous-screenshot-agents");
         std::fs::create_dir_all(&folder).expect("a folder for the stand-in agents");
         for name in ["claude", "codex", "opencode", "pi"] {
             let at = folder.join(match cfg!(windows) {
@@ -4671,7 +4674,7 @@ fn chat_with_supervisor_opens_a_modal_with_its_terminal_a_message_box_and_send()
 /// named once for the whole test binary, so no test reads the person's own `~/.claude`.
 fn a_ticket_with_a_transcript(harness: &mut Harness<'static, UnluminousApp>) -> std::path::PathBuf {
     use unluminous_app::services::agent_tasks::ticket_chat::CLAUDE_HOME_VARIABLE;
-    let root = std::env::temp_dir().join(format!("unluminous-ticket-chat-{}", std::process::id()));
+    let root = fixtures_root().join(format!("unluminous-ticket-chat-{}", std::process::id()));
     let home = root.join("claude");
     let project = root.join("project");
     std::fs::create_dir_all(&project).expect("the project folder");
@@ -5061,7 +5064,7 @@ fn a_link_in_a_tickets_chat_opens_a_tab_and_the_ticket_steps_aside() {
     harness.set_size(vec2(1500.0, 950.0));
     // The same folders `a_ticket_with_a_transcript` uses, because the variable naming Claude Code's folder is one
     // for the whole test binary, and a conversation of its own so the two tests never read each other's lines.
-    let root = std::env::temp_dir().join(format!("unluminous-ticket-chat-{}", std::process::id()));
+    let root = fixtures_root().join(format!("unluminous-ticket-chat-{}", std::process::id()));
     let home = root.join("claude");
     let project = root.join("project");
     std::fs::create_dir_all(&project).expect("the project folder");
@@ -5299,142 +5302,168 @@ fn on_the_screen(harness: &Harness<'static, UnluminousApp>, laid_out: egui::Pos2
 /// starts either in the well's left margin or on the first letter, and goes to the end of the first line,
 /// which takes the whole line; to its middle, which takes the first words; or out past the bottom of the
 /// well, which takes everything.
-#[test]
-fn a_drag_selects_the_words_of_a_description_at_every_zoom() {
+/// **One test per zoom and view (`task-2364`).** It was one test that went through every one in turn, and a binary
+/// takes as long as its longest test: `plugins_board_and_chat` took 289 s. Each case opens a window of its own,
+/// so libtest runs them side by side.
+fn a_drag_selects_the_words_of_a_description(zoom: f32, view: &str) {
     let words = "alpha bravo charlie delta echo foxtrot";
     let mut failures = Vec::new();
-    for zoom in [1.0f32, 1.5, 0.8] {
-        for view in ["raw", "markdown"] {
-            let mut harness = harness("");
-            harness.set_size(vec2(1500.0, 950.0));
-            a_ticket_open(&mut harness);
-            did(&mut harness, &format!("plugins run agent-tasks describe task-1 {words}"));
-            did(&mut harness, "plugins run agent-tasks show description raw");
-            did(&mut harness, &format!("modal zoom {zoom}"));
-            steady(&mut harness);
-            let well = harness.get_by_label("Description field").rect();
-            did(&mut harness, &format!("plugins run agent-tasks show description {view}"));
-            steady(&mut harness);
-            let line = well.top() + 20.0;
-            for (from_name, from) in [
-                ("the margin", egui::pos2(well.left() + 3.0, line)),
-                ("the first letter", egui::pos2(well.left() + 19.0, line)),
-            ] {
-                for (to_name, to, wanted) in [
-                    ("the end of the line", egui::pos2(well.right() - 4.0, line), Some(words)),
-                    ("the middle of the line", egui::pos2(well.left() + 120.0, line), None),
-                    (
-                        "below the well",
-                        egui::pos2(well.center().x, well.bottom() + 40.0),
-                        Some(words),
-                    ),
-                ] {
-                    let (screen_from, screen_to) =
-                        (on_the_screen(&harness, from), on_the_screen(&harness, to));
-                    sweep(&mut harness, screen_from, screen_to);
-                    let got = copied(&mut harness);
-                    let fine = match wanted {
-                        Some(all) => got.trim_end() == all,
-                        None => {
-                            !got.is_empty() && words.starts_with(&got) && got.len() < words.len()
-                        }
-                    };
-                    if !fine {
-                        failures.push(format!(
-                            "zoom {zoom}, {view} view, from {from_name} to {to_name}: copied {got:?}"
-                        ));
-                    }
-                    // A click somewhere else in the modal lets go of the selection before the next drag.
-                    let elsewhere =
-                        on_the_screen(&harness, egui::pos2(well.center().x, well.top() - 30.0));
-                    harness.input_mut().events.push(egui::Event::PointerMoved(elsewhere));
-                    harness.input_mut().events.push(egui::Event::PointerButton {
-                        pos: elsewhere,
-                        button: egui::PointerButton::Primary,
-                        pressed: true,
-                        modifiers: Modifiers::default(),
-                    });
-                    harness.step();
-                    harness.input_mut().events.push(egui::Event::PointerButton {
-                        pos: elsewhere,
-                        button: egui::PointerButton::Primary,
-                        pressed: false,
-                        modifiers: Modifiers::default(),
-                    });
-                    steady(&mut harness);
-                }
+    let mut harness = harness("");
+    harness.set_size(vec2(1500.0, 950.0));
+    a_ticket_open(&mut harness);
+    did(&mut harness, &format!("plugins run agent-tasks describe task-1 {words}"));
+    did(&mut harness, "plugins run agent-tasks show description raw");
+    did(&mut harness, &format!("modal zoom {zoom}"));
+    steady(&mut harness);
+    let well = harness.get_by_label("Description field").rect();
+    did(&mut harness, &format!("plugins run agent-tasks show description {view}"));
+    steady(&mut harness);
+    let line = well.top() + 20.0;
+    for (from_name, from) in [
+        ("the margin", egui::pos2(well.left() + 3.0, line)),
+        ("the first letter", egui::pos2(well.left() + 19.0, line)),
+    ] {
+        for (to_name, to, wanted) in [
+            ("the end of the line", egui::pos2(well.right() - 4.0, line), Some(words)),
+            ("the middle of the line", egui::pos2(well.left() + 120.0, line), None),
+            ("below the well", egui::pos2(well.center().x, well.bottom() + 40.0), Some(words)),
+        ] {
+            let (screen_from, screen_to) =
+                (on_the_screen(&harness, from), on_the_screen(&harness, to));
+            sweep(&mut harness, screen_from, screen_to);
+            let got = copied(&mut harness);
+            let fine = match wanted {
+                Some(all) => got.trim_end() == all,
+                None => !got.is_empty() && words.starts_with(&got) && got.len() < words.len(),
+            };
+            if !fine {
+                failures.push(format!(
+                    "zoom {zoom}, {view} view, from {from_name} to {to_name}: copied {got:?}"
+                ));
             }
+            // A click somewhere else in the modal lets go of the selection before the next drag.
+            let elsewhere = on_the_screen(&harness, egui::pos2(well.center().x, well.top() - 30.0));
+            harness.input_mut().events.push(egui::Event::PointerMoved(elsewhere));
+            harness.input_mut().events.push(egui::Event::PointerButton {
+                pos: elsewhere,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: Modifiers::default(),
+            });
+            harness.step();
+            harness.input_mut().events.push(egui::Event::PointerButton {
+                pos: elsewhere,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: Modifiers::default(),
+            });
+            steady(&mut harness);
         }
     }
-    assert!(
-        failures.is_empty(),
-        "{} of 36 drags failed:
-{}",
-        failures.len(),
-        failures.join(
-            "
-"
-        )
-    );
+    assert!(failures.is_empty(), "{} of 6 drags failed:\n{}", failures.len(), failures.join("\n"));
+}
+
+#[test]
+fn a_drag_selects_the_words_of_a_description_raw_at_zoom_1() {
+    a_drag_selects_the_words_of_a_description(1.0, "raw");
+}
+
+#[test]
+fn a_drag_selects_the_words_of_a_description_markdown_at_zoom_1() {
+    a_drag_selects_the_words_of_a_description(1.0, "markdown");
+}
+
+#[test]
+fn a_drag_selects_the_words_of_a_description_raw_at_zoom_1_5() {
+    a_drag_selects_the_words_of_a_description(1.5, "raw");
+}
+
+#[test]
+fn a_drag_selects_the_words_of_a_description_markdown_at_zoom_1_5() {
+    a_drag_selects_the_words_of_a_description(1.5, "markdown");
+}
+
+#[test]
+fn a_drag_selects_the_words_of_a_description_raw_at_zoom_0_8() {
+    a_drag_selects_the_words_of_a_description(0.8, "raw");
+}
+
+#[test]
+fn a_drag_selects_the_words_of_a_description_markdown_at_zoom_0_8() {
+    a_drag_selects_the_words_of_a_description(0.8, "markdown");
 }
 
 /// Words typed into the comment box are selected by a drag that starts in its padding or on its first letter,
 /// at every zoom of the modal. `task-2317`, the same report about the other text area in the ticket.
-#[test]
-fn a_drag_selects_the_words_of_a_comment_being_written_at_every_zoom() {
+/// **One test per zoom (`task-2364`).** It was one test that went through every one in turn, and a binary
+/// takes as long as its longest test: `plugins_board_and_chat` took 289 s. Each case opens a window of its own,
+/// so libtest runs them side by side.
+fn a_drag_selects_the_words_of_a_comment_being_written(zoom: f32) {
     let words = "kilo lima mike november oscar papa";
     let mut failures = Vec::new();
-    for zoom in [1.0f32, 1.5, 0.8] {
-        let mut harness = harness("");
-        harness.set_size(vec2(1500.0, 950.0));
-        a_ticket_open(&mut harness);
-        did(&mut harness, &format!("modal zoom {zoom}"));
-        steady(&mut harness);
-        let field = harness.get_by_label("Comment field").rect();
-        let line = field.top() + 18.0;
-        let into = on_the_screen(&harness, egui::pos2(field.center().x, line));
-        harness.input_mut().events.push(egui::Event::PointerMoved(into));
-        harness.input_mut().events.push(egui::Event::PointerButton {
-            pos: into,
-            button: egui::PointerButton::Primary,
-            pressed: true,
-            modifiers: Modifiers::default(),
-        });
-        harness.step();
-        harness.input_mut().events.push(egui::Event::PointerButton {
-            pos: into,
-            button: egui::PointerButton::Primary,
-            pressed: false,
-            modifiers: Modifiers::default(),
-        });
-        steady(&mut harness);
-        harness.input_mut().events.push(egui::Event::Text(words.to_owned()));
-        steady(&mut harness);
-        for (from_name, from) in [
-            ("the padding", egui::pos2(field.left() - 10.0, line)),
-            ("the first letter", egui::pos2(field.left() + 1.0, line)),
+    let mut harness = harness("");
+    harness.set_size(vec2(1500.0, 950.0));
+    a_ticket_open(&mut harness);
+    did(&mut harness, &format!("modal zoom {zoom}"));
+    steady(&mut harness);
+    let field = harness.get_by_label("Comment field").rect();
+    let line = field.top() + 18.0;
+    let into = on_the_screen(&harness, egui::pos2(field.center().x, line));
+    harness.input_mut().events.push(egui::Event::PointerMoved(into));
+    harness.input_mut().events.push(egui::Event::PointerButton {
+        pos: into,
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers: Modifiers::default(),
+    });
+    harness.step();
+    harness.input_mut().events.push(egui::Event::PointerButton {
+        pos: into,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::default(),
+    });
+    steady(&mut harness);
+    harness.input_mut().events.push(egui::Event::Text(words.to_owned()));
+    steady(&mut harness);
+    for (from_name, from) in [
+        ("the padding", egui::pos2(field.left() - 10.0, line)),
+        ("the first letter", egui::pos2(field.left() + 1.0, line)),
+    ] {
+        for (to_name, to, all) in [
+            ("the end of the line", egui::pos2(field.right() - 6.0, line), true),
+            ("the middle of the line", egui::pos2(field.left() + 100.0, line), false),
         ] {
-            for (to_name, to, all) in [
-                ("the end of the line", egui::pos2(field.right() - 6.0, line), true),
-                ("the middle of the line", egui::pos2(field.left() + 100.0, line), false),
-            ] {
-                let (screen_from, screen_to) =
-                    (on_the_screen(&harness, from), on_the_screen(&harness, to));
-                sweep(&mut harness, screen_from, screen_to);
-                let got = copied(&mut harness);
-                let fine = match all {
-                    true => got == words,
-                    false => !got.is_empty() && words.starts_with(&got) && got.len() < words.len(),
-                };
-                if !fine {
-                    failures.push(format!(
-                        "zoom {zoom}, from {from_name} to {to_name}: copied {got:?}"
-                    ));
-                }
+            let (screen_from, screen_to) =
+                (on_the_screen(&harness, from), on_the_screen(&harness, to));
+            sweep(&mut harness, screen_from, screen_to);
+            let got = copied(&mut harness);
+            let fine = match all {
+                true => got == words,
+                false => !got.is_empty() && words.starts_with(&got) && got.len() < words.len(),
+            };
+            if !fine {
+                failures
+                    .push(format!("zoom {zoom}, from {from_name} to {to_name}: copied {got:?}"));
             }
         }
     }
-    assert!(failures.is_empty(), "{} of 12 drags failed:\n{}", failures.len(), failures.join("\n"));
+    assert!(failures.is_empty(), "{} of 4 drags failed:\n{}", failures.len(), failures.join("\n"));
+}
+
+#[test]
+fn a_drag_selects_the_words_of_a_comment_being_written_at_zoom_1() {
+    a_drag_selects_the_words_of_a_comment_being_written(1.0);
+}
+
+#[test]
+fn a_drag_selects_the_words_of_a_comment_being_written_at_zoom_1_5() {
+    a_drag_selects_the_words_of_a_comment_being_written(1.5);
+}
+
+#[test]
+fn a_drag_selects_the_words_of_a_comment_being_written_at_zoom_0_8() {
+    a_drag_selects_the_words_of_a_comment_being_written(0.8);
 }
 
 /// `task-2336`: *"In task modal for agent tasks, I see oddness while typing in some fields, where the previous text
@@ -5445,82 +5474,86 @@ fn a_drag_selects_the_words_of_a_comment_being_written_at_every_zoom() {
 /// from where the previous character began, rightwards: the caret leaves, the new letter lands, the caret
 /// arrives. **Any change left of that point is the text that was already there moving**, which is what was
 /// reported, and the test counts it.
-#[test]
-fn typing_in_a_ticket_never_moves_the_text_already_typed() {
+///
+/// **One test per density, zoom and field (`task-2364`).** It was one test that went through every one in turn, and a binary
+/// takes as long as its longest test: `plugins_board_and_chat` took 289 s. Each case opens a window of its own,
+/// so libtest runs them side by side.
+///
+/// Measured before the fix: the title moved at a modal zoom of 1.1 and 1.25 and at no density alone.
+fn typing_in_a_ticket_field_never_moves_the_text_already_typed(
+    density: f32,
+    zoom: f32,
+    field: &str,
+) {
     // Kerned pairs, a semicolon, digits and narrow letters, which are where a rounding shows.
     let words = "Wavy AV fox; pull 0.5 tij";
     let mut moved: Vec<String> = Vec::new();
     let mut measured = 0;
-    // Measured before the fix: the title moved at a modal zoom of 1.1 and 1.25 and at no density alone.
-    for (density, zoom) in [(1.0, 1.0), (1.5, 1.0), (1.0, 1.1), (1.0, 1.25), (1.5, 0.9)] {
-        for field in ["Ticket title", "Comment"] {
-            let mut harness = harness("");
-            harness.set_pixels_per_point(density);
-            did(&mut harness, "plugins pane agent-tasks/board --show");
-            did(&mut harness, "plugins run agent-tasks new-task Shift");
-            did(&mut harness, "plugins run agent-tasks close");
-            did(&mut harness, "plugins run agent-tasks open task-1");
-            steady(&mut harness);
-            if zoom != 1.0 {
-                let ctx = harness.ctx.clone();
-                let modal = unluminous_app::components::modal::the_open_one(&ctx)
-                    .expect("the ticket modal");
-                unluminous_app::components::modal::set_zoom(&ctx, modal, zoom);
-                steady(&mut harness);
-            }
-            // The field rather than the button of the same name beside the comment box.
-            let box_of = |harness: &Harness<'static, UnluminousApp>| {
-                harness
-                    .query_all_by_label(field)
-                    .find(|node| node.value().is_some())
-                    .map(|node| node.rect())
-                    .expect("the field")
-            };
-            harness
-                .query_all_by_label(field)
-                .find(|node| node.value().is_some())
-                .expect("the field")
-                .click();
-            steady(&mut harness);
-            if field == "Ticket title" {
-                // Empty the title first, so what is measured is typing from the start of the line.
-                harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
-                harness.key_press(egui::Key::Backspace);
-                steady(&mut harness);
-            }
-            let area = box_of(&harness);
-            let pixels = |x: f32| (x * density).round() as i64;
-            let (left, right) = (pixels(area.left()), pixels(area.right()));
-            let (top, bottom) = (pixels(area.top()), pixels(area.bottom()));
-            let mut before = harness.render().expect("a picture");
-            let mut previous_start: Option<i64> = None;
-            for (at, letter) in words.chars().enumerate() {
-                harness.input_mut().events.push(egui::Event::Text(letter.to_string()));
-                steady(&mut harness);
-                let after = harness.render().expect("a picture");
-                let mut leftmost: Option<i64> = None;
-                for x in left.max(0)..right.min(after.width() as i64) {
-                    let changed = (top.max(0)..bottom.min(after.height() as i64)).any(|y| {
-                        before.get_pixel(x as u32, y as u32) != after.get_pixel(x as u32, y as u32)
-                    });
-                    if changed {
-                        leftmost = Some(x);
-                        break;
-                    }
-                }
-                measured += 1;
-                if let (Some(now), Some(was)) = (leftmost, previous_start) {
-                    if now + 1 < was {
-                        moved.push(format!(
-                            "{field} at density {density} zoom {zoom}: typing {letter:?} (character {at}) changed pixels {} px left of where the previous character began",
-                            was - now
-                        ));
-                    }
-                }
-                previous_start = leftmost.or(previous_start);
-                before = after;
+    let mut harness = harness("");
+    harness.set_pixels_per_point(density);
+    did(&mut harness, "plugins pane agent-tasks/board --show");
+    did(&mut harness, "plugins run agent-tasks new-task Shift");
+    did(&mut harness, "plugins run agent-tasks close");
+    did(&mut harness, "plugins run agent-tasks open task-1");
+    steady(&mut harness);
+    if zoom != 1.0 {
+        let ctx = harness.ctx.clone();
+        let modal =
+            unluminous_app::components::modal::the_open_one(&ctx).expect("the ticket modal");
+        unluminous_app::components::modal::set_zoom(&ctx, modal, zoom);
+        steady(&mut harness);
+    }
+    // The field rather than the button of the same name beside the comment box.
+    let box_of = |harness: &Harness<'static, UnluminousApp>| {
+        harness
+            .query_all_by_label(field)
+            .find(|node| node.value().is_some())
+            .map(|node| node.rect())
+            .expect("the field")
+    };
+    harness
+        .query_all_by_label(field)
+        .find(|node| node.value().is_some())
+        .expect("the field")
+        .click();
+    steady(&mut harness);
+    if field == "Ticket title" {
+        // Empty the title first, so what is measured is typing from the start of the line.
+        harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+        harness.key_press(egui::Key::Backspace);
+        steady(&mut harness);
+    }
+    let area = box_of(&harness);
+    let pixels = |x: f32| (x * density).round() as i64;
+    let (left, right) = (pixels(area.left()), pixels(area.right()));
+    let (top, bottom) = (pixels(area.top()), pixels(area.bottom()));
+    let mut before = harness.render().expect("a picture");
+    let mut previous_start: Option<i64> = None;
+    for (at, letter) in words.chars().enumerate() {
+        harness.input_mut().events.push(egui::Event::Text(letter.to_string()));
+        steady(&mut harness);
+        let after = harness.render().expect("a picture");
+        let mut leftmost: Option<i64> = None;
+        for x in left.max(0)..right.min(after.width() as i64) {
+            let changed = (top.max(0)..bottom.min(after.height() as i64)).any(|y| {
+                before.get_pixel(x as u32, y as u32) != after.get_pixel(x as u32, y as u32)
+            });
+            if changed {
+                leftmost = Some(x);
+                break;
             }
         }
+        measured += 1;
+        if let (Some(now), Some(was)) = (leftmost, previous_start) {
+            if now + 1 < was {
+                moved.push(format!(
+                    "{field} at density {density} zoom {zoom}: typing {letter:?} (character {at}) changed pixels {} px left of where the previous character began",
+                    was - now
+                ));
+            }
+        }
+        previous_start = leftmost.or(previous_start);
+        before = after;
     }
     eprintln!("measured {measured} keystrokes; {} moved earlier text", moved.len());
     for line in &moved {
@@ -5532,6 +5565,56 @@ fn typing_in_a_ticket_never_moves_the_text_already_typed() {
         moved.len(),
         moved.join("\n")
     );
+}
+
+#[test]
+fn typing_in_a_ticket_title_never_moves_the_text_already_typed_density_1_zoom_1() {
+    typing_in_a_ticket_field_never_moves_the_text_already_typed(1.0, 1.0, "Ticket title");
+}
+
+#[test]
+fn typing_in_a_ticket_comment_never_moves_the_text_already_typed_density_1_zoom_1() {
+    typing_in_a_ticket_field_never_moves_the_text_already_typed(1.0, 1.0, "Comment");
+}
+
+#[test]
+fn typing_in_a_ticket_title_never_moves_the_text_already_typed_density_1_5_zoom_1() {
+    typing_in_a_ticket_field_never_moves_the_text_already_typed(1.5, 1.0, "Ticket title");
+}
+
+#[test]
+fn typing_in_a_ticket_comment_never_moves_the_text_already_typed_density_1_5_zoom_1() {
+    typing_in_a_ticket_field_never_moves_the_text_already_typed(1.5, 1.0, "Comment");
+}
+
+#[test]
+fn typing_in_a_ticket_title_never_moves_the_text_already_typed_density_1_zoom_1_1() {
+    typing_in_a_ticket_field_never_moves_the_text_already_typed(1.0, 1.1, "Ticket title");
+}
+
+#[test]
+fn typing_in_a_ticket_comment_never_moves_the_text_already_typed_density_1_zoom_1_1() {
+    typing_in_a_ticket_field_never_moves_the_text_already_typed(1.0, 1.1, "Comment");
+}
+
+#[test]
+fn typing_in_a_ticket_title_never_moves_the_text_already_typed_density_1_zoom_1_25() {
+    typing_in_a_ticket_field_never_moves_the_text_already_typed(1.0, 1.25, "Ticket title");
+}
+
+#[test]
+fn typing_in_a_ticket_comment_never_moves_the_text_already_typed_density_1_zoom_1_25() {
+    typing_in_a_ticket_field_never_moves_the_text_already_typed(1.0, 1.25, "Comment");
+}
+
+#[test]
+fn typing_in_a_ticket_title_never_moves_the_text_already_typed_density_1_5_zoom_0_9() {
+    typing_in_a_ticket_field_never_moves_the_text_already_typed(1.5, 0.9, "Ticket title");
+}
+
+#[test]
+fn typing_in_a_ticket_comment_never_moves_the_text_already_typed_density_1_5_zoom_0_9() {
+    typing_in_a_ticket_field_never_moves_the_text_already_typed(1.5, 0.9, "Comment");
 }
 
 /// `task-2336`: *"The tool calls show json, but the json formatting is ugly and hard to read."* An open shell

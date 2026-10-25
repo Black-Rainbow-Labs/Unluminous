@@ -1874,7 +1874,7 @@ fn a_cut_row_is_pasted_into_a_subfolder() {
 #[test]
 fn a_file_dropped_from_another_program_lands_in_the_folder_under_the_pointer() {
     let folder = scratch_folder("dropped-in");
-    let outside = std::env::temp_dir().join("unluminous-2194-from-elsewhere");
+    let outside = fixtures_root().join("unluminous-2194-from-elsewhere");
     std::fs::create_dir_all(&outside).expect("make the outside folder");
     std::fs::write(outside.join("picture.txt"), "from another program\n").expect("write it");
     let mut harness = harness_in(&folder);
@@ -1903,7 +1903,7 @@ fn an_agent_chooses_rows_and_copies_a_file_in_from_outside() {
     );
     assert_eq!(chosen["chosen"].as_array().map(Vec::len), Some(2), "{chosen}");
 
-    let outside = std::env::temp_dir().join("unluminous-2194-agent-outside.md");
+    let outside = fixtures_root().join("unluminous-2194-agent-outside.md");
     std::fs::write(&outside, "# outside\n").expect("write it");
     did(
         &mut harness,
@@ -2472,7 +2472,7 @@ fn a_source_file_write_that_fails_leaves_the_file_as_it_was() {
 /// strip; the wheel over the strip moves along until it is drawn, and showing a tab does not pull the strip back.
 #[test]
 fn the_tab_strip_scrolls_sideways_under_the_wheel() {
-    let folder = std::env::temp_dir().join("unluminous-tab-strip-scroll");
+    let folder = fixtures_root().join("unluminous-tab-strip-scroll");
     std::fs::create_dir_all(&folder).expect("a folder of its own");
     let names: Vec<String> =
         (0..16).map(|at| format!("a-file-with-a-fairly-long-name-{at:02}.txt")).collect();

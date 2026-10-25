@@ -1261,7 +1261,7 @@ fn a_range_is_read_however_the_names_are_spelled() {
 /// file: the disk-owned side is re-checked at the moment of use.
 #[test]
 fn a_file_changed_outside_unluminous_is_read_again_before_it_is_answered_about() {
-    let folder = std::env::temp_dir().join("unluminous-changed-underneath");
+    let folder = fixtures_root().join("unluminous-changed-underneath");
     std::fs::remove_dir_all(&folder).ok();
     std::fs::create_dir_all(&folder).expect("make the project");
     let path = folder.join("notes.md");
@@ -1302,7 +1302,7 @@ fn a_file_changed_outside_unluminous_is_read_again_before_it_is_answered_about()
 /// for losing them — `tab reload --discard` is how somebody says they mean it.
 #[test]
 fn a_tab_with_unsaved_changes_is_not_reread_from_the_file() {
-    let folder = std::env::temp_dir().join("unluminous-changed-underneath-dirty");
+    let folder = fixtures_root().join("unluminous-changed-underneath-dirty");
     std::fs::remove_dir_all(&folder).ok();
     std::fs::create_dir_all(&folder).expect("make the project");
     let path = folder.join("notes.md");
@@ -1358,8 +1358,7 @@ fn every_command_in_the_catalogue_is_one_the_window_knows() {
 /// `task-1756`: the agent command and explorer action both create ordinary rendered tabs.
 #[test]
 fn browser_tabs_open_through_the_shared_cli_and_action_paths() {
-    let folder =
-        std::env::temp_dir().join(format!("unluminous-browser-paths-{}", std::process::id()));
+    let folder = fixtures_root().join(format!("unluminous-browser-paths-{}", std::process::id()));
     std::fs::create_dir_all(&folder).expect("make the browser project");
     let first = folder.join("index.html");
     let second = folder.join("other.htm");
@@ -1828,23 +1827,64 @@ const CANNOT_BE_MADE_TO_SUCCEED: &[(&str, &str)] = &[
 ];
 
 /// Every command in the catalogue is driven to a success and to a refusal.
+///
+/// **The drives run side by side, each on a thread of its own (`task-2364`).** Each opens a window of its own,
+/// so none depends on another, and one after another they were the longest test in this binary: 89 s alone,
+/// and 297 s while two other binaries ran beside it. What they drove is recorded in one table
+/// (`commands_driven`), which is read once all of them have finished.
+///
+/// **The walk drives everything it counts.** The `search` and `update` commands were only ever driven by
+/// the tests of their own further down this file, so the walk passed only when those had finished before it
+/// read the table. Once its drives ran side by side it finished first and reported twelve commands as never
+/// driven. It calls those tests itself now, so it gives the same answer run alone or with the whole binary.
 #[test]
 fn every_catalogue_command_is_driven_both_ways() {
+    let drives: [(&str, fn(&mut Coverage)); 16] = [
+        ("refuse a value no command has a name for", refuse_a_value_no_command_has_a_name_for),
+        (
+            "refuse a word where a command takes a number",
+            refuse_a_word_where_a_command_takes_a_number,
+        ),
+        ("the window and the tabs", drive_the_window_and_the_tabs),
+        ("the editing commands", drive_the_editing_commands),
+        ("the panels and the explorer", drive_the_panels_and_the_explorer),
+        ("the modals and the settings", drive_the_modals_and_the_settings),
+        ("the terminal and the runs", drive_the_terminal_and_the_runs),
+        ("the canvas", drive_the_canvas),
+        ("a paused debugger", drive_a_paused_debugger),
+        ("a repository", drive_a_repository),
+        ("a contributed tab", drive_a_contributed_tab),
+        ("the project", drive_the_project),
+        ("a notebook", drive_a_notebook),
+        ("the voice", drive_the_voice),
+        ("the search area", drive_the_search),
+        ("the updates", drive_the_updates),
+    ];
     let mut coverage = Coverage::default();
-    refuse_a_value_no_command_has_a_name_for(&mut coverage);
-    refuse_a_word_where_a_command_takes_a_number(&mut coverage);
-    drive_the_window_and_the_tabs(&mut coverage);
-    drive_the_editing_commands(&mut coverage);
-    drive_the_panels_and_the_explorer(&mut coverage);
-    drive_the_modals_and_the_settings(&mut coverage);
-    drive_the_terminal_and_the_runs(&mut coverage);
-    drive_the_canvas(&mut coverage);
-    drive_a_paused_debugger(&mut coverage);
-    drive_a_repository(&mut coverage);
-    drive_a_contributed_tab(&mut coverage);
-    drive_the_project(&mut coverage);
-    drive_a_notebook(&mut coverage);
-    drive_the_voice(&mut coverage);
+    std::thread::scope(|scope| {
+        let running: Vec<_> = drives
+            .iter()
+            .map(|(name, drive)| {
+                let thread = std::thread::Builder::new().name(format!("drive {name}"));
+                let handle = thread
+                    .spawn_scoped(scope, move || {
+                        let mut own = Coverage::default();
+                        drive(&mut own);
+                        own.faults
+                    })
+                    .expect("a thread for the drive");
+                (name, handle)
+            })
+            .collect();
+        for (name, handle) in running {
+            match handle.join() {
+                Ok(faults) => coverage.faults.extend(faults),
+                Err(_) => coverage
+                    .faults
+                    .push(format!("the drive of {name} panicked; its message is above")),
+            }
+        }
+    });
 
     let driven = commands_driven();
     let mut missing = Vec::new();
@@ -2277,7 +2317,7 @@ fn drive_the_modals_and_the_settings(coverage: &mut Coverage) {
     // into the settings folder of the store the window was given. Before `task-2105` this walk had no
     // store, and the two commands wrote into and deleted from the person's own backgrounds folder.
     let settings =
-        std::env::temp_dir().join(format!("unluminous-dispatch-settings-{}", std::process::id()));
+        fixtures_root().join(format!("unluminous-dispatch-settings-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&settings);
     std::fs::create_dir_all(&settings).expect("make the settings folder");
     harness.state_mut().use_store(unluminous_app::services::store::Store::at(&settings));
@@ -2574,7 +2614,7 @@ fn drive_the_canvas(coverage: &mut Coverage) {
 /// The import of a `space.conf`, and the four kinds of node `task-2202` added, in a project of their own,
 /// because the import writes realm files and the media have to be real files in the project.
 fn drive_the_realm_files(c: &mut Coverage) {
-    let folder = std::env::temp_dir().join(format!("unluminous-cli-realm-{}", std::process::id()));
+    let folder = fixtures_root().join(format!("unluminous-cli-realm-{}", std::process::id()));
     std::fs::remove_dir_all(&folder).ok();
     std::fs::create_dir_all(folder.join(".unluminous")).expect("make the project");
     std::fs::copy(
@@ -2906,6 +2946,20 @@ fn drive_the_project(coverage: &mut Coverage) {
     drive_the_project_tabs(coverage, &second);
 }
 
+/// The `search` verbs, which `every_search_verb_answers_from_the_window` drives, for the walk's record.
+fn drive_the_search(_: &mut Coverage) {
+    every_search_verb_answers_from_the_window();
+}
+
+/// The `update` verbs, which the five tests about checking, installing and skipping drive, for the walk's record.
+fn drive_the_updates(_: &mut Coverage) {
+    update_check_does_not_block_the_frame_it_arrives_on();
+    update_check_answers_with_what_the_releases_page_said();
+    update_versions_lists_both_channels_and_the_menu_shows_them();
+    installing_the_latest_when_it_is_already_running_says_so_and_clears_the_status_bar();
+    a_newer_version_is_offered_and_dont_ask_again_declines_that_version();
+}
+
 /// The project tab commands in a window of project tabs, which is a `ProjectWindow` rather than the
 /// `UnluminousApp` every other drive here is made against. `tests/project_tabs.rs` is where they are tested;
 /// this is the walk's record that they were driven. `task-2322`.
@@ -3005,7 +3059,7 @@ fn the_command_line_program() -> Option<std::path::PathBuf> {
 static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn a_window_on_a_port(name: &str) -> (Harness<'static, UnluminousApp>, std::path::PathBuf) {
-    let instances = std::env::temp_dir().join(format!("unluminous-instances/{name}"));
+    let instances = fixtures_root().join(format!("unluminous-instances/{name}"));
     std::fs::remove_dir_all(&instances).ok();
     std::fs::create_dir_all(&instances).expect("a folder for the instance file");
     // Read by `instances::folder` in this process when the channel opens, and handed to the child
@@ -3737,7 +3791,7 @@ fn an_acp_agent_from_the_registry_becomes_an_endpoint_that_runs_it() {
 /// A one pixel PNG rather than anything on the machine, so the walk depends on nothing it did not make
 /// — `common::sample_folder`'s own bargain.
 fn a_picture_to_add() -> std::path::PathBuf {
-    let folder = std::env::temp_dir().join("unluminous-command-line-backgrounds");
+    let folder = fixtures_root().join("unluminous-command-line-backgrounds");
     std::fs::create_dir_all(&folder).expect("make the folder");
     let at = folder.join("a-background.png");
     let bytes: [u8; 67] = [
@@ -3753,7 +3807,7 @@ fn a_picture_to_add() -> std::path::PathBuf {
 
 /// An empty folder for `explorer new-project` to make a project in.
 fn new_project_folder() -> std::path::PathBuf {
-    let folder = std::env::temp_dir().join("unluminous-command-line-projects");
+    let folder = fixtures_root().join("unluminous-command-line-projects");
     let _ = std::fs::remove_dir_all(&folder);
     std::fs::create_dir_all(&folder).expect("make the folder");
     folder
@@ -3765,8 +3819,7 @@ fn new_project_folder() -> std::path::PathBuf {
 /// The index is written under a cache folder of the test's own, never the person's.
 #[test]
 fn every_search_verb_answers_from_the_window() {
-    let folder =
-        std::env::temp_dir().join(format!("unluminous-search-drive-{}", std::process::id()));
+    let folder = fixtures_root().join(format!("unluminous-search-drive-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&folder);
     std::fs::create_dir_all(folder.join("src")).expect("make the folder");
     std::fs::create_dir_all(folder.join(".git")).expect("mark it a checkout");
@@ -3827,8 +3880,8 @@ fn every_search_verb_answers_from_the_window() {
 /// the tab shown next back to its top. It stays where it was read to now, in both views.
 #[test]
 fn closing_a_browser_tab_leaves_the_markdown_it_came_from_where_it_was_scrolled() {
-    let folder = std::env::temp_dir()
-        .join(format!("unluminous-scroll-after-a-close-{}", std::process::id()));
+    let folder =
+        fixtures_root().join(format!("unluminous-scroll-after-a-close-{}", std::process::id()));
     std::fs::create_dir_all(&folder).expect("the folder");
     let mut long =
         String::from("# A long document\n\nSee [the example](https://example.com/).\n\n");
@@ -3899,7 +3952,7 @@ fn a_window_sends_usage_statistics_while_the_setting_is_on_and_nothing_once_it_i
     });
     std::env::set_var("UNLUMINOUS_TELEMETRY_URL", format!("http://127.0.0.1:{port}/mp/collect"));
     let settings =
-        std::env::temp_dir().join(format!("unluminous-telemetry-window-{}", std::process::id()));
+        fixtures_root().join(format!("unluminous-telemetry-window-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&settings);
     std::fs::create_dir_all(&settings).expect("make the settings folder");
 

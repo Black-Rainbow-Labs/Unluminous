@@ -128,3 +128,28 @@ test('libtest output is read into binaries, their failures and a binary that nev
   assert.deepEqual(targetOf(binaries[1]), ['--test', 'kernel']);
   assert.equal(binaries[2].doc, true);
 });
+
+test('a failure whose line was split by a child process is read from the summary list', () => {
+  const output = [
+    '     Running tests\\command_line.rs (target\\debug\\deps\\command_line-0123456789abcdef.exe)',
+    'running 2 tests',
+    'test every_catalogue_command_is_driven_both_ways ... ',
+    'running 0 tests',
+    'test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 69 filtered out; finished in 0.00s',
+    'FAILED',
+    'test another ... ok',
+    '',
+    'failures:',
+    '',
+    '---- every_catalogue_command_is_driven_both_ways stdout ----',
+    'thread panicked',
+    '',
+    'failures:',
+    '    every_catalogue_command_is_driven_both_ways',
+    '',
+    'test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 40.91s',
+  ].join('\n');
+  const [binary] = readLibtest(output);
+  assert.deepEqual(binary.failed, ['every_catalogue_command_is_driven_both_ways']);
+  assert.equal(binary.result.failed, 1);
+});

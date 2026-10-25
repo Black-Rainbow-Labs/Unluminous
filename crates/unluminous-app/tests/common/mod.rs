@@ -103,7 +103,85 @@ pub fn builder_on<State>(render_state: RenderState) -> egui_kittest::HarnessBuil
     turn::take_the_machines_turn();
     receipt::note_this_binary_started();
     egui_kittest::HarnessBuilder::default()
-        .renderer(WgpuTestRenderer::from_render_state(render_state))
+        .renderer(PatientRenderer(WgpuTestRenderer::from_render_state(render_state)))
+}
+
+/// How many pictures a test binary renders at once.
+///
+/// `task-2364`. Under load, `egui_kittest` gave up on a picture with `PollError: The requested Wait
+/// timed out before the submission was completed`: a render waits ten seconds for the graphics card,
+/// and with every test thread of a binary submitting to the [`DEVICES`] it shares, beside a loaded
+/// processor, a submission waited longer than that. Measured in `canvas_realm` beside 12 load threads,
+/// two tests in one run. Four at a time keeps the card busy without a queue that long.
+const RENDERS_AT_ONCE: usize = 4;
+
+/// How many times a render that timed out is tried again before the test is told.
+const RENDER_TRIES: usize = 3;
+
+/// The renderer every harness draws with: `egui_kittest`'s own, with at most [`RENDERS_AT_ONCE`]
+/// renders in flight in the process and a render that timed out tried again.
+///
+/// It is the renderer rather than a helper around `snapshot`, so the 330 snapshots, the renders a test
+/// reads pixels from and the screenshots a window asks for all go through it with nothing at the call
+/// sites. Only a render that failed is tried again: a picture that differs from the accepted one is
+/// still a failure the first time.
+struct PatientRenderer(WgpuTestRenderer);
+
+impl egui_kittest::TestRenderer for PatientRenderer {
+    fn setup_eframe(&self, cc: &mut eframe::CreationContext<'_>, frame: &mut eframe::Frame) {
+        self.0.setup_eframe(cc, frame);
+    }
+
+    fn handle_delta(&mut self, delta: &mut egui::TexturesDelta) {
+        self.0.handle_delta(delta);
+    }
+
+    fn render(
+        &mut self,
+        ctx: &egui::Context,
+        output: &egui::FullOutput,
+    ) -> Result<image::RgbaImage, String> {
+        let _turn = RenderTurn::take();
+        let mut last = String::new();
+        for _ in 0..RENDER_TRIES {
+            match self.0.render(ctx, output) {
+                Ok(picture) => return Ok(picture),
+                Err(error) => last = error,
+            }
+        }
+        Err(last)
+    }
+}
+
+/// One of the [`RENDERS_AT_ONCE`] places to render, held while a render is in flight.
+struct RenderTurn;
+
+/// How many renders are in flight, and the condition a waiting render sleeps on.
+fn render_turns() -> &'static (std::sync::Mutex<usize>, std::sync::Condvar) {
+    static TURNS: OnceLock<(std::sync::Mutex<usize>, std::sync::Condvar)> = OnceLock::new();
+    TURNS.get_or_init(|| (std::sync::Mutex::new(0), std::sync::Condvar::new()))
+}
+
+impl RenderTurn {
+    /// Wait until fewer than [`RENDERS_AT_ONCE`] renders are in flight, and count this one.
+    fn take() -> Self {
+        let (count, freed) = render_turns();
+        let mut held = count.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        while *held >= RENDERS_AT_ONCE {
+            held = freed.wait(held).unwrap_or_else(|poisoned| poisoned.into_inner());
+        }
+        *held += 1;
+        RenderTurn
+    }
+}
+
+impl Drop for RenderTurn {
+    fn drop(&mut self) {
+        let (count, freed) = render_turns();
+        let mut held = count.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        *held = held.saturating_sub(1);
+        freed.notify_one();
+    }
 }
 
 /// A folder with a nested structure, for the explorer screenshots. Written once and left in place, so
@@ -150,11 +228,24 @@ pub fn sample_folder() -> std::path::PathBuf {
     folder.clone()
 }
 
-/// Every file and folder under `root`, as paths relative to it, sorted.
+/// Whether a file is the code index's fence, which the index writes into a project that is not a git
+/// repository and removes a quarter of a second later (`atrius_index::freshness`). The explorer hides it
+/// (`services::file_tree`, `task-2247`), and so does every test that lists or copies a project.
+///
+/// `task-2364`: it was the file `a_contributed_tab_opens_in_the_editing_area_beside_the_file_tabs` counted
+/// 8 against 7, and the file that was gone by the time `copy_out_of_the_repository` copied it.
+pub fn is_the_code_index_fence(name: &str) -> bool {
+    name.starts_with("atrius-index-fence-")
+}
+
+/// Every file and folder under `root`, as paths relative to it, sorted, without the code index's fence.
 fn listing_of(root: &std::path::Path) -> Vec<String> {
     fn walk(root: &std::path::Path, at: &std::path::Path, into: &mut Vec<String>) {
         let Ok(entries) = std::fs::read_dir(at) else { return };
         for entry in entries.flatten() {
+            if is_the_code_index_fence(&entry.file_name().to_string_lossy()) {
+                continue;
+            }
             let path = entry.path();
             if let Ok(relative) = path.strip_prefix(root) {
                 into.push(relative.to_string_lossy().replace('\\', "/"));
@@ -168,6 +259,33 @@ fn listing_of(root: &std::path::Path) -> Vec<String> {
     walk(root, root, &mut listing);
     listing.sort();
     listing
+}
+
+/// The folder every fixture this binary builds is in: `%TEMP%\unluminous-window\<binary>`.
+///
+/// `task-2364`. The fixtures were folders with fixed names straight under the temporary folder, and their
+/// paths are drawn: the chat pane, the run dialog, the new file prompt and the project tabs' list show the
+/// project's folder. So the folder they are in has to be the same on every run, and it has to be one
+/// binary's own, or two binaries cannot run side by side (`tools/window-suite.mjs --run --jobs`). It is
+/// worked out from the temporary folder the machine has, `UNLUMINOUS_MACHINE_TEMP` when a runner has given
+/// the run a temporary folder of its own (`tools/test-runs.mjs`), so a test run by hand and one run by the
+/// runner draw the same path.
+///
+/// **Asking for it takes this binary's turn** (`turn::take_the_machines_turn`), and the turn empties the
+/// folder once when it is taken, so a run starts from nothing, a fixture named with a process id does not
+/// pile up, and no test can be handed the path before the folder is emptied under it.
+pub fn fixtures_root() -> std::path::PathBuf {
+    turn::take_the_machines_turn();
+    fixtures_folder()
+}
+
+/// Where [`fixtures_root`] is, without taking the turn: what the turn itself is kept in.
+fn fixtures_folder() -> std::path::PathBuf {
+    std::env::var_os("UNLUMINOUS_MACHINE_TEMP")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("unluminous-window")
+        .join(receipt::binary_name())
 }
 
 /// Write the sample folder out. Called once, through [`sample_folder`].
@@ -190,7 +308,7 @@ fn listing_of(root: &std::path::Path) -> Vec<String> {
 /// **Not [`fixture`], because two of these are not text**: `picture.png` is drawn pixel by pixel
 /// and `bundle.zip` is written as bytes.
 pub fn build_sample_folder() -> std::path::PathBuf {
-    let root = std::env::temp_dir().join("unluminous-screenshot-folder");
+    let root = fixtures_root().join("unluminous-screenshot-folder");
     std::fs::remove_dir_all(&root).ok();
     std::fs::create_dir_all(root.join("chapters/appendix")).expect("make the nested folders");
     std::fs::create_dir_all(root.join("drafts")).expect("make the drafts folder");
@@ -392,17 +510,21 @@ pub fn report(results: SnapshotResults) {
 /// Unluminous.
 pub fn copy_out_of_the_repository(source: &std::path::Path, name: &str) -> std::path::PathBuf {
     turn::take_the_machines_turn();
-    let target = std::env::temp_dir().join(name);
+    let target = fixtures_root().join(name);
     std::fs::remove_dir_all(&target).ok();
     fn walk(from: &std::path::Path, to: &std::path::Path) {
         std::fs::create_dir_all(to).expect("make the folder");
         for entry in std::fs::read_dir(from).expect("read the folder").flatten() {
+            if is_the_code_index_fence(&entry.file_name().to_string_lossy()) {
+                continue;
+            }
             let path = entry.path();
             let into = to.join(entry.file_name());
             if path.is_dir() {
                 walk(&path, &into);
             } else {
-                std::fs::copy(&path, &into).expect("copy the file");
+                std::fs::copy(&path, &into)
+                    .unwrap_or_else(|error| panic!("copy {}: {error}", path.display()));
             }
         }
     }
@@ -420,7 +542,7 @@ pub fn copy_out_of_the_repository(source: &std::path::Path, name: &str) -> std::
 /// to make the commits, the second author and the two dates blame colours by.
 pub fn git_folder(name: &str) -> std::path::PathBuf {
     turn::take_the_machines_turn();
-    let root = std::env::temp_dir().join("unluminous-screenshot-repository").join(name);
+    let root = fixtures_root().join("unluminous-screenshot-repository").join(name);
     std::fs::remove_dir_all(&root).ok();
     std::fs::create_dir_all(&root).expect("make the folder");
     let git = |arguments: &[&str]| {
@@ -1209,7 +1331,7 @@ pub fn fixture(name: &str, files: &[(&str, &str)]) -> std::path::PathBuf {
     turn::take_the_machines_turn();
     static BUILT: OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = OnceLock::new();
     let built = BUILT.get_or_init(Default::default);
-    let root = std::env::temp_dir().join(name);
+    let root = fixtures_root().join(name);
     let mut names = built.lock().expect("the fixture registry");
     if names.insert(name.to_owned()) {
         std::fs::remove_dir_all(&root).ok();

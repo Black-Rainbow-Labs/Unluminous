@@ -162,7 +162,7 @@ fn offset_of_line(text: &str, line: usize) -> usize {
 /// explorer's folders, and at the moment of use, which for a breakpoint is a session start.
 #[test]
 fn a_checkout_under_a_running_window_leaves_the_breakpoints_working() {
-    let folder = std::env::temp_dir().join("unluminous-breakpoints-checkout");
+    let folder = fixtures_root().join("unluminous-breakpoints-checkout");
     std::fs::remove_dir_all(&folder).ok();
     std::fs::create_dir_all(&folder).expect("make the project");
     let source = folder.join("main.rs");
@@ -263,7 +263,7 @@ fn a_checkout_under_a_running_window_leaves_the_breakpoints_working() {
 /// `a_real_debugger_binds_a_breakpoint_in_a_file_that_is_not_open` is the other half.
 #[test]
 fn a_breakpoint_in_a_shut_file_with_windows_line_breaks_names_the_line_it_is_on() {
-    let folder = std::env::temp_dir().join("unluminous-screenshot-debug").join("crlf");
+    let folder = fixtures_root().join("unluminous-screenshot-debug").join("crlf");
     std::fs::remove_dir_all(&folder).ok();
     std::fs::create_dir_all(folder.join("src")).expect("make src");
 
@@ -934,7 +934,7 @@ fn a_real_debugger_binds_a_breakpoint_in_a_file_that_is_not_open() {
         return;
     };
 
-    let folder = std::env::temp_dir().join("unluminous-real-debug-not-open");
+    let folder = fixtures_root().join("unluminous-real-debug-not-open");
     std::fs::remove_dir_all(&folder).ok();
     std::fs::create_dir_all(folder.join("src")).expect("make the project");
 
@@ -1107,7 +1107,7 @@ fn a_real_debugger_stops_at_a_breakpoint_and_reads_a_variable() {
     };
 
     // A ten-line program, built here, so the test carries no binary and nothing is checked in.
-    let folder = std::env::temp_dir().join("unluminous-real-debug");
+    let folder = fixtures_root().join("unluminous-real-debug");
     std::fs::remove_dir_all(&folder).ok();
     std::fs::create_dir_all(&folder).expect("make the project");
     let source = folder.join("counter.rs");
@@ -1293,7 +1293,7 @@ fn a_real_node_debugger_stops_at_a_breakpoint_and_reads_a_variable() {
         return;
     };
 
-    let folder = std::env::temp_dir().join("unluminous-real-node-debug");
+    let folder = fixtures_root().join("unluminous-real-node-debug");
     std::fs::remove_dir_all(&folder).ok();
     std::fs::create_dir_all(&folder).expect("make the project");
     let source = folder.join("counter.js");
@@ -1438,7 +1438,7 @@ fn a_real_node_debugger_stops_at_a_breakpoint_and_reads_a_variable() {
 /// layer of tests is for — so this is that walk, kept.
 #[test]
 fn a_breakpoint_is_still_there_when_the_project_is_opened_again() {
-    let folder = std::env::temp_dir().join("unluminous-breakpoints-persist");
+    let folder = fixtures_root().join("unluminous-breakpoints-persist");
     std::fs::remove_dir_all(&folder).ok();
     std::fs::create_dir_all(&folder).expect("make the project");
     let source = folder.join("main.rs");
@@ -1544,27 +1544,81 @@ fn accepting_a_completion_inside_a_class_survives() {
     assert!(harness.state().completion().is_none(), "and the list closed behind it");
 }
 
-#[test]
-fn the_shapes_of_javascript_that_could_be_mis_sliced_survive_being_typed() {
-    // Every one of these is a shape where a byte offset could land inside a character or past the end:
-    // a template literal with expressions in it, a regular expression, an accented identifier, an
-    // unclosed string, a comment naming a symbol, and spread syntax.
+/// Every one of these is a shape where a byte offset could land inside a character or past the end: a
+/// template literal with expressions in it, a regular expression, an accented identifier, an unclosed
+/// string, a comment naming a symbol, and spread syntax.
+const JAVASCRIPT_SHAPES: [&str; 10] = [
+    "import { getName } from './people.js';\n",
+    "import * as people from './people.js';\n",
+    "const greeting = `hello ${person.name} and ${getName(person)}`;\n",
+    "const pattern = /get[A-Z]\\w+/g;\n",
+    "class Person extends Employee {\n  static get kind() { return 'person'; }\n}\n",
+    "const \u{00e9}quipe = { g\u{00e9}rant: getName };\n",
+    "// a comment about getName\n",
+    "const half = 'unclosed string\n",
+    "const object = { get, getName, ...rest };\n",
+    "async function* getEverything() { yield await getName(); }\n",
+];
+
+/// Type one of [`JAVASCRIPT_SHAPES`] a character at a time, painting after each.
+///
+/// **One test per shape (`task-2364`).** It was one test that typed all ten in turn, painting the window
+/// after every character, and it ran for more than a minute while the rest of its binary had finished.
+fn the_shape_of_javascript_survives_being_typed(shape: usize) {
     let mut harness = javascript_harness();
-    let shapes = [
-        "import { getName } from './people.js';\n",
-        "import * as people from './people.js';\n",
-        "const greeting = `hello ${person.name} and ${getName(person)}`;\n",
-        "const pattern = /get[A-Z]\\w+/g;\n",
-        "class Person extends Employee {\n  static get kind() { return 'person'; }\n}\n",
-        "const \u{00e9}quipe = { g\u{00e9}rant: getName };\n",
-        "// a comment about getName\n",
-        "const half = 'unclosed string\n",
-        "const object = { get, getName, ...rest };\n",
-        "async function* getEverything() { yield await getName(); }\n",
-    ];
-    for shape in shapes {
-        harness.state_mut().command(Command::SelectAll);
-        steady(&mut harness);
-        type_and_paint(&mut harness, shape);
-    }
+    harness.state_mut().command(Command::SelectAll);
+    steady(&mut harness);
+    type_and_paint(&mut harness, JAVASCRIPT_SHAPES[shape]);
+}
+
+#[test]
+fn the_shapes_of_javascript_that_could_be_mis_sliced_survive_being_typed_a_named_import() {
+    the_shape_of_javascript_survives_being_typed(0);
+}
+
+#[test]
+fn the_shapes_of_javascript_that_could_be_mis_sliced_survive_being_typed_a_namespace_import() {
+    the_shape_of_javascript_survives_being_typed(1);
+}
+
+#[test]
+fn the_shapes_of_javascript_that_could_be_mis_sliced_survive_being_typed_a_template_literal() {
+    the_shape_of_javascript_survives_being_typed(2);
+}
+
+#[test]
+fn the_shapes_of_javascript_that_could_be_mis_sliced_survive_being_typed_a_regular_expression() {
+    the_shape_of_javascript_survives_being_typed(3);
+}
+
+#[test]
+fn the_shapes_of_javascript_that_could_be_mis_sliced_survive_being_typed_a_class_with_a_static_getter(
+) {
+    the_shape_of_javascript_survives_being_typed(4);
+}
+
+#[test]
+fn the_shapes_of_javascript_that_could_be_mis_sliced_survive_being_typed_an_accented_identifier() {
+    the_shape_of_javascript_survives_being_typed(5);
+}
+
+#[test]
+fn the_shapes_of_javascript_that_could_be_mis_sliced_survive_being_typed_a_comment_naming_a_symbol()
+{
+    the_shape_of_javascript_survives_being_typed(6);
+}
+
+#[test]
+fn the_shapes_of_javascript_that_could_be_mis_sliced_survive_being_typed_an_unclosed_string() {
+    the_shape_of_javascript_survives_being_typed(7);
+}
+
+#[test]
+fn the_shapes_of_javascript_that_could_be_mis_sliced_survive_being_typed_spread_syntax() {
+    the_shape_of_javascript_survives_being_typed(8);
+}
+
+#[test]
+fn the_shapes_of_javascript_that_could_be_mis_sliced_survive_being_typed_an_async_generator() {
+    the_shape_of_javascript_survives_being_typed(9);
 }

@@ -40,7 +40,7 @@ fn a_database_file(name: &str) -> std::path::PathBuf {
     // points, so a folder that changed between runs would put a different string in an accepted
     // image every time. The test's own name is what keeps two of these apart, which is the rule
     // `git_folder(name)` already follows.
-    let folder = std::env::temp_dir().join(format!("unluminous-database-shot-{name}"));
+    let folder = fixtures_root().join(format!("unluminous-database-shot-{name}"));
     let _ = std::fs::create_dir_all(&folder);
     let file = folder.join("library.db");
     let _ = std::fs::remove_file(&file);
@@ -800,7 +800,7 @@ fn add_row_puts_a_row_on_the_screen_that_can_be_typed_into() {
 /// **Not [`fixture`], because what it writes is a database**, made through `inillucent-driver`
 /// rather than by writing bytes.
 fn an_inillucent_file(name: &str) -> std::path::PathBuf {
-    let folder = std::env::temp_dir().join(format!("unluminous-inillucent-shot-{name}"));
+    let folder = fixtures_root().join(format!("unluminous-inillucent-shot-{name}"));
     let _ = std::fs::create_dir_all(&folder);
     let file = folder.join("notes.rdb");
     let _ = std::fs::remove_file(&file);

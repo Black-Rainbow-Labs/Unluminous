@@ -733,7 +733,7 @@ fn the_widgets_play_button_starts_the_chosen_configuration() {
 fn the_flyout_lists_the_permanents_the_temporaries_and_the_suggestions() {
     // A project with a `package.json` in it, so the npm detector has something to say — which is
     // what makes the third kind of row appear at all.
-    let folder = std::env::temp_dir().join("unluminous-run-suggestions");
+    let folder = fixtures_root().join("unluminous-run-suggestions");
     std::fs::create_dir_all(&folder).expect("make the project");
     std::fs::write(
         folder.join("package.json"),
@@ -770,7 +770,7 @@ fn the_flyout_lists_the_permanents_the_temporaries_and_the_suggestions() {
 
 #[test]
 fn running_a_suggestion_keeps_it_as_a_temporary_so_it_can_be_run_again() {
-    let folder = std::env::temp_dir().join("unluminous-run-suggestion-kept");
+    let folder = fixtures_root().join("unluminous-run-suggestion-kept");
     std::fs::create_dir_all(&folder).expect("make the project");
     std::fs::write(folder.join("Cargo.toml"), "[package]\nname = \"thing\"\n").expect("write it");
     let mut harness = harness_in(&folder);
@@ -794,7 +794,7 @@ fn running_a_suggestion_keeps_it_as_a_temporary_so_it_can_be_run_again() {
 fn run_current_file_is_offered_for_a_javascript_file_and_not_for_a_rust_one() {
     // The plugin's own `run.file`, asked at the moment of use — so switching the JavaScript plugin
     // off withdraws it in the same frame.
-    let folder = std::env::temp_dir().join("unluminous-run-current-file");
+    let folder = fixtures_root().join("unluminous-run-current-file");
     std::fs::create_dir_all(&folder).expect("make the project");
     std::fs::write(folder.join("server.js"), "console.log('hello')\n").expect("write it");
     std::fs::write(folder.join("main.rs"), "fn main() {}\n").expect("write it");
@@ -829,7 +829,7 @@ fn a_program_that_prints_and_stops_leaves_what_it_printed_in_its_tab() {
     //
     // The fix is that `UnluminousApp::run_grid_size` works the size out from the rectangle the tile
     // really has, so there is no resize at all. What proves it is a program that prints and stops.
-    let folder = std::env::temp_dir().join("unluminous-run-prints-and-stops");
+    let folder = fixtures_root().join("unluminous-run-prints-and-stops");
     std::fs::create_dir_all(&folder).expect("make the project");
     let mut harness = harness_in(&folder);
 
@@ -1029,7 +1029,7 @@ fn the_folder_button_asks_the_picker_and_stores_a_folder_inside_the_project_rela
     assert_eq!(held, "backend");
 
     // A folder outside the project is stored as the absolute path it is.
-    let elsewhere = std::env::temp_dir().join("unluminous-run-directory-outside");
+    let elsewhere = fixtures_root().join("unluminous-run-directory-outside");
     harness.state_mut().set_run_directory("serve", &elsewhere);
     let held = harness.state().run_configurations.find("serve").expect("serve").1.directory.clone();
     assert_eq!(held, elsewhere.display().to_string());
@@ -1057,7 +1057,7 @@ fn a_project_comes_back_with_its_configurations_and_the_choice_it_still_has() {
     // in `workspace.conf` beside the terminal's flags. A **temporary** is deliberately not written
     // down, so a project that had one chosen comes back with nothing chosen rather than offering to
     // run something that is not there.
-    let root = std::env::temp_dir().join("unluminous-run-remembered");
+    let root = fixtures_root().join("unluminous-run-remembered");
     std::fs::remove_dir_all(&root).ok();
     std::fs::create_dir_all(&root).expect("make the project");
     let mut configurations = RunConfigurations::new();
