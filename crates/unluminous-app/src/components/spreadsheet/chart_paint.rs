@@ -607,7 +607,6 @@ fn draw_axes(painter: &egui::Painter, f: &Frame2d, plot: &Plot, chart: &Chart, c
                 let text = unluminous_sheet_trim(c, if vertical { 12 } else { 10 });
                 if vertical {
                     let y = if p.reverse { inner.top() + along } else { inner.bottom() - along };
-                    let y = if horizontal_bars { inner.top() + along } else { y };
                     painter.text(Pos2::new(inner.left() - 5.0, y), egui::Align2::RIGHT_CENTER, text, m.label(), colours.dim);
                 } else {
                     let x = if p.reverse { inner.right() - along } else { inner.left() + along };
@@ -706,6 +705,8 @@ struct Mapper {
     inner: Rect,
     horizontal: bool,
     cat_count: usize,
+    /// The category axis runs from the far end.
+    cat_reverse: bool,
     value: Option<(f64, f64, bool, bool)>,
     x_scale: Option<(f64, f64, bool, bool)>,
 }
@@ -719,6 +720,7 @@ impl Mapper {
             inner: f.inner,
             horizontal: group.kind == GroupKind::Bar && group.horizontal,
             cat_count,
+            cat_reverse: cat.is_some_and(|c| c.reverse),
             value: scale(val),
             x_scale: if matches!(group.kind, GroupKind::Scatter | GroupKind::Bubble) { scale(cat) } else { None },
         }
@@ -744,8 +746,24 @@ impl Mapper {
         }
     }
 
+    /// How far along the category axis the middle of a category is, from the bottom or the left.
     fn band_fraction(&self, index: usize) -> f32 {
-        (index as f32 + 0.5) / self.cat_count.max(1) as f32
+        let f = (index as f32 + 0.5) / self.cat_count.max(1) as f32;
+        if self.cat_reverse {
+            1.0 - f
+        } else {
+            f
+        }
+    }
+
+    /// The place of a category's band along the axis, counted from the left of a column chart or the top of
+    /// a bar chart: bar charts list their first category at the bottom.
+    fn slot(&self, index: usize) -> usize {
+        if self.cat_reverse != self.horizontal {
+            self.cat_count.saturating_sub(1 + index)
+        } else {
+            index
+        }
     }
 }
 
@@ -785,7 +803,7 @@ fn draw_bars(painter: &egui::Painter, f: &Frame2d, map: &Mapper, members: &[&Plo
         for (i, v) in s.values.iter().enumerate() {
             let Some(v) = v else { continue };
             let (a, b) = if stacked { (map.v(s.base[i]), map.v(s.top[i].unwrap_or(0.0))) } else { (zero, map.v(*v)) };
-            let slot = if map.horizontal { (map.cat_count - 1 - i) as f32 * band + offset } else { i as f32 * band + offset };
+            let slot = map.slot(i) as f32 * band + offset;
             let rect = if map.horizontal { geo::bar(f.inner, slot, width, a, b) } else { geo::column(f.inner, slot, width, a, b) };
             let fill = fmt
                 .points

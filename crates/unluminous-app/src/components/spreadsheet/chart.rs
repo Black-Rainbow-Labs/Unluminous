@@ -89,6 +89,19 @@ pub fn show_pictures(ui: &egui::Ui, book: &mut Book, frame: Frame) {
     }
 }
 
+/// Draw the chart of a chart sheet, filling the area; the sheet showing is a chart sheet. Answers whether the
+/// chart was pressed.
+pub fn show_chart_sheet(ui: &egui::Ui, book: &Book, area: Rect, ink: &Ink, look: &Look<'_>) -> bool {
+    let sheet = &book.session.book.sheets[book.view.sheet];
+    let Some(chart) = sheet.charts.first() else { return false };
+    let painter = ui.painter_at(area);
+    painter.rect_filled(area, 0, ink.paper);
+    let response = ui.interact(area, ui.id().with(("chart-sheet", &book.key)), egui::Sense::click());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Chart".to_owned()));
+    draw_one(&painter, book, chart, area.shrink(16.0), ink, look, 1.0);
+    response.clicked() || response.secondary_clicked()
+}
+
 /// Draw every chart of the sheet showing. Answers the chart pressed, by its place in the sheet's list.
 pub fn show(
     ui: &egui::Ui,

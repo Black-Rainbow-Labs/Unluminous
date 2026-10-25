@@ -757,3 +757,68 @@ fn the_newer_charts_get_their_figures() {
     }
     assert!(s.clone().insert_chart(0, range, ChartType::Map, None).is_err());
 }
+
+// ---------------------------------------------------------------------------------------------------
+// A chart written from the model says what the chart Excel wrote said.
+
+/// The tags and text of an XML part, with the caches Excel stores beside every reference left out.
+fn tokens(xml: &str) -> Vec<String> {
+    let mut stripped = String::new();
+    let mut rest = xml;
+    while let Some(at) = rest.find("<c:strCache>").into_iter().chain(rest.find("<c:numCache>")).min() {
+        stripped.push_str(&rest[..at]);
+        let close = if rest[at..].starts_with("<c:strCache>") { "</c:strCache>" } else { "</c:numCache>" };
+        let end = rest[at..].find(close).map_or(rest.len(), |e| at + e + close.len());
+        rest = &rest[end..];
+    }
+    stripped.push_str(rest);
+    let mut out = Vec::new();
+    let mut text = String::new();
+    for c in stripped.chars() {
+        match c {
+            '<' => {
+                if !text.trim().is_empty() {
+                    out.push(text.trim().to_owned());
+                }
+                text.clear();
+                text.push('<');
+            }
+            '>' => {
+                text.push('>');
+                out.push(std::mem::take(&mut text));
+            }
+            c => text.push(c),
+        }
+    }
+    out.into_iter().filter(|t| !t.starts_with("<?xml")).collect()
+}
+
+#[test]
+fn every_classic_chart_written_from_the_model_has_the_tags_of_the_one_excel_wrote() {
+    let original = fixture("14-charts.xlsx");
+    let mut book = unluminous_sheet::xlsx::read(&original).unwrap();
+    for sheet in &mut book.sheets {
+        for chart in &mut sheet.charts {
+            chart.spec.dirty = true;
+        }
+    }
+    let again = unluminous_sheet::xlsx::write(&book).unwrap();
+    let folders = ["xl/charts/chart"];
+    let before = parts_under(&original, &folders);
+    let after = parts_under(&again, &folders);
+    let mut compared = 0;
+    for ((name, a), (_, b)) in before.iter().zip(&after) {
+        if name.contains("chartEx") || !name.ends_with(".xml") || name.contains("_rels") {
+            continue;
+        }
+        let (ta, mut tb) = (tokens(&String::from_utf8_lossy(a)), tokens(&String::from_utf8_lossy(b)));
+        if ta.len() + 1 == tb.len() {
+            // Excel leaves out `crosses` on an axis that crosses at the automatic place; it is written.
+            let at = tb.iter().rposition(|t| t == "<c:crosses val=\"autoZero\"/>").expect("one tag more");
+            tb.remove(at);
+        }
+        assert_eq!(ta, tb, "{name}");
+        compared += 1;
+    }
+    assert_eq!(compared, 14);
+}
