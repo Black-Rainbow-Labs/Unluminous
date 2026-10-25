@@ -119,10 +119,12 @@ pub enum FilterKind {
     Percent,
     /// Top or Bottom items adding up to N.
     Sum,
+    /// The dates from `value1` to `value2` (serial numbers, the last day whole), which a timeline sets.
+    DateBetween,
 }
 
 impl FilterKind {
-    pub const ALL: [FilterKind; 25] = [
+    pub const ALL: [FilterKind; 26] = [
         FilterKind::CaptionEqual,
         FilterKind::CaptionNotEqual,
         FilterKind::CaptionBeginsWith,
@@ -148,6 +150,7 @@ impl FilterKind {
         FilterKind::Count,
         FilterKind::Percent,
         FilterKind::Sum,
+        FilterKind::DateBetween,
     ];
 
     pub fn xml(&self) -> &'static str {
@@ -177,6 +180,7 @@ impl FilterKind {
             FilterKind::Count => "count",
             FilterKind::Percent => "percent",
             FilterKind::Sum => "sum",
+            FilterKind::DateBetween => "dateBetween",
         }
     }
 
@@ -202,6 +206,7 @@ impl FilterKind {
                 | FilterKind::CaptionLessThanOrEqual
                 | FilterKind::CaptionBetween
                 | FilterKind::CaptionNotBetween
+                | FilterKind::DateBetween
         )
     }
 

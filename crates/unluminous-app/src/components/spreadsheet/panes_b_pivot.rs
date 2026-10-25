@@ -4,7 +4,6 @@
 
 use egui::{Pos2, Rect, Vec2};
 use unluminous_sheet::coord::CellRef;
-use unluminous_sheet::pivot::cache::CacheValue;
 use unluminous_sheet::pivot::table::AxisEntry;
 
 use super::grid::Frame;
@@ -13,7 +12,7 @@ use crate::services::plugin_ui::Look;
 use crate::services::spreadsheet::catalogue::Item;
 use crate::services::spreadsheet::verbs_b_pivot::{area_of_field, func_word};
 use crate::services::spreadsheet::view::Prompt;
-use crate::services::spreadsheet::{catalogue_b, verbs_b_pivot_more, Book};
+use crate::services::spreadsheet::{catalogue_b, verbs_b_slicers, Book};
 
 type Words = Vec<Vec<String>>;
 
@@ -315,17 +314,22 @@ fn field_menu(
 
 // ------------------------------------------------------------------------------------------- slicers
 
+/// Draw each slicer of the sheet at its frame; a click pushes the `slicer select` words.
 fn slicers(ui: &egui::Ui, book: &mut Book, frame: Frame, look: &Look<'_>, words: &mut Words) {
     if book.view.axes.is_none() {
         return;
     }
-    let all = book.view.lane_b.slicers.clone();
-    for s in all.iter().filter(|s| s.sheet == book.view.sheet) {
-        let spot = frame.cell(book, s.at);
+    let sheet_name = book.session.book.sheets[book.view.sheet].name.clone();
+    for data in verbs_b_slicers::slicers_json(book) {
+        if data["sheet"].as_str() != Some(sheet_name.as_str()) {
+            continue;
+        }
+        let name = data["name"].as_str().unwrap_or("").to_owned();
+        let Some((_, at)) = verbs_b_slicers::frame_at(book, "slicer", &name) else { continue };
+        let spot = frame.cell(book, at);
         if !frame.cells.contains(spot.min) {
             continue;
         }
-        let data = verbs_b_pivot_more::slicer_json(book, s);
         let items: Vec<(String, bool)> = data["items"]
             .as_array()
             .map(|a| {
@@ -339,27 +343,22 @@ fn slicers(ui: &egui::Ui, book: &mut Book, frame: Frame, look: &Look<'_>, words:
                     .collect()
             })
             .unwrap_or_default();
-        let id = egui::Id::new(("spreadsheet-slicer", &book.key, &s.name));
+        let id = egui::Id::new(("spreadsheet-slicer", &book.key, &name));
         let ctrl = ui.input(|i| i.modifiers.command);
         card(ui, look, id, spot.min, |ui| {
             ui.set_width(150.0);
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(&s.name).strong().color(look.palette.text_strong));
+                ui.label(egui::RichText::new(&name).strong().color(look.palette.text_strong));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if button(ui, "\u{2715}", &format!("Clear filter {}", s.name)) {
-                        words.push(vec![
-                            "slicer".into(),
-                            "select".into(),
-                            s.name.clone(),
-                            "all".into(),
-                        ]);
+                    if button(ui, "\u{2715}", &format!("Clear filter {name}")) {
+                        words.push(vec!["slicer".into(), "select".into(), name.clone(), "all".into()]);
                     }
                 });
             });
-            for (name, selected) in &items {
-                if ui.selectable_label(*selected, name).clicked() {
-                    let chosen = chosen_after_click(&items, name, ctrl);
-                    words.push(vec!["slicer".into(), "select".into(), s.name.clone(), chosen]);
+            for (item, selected) in &items {
+                if ui.selectable_label(*selected, item).clicked() {
+                    let chosen = chosen_after_click(&items, item, ctrl);
+                    words.push(vec!["slicer".into(), "select".into(), name.clone(), chosen]);
                 }
             }
         });
@@ -386,39 +385,41 @@ pub fn chosen_after_click(items: &[(String, bool)], clicked: &str, ctrl: bool) -
 
 // ----------------------------------------------------------------------------------------- timelines
 
+/// Draw each timeline of the sheet; a month button pushes the `timeline select` words.
 fn timelines(ui: &egui::Ui, book: &mut Book, frame: Frame, look: &Look<'_>, words: &mut Words) {
     if book.view.axes.is_none() {
         return;
     }
-    let all = book.view.lane_b.timelines.clone();
-    for x in all.iter().filter(|x| x.sheet == book.view.sheet) {
-        let spot = frame.cell(book, x.at);
+    let sheet_name = book.session.book.sheets[book.view.sheet].name.clone();
+    for data in verbs_b_slicers::timelines_json(book) {
+        if data["sheet"].as_str() != Some(sheet_name.as_str()) {
+            continue;
+        }
+        let name = data["name"].as_str().unwrap_or("").to_owned();
+        let Some((_, at)) = verbs_b_slicers::frame_at(book, "timeslicer", &name) else { continue };
+        let spot = frame.cell(book, at);
         if !frame.cells.contains(spot.min) {
             continue;
         }
-        let months = months_of(book, x);
-        let id = egui::Id::new(("spreadsheet-timeline", &book.key, &x.name));
+        let span = span_of(&data);
+        let months = months_of(&data);
+        let id = egui::Id::new(("spreadsheet-timeline", &book.key, &name));
         card(ui, look, id, spot.min, |ui| {
             ui.set_width(220.0);
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(&x.name).strong().color(look.palette.text_strong));
-                if button(ui, "All periods", &format!("All periods {}", x.name)) {
-                    words.push(vec![
-                        "timeline".into(),
-                        "select".into(),
-                        x.name.clone(),
-                        "all".into(),
-                    ]);
+                ui.label(egui::RichText::new(&name).strong().color(look.palette.text_strong));
+                if button(ui, "All periods", &format!("All periods {name}")) {
+                    words.push(vec!["timeline".into(), "select".into(), name.clone(), "all".into()]);
                 }
             });
             ui.horizontal_wrapped(|ui| {
                 for (label, first, last) in &months {
-                    let on = x.span.is_some_and(|(a, b)| a <= *first && b >= *last);
+                    let on = span.is_some_and(|(a, b)| a <= *first && b >= *last);
                     if ui.selectable_label(on, label).clicked() {
                         words.push(vec![
                             "timeline".into(),
                             "select".into(),
-                            x.name.clone(),
+                            name.clone(),
                             first.to_string(),
                             last.to_string(),
                         ]);
@@ -429,37 +430,32 @@ fn timelines(ui: &egui::Ui, book: &mut Book, frame: Frame, look: &Look<'_>, word
     }
 }
 
-/// The months the dates of a timeline's field fall in: a label and the first and last serial of each.
-fn months_of(
-    book: &Book,
-    x: &crate::services::spreadsheet::view_b::Timeline,
-) -> Vec<(String, f64, f64)> {
-    let pivots = &book.session.book.pivots;
-    let Some(t) = pivots.find(&x.pivot) else { return Vec::new() };
-    let Ok(f) = crate::services::spreadsheet::verbs_b_pivot::field_in(book, t, &x.field) else {
-        return Vec::new();
+/// The serial dates a timeline keeps, when it keeps a span.
+fn span_of(data: &serde_json::Value) -> Option<(f64, f64)> {
+    let date = |key: &str| {
+        let text = data[key].as_str()?;
+        unluminous_sheet::input::date_time_from_text(text.split('T').next()?, false)
     };
-    let cache = &pivots.caches[pivots.tables[t].cache];
-    let mut months: Vec<(i64, u32)> = cache.fields[f]
-        .items()
-        .iter()
-        .filter_map(|v| match v {
-            CacheValue::Date(n) | CacheValue::Number(n) => {
-                unluminous_sheet::dates::date(*n, false).map(|(y, m, _)| (y, m))
-            }
-            _ => None,
-        })
-        .collect();
-    months.sort_unstable();
-    months.dedup();
-    months
-        .into_iter()
-        .filter_map(|(y, m)| {
-            let first = unluminous_sheet::dates::serial(y, m as i64, 1, false)?;
-            let last = first + unluminous_sheet::dates::days_in_month(y, m) as f64 - 1.0;
-            Some((format!("{} {y}", MONTHS[m as usize - 1]), first, last))
-        })
-        .collect()
+    Some((date("from")?, date("to")?))
+}
+
+/// The months a timeline's bounds cover: a label and the first and last serial of each.
+fn months_of(data: &serde_json::Value) -> Vec<(String, f64, f64)> {
+    let date = |key: &str| {
+        let text = data["bounds"][if key == "a" { 0 } else { 1 }].as_str()?;
+        unluminous_sheet::input::date_time_from_text(text.split('T').next()?, false)
+    };
+    let (Some(a), Some(b)) = (date("a"), date("b")) else { return Vec::new() };
+    let mut out = Vec::new();
+    let mut at = a;
+    while at < b && out.len() < 36 {
+        let Some((y, m, _)) = unluminous_sheet::dates::date(at, false) else { break };
+        let Some(first) = unluminous_sheet::dates::serial(y, m as i64, 1, false) else { break };
+        let last = first + unluminous_sheet::dates::days_in_month(y, m) as f64 - 1.0;
+        out.push((format!("{} {y}", MONTHS[m as usize - 1]), first, last));
+        at = last + 1.0;
+    }
+    out
 }
 
 const MONTHS: [&str; 12] =

@@ -6,7 +6,6 @@
 //! writes both. Positions are in points from the top left corner of the paper, as that writer wants them.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use ab_glyph::{Font, FontRef};
 use unluminous_core::{CharStyle, Color};

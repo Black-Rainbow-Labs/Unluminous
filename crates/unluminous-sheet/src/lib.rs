@@ -47,6 +47,7 @@ pub mod pages;
 pub mod pivot;
 pub mod protect;
 pub mod refshift;
+pub mod slicers;
 pub mod styles;
 pub mod theme;
 pub mod value;

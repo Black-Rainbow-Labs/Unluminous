@@ -352,7 +352,7 @@ fn pivot_filters_sorts_slicers_and_refresh_follow_the_data() {
     assert_eq!(text(&mut sheet, "E2"), "Tea");
     run(&mut sheet, "slicer add Item in Sales name Items");
     let selected = run(&mut sheet, "slicer select Items Cake");
-    let items = selected.value["items"].as_array().unwrap();
+    let items = selected.value[0]["items"].as_array().unwrap();
     assert!(items.iter().any(|i| i["name"] == "Tea" && i["selected"] == false));
     assert!(!read_text(&mut sheet, "E1:F4").contains("Tea"), "the slicer hid Tea");
     run(&mut sheet, "slicer select Items all");

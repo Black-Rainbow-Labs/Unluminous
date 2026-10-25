@@ -212,6 +212,7 @@ impl<'a> Calc<'a> {
         let mut used: Vec<usize> = self.rows.fields.clone();
         used.extend(self.cols.fields.iter().copied());
         used.extend(self.table.pages.iter().map(|p| p.field));
+        used.extend(filter_only_fields(self.table));
         for &f in &used {
             if self.items_of.contains_key(&f) {
                 continue;
@@ -241,7 +242,13 @@ impl<'a> Calc<'a> {
                     .filters
                     .iter()
                     .filter(|f| !f.kind.is_value())
-                    .all(|f| caption_matches(f, &text));
+                    .all(|f| match f.kind {
+                        FilterKind::DateBetween => {
+                            let item = self.cache.fields[field].items().get(entry.x);
+                            date_matches(f, item.and_then(super::cache::CacheValue::number))
+                        }
+                        _ => caption_matches(f, &text),
+                    });
             }
             out.push(ok);
         }
@@ -430,13 +437,19 @@ impl<'a> Calc<'a> {
     }
 
     fn page_ok(&self, rec: usize) -> bool {
-        self.table.pages.iter().all(|p| {
+        let pages_ok = self.table.pages.iter().all(|p| {
             let Some(x) = self.items_of[&p.field][rec] else { return false };
             match self.table.fields[p.field].position_of(x) {
                 Some(pos) => self.allowed[&p.field][pos],
                 None => false,
             }
-        })
+        });
+        // A field with a filter that is in no area, as a timeline's date field is, still filters the records.
+        pages_ok
+            && filter_only_fields(self.table).into_iter().all(|f| {
+                let Some(x) = self.items_of[&f][rec] else { return false };
+                self.table.fields[f].position_of(x).is_some_and(|pos| self.allowed[&f][pos])
+            })
     }
 
     fn scan(&mut self) {
@@ -758,6 +771,25 @@ fn descend(axis: &mut Axis, index: &mut HashMap<(usize, usize), usize>, path: &[
         };
     }
     at
+}
+
+/// The fields in no area that carry a label or date filter.
+fn filter_only_fields(table: &PivotTable) -> Vec<usize> {
+    let used = table.used_fields();
+    (0..table.fields.len())
+        .filter(|f| !used.contains(f))
+        .filter(|f| {
+            let pf = &table.fields[*f];
+            !pf.items.is_empty() && pf.filters.iter().any(|x| !x.kind.is_value())
+        })
+        .collect()
+}
+
+/// Whether the date of an item is in the days a timeline's filter keeps, the last day included whole.
+fn date_matches(filter: &Filter, date: Option<f64>) -> bool {
+    let first: f64 = filter.value1.trim().parse().unwrap_or(f64::NEG_INFINITY);
+    let last: f64 = filter.value2.as_deref().unwrap_or("").trim().parse().unwrap_or(f64::INFINITY);
+    date.is_some_and(|d| d >= first && d < last.floor() + 1.0)
 }
 
 /// Whether the text of an item passes a label filter.
