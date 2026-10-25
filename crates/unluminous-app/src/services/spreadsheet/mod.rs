@@ -12,6 +12,7 @@
 pub mod actions;
 pub mod axis;
 pub mod catalogue;
+pub mod catalogue_a;
 pub mod commands;
 pub mod conditional;
 pub mod config;
@@ -20,10 +21,19 @@ pub mod entry;
 pub mod formula_text;
 pub mod names;
 pub mod verbs;
+pub mod verbs_a;
+pub mod verbs_a_data;
+pub mod verbs_a_outline;
+pub mod verbs_a_read;
+pub mod verbs_a_review;
+pub mod verbs_a_whatif;
 pub mod view;
+pub mod view_a;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_a;
 
 use std::path::{Path, PathBuf};
 

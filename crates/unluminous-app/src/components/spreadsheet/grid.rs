@@ -292,7 +292,8 @@ pub fn show(
     read_the_wheel(ui, &response, book, panes[under].frame, zoom, panes[under].scrolls);
     panes = layout.panes(book);
     let split = read_the_split_bars(ui, &response, book, &layout);
-    if !split {
+    let on_outline = super::overlay_a::over_outline(ui, book, &layout, panes[under].frame);
+    if !split && !on_outline {
         read_the_pointer(ui, &response, book, panes[under].frame, area, pointing, out);
     }
     panes = layout.panes(book);
@@ -309,6 +310,7 @@ pub fn show(
         draw_headers(ui, book, pane, &ink, look);
     }
     draw_corner(ui, &layout, &ink, look);
+    super::overlay_a::draw(ui, look, book, &layout, &panes, &ink, out);
 }
 
 /// Where the parts of the grid go this frame: the header strips, and the cells beside them.
@@ -1261,6 +1263,8 @@ fn draw_cells(
     let mut doubles: Vec<(Pos2, Pos2, Stroke)> = Vec::new();
     let mut notes: Vec<Pos2> = Vec::new();
     let mut bars: Vec<(Rect, Color32)> = Vec::new();
+    let mut bar_edges: Vec<(Rect, Color32)> = Vec::new();
+    let mut icons: Vec<(Rect, unluminous_sheet::conditional::IconPick)> = Vec::new();
     let mut filter_cells: Vec<CellRef> = Vec::new();
     if let Some(filter) = &sheet.filter {
         for col in filter.range.first.col..=filter.range.last.col {
@@ -1327,12 +1331,17 @@ fn draw_cells(
             }
             None => {}
         }
-        if let Some((fraction, color)) = effect.bar {
+        if let Some(shape) = &effect.bar_shape {
+            super::overlay_a::data_bar(rect, shape, &mut bars, &mut bar_edges);
+        } else if let Some((fraction, color)) = effect.bar {
             let bar = Rect::from_min_size(
                 rect.min + Vec2::new(1.0, 2.0),
                 Vec2::new((rect.width() - 2.0) * fraction, rect.height() - 4.0),
             );
             bars.push((bar, rgb(color)));
+        }
+        if let Some(pick) = effect.icon.clone().filter(|p| !p.hidden) {
+            icons.push((rect, pick));
         }
         // Borders.
         let edge = |line: Option<display::Line>,
@@ -1520,6 +1529,12 @@ fn draw_cells(
     }
     for (bar, color) in bars {
         painter.rect_filled(bar, 1, color.gamma_multiply(0.75));
+    }
+    for (bar, color) in bar_edges {
+        painter.rect_stroke(bar, 1, Stroke::new(1.0, color), egui::StrokeKind::Inside);
+    }
+    for (rect, pick) in icons {
+        super::overlay_a::icon(&painter, rect, &pick);
     }
     for (a, b, stroke) in lines {
         painter.line_segment([a, b], stroke);

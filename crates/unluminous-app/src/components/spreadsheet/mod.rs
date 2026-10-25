@@ -14,6 +14,8 @@ pub mod keys;
 pub mod menus;
 pub mod objects;
 pub mod sparkline;
+pub mod overlay_a;
+pub mod panes_a;
 
 use egui::{CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 use unluminous_sheet::coord::{column_name, CellRef};
@@ -179,6 +181,11 @@ fn draw(
         asked.requests.push(Request::TakeTheKeyboard(true));
     }
     after_the_grid(ui, book, look, &mut out, asked);
+    if let Some(col) = book.view.audit.open_filter.take() {
+        book.filter_values = filter_values(book, col);
+        let header = unluminous_sheet::coord::CellRef::new(book.session.book.sheets[book.view.sheet].filter.as_ref().map_or(0, |f| f.range.first.row), col);
+        book.view.filter_menu = Some((col, grid::filter_button(book, frame, header).left_bottom()));
+    }
     if book.view.edit.as_ref().is_some_and(|e| !e.in_bar) {
         editor::show_cell_box(ui, book, frame, &ink);
     }
@@ -194,6 +201,7 @@ fn draw(
     show_list_button(ui, book, frame, look, asked);
     show_input_message(ui, book, frame, look);
     show_note_under_the_pointer(ui, book, frame, look);
+    panes_a::show(ui, book, frame, look, &mut asked.words);
     show_sheet_tabs(ui, sheets, book, look, asked);
     // The panel is drawn from the frame after `Format` opened it, when the grid has made room for it.
     if book.view.panel.is_some() && panel_area.width() > 40.0 {
