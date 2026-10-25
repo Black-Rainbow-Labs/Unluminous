@@ -340,7 +340,7 @@ pub fn first_cell(ctx: &mut Ctx, expr: &Expr) -> Val {
             Some(area) => Val::Ref(crate::eval::Area {
                 range: crate::coord::Range::cell(area.range.first),
                 sheet_last: area.sheet,
-                ..area.clone()
+                ..*area
             }),
             None => Val::error(ErrorKind::Value),
         },
