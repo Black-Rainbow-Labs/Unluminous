@@ -78,7 +78,7 @@ pub fn save_through_word(bytes: &[u8], path: &Path, format: &str) -> Result<(), 
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_nanos())
     ));
-    std::fs::write(&source, bytes)
+    crate::services::store::write_atomically(&source, bytes)
         .map_err(|e| format!("{} could not be written: {e}", source.display()))?;
     let result = unluminous_word::convert::convert(&source, path, format);
     let _ = std::fs::remove_file(&source);

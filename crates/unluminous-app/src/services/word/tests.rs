@@ -433,7 +433,7 @@ fn an_encrypted_document_waits_for_its_password() {
 fn markdown_opens_as_a_document_and_saves_as_docx() {
     let folder = scratch_folder("markdown");
     let source = folder.join("notes.md");
-    std::fs::write(&source, "# Notes\n\n- one\n- two\n").unwrap();
+    crate::services::store::write_atomically(&source, b"# Notes\n\n- one\n- two\n").unwrap();
     let mut word = Word::new();
     word.open(&crate::services::plugin_ui::Context::default()).unwrap();
     run(&mut word, &format!("open --as-document {}", source.display()));

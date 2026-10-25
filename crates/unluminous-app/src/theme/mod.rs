@@ -278,6 +278,12 @@ palette! {
     /// The caret on the Word page.
     word_caret = Color32::from_rgb(0x00, 0x00, 0x00);
 
+    /// Word's field shading, the light grey behind a field on the page.
+    word_field_shading = Color32::from_rgb(0xD9, 0xD9, 0xD9);
+
+    /// The drawing grid over a Word page when Gridlines is on.
+    word_grid = Color32::from_rgb(0xC8, 0xD6, 0xF0);
+
     /// The swatch on the Highlight button, which is Word's yellow highlight.
     word_highlight = Color32::from_rgb(0xFF, 0xE6, 0x00);
 
@@ -364,6 +370,8 @@ impl Palette {
         word_selection: Color32::from_rgb(0xB4, 0xD5, 0xFE),
         word_marks: Color32::from_rgb(0x7A, 0x8C, 0xC8),
         word_caret: Color32::from_rgb(0x00, 0x00, 0x00),
+        word_field_shading: Color32::from_rgb(0xD9, 0xD9, 0xD9),
+        word_grid: Color32::from_rgb(0xC8, 0xD6, 0xF0),
         word_highlight: Color32::from_rgb(0xFF, 0xE6, 0x00),
         word_spelling: Color32::from_rgb(0xE0, 0x30, 0x30),
     };

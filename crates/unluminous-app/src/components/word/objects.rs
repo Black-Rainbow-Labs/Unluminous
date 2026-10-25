@@ -397,8 +397,8 @@ pub fn paint(painter: &egui::Painter, doc: &Doc, area: Rect, free: bool) {
             } else {
                 Vec2::splat(8.0)
             };
-            painter.rect_filled(Rect::from_center_size(point, size), 0.0, Color32::from_gray(20));
-        // any ground: Word's crop handles are black
+            let handle = Color32::from_gray(20); // any ground: Word's crop handles are black on paper
+            painter.rect_filled(Rect::from_center_size(point, size), 0.0, handle);
         } else {
             painter.circle_filled(point, 4.0, Color32::WHITE); // any ground: a handle sits on the page
             painter.circle_stroke(point, 4.0, Stroke::new(1.0, accent));

@@ -119,11 +119,8 @@ fn paint_thumbnail(
 ) {
     use unluminous_word::layout::Item;
     let paper = crate::theme::color::word_paper();
-    painter.rect_filled(
-        sheet.translate(Vec2::new(0.0, 1.5)),
-        1.0,
-        egui::Color32::from_black_alpha(60),
-    ); // any ground: the sheet's shadow
+    let shadow = egui::Color32::from_black_alpha(60); // any ground: the shadow under a sheet of paper
+    painter.rect_filled(sheet.translate(Vec2::new(0.0, 1.5)), 1.0, shadow);
     painter.rect_filled(sheet, 0.0, paper);
     let at = |x: f32, y: f32| sheet.min + Vec2::new(x * scale, y * scale);
     let grey = egui::Color32::from_gray(150); // any ground: text drawn on the white sheet
@@ -150,8 +147,8 @@ fn paint_thumbnail(
                         Vec2::new(rect.w * scale, rect.h * scale),
                     ),
                     0.0,
-                    egui::Color32::from_gray(205),
-                ); // any ground: on the sheet
+                    picture_grey(),
+                );
             }
             Item::Fill { rect, color } => {
                 painter.rect_filled(
@@ -230,4 +227,9 @@ fn results(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc) {
         doc.session.selection = hit;
         doc.view.reveal = true;
     }
+}
+
+/// A picture's place on a thumbnail, a grey box on the paper.
+fn picture_grey() -> egui::Color32 {
+    egui::Color32::from_gray(205) // any ground: drawn on the sheet of paper
 }

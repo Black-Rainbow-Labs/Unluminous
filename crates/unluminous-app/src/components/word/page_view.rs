@@ -528,7 +528,7 @@ fn paint_field_shading(
     let colour = if doc.view.dark {
         crate::theme::color::text_dim().gamma_multiply(0.25)
     } else {
-        Color32::from_rgb(0xD9, 0xD9, 0xD9)
+        crate::theme::color::word_field_shading()
     };
     for (start, end) in fields {
         let shown = doc.view.field_shading == "always"
@@ -711,7 +711,7 @@ fn paint_gridlines(
         .and_then(|p| p.parse::<f32>().ok())
         .map_or(18.0, |twips| twips / 20.0)
         .max(4.0);
-    let stroke = Stroke::new(0.5, Color32::from_rgba_unmultiplied(80, 120, 200, 70)); // any ground: a faint blue grid on paper
+    let stroke = Stroke::new(0.5, crate::theme::color::word_grid());
     let (left, right) =
         (origin.x + page.body.x * zoom, origin.x + (page.body.x + page.body.w) * zoom);
     let mut y = page.body.y;
