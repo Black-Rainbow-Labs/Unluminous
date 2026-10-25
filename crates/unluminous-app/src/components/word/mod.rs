@@ -8,6 +8,7 @@
 pub mod format_bar;
 pub mod keys;
 pub mod navigation;
+pub mod objects;
 pub mod overlays;
 pub mod page_view;
 pub mod panel;

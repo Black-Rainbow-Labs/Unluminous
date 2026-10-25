@@ -154,9 +154,11 @@ pub fn show(
             super::spelling::paint(&painter, doc, index, origin, zoom);
         }
     }
-    if look.has_the_keyboard {
+    if look.has_the_keyboard && doc.session.selected_object().is_none() {
         paint_caret(ui, &painter, doc, area, &tops);
     }
+    let free = ui.input(|i| i.modifiers.shift);
+    super::objects::paint(&painter, doc, area, free);
     paint_header_frame(&painter, doc, area, &tops);
     if has_comments(doc) {
         paint_comments(ui, look, &painter, doc, area, &tops);
@@ -467,7 +469,7 @@ fn picture_texture(ui: &egui::Ui, doc: &mut Doc, part: &str) -> Option<egui::Tex
         .document
         .package
         .part(part)
-        .and_then(|bytes| crate::services::picture::decode_bytes(bytes).ok())
+        .and_then(|bytes| crate::services::picture::decode_any(bytes).ok())
         .map(|image| {
             ui.ctx().load_texture(
                 format!("word-picture-{}-{part}", doc.key),
@@ -692,6 +694,20 @@ Ctrl+click to follow the link"
                 return;
             }
         }
+    }
+    // A picture, shape or text box: its handles, or the object itself (task-2359, TDD 5.3).
+    if doc.view.object_drag.is_some() {
+        super::objects::drag(doc, area, at);
+        if ui.input(|i| i.pointer.primary_released()) {
+            if let Some(Err(error)) = super::objects::release(doc, area, at, shift) {
+                requests.push(Request::Notice { text: error, kind: crate::components::toast::Kind::Problem });
+            }
+        }
+        return;
+    }
+    if pressed && count == 1 && super::objects::press(doc, area, at) {
+        doc.view.clicks = (now, at, count);
+        return;
     }
     if pressed && count == 1 && !shift && !doc.session.selection.is_empty() {
         if let Some(pos) = hit(doc) {

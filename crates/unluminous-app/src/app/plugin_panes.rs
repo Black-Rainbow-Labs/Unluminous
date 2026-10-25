@@ -742,10 +742,15 @@ impl UnluminousApp {
                     true => crate::services::rich_clipboard::read(),
                     false => (None, None, None),
                 };
+                // A picture, PNG encoded, when the clipboard holds one (task-2359, TDD 5.3).
+                let picture = match self.system_clipboard {
+                    true => crate::services::picture::from_the_clipboard().ok().filter(|p| !p.is_null()),
+                    false => None,
+                };
                 if let Some(provider) = self.plugin_ui.provider(plugin) {
                     provider.answered(
                         &id,
-                        Ok(serde_json::json!({ "html": html, "rtf": rtf, "text": text })),
+                        Ok(serde_json::json!({ "html": html, "rtf": rtf, "text": text, "picture": picture })),
                     );
                 }
             }

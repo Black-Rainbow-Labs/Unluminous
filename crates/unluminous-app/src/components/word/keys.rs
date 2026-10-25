@@ -26,6 +26,12 @@ pub fn claims(key: Key, modifiers: &Modifiers) -> bool {
 /// Every key event this frame.
 pub fn handle(ui: &egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
     let events = ui.input(|i| i.events.clone());
+    // A picture on the clipboard brings no paste event at all (egui reads only the clipboard's text);
+    // the key going back up is the one report of the chord, so it asks the window for a picture.
+    let pasted_text = events.iter().any(|e| matches!(e, Event::Paste(_)));
+    if !pasted_text && crate::components::agent_chat::is_a_paste_chord(&events) {
+        requests.push(Request::ClipboardRich { id: format!("word-paste-picture:{}", doc.key) });
+    }
     for event in events {
         match event {
             Event::Text(text) => type_text(doc, &text),

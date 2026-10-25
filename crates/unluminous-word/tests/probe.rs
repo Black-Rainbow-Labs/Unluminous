@@ -203,3 +203,33 @@ fn notes_probe() {
         }
     }
 }
+
+/// Where each body paragraph's first line starts, page and top, beside Word's report.
+#[test]
+#[ignore]
+fn tops_probe() {
+    let fonts = common::RealFonts::new();
+    let name = std::env::var("PROBE_FIXTURE").unwrap_or_else(|_| "builtin-styles".into());
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/fixtures/{name}.docx"));
+    let document = unluminous_word::read::open(&std::fs::read(&path).unwrap()).unwrap();
+    let pages = unluminous_word::layout::lay_out(&document, &fonts, Default::default());
+    let report: serde_json::Value = serde_json::from_str(
+        std::fs::read_to_string(path.with_extension("word.json")).unwrap().trim_start_matches('\u{feff}'),
+    )
+    .unwrap();
+    let words = report["paragraphs"].as_array().unwrap();
+    for (index, (path, p)) in unluminous_word::position::paragraphs(&document.body).iter().enumerate() {
+        let found = pages.pages.iter().enumerate().find_map(|(n, page)| {
+            page.carets.iter().find(|l| &l.path == path).map(|l| (n + 1, l.top))
+        });
+        let word = words.get(index);
+        println!(
+            "{:3} ours {:?} word {:?} {:?} {}",
+            index + 1,
+            found,
+            word.map(|w| w["page"].clone()),
+            word.map(|w| w["top"].clone()),
+            p.flat_text().chars().take(30).collect::<String>()
+        );
+    }
+}

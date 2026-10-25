@@ -213,13 +213,6 @@ pub fn lay_out(
         Some("right" | "end") => width - total,
         _ => indent,
     };
-    let tbl_look = table.props.child("w:tblLook");
-    let first_row_style = tbl_look.is_none_or(|l| {
-        l.attr("w:firstRow") != Some("0")
-            && l.attr("w:val")
-                .is_none_or(|v| u32::from_str_radix(v, 16).map_or(true, |bits| bits & 0x20 != 0))
-    });
-    let banded = tbl_look.is_none_or(|l| l.attr("w:noHBand") != Some("1"));
     // Every cell laid out first, so a cell merged down several rows can make the last of them taller.
     let mut rows: Vec<Vec<CellPiece>> = Vec::with_capacity(table.rows.len());
     let mut heights: Vec<f32> = Vec::with_capacity(table.rows.len());
@@ -240,6 +233,8 @@ pub fn lay_out(
             prefix.extend([r as u32, c as u32]);
             let mut lines = Vec::new();
             let mut after = 0.0;
+            let kinds = cell_kinds(table, style_el, r, c);
+            let cell_style = style_id.map(|id| crate::styles::cell_style(id, &kinds));
             lay_out_blocks(
                 ctx,
                 counters,
@@ -247,13 +242,15 @@ pub fn lay_out(
                 story,
                 &mut prefix,
                 inner,
-                style_id,
+                cell_style.as_deref(),
                 &mut lines,
                 &mut after,
             );
-            let shading = cell.props.child("w:shd").and_then(props::shading).or_else(|| {
-                conditional_shading(style_el, r, table.rows.len(), first_row_style, banded)
-            });
+            let shading = cell
+                .props
+                .child("w:shd")
+                .and_then(props::shading)
+                .or_else(|| conditional_shading(style_el, &kinds));
             let first_column = c == 0;
             let last_column = c + 1 == row.cells.len();
             let tc = cell.props.child("w:tcBorders");
@@ -612,38 +609,90 @@ fn cell_margins(tcpr: &El, table: (f32, f32, f32, f32)) -> (f32, f32, f32, f32) 
 }
 
 /// The table style's conditional formatting that applies to a row: first row, last row, banded rows.
-fn conditional_style(
-    style: Option<&El>,
-    row: usize,
-    rows: usize,
-    first_row: bool,
-    banded: bool,
-) -> Vec<&El> {
-    let Some(style) = style else { return Vec::new() };
-    let mut kinds = Vec::new();
-    if first_row && row == 0 {
+/// The conditional formats of a table style that cell `cell` of row `row` takes, as `w:tblStylePr`
+/// types, from the table's `w:tblLook` (its flags, or the bits of its older `w:val`) and the style's
+/// band sizes. The bands start after a header row and a first column the look turns on.
+pub fn cell_kinds(table: &Table, style: Option<&El>, row: usize, cell: usize) -> Vec<&'static str> {
+    let look = table.props.child("w:tblLook");
+    let bits = look.and_then(|l| l.attr("w:val")).and_then(|v| u32::from_str_radix(v, 16).ok());
+    let flag = |name: &str, bit: u32, default: bool| -> bool {
+        match look.and_then(|l| l.attr(name)) {
+            Some(v) => v == "1" || v == "true" || v == "on",
+            None => bits.map_or(default, |b| b & bit != 0),
+        }
+    };
+    let first_row = flag("w:firstRow", 0x20, true);
+    let last_row = flag("w:lastRow", 0x40, false);
+    let first_col = flag("w:firstColumn", 0x80, true);
+    let last_col = flag("w:lastColumn", 0x100, false);
+    let no_h_band = flag("w:noHBand", 0x200, false);
+    let no_v_band = flag("w:noVBand", 0x400, true);
+    let rows = table.rows.len();
+    let cells = table.rows.get(row).map_or(0, |r| r.cells.len());
+    let band = |name: &str| {
+        style
+            .and_then(|s| s.child("w:tblPr"))
+            .and_then(|p| p.val_of(name))
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(1)
+            .max(1)
+    };
+    let mut kinds = vec!["wholeTable"];
+    let is_first_row = first_row && row == 0;
+    let is_last_row = last_row && row + 1 == rows && rows > 1;
+    let is_first_col = first_col && cell == 0;
+    let is_last_col = last_col && cell + 1 == cells && cells > 1;
+    if !no_v_band && !is_first_col && !is_last_col {
+        let data = if first_col { cell.saturating_sub(1) } else { cell };
+        kinds.push(if (data / band("w:tblStyleColBandSize")) % 2 == 0 { "band1Vert" } else { "band2Vert" });
+    }
+    if !no_h_band && !is_first_row && !is_last_row {
+        let data = if first_row { row.saturating_sub(1) } else { row };
+        kinds.push(if (data / band("w:tblStyleRowBandSize")) % 2 == 0 { "band1Horz" } else { "band2Horz" });
+    }
+    if is_first_col {
+        kinds.push("firstCol");
+    }
+    if is_last_col {
+        kinds.push("lastCol");
+    }
+    if is_first_row {
         kinds.push("firstRow");
-    } else if row + 1 == rows && rows > 1 {
+    }
+    if is_last_row {
         kinds.push("lastRow");
     }
-    if banded {
-        let data_row = if first_row { row.saturating_sub(1) } else { row };
-        kinds.push(if data_row % 2 == 0 { "band1Horz" } else { "band2Horz" });
+    match (is_first_row, is_last_row, is_first_col, is_last_col) {
+        (true, _, true, _) => kinds.push("nwCell"),
+        (true, _, _, true) => kinds.push("neCell"),
+        (_, true, true, _) => kinds.push("swCell"),
+        (_, true, _, true) => kinds.push("seCell"),
+        _ => {}
     }
-    style
-        .children_named("w:tblStylePr")
-        .filter(|el| el.attr("w:type").is_some_and(|t| kinds.contains(&t)))
-        .collect()
+    kinds
 }
 
-fn conditional_shading(
-    style: Option<&El>,
-    row: usize,
-    rows: usize,
-    first_row: bool,
-    banded: bool,
-) -> Option<Rgb> {
-    conditional_style(style, row, rows, first_row, banded)
-        .iter()
-        .find_map(|el| el.child("w:tcPr").and_then(|tc| tc.child("w:shd")).and_then(props::shading))
+/// The table style a paragraph in cell `cell` of row `row` is resolved against, with that cell's
+/// conditional formats ([`crate::styles::cell_style`]).
+pub fn cell_style_of(resolver: &crate::styles::Resolver, table: &Table, row: usize, cell: usize) -> Option<String> {
+    let id = resolver.table_style_id(&table.props)?;
+    let kinds = cell_kinds(table, resolver.style(id), row, cell);
+    Some(crate::styles::cell_style(id, &kinds))
+}
+
+/// The cell shading a table style's conditional formats give, the last that names one winning.
+fn conditional_shading(style: Option<&El>, kinds: &[&str]) -> Option<Rgb> {
+    let style = style?;
+    let mut found = style.child("w:tcPr").and_then(|tc| tc.child("w:shd")).and_then(props::shading);
+    for kind in crate::styles::CONDITION_ORDER {
+        if !kinds.contains(&kind) {
+            continue;
+        }
+        for el in style.children_named("w:tblStylePr").filter(|el| el.attr("w:type") == Some(kind)) {
+            if let Some(shading) = el.child("w:tcPr").and_then(|tc| tc.child("w:shd")).and_then(props::shading) {
+                found = Some(shading);
+            }
+        }
+    }
+    found
 }

@@ -121,6 +121,7 @@ pub fn read(ctx: &Ctx, el: &El) -> Option<Drawing> {
         preset: None,
         crop: None,
         flip: (false, false),
+        source: None,
     };
     let graphic = frame.child("a:graphic").and_then(|g| g.child("a:graphicData"));
     let uri = graphic.and_then(|g| g.attr("uri")).unwrap_or("");
@@ -133,8 +134,21 @@ pub fn read(ctx: &Ctx, el: &El) -> Option<Drawing> {
         shape_look(ctx, shape, &mut float);
         let id = frame.child("wp:docPr").and_then(|d| d.attr("id")).and_then(|i| i.parse().ok());
         if let (Some(id), Some(body)) = (id, shape.child("wps:bodyPr")) {
-            if shape.child("wps:txbx").is_some() {
+            if let Some(txbx) = shape.child("wps:txbx") {
                 float.inside = text_inside(ctx, id, body, w, h);
+                // The first box of a chain keeps only what fits; the rest flows on (`wps:linkedTxbx`).
+                if let Some(chain) = txbx.attr("id").and_then(|c| c.parse::<i64>().ok()) {
+                    if linked_boxes(ctx, chain).len() > 1 {
+                        let capacity = box_room(body, h);
+                        float.inside = split_into_boxes(float.inside, &[capacity]).remove(0);
+                    }
+                }
+            } else if let Some(link) = shape.child("wps:linkedTxbx") {
+                let chain = link.attr("id").and_then(|c| c.parse::<i64>().ok());
+                let seq = link.attr("seq").and_then(|c| c.parse::<usize>().ok()).unwrap_or(1);
+                if let Some(chain) = chain {
+                    float.inside = linked_inside(ctx, chain, seq, body, h);
+                }
             }
             if body.attr("fromWordArt").is_some_and(|v| v == "1") {
                 float.label = "WordArt".into();
@@ -252,6 +266,7 @@ fn vml(ctx: &Ctx, el: &El) -> Drawing {
             preset: None,
             crop: None,
             flip: (false, false),
+            source: None,
         },
     }
 }
@@ -410,10 +425,101 @@ fn text_inside(ctx: &Ctx, id: i64, body: &El, w: f32, h: f32) -> Vec<Chunk> {
         .collect()
 }
 
+/// The boxes of one chain of linked text boxes, by their place in it: the first holds the text
+/// (`wps:txbx id`), each later one names the chain and its place (`wps:linkedTxbx id seq`). Each is its
+/// `wp:docPr` id, its width and height and its `wps:bodyPr`.
+fn linked_boxes(ctx: &Ctx, chain: i64) -> Vec<(usize, i64, f32, f32, El)> {
+    let mut found = Vec::new();
+    let mut look = |el: &El| {
+        el.walk(&mut |node| {
+            if node.name != "wp:anchor" && node.name != "wp:inline" {
+                return;
+            }
+            let Some(shape) = crate::read::descendant(node, "wps:wsp") else { return };
+            let place = match (shape.child("wps:txbx"), shape.child("wps:linkedTxbx")) {
+                (Some(txbx), _) if txbx.attr("id").and_then(|c| c.parse::<i64>().ok()) == Some(chain) => Some(0),
+                (_, Some(link)) if link.attr("id").and_then(|c| c.parse::<i64>().ok()) == Some(chain) => {
+                    link.attr("seq").and_then(|c| c.parse::<usize>().ok())
+                }
+                _ => None,
+            };
+            let Some(place) = place else { return };
+            let extent = node.child("wp:extent");
+            let size = |name: &str| props::emu(extent.and_then(|e| e.attr(name)).and_then(props::number).unwrap_or(0.0));
+            let id = node.child("wp:docPr").and_then(|d| d.attr("id")).and_then(|i| i.parse().ok()).unwrap_or(0);
+            let body = shape.child("wps:bodyPr").cloned().unwrap_or_default();
+            if !found.iter().any(|(p, ..): &(usize, i64, f32, f32, El)| *p == place) {
+                found.push((place, id, size("cx"), size("cy"), body));
+            }
+        });
+    };
+    for (_, paragraph) in crate::position::paragraphs(&ctx.document.body) {
+        for run in &paragraph.runs {
+            if let crate::model::Content::Object(el) = &run.content {
+                look(el);
+            }
+        }
+    }
+    found.sort_by_key(|b| b.0);
+    found
+}
+
+/// The height a text box's text has, inside its top and bottom insets.
+fn box_room(body: &El, h: f32) -> f32 {
+    let inset = |name: &str, fallback: f64| props::emu(body.attr(name).and_then(props::number).unwrap_or(fallback));
+    (h - inset("tIns", 45_720.0) - inset("bIns", 45_720.0)).max(0.0)
+}
+
+/// Lines, already placed one under another, shared out among boxes of the given heights: each box takes
+/// the whole lines that fit in it, and the next box starts with the first line that did not. The lines
+/// a box takes are moved up so its first line is where the first box's first line is.
+pub fn split_into_boxes(chunks: Vec<Chunk>, capacities: &[f32]) -> Vec<Vec<Chunk>> {
+    let mut boxes: Vec<Vec<Chunk>> = vec![Vec::new(); capacities.len() + 1];
+    let mut which = 0;
+    let mut used = 0.0;
+    let mut placed = 0.0;
+    for mut chunk in chunks {
+        while which < capacities.len() && used + chunk.height > capacities[which] + 0.01 && used > 0.0 {
+            which += 1;
+            used = 0.0;
+        }
+        // The chunk was put `placed` down the first box's column; in its own box it is `used` down.
+        chunk.shift(0.0, used - placed);
+        placed += chunk.height;
+        used += chunk.height;
+        boxes[which].push(chunk);
+    }
+    boxes
+}
+
+/// The lines of a chain of linked text boxes that land in box `seq`, at its insets and anchored at its top.
+fn linked_inside(ctx: &Ctx, chain: i64, seq: usize, body: &El, h: f32) -> Vec<Chunk> {
+    let boxes = linked_boxes(ctx, chain);
+    let Some((_, first_id, first_w, first_h, first_body)) = boxes.first().cloned() else { return Vec::new() };
+    let chunks = text_inside(ctx, first_id, &first_body, first_w, first_h.max(1.0e6));
+    let mut capacities: Vec<f32> = Vec::new();
+    for (place, _, _, height, body) in &boxes {
+        if *place > seq {
+            break;
+        }
+        capacities.push(box_room(body, *height));
+    }
+    if capacities.len() <= seq {
+        capacities.push(box_room(body, h));
+    }
+    let mut shared = split_into_boxes(chunks, &capacities);
+    let index = boxes.iter().position(|b| b.0 == seq).unwrap_or(capacities.len() - 1);
+    // A later box's insets differ from the first's only in rare documents; its lines keep the first box's.
+    shared.get_mut(index).map(std::mem::take).unwrap_or_default()
+}
+
 /// What a drawing draws at `rect`: its fill, its picture or preset shape, its text, its outline, or a
 /// placeholder naming it.
 pub fn items(float: &Float, rect: Rect) -> Vec<Item> {
     let mut items = Vec::new();
+    if let Some((story, path, offset)) = &float.source {
+        items.push(Item::Object { rect, story: story.clone(), path: path.clone(), offset: *offset });
+    }
     match &float.preset {
         Some(preset) if preset != "rect" => items.push(Item::Shape {
             rect,

@@ -693,6 +693,23 @@ $fixtures['wrapping'] = {
     Add-Para $doc (Get-Paragraph ($seed + 1) 4) | Out-Null
 }
 
+$fixtures['linked-textboxes'] = {
+    param($word, $doc)
+    $p = Add-Para $doc ('Two linked text boxes. ' + (Get-Paragraph 41 3))
+    $one = $doc.Shapes.AddTextbox(1, 72, 120, 160, 70, $p.Range)
+    $two = $doc.Shapes.AddTextbox(1, 320, 120, 160, 120, $p.Range)
+    $one.TextFrame.Next = $two.TextFrame
+    $one.TextFrame.TextRange.Text = (Get-Paragraph 42 6)
+    foreach ($tb in @($one, $two)) {
+        $tb.WrapFormat.Type = 3
+        $tb.RelativeHorizontalPosition = 1
+        $tb.RelativeVerticalPosition = 1
+    }
+    $one.Left = 72; $one.Top = 200
+    $two.Left = 320; $two.Top = 200
+    Add-Para $doc (Get-Paragraph 43 4) | Out-Null
+}
+
 $fixtures['long-table'] = {
     param($word, $doc)
     Add-Para $doc 'A long table' 'Heading 1' | Out-Null

@@ -1,0 +1,249 @@
+{
+  "file": "linked-textboxes.docx",
+  "opened": true,
+  "error": null,
+  "pages": 1,
+  "words": 85,
+  "characters": 436,
+  "charactersWithSpaces": 519,
+  "paragraphCount": 2,
+  "lines": 7,
+  "paragraphs": [
+    {
+      "index": 1,
+      "text": "Two linked text boxes. Lines reader pages text at without editor document each careful lines reader pages text. Of that the surprise opens and paragraph spacing while scrolls of that. Margin the a shows with between the through plain wraps.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 3,
+      "top": 72.0,
+      "left": 72.0,
+      "lastTop": 105.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Two linked text boxes. Lines reader pages text at without editor document each careful lines reader pages text. Of that the surprise opens and paragraph spacing while scrolls of that. Margin the a shows with between the through plain wraps."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Two linked text boxes. Lines reader pages text at without editor document each careful ",
+          "top": 72.0,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "lines reader pages text. Of that the surprise opens and paragraph spacing while scrolls of ",
+          "top": 89.25,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "that. Margin the a shows with between the through plain wraps.",
+          "top": 105.75,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "text": "While scrolls of that the surprise opens and paragraph. Plain wraps margin the a shows with between the through plain wraps margin the. Without editor document each careful lines reader pages text at without editor. And paragraph spacing while scrolls of that the surprise opens.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 4,
+      "top": 131.25,
+      "left": 72.0,
+      "lastTop": 182.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "While scrolls of that the surprise opens and paragraph. Plain wraps margin the a shows with between the through plain wraps margin the. Without editor document each careful lines reader pages text at without editor. And paragraph spacing while scrolls of that the surprise opens."
+        }
+      ],
+      "lines": [
+        {
+          "text": "While scrolls of that the surprise opens and paragraph. Plain wraps margin the a shows ",
+          "top": 131.25,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "with between the through plain wraps margin the. Without editor document each careful ",
+          "top": 148.5,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "lines reader pages text at without editor. And paragraph spacing while scrolls of that the ",
+          "top": 165.0,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "surprise opens.",
+          "top": 182.25,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    }
+  ],
+  "tables": [],
+  "sections": [
+    {
+      "pageWidth": 612.0,
+      "pageHeight": 792.0,
+      "orientation": 0,
+      "topMargin": 72.0,
+      "bottomMargin": 72.0,
+      "leftMargin": 72.0,
+      "rightMargin": 72.0,
+      "headerDistance": 36.0,
+      "footerDistance": 36.0,
+      "columns": 1,
+      "differentFirstPage": false,
+      "oddAndEvenPages": false,
+      "sectionStart": 2,
+      "headers": {
+        "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
+        "first": "",
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
+      },
+      "footers": {
+        "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
+        "first": "",
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
+      }
+    }
+  ],
+  "footnotes": [],
+  "endnotes": [],
+  "comments": [],
+  "revisions": [],
+  "inlineShapes": [],
+  "shapes": [
+    {
+      "type": 17,
+      "width": 160.0,
+      "height": 70.0,
+      "left": 72.0,
+      "top": 200.0,
+      "wrap": 3,
+      "side": 0,
+      "text": "Document each careful lines reader pages text at. Spacing while scrolls of that ",
+      "page": 1,
+      "autoShape": 1
+    },
+    {
+      "type": 17,
+      "width": 160.0,
+      "height": 120.0,
+      "left": 320.0,
+      "top": 200.0,
+      "wrap": 3,
+      "side": 0,
+      "text": "the surprise opens and paragraph spacing while scrolls. Through plain wraps margin the a shows with between the through. At without editor document each careful lines reader pages. Opens and paragraph spacing while scrolls of that the surprise opens and paragraph spacing. With between the through plain wraps margin the a shows with between.\r",
+      "page": 1,
+      "autoShape": 1
+    }
+  ],
+  "contentControls": [],
+  "oMaths": [],
+  "settings": {
+    "autoHyphenation": false,
+    "hyphenationZone": 9999999.0,
+    "consecutiveHyphensLimit": 0,
+    "compatibilityMode": 15
+  },
+  "footnoteOptions": {
+    "numberStyle": 0,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 0
+  },
+  "endnoteOptions": {
+    "numberStyle": 2,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 1
+  },
+  "footnotePages": [],
+  "fields": [],
+  "tablesOfContents": 0,
+  "bookmarks": [],
+  "hyperlinks": [],
+  "properties": {
+    "title": "",
+    "subject": "",
+    "author": "Oracle",
+    "keywords": ""
+  }
+}

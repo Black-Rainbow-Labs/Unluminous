@@ -238,6 +238,16 @@ pub fn prepare(
         (*story == StoryId::Body).then(|| ctx.body_pages.get(path).copied()).flatten()
     });
     collect_atoms(ctx, paragraph, table_style, page, &mut looks, &mut atoms);
+    for atom in &mut atoms {
+        let float = match &mut atom.kind {
+            Kind::Picture(float) => Some(&mut **float),
+            Kind::Float(float) => Some(float),
+            _ => None,
+        };
+        if let (Some(float), true) = (float, atom.end > atom.start) {
+            float.source = Some((story.clone(), path.to_vec(), atom.start));
+        }
+    }
     Prepared {
         look,
         looks,
@@ -306,6 +316,22 @@ impl Prepared {
 
     /// The left and right edge a line has: the paragraph's indents, narrowed to `room` (the part of the
     /// column a floating picture leaves free) when there is one.
+    /// The width of the word that starts at atom `from`: the atoms up to the first a line may break
+    /// after, without a space at its start or its end.
+    pub fn word_width(&self, from: usize) -> f32 {
+        let mut width = 0.0;
+        for atom in self.atoms.iter().skip(from).skip_while(|a| matches!(a.kind, Kind::Space(_))) {
+            if matches!(atom.kind, Kind::Space(_)) {
+                break;
+            }
+            width += atom.width;
+            if atom.opportunity {
+                break;
+            }
+        }
+        width
+    }
+
     pub fn bounds(&self, first: bool, room: Option<(f32, f32)>) -> (f32, f32) {
         let left = line_left(&self.look, first);
         let right = self.width - self.look.indent_right;
@@ -1669,6 +1695,17 @@ fn decorate_paragraph(look: &ParaLook, chunks: &mut [Chunk], width: f32) {
     let left = look.indent_left - borders.left.map_or(0.0, |b| b.space + b.width);
     let right = width - look.indent_right + borders.right.map_or(0.0, |b| b.space + b.width);
     let count = chunks.len();
+    // A top or bottom border takes room of its own: its width and the space between it and the text,
+    // which Word adds outside the paragraph's lines (task-2359, measured on builtin-styles.docx, where an
+    // Intense Quote's two borders 10 points out make it 21 points taller than its line).
+    if let (Some(b), Some(first)) = (borders.top, chunks.first_mut()) {
+        let room = b.space + b.width;
+        first.shift(0.0, room);
+        first.height += room;
+    }
+    if let (Some(b), Some(last)) = (borders.bottom, chunks.last_mut()) {
+        last.height += b.space + b.width;
+    }
     for (index, chunk) in chunks.iter_mut().enumerate() {
         let h = chunk.height;
         if let Some(color) = look.shading {
@@ -1687,12 +1724,12 @@ fn decorate_paragraph(look: &ParaLook, chunks: &mut [Chunk], width: f32) {
         };
         if index == 0 {
             if let Some(b) = borders.top {
-                chunk.items.push(rule(left, 0.0, right, 0.0, b));
+                chunk.items.push(rule(left, b.width / 2.0, right, b.width / 2.0, b));
             }
         }
         if index + 1 == count {
             if let Some(b) = borders.bottom {
-                chunk.items.push(rule(left, h, right, h, b));
+                chunk.items.push(rule(left, h - b.width / 2.0, right, h - b.width / 2.0, b));
             }
         }
         if let Some(b) = borders.left {

@@ -126,19 +126,20 @@ pub enum Level {
     Proofing,
     Contents,
     TableProperties,
+    Picture,
 }
 
 impl Level {
     /// The third levels, which the root level does not list.
     pub const DEEPER: &'static [Level] =
-        &[Level::Proofing, Level::Contents, Level::TableProperties];
+        &[Level::Proofing, Level::Contents, Level::TableProperties, Level::Picture];
 
     /// The level a third level is opened from.
     pub fn parent(self) -> Option<Level> {
         match self {
             Level::Proofing => Some(Level::Review),
             Level::Contents => Some(Level::References),
-            Level::TableProperties => Some(Level::Insert),
+            Level::TableProperties | Level::Picture => Some(Level::Insert),
             _ => None,
         }
     }
@@ -170,6 +171,7 @@ impl Level {
             Level::Proofing => "Proofing",
             Level::Contents => "Table of contents",
             Level::TableProperties => "Table properties",
+            Level::Picture => "Picture",
         }
     }
 
@@ -199,6 +201,7 @@ impl Level {
             Level::Proofing => "Autocorrect and AutoFormat as you type",
             Level::Contents => "Levels, page numbers, leader, links",
             Level::TableProperties => "Alignment, width, rows, cells, style, borders",
+            Level::Picture => "Size, wrap, position, crop, alt text, order",
         }
     }
 }
@@ -251,6 +254,10 @@ pub struct View {
     /// A press inside the selection is carrying it: on release it moves to where the pointer is, or is
     /// copied there with Ctrl held, as Word's drag and drop of text does (task-2359, M20).
     pub carrying: bool,
+    /// A picture, shape or text box being moved, resized or cropped by its handles.
+    pub object_drag: Option<crate::components::word::objects::ObjectDrag>,
+    /// The selected picture's handles crop it (the Crop action) rather than resize it.
+    pub cropping: bool,
     /// The last press, for double and triple clicks: when, where, how many.
     pub clicks: (f64, egui::Pos2, u32),
     /// What the panel's fields hold while they are typed in.
@@ -293,6 +300,22 @@ pub fn remember_the_paste(
 pub fn ask_for_the_clipboard(doc: &mut Doc, text: String, requests: &mut Vec<Request>) {
     doc.view.paste_waiting = Some((text, unluminous_word::clipboard::PasteAs::Source));
     requests.push(Request::ClipboardRich { id: format!("word-paste:{}", doc.key) });
+}
+
+/// Paste a picture from the clipboard as an inline PNG, its own size at 96 pixels an inch and no wider
+/// than the text column.
+pub fn paste_a_picture(doc: &mut Doc, png: &[u8]) {
+    let Some((w, h)) = unluminous_word::media::picture_size(png) else { return };
+    let (mut width, mut height) = (w as f32 * 0.75, h as f32 * 0.75);
+    let column = doc.pages.pages.first().map_or(468.0, |p| p.body.w);
+    if width > column {
+        height *= column / width;
+        width = column;
+    }
+    let name = "Pasted picture";
+    if unluminous_word::media::insert_picture(&mut doc.session, png, "png", width, height, name).is_ok() {
+        doc.view.reveal = true;
+    }
 }
 
 /// Paste what the clipboard answered: its HTML, or its RTF, or the text, as `how` asks.
@@ -417,6 +440,8 @@ impl View {
             reveal: true,
             dragging: false,
             carrying: false,
+            object_drag: None,
+            cropping: false,
             clicks: (0.0, egui::Pos2::ZERO, 0),
             fields: Default::default(),
             copied_format: None,
@@ -745,6 +770,15 @@ impl UiProvider for Word {
     /// The window's answer to a paste's [`Request::ClipboardRich`]: paste the HTML, the RTF or the text
     /// into the document that asked.
     fn answered(&mut self, id: &str, answer: Result<serde_json::Value, String>) {
+        if let Some(key) = id.strip_prefix("word-paste-picture:") {
+            let answer = answer.unwrap_or_default();
+            let has_text = ["text", "html"].iter().any(|k| answer[*k].as_str().is_some_and(|t| !t.trim().is_empty()));
+            let bytes = answer["picture"]["data"].as_str().and_then(unluminous_chat::base64::decode);
+            if let (false, Some(bytes), Ok(doc)) = (has_text, bytes, self.doc(key)) {
+                paste_a_picture(doc, &bytes);
+            }
+            return;
+        }
         let Some(key) = id.strip_prefix("word-paste:") else { return };
         let Ok(doc) = self.doc(key) else { return };
         let Some((text, how)) = doc.view.paste_waiting.take() else { return };

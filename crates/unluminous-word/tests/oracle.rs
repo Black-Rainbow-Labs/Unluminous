@@ -293,15 +293,8 @@ fn every_paragraphs_indents_spacing_and_alignment_are_what_word_reports() {
         for ((path, paragraph), word) in ours_list.iter().zip(&words) {
             let index = word["index"].as_i64().unwrap_or(0);
             let Some(paragraph) = paragraph else { continue };
-            let table_style = unluminous_word::position::cell_of(&document.body, path).and_then(
-                |(table, _, _)| match unluminous_word::position::block(&document.body, &table) {
-                    Some(unluminous_word::model::Block::Table(t)) => {
-                        resolver.table_style_id(&t.props)
-                    }
-                    _ => None,
-                },
-            );
-            let look = resolver.paragraph(&paragraph.props, table_style);
+            let table_style = table_style_at(&document, &resolver, path);
+            let look = resolver.paragraph(&paragraph.props, table_style.as_deref());
             let alignment = match look.align {
                 unluminous_word::props::Align::Left => 0,
                 unluminous_word::props::Align::Center => 1,
@@ -450,15 +443,18 @@ fn highlight_name(index: i64) -> Option<&'static str> {
     })
 }
 
-/// The table style a paragraph at `path` is inside, which its runs inherit from.
-fn table_style_at<'a>(
-    document: &'a unluminous_word::model::Document,
-    resolver: &Resolver<'a>,
+/// The table style a paragraph at `path` is inside, with its cell's conditional formats, which its runs
+/// inherit from.
+fn table_style_at(
+    document: &unluminous_word::model::Document,
+    resolver: &Resolver,
     path: &[u32],
-) -> Option<&'a str> {
-    unluminous_word::position::cell_of(&document.body, path).and_then(|(table, _, _)| {
+) -> Option<String> {
+    unluminous_word::position::cell_of(&document.body, path).and_then(|(table, row, cell)| {
         match unluminous_word::position::block(&document.body, &table) {
-            Some(unluminous_word::model::Block::Table(t)) => resolver.table_style_id(&t.props),
+            Some(unluminous_word::model::Block::Table(t)) => {
+                unluminous_word::layout::table::cell_style_of(resolver, t, row as usize, cell as usize)
+            }
             _ => None,
         }
     })
@@ -484,7 +480,7 @@ fn every_runs_formatting_is_what_word_reports() {
             };
             let index = word["index"].as_i64().unwrap_or(0);
             let style = table_style_at(&document, &resolver, path);
-            let characters = our_characters(paragraph, &resolver, style);
+            let characters = our_characters(paragraph, &resolver, style.as_deref());
             let mut theirs: Vec<(char, &Value)> = Vec::new();
             for run in runs {
                 for c in run["text"].as_str().unwrap_or("").chars() {
@@ -587,7 +583,7 @@ fn every_list_label_is_what_word_reports() {
             let Some(paragraph) = paragraph else { continue };
             let index = word["index"].as_i64().unwrap_or(0);
             let style = table_style_at(&document, &resolver, path);
-            let look = resolver.paragraph(&paragraph.props, style);
+            let look = resolver.paragraph(&paragraph.props, style.as_deref());
             let (label, level) = match look.numbering {
                 Some((num, level)) => match counters.next(&resolver.numbering, num, level) {
                     Some(label) => (label.text, i64::from(level) + 1),

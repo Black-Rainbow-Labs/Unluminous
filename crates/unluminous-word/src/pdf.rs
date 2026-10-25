@@ -155,6 +155,7 @@ pub fn write(
                         );
                     }
                 }
+                Item::Object { .. } => {}
                 Item::Placeholder { rect, .. } => {
                     let _ = writeln!(
                         c,

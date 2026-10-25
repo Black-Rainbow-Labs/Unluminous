@@ -108,6 +108,14 @@ pub enum Item {
         rect: Rect,
         label: String,
     },
+    /// Where a picture, shape or text box is, and the position of its character: nothing is drawn for
+    /// it, and the window selects the object when it is pressed.
+    Object {
+        rect: Rect,
+        story: StoryId,
+        path: Path,
+        offset: usize,
+    },
 }
 
 impl Item {
@@ -123,7 +131,8 @@ impl Item {
             Item::Fill { rect, .. }
             | Item::Picture { rect, .. }
             | Item::Shape { rect, .. }
-            | Item::Placeholder { rect, .. } => {
+            | Item::Placeholder { rect, .. }
+            | Item::Object { rect, .. } => {
                 rect.x += dx;
                 rect.y += dy;
             }
@@ -226,6 +235,8 @@ pub struct Float {
     pub crop: Option<(f32, f32, f32, f32)>,
     /// Drawn mirrored left to right, top to bottom.
     pub flip: (bool, bool),
+    /// Where its character is in the document, so a press on it selects it.
+    pub source: Option<(StoryId, Path, usize)>,
 }
 
 impl Float {
@@ -656,6 +667,14 @@ fn sections(document: &Document) -> Vec<(Vec<(usize, &Block)>, Geometry)> {
 fn flow_block(flow: &mut Flow, ctx: &Ctx, counters: &mut Counters, block: &Block, path: Path) {
     match block {
         Block::Paragraph(paragraph) => {
+            // A framed paragraph is out of the flow: it is placed where its frame says, and the text
+            // goes round it (task-2359, measured on builtin-styles.docx's Envelope Address).
+            if let Some(frame) = ctx.resolver.frame_of(&paragraph.props) {
+                let float = frame_float(ctx, counters, paragraph, &path, &frame, flow.column_width());
+                let top = flow.y;
+                flow.register_float(&float, top);
+                return;
+            }
             let width = flow.column_width();
             let prepared =
                 paragraph::prepare(ctx, counters, paragraph, &StoryId::Body, &path, width, None);
@@ -678,6 +697,73 @@ fn flow_block(flow: &mut Flow, ctx: &Ctx, counters: &mut Counters, block: &Block
             }
         }
         Block::Kept(_) => {}
+    }
+}
+
+/// A framed paragraph (`w:framePr`) as a float: its lines laid out at the frame's width, its height the
+/// frame's exact or least height or its lines', placed from the page, the margin or the column by an
+/// offset or an alignment, with text going round it unless the frame says otherwise.
+fn frame_float(ctx: &Ctx, counters: &mut Counters, paragraph: &crate::model::Paragraph, path: &Path, frame: &crate::xml::El, column: f32) -> Float {
+    let twips_of = |name: &str| frame.attr(name).and_then(crate::props::number).map(crate::props::twips);
+    let width = twips_of("w:w").filter(|w| *w > 0.0).unwrap_or(column);
+    let laid = paragraph::lay_out(ctx, counters, paragraph, &StoryId::Body, path, width, None);
+    let mut chunks = laid.lines;
+    let content: f32 = chunks.iter().map(|c| c.height).sum();
+    let mut y = 0.0;
+    for chunk in &mut chunks {
+        chunk.shift(0.0, y);
+        y += chunk.height;
+    }
+    let height = match (twips_of("w:h"), frame.attr("w:hRule")) {
+        (Some(h), Some("exact")) => h,
+        (Some(h), _) => h.max(content),
+        (None, _) => content,
+    };
+    let axis = |anchor: &str, align: &str, offset: &str, default: &str| -> (String, Anchor) {
+        let relative = match frame.attr(anchor).unwrap_or(default) {
+            "page" => "page",
+            "margin" => "margin",
+            _ => if anchor == "w:hAnchor" { "column" } else { "paragraph" },
+        };
+        let place = match (frame.attr(align), twips_of(offset)) {
+            (Some(a), _) => Anchor::Align(match a {
+                "center" => "center",
+                "right" | "outside" => "right",
+                "bottom" => "bottom",
+                _ => "left",
+            }.into()),
+            (None, Some(o)) => Anchor::Offset(o),
+            (None, None) => Anchor::Offset(0.0),
+        };
+        (relative.to_owned(), place)
+    };
+    let wrap = match frame.attr("w:wrap") {
+        Some("none") => "none",
+        Some("notBeside") => "topandbottom",
+        Some("through") => "through",
+        Some("tight") => "tight",
+        _ => "square",
+    };
+    let h_space = twips_of("w:hSpace").unwrap_or(0.0);
+    let v_space = twips_of("w:vSpace").unwrap_or(0.0);
+    Float {
+        width,
+        height,
+        contour: None,
+        horizontal: axis("w:hAnchor", "w:xAlign", "w:x", "text"),
+        vertical: axis("w:vAnchor", "w:yAlign", "w:y", "margin"),
+        part: String::new(),
+        wrap: wrap.into(),
+        side: "bothSides".into(),
+        distances: (v_space, v_space, h_space, h_space),
+        inside: chunks,
+        fill: None,
+        outline: None,
+        label: "Frame".into(),
+        preset: None,
+        crop: None,
+        flip: (false, false),
+        source: None,
     }
 }
 
@@ -1064,6 +1150,16 @@ impl<'a> Flow<'a> {
         Room::Free(Some((from - column_left, to - column_left)))
     }
 
+    /// The bottom of the highest picture beside a line at `y`, `height` tall: where text starts again under it.
+    fn exclusion_below(&self, y: f32, height: f32) -> Option<f32> {
+        self.exclusions
+            .iter()
+            .map(|e| e.rect)
+            .filter(|r| r.y < y + height && r.bottom() > y)
+            .map(|r| r.bottom())
+            .reduce(f32::min)
+    }
+
     /// Put a floating picture on the page where its anchor puts it, relative to its paragraph's top, and
     /// keep text out of where it is when it wraps.
     fn register_float(&mut self, float: &Float, paragraph_top: f32) {
@@ -1071,6 +1167,7 @@ impl<'a> Flow<'a> {
         let page = self.pages.last_mut().expect("a page");
         let items = draw_float(float, page, x, paragraph_top, column_width);
         let rect = float_rect(float, page, x, paragraph_top, column_width);
+        page.carets.extend(float_carets(float, rect));
         match float.wrap.as_str() {
             "behind" => {
                 for (offset, item) in items.into_iter().enumerate() {
@@ -1157,6 +1254,20 @@ impl<'a> Flow<'a> {
                     continue;
                 }
                 match self.room_at(self.y, height) {
+                    // Beside a picture, a gap too narrow for the next word is passed over rather than the
+                    // word broken to fit it, as Word does (builtin-styles.docx: 27 points either side of the
+                    // Envelope Address frame, and Word moves the next paragraph below the frame).
+                    Room::Free(Some(room))
+                        if {
+                            let (left, right) = prepared.bounds(first, Some(room));
+                            right - left < prepared.word_width(index)
+                        } =>
+                    {
+                        match self.exclusion_below(self.y, height) {
+                            Some(next) if next > self.y + 0.01 => self.y = next,
+                            _ => break Some(room),
+                        }
+                    }
                     Room::Free(room) => break room,
                     Room::Blocked(next) if next > self.y + 0.01 => self.y = next,
                     Room::Blocked(_) => break None,
@@ -1279,6 +1390,7 @@ impl<'a> Flow<'a> {
         }
         for float in &chunk.floats {
             let items = draw_float(float, page, x, y, column_width);
+            page.carets.extend(float_carets(float, float_rect(float, page, x, y, column_width)));
             match float.wrap.as_str() {
                 "behind" => {
                     for (offset, item) in items.into_iter().enumerate() {
@@ -1582,6 +1694,20 @@ fn draw_float(
     column_width: f32,
 ) -> Vec<Item> {
     drawing::items(float, float_rect(float, page, column_x, line_y, column_width))
+}
+
+/// The lines of a text box's or a frame's own text, where the float landed, so a press there puts the
+/// caret in them and an agent reads where they are.
+fn float_carets(float: &Float, rect: Rect) -> Vec<CaretLine> {
+    float
+        .inside
+        .iter()
+        .flat_map(|chunk| chunk.carets.iter().cloned())
+        .map(|mut line| {
+            line.shift(rect.x, rect.y);
+            line
+        })
+        .collect()
 }
 
 /// Where a float lands on the page, from its anchor.

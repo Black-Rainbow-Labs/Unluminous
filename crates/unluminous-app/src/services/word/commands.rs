@@ -624,6 +624,7 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
             Ok(Answer::said("Done"))
         }
         "table" => table(doc, arguments),
+        "picture" | "object" => picture(doc, arguments),
         "section" => section(doc, arguments),
         "comment" => comment(doc, arguments),
         "track" => {
@@ -949,6 +950,75 @@ fn select(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
     Ok(Answer::said(doc.session.selected_text()).with(json!({ "selection": selection_value(&doc.session.selection), "text": doc.session.selected_text() })))
 }
 
+/// `picture [info]`, `picture size <w> [h]`, `picture wrap <kind>`, `picture position <relative> <x> <y>`,
+/// `picture crop <left> <top> <right> <bottom>` (percent), `picture alt <text>`, `picture reset`,
+/// `picture order forward|backward|front|back` and `picture select <paragraph> <offset>`, for the
+/// picture or shape the selection is on.
+fn picture(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
+    let chosen = match arguments.first().map(String::as_str) {
+        Some("select") => {
+            let paragraph: usize = arguments.get(1).and_then(|n| n.parse().ok()).ok_or("picture select takes a paragraph number and an offset")?;
+            Some(paragraph_path(doc, paragraph)?)
+        }
+        _ => None,
+    };
+    let session = &mut doc.session;
+    let number = |i: usize| -> Result<f32, String> {
+        arguments.get(i).and_then(|n| n.trim_end_matches("pt").trim_end_matches('%').parse().ok()).ok_or_else(|| format!("picture {} takes numbers", arguments[0]))
+    };
+    let said = match arguments.first().map_or("info", String::as_str) {
+        "info" => "",
+        "select" => {
+            let offset: usize = arguments.get(2).and_then(|n| n.parse().ok()).unwrap_or(0);
+            let path = chosen.expect("worked out above");
+            session.select_object(unluminous_word::position::Pos::new(path, offset));
+            if session.selected_object().is_none() {
+                return Err("there is no picture there".into());
+            }
+            "Selected"
+        }
+        "size" => {
+            let height = arguments.get(2).map(|_| number(2)).transpose()?;
+            session.set_object_size(number(1)?, height)?;
+            "Resized"
+        }
+        "wrap" => {
+            session.set_object_wrap(arguments.get(1).ok_or("picture wrap takes a kind")?)?;
+            "Wrapped"
+        }
+        "position" => {
+            session.set_object_position(arguments.get(1).ok_or("picture position takes what it is measured from")?, number(2)?, number(3)?)?;
+            "Moved"
+        }
+        "crop" => {
+            session.crop_object(number(1)?, number(2)?, number(3)?, number(4)?)?;
+            "Cropped"
+        }
+        "alt" => {
+            session.set_object_alt_text(&rest(arguments, 1))?;
+            "Alt text set"
+        }
+        "reset" => {
+            session.reset_object()?;
+            "Reset"
+        }
+        "order" => {
+            session.order_object(arguments.get(1).map_or("front", String::as_str))?;
+            "Reordered"
+        }
+        other => return Err(format!("picture takes info, select, size, wrap, position, crop, alt, reset or order, not {other}")),
+    };
+    let info = session.object_info().ok_or("the selection is not on a picture or shape")?;
+    let value = json!({
+        "kind": info.kind, "name": info.name, "width": info.width, "height": info.height, "wrap": info.wrap,
+        "horizontal": { "from": info.horizontal.0, "offset": info.horizontal.1 },
+        "vertical": { "from": info.vertical.0, "offset": info.vertical.1 },
+        "alt": info.alt, "crop": [info.crop.0, info.crop.1, info.crop.2, info.crop.3],
+    });
+    let said = if said.is_empty() { format!("{} {} by {} points, {}", info.kind, info.width, info.height, info.wrap) } else { said.to_owned() };
+    Ok(Answer::said(said).with(value))
+}
+
 fn insert(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
     let what = arguments.first().map(String::as_str).ok_or("insert takes what to insert first")?;
     let session = &mut doc.session;
@@ -1001,7 +1071,18 @@ fn insert(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
         "date" => return (actions::find("date").expect("a date action").run)(doc).map(Answer::said),
         "page-number" => session.insert_field("PAGE", "1"),
         "symbol" => session.type_text(&rest(arguments, 1)),
-        other => return Err(format!("insert does not know `{other}`: paragraph, page-break, line-break, column-break, section-break, table, picture, footnote, endnote, toc, field, link, bookmark, date, page-number, symbol")),
+        "textbox" | "text-box" => {
+            let width = arguments.get(1).and_then(|n| n.parse().ok()).unwrap_or(144.0);
+            let height = arguments.get(2).and_then(|n| n.parse().ok()).unwrap_or(72.0);
+            session.insert_textbox(width, height)?;
+        }
+        "shape" => {
+            let preset = arguments.get(1).ok_or("insert shape takes a preset, such as rect or ellipse")?;
+            let width = arguments.get(2).and_then(|n| n.parse().ok()).unwrap_or(72.0);
+            let height = arguments.get(3).and_then(|n| n.parse().ok()).unwrap_or(width);
+            session.insert_shape(preset, width, height)?;
+        }
+        other => return Err(format!("insert does not know `{other}`: paragraph, page-break, line-break, column-break, section-break, table, picture, textbox, shape, footnote, endnote, toc, caption, field, link, bookmark, date, page-number, symbol")),
     }
     Ok(Answer::said(format!("Inserted {what}")))
 }

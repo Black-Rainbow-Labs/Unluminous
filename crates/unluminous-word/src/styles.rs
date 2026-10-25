@@ -201,6 +201,40 @@ impl<'a> Resolver<'a> {
         out
     }
 
+    /// The table style and the conditional formats of the cell a paragraph is in: the style itself, then
+    /// each `w:tblStylePr` the cell takes, in the order they are applied (TDD 5.2, table styles).
+    fn table_levels(&self, table_style: Option<&str>) -> Vec<&'a El> {
+        let Some(context) = table_style else { return Vec::new() };
+        let (id, kinds) = split_cell_style(context);
+        let Some(style) = self.style(id) else { return Vec::new() };
+        let mut levels = vec![style];
+        for kind in CONDITION_ORDER {
+            if kinds.contains(&kind) {
+                levels.extend(style.children_named("w:tblStylePr").filter(|el| el.attr("w:type") == Some(kind)));
+            }
+        }
+        levels
+    }
+
+    /// A paragraph's text frame (`w:framePr`): its style chain's and its own, merged attribute by
+    /// attribute, as Word merges them (builtin-styles.docx's Envelope Address paragraph says only
+    /// `w:wrap="auto"` and takes its size and place from the style).
+    pub fn frame_of(&self, ppr: &El) -> Option<El> {
+        let mut frames: Vec<&El> = self
+            .paragraph_style_id(ppr)
+            .map(|style| self.chain(style).into_iter().filter_map(|el| el.child("w:pPr")?.child("w:framePr")).collect())
+            .unwrap_or_default();
+        frames.extend(ppr.child("w:framePr"));
+        let mut merged: Option<El> = None;
+        for frame in frames {
+            let into = merged.get_or_insert_with(|| El::new("w:framePr"));
+            for (key, value) in &frame.attrs {
+                into.set_attr(key, value.clone());
+            }
+        }
+        merged
+    }
+
     /// The table style a table names, or the default one.
     pub fn table_style_id(&self, tblpr: &El) -> Option<&'a str> {
         match tblpr.val_of("w:tblStyle") {
@@ -247,7 +281,7 @@ impl<'a> Resolver<'a> {
         if let Some(defaults) = self.paragraph_defaults {
             props::apply_paragraph(&mut look, defaults);
         }
-        if let Some(table) = table_style.and_then(|id| self.style(id)) {
+        for table in self.table_levels(table_style) {
             if let Some(ppr) = table.child("w:pPr") {
                 props::apply_paragraph(&mut look, ppr);
             }
@@ -278,12 +312,8 @@ impl<'a> Resolver<'a> {
             props::apply_run(&mut look, defaults, &self.theme);
             props::apply_toggles_absolute(&mut look, defaults);
         }
-        let mut levels: Vec<&El> = Vec::new();
-        if let Some(rpr) =
-            table_style.and_then(|id| self.style(id)).and_then(|style| style.child("w:rPr"))
-        {
-            levels.push(rpr);
-        }
+        let levels: Vec<&El> =
+            self.table_levels(table_style).into_iter().filter_map(|el| el.child("w:rPr")).collect();
         let paragraph_chain: Vec<&El> = self
             .paragraph_style_id(ppr)
             .map(|id| self.chain(id).into_iter().filter_map(|style| style.child("w:rPr")).collect())
@@ -294,6 +324,10 @@ impl<'a> Resolver<'a> {
             .unwrap_or_default();
         for el in levels.iter().chain(&paragraph_chain).chain(&character_chain) {
             props::apply_run(&mut look, el, &self.theme);
+        }
+        // A table style's bold or italic (a header row's) sets the toggle outright, under the styles.
+        for el in &levels {
+            props::apply_toggles_absolute(&mut look, el);
         }
         // Toggles: each chain inherits normally inside itself, and the two chains combine by flipping.
         for name in props::TOGGLES {
@@ -385,4 +419,41 @@ impl props::RunLook {
             _ => self.size * 2.0 / 3.0,
         }
     }
+}
+
+/// The order Word applies a table style's conditional formats in, later ones over earlier ones
+/// (ECMA-376 17.7.6): the whole table, the column bands, the row bands, the first and last columns,
+/// the first and last rows, then the corner cells.
+pub const CONDITION_ORDER: [&str; 13] = [
+    "wholeTable",
+    "band1Vert",
+    "band2Vert",
+    "band1Horz",
+    "band2Horz",
+    "firstCol",
+    "lastCol",
+    "firstRow",
+    "lastRow",
+    "neCell",
+    "nwCell",
+    "seCell",
+    "swCell",
+];
+
+/// A table style named with the conditional formats one cell takes, which is what a paragraph inside a
+/// cell is resolved against: the style id, then each `w:tblStylePr` type, joined by U+0001.
+pub fn cell_style(id: &str, kinds: &[&str]) -> String {
+    let mut out = id.to_owned();
+    for kind in kinds {
+        out.push('\u{1}');
+        out.push_str(kind);
+    }
+    out
+}
+
+/// The style id and the conditional formats of a [`cell_style`] name.
+pub fn split_cell_style(name: &str) -> (&str, Vec<&str>) {
+    let mut parts = name.split('\u{1}');
+    let id = parts.next().unwrap_or_default();
+    (id, parts.collect())
 }

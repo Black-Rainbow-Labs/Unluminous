@@ -77,6 +77,7 @@ pub fn show(
                 Level::Proofing => proofing(ui, doc),
                 Level::Contents => contents(ui, doc, requests),
                 Level::TableProperties => table_properties(ui, doc, requests),
+                Level::Picture => picture(ui, doc, requests),
             }
         });
 }
@@ -658,6 +659,29 @@ fn insert(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
     }
     heading(ui, "Picture");
     actions_row(ui, doc, requests, &["picture"]);
+    if doc.session.selected_object().is_some() {
+        deeper(ui, doc, Level::Picture);
+    }
+    heading(ui, "Text box and shapes");
+    actions_row(
+        ui,
+        doc,
+        requests,
+        &[
+            "text-box",
+            "shape-rect",
+            "shape-roundrect",
+            "shape-ellipse",
+            "shape-line",
+            "shape-straightconnector1",
+            "shape-rightarrow",
+            "shape-leftarrow",
+            "shape-uparrow",
+            "shape-downarrow",
+            "shape-triangle",
+            "shape-diamond",
+        ],
+    );
     heading(ui, "Breaks");
     actions_row(
         ui,
@@ -889,6 +913,146 @@ fn references(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
 /// Insert -> Table properties: the table's alignment and width, the selected rows' height and whether
 /// they repeat or break across pages, the selected cells' vertical alignment, the table style with its
 /// options, and borders.
+/// The selected picture, shape or text box: its size, how text wraps round it, where it sits, its crop,
+/// its alt text and its place in the stack (task-2359, TDD 5.3).
+fn picture(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
+    let Some(info) = doc.session.object_info() else {
+        ui.label(RichText::new("Select a picture, shape or text box to change it.").weak());
+        return;
+    };
+    let mut result = Ok(());
+    heading(ui, &format!("{} size", info.kind));
+    let key = format!("{}:{}:{:?}", info.width, info.height, info.at);
+    if doc.view.fields.get("picture-key") != Some(&key) {
+        doc.view.fields.insert("picture-key", key);
+        doc.view.fields.insert("picture-width", format!("{:.1}", info.width));
+        doc.view.fields.insert("picture-height", format!("{:.1}", info.height));
+        doc.view.fields.insert("picture-alt", info.alt.clone());
+        let offset = |o: Option<f32>| o.map_or_else(String::new, |v| format!("{v:.1}"));
+        doc.view.fields.insert("picture-x", offset(info.horizontal.1));
+        doc.view.fields.insert("picture-y", offset(info.vertical.1));
+    }
+    let mut locked = !doc.view.fields.get("picture-free").is_some_and(|v| v == "1");
+    let mut apply = false;
+    ui.horizontal(|ui| {
+        ui.label("Width");
+        let w = doc.view.fields.entry("picture-width").or_default();
+        ui.add(egui::TextEdit::singleline(w).desired_width(48.0));
+        ui.label("Height");
+        let h = doc.view.fields.entry("picture-height").or_default();
+        ui.add(egui::TextEdit::singleline(h).desired_width(48.0));
+        apply = ui.button("Set").clicked();
+    });
+    if ui.checkbox(&mut locked, "Lock the ratio").changed() {
+        doc.view.fields.insert("picture-free", if locked { "0" } else { "1" }.to_owned());
+    }
+    if apply {
+        let read = |name: &str| doc.view.fields.get(name).and_then(|v| v.trim().parse::<f32>().ok());
+        if let (Some(w), Some(h)) = (read("picture-width"), read("picture-height")) {
+            let width_moved = (w - info.width).abs() > 0.05;
+            let height_moved = (h - info.height).abs() > 0.05;
+            result = match (locked, width_moved, height_moved) {
+                (_, false, false) => Ok(()),
+                (true, true, _) => doc.session.set_object_size(w, None),
+                (true, false, true) => doc.session.set_object_size(info.width * h / info.height.max(0.01), Some(h)),
+                (false, _, _) => doc.session.set_object_size(w, Some(h)),
+            };
+        }
+    }
+    heading(ui, "Wrap text");
+    actions_row(
+        ui,
+        doc,
+        requests,
+        &[
+            "wrap-inline",
+            "wrap-square",
+            "wrap-tight",
+            "wrap-through",
+            "wrap-top-and-bottom",
+            "wrap-behind",
+            "wrap-front",
+        ],
+    );
+    ui.label(RichText::new(format!("Now: {}", info.wrap)).weak());
+    if info.wrap != "inline" {
+        heading(ui, "Position");
+        let mut chosen =
+            doc.view.fields.entry("picture-relative").or_insert_with(|| "page".to_owned()).clone();
+        egui::ComboBox::from_id_salt("word-picture-relative").selected_text(&chosen).show_ui(ui, |ui| {
+            for name in ["page", "margin", "column", "page/paragraph", "margin/paragraph", "column/paragraph"] {
+                ui.selectable_value(&mut chosen, name.to_owned(), name);
+            }
+        });
+        doc.view.fields.insert("picture-relative", chosen.clone());
+        let mut place = false;
+        ui.horizontal(|ui| {
+            ui.label("Across");
+            let x = doc.view.fields.entry("picture-x").or_default();
+            ui.add(egui::TextEdit::singleline(x).desired_width(48.0));
+            ui.label("Down");
+            let y = doc.view.fields.entry("picture-y").or_default();
+            ui.add(egui::TextEdit::singleline(y).desired_width(48.0));
+            place = ui.button("Set").clicked();
+        });
+        ui.label(RichText::new(format!("From {} and {}", info.horizontal.0, info.vertical.0)).weak());
+        if place {
+            let read = |name: &str| {
+                doc.view.fields.get(name).and_then(|v| v.trim().parse::<f32>().ok()).unwrap_or(0.0)
+            };
+            result = doc.session.set_object_position(&chosen, read("picture-x"), read("picture-y"));
+        }
+        heading(ui, "Order");
+        actions_row(ui, doc, requests, &["bring-forward", "send-backward", "bring-to-front", "send-to-back"]);
+    }
+    if info.kind == "Picture" {
+        heading(ui, "Crop");
+        actions_row(ui, doc, requests, &["crop", "reset-picture"]);
+        if info.crop != (0.0, 0.0, 0.0, 0.0) {
+            let (l, t, r, b) = info.crop;
+            ui.label(
+                RichText::new(format!(
+                    "Cut off: left {:.0}%, top {:.0}%, right {:.0}%, bottom {:.0}%",
+                    l * 100.0,
+                    t * 100.0,
+                    r * 100.0,
+                    b * 100.0
+                ))
+                .weak(),
+            );
+        }
+    }
+    heading(ui, "Alt text");
+    let mut set_alt = false;
+    {
+        let alt = doc.view.fields.entry("picture-alt").or_default();
+        ui.add(
+            egui::TextEdit::multiline(alt)
+                .desired_rows(2)
+                .desired_width(f32::INFINITY)
+                .hint_text(crate::components::controls::placeholder(
+                    "Describe it for a reader who cannot see it",
+                    &egui::TextStyle::Body.resolve(ui.style()),
+                    crate::theme::color::text_faint(),
+                )),
+        );
+    }
+    ui.horizontal(|ui| {
+        set_alt = ui.button("Set alt text").clicked();
+        if ui.button("Mark as decorative").clicked() {
+            doc.view.fields.insert("picture-alt", String::new());
+            set_alt = true;
+        }
+    });
+    if set_alt {
+        let text = doc.view.fields.get("picture-alt").cloned().unwrap_or_default();
+        result = doc.session.set_object_alt_text(&text);
+    }
+    if let Err(problem) = result {
+        requests.push(Request::Message(problem));
+    }
+}
+
 fn table_properties(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
     if doc.session.cell_at_caret().is_none() {
         ui.label(RichText::new("Put the caret in a table to change its properties.").weak());

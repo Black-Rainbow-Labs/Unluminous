@@ -1188,6 +1188,204 @@ pub const ACTIONS: &[Action] = &[
         slash: false,
         run: |d| export(d, "txt"),
     },
+    Action {
+        id: "text-box",
+        label: "Text box",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_textbox(144.0, 72.0).map(|()| String::new()),
+    },
+    Action {
+        id: "shape-rect",
+        label: "Shape: Rectangle",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_shape("rect", 72.0, 72.0).map(|()| String::new()),
+    },
+    Action {
+        id: "shape-roundrect",
+        label: "Shape: Rounded rectangle",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_shape("roundRect", 72.0, 72.0).map(|()| String::new()),
+    },
+    Action {
+        id: "shape-ellipse",
+        label: "Shape: Oval",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_shape("ellipse", 72.0, 72.0).map(|()| String::new()),
+    },
+    Action {
+        id: "shape-line",
+        label: "Shape: Line",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_shape("line", 144.0, 0.0).map(|()| String::new()),
+    },
+    Action {
+        id: "shape-straightconnector1",
+        label: "Shape: Straight connector",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_shape("straightConnector1", 144.0, 0.0).map(|()| String::new()),
+    },
+    Action {
+        id: "shape-rightarrow",
+        label: "Shape: Right arrow",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_shape("rightArrow", 72.0, 72.0).map(|()| String::new()),
+    },
+    Action {
+        id: "shape-leftarrow",
+        label: "Shape: Left arrow",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_shape("leftArrow", 72.0, 72.0).map(|()| String::new()),
+    },
+    Action {
+        id: "shape-uparrow",
+        label: "Shape: Up arrow",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_shape("upArrow", 72.0, 72.0).map(|()| String::new()),
+    },
+    Action {
+        id: "shape-downarrow",
+        label: "Shape: Down arrow",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_shape("downArrow", 72.0, 72.0).map(|()| String::new()),
+    },
+    Action {
+        id: "shape-triangle",
+        label: "Shape: Triangle",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_shape("triangle", 72.0, 72.0).map(|()| String::new()),
+    },
+    Action {
+        id: "shape-diamond",
+        label: "Shape: Diamond",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_shape("diamond", 72.0, 72.0).map(|()| String::new()),
+    },
+    Action {
+        id: "wrap-inline",
+        label: "Wrap text: In line with text",
+        level: Level::Picture,
+        slash: false,
+        run: |d| d.session.set_object_wrap("inline").map(|()| String::new()),
+    },
+    Action {
+        id: "wrap-square",
+        label: "Wrap text: Square",
+        level: Level::Picture,
+        slash: false,
+        run: |d| d.session.set_object_wrap("square").map(|()| String::new()),
+    },
+    Action {
+        id: "wrap-tight",
+        label: "Wrap text: Tight",
+        level: Level::Picture,
+        slash: false,
+        run: |d| d.session.set_object_wrap("tight").map(|()| String::new()),
+    },
+    Action {
+        id: "wrap-through",
+        label: "Wrap text: Through",
+        level: Level::Picture,
+        slash: false,
+        run: |d| d.session.set_object_wrap("through").map(|()| String::new()),
+    },
+    Action {
+        id: "wrap-top-and-bottom",
+        label: "Wrap text: Top and bottom",
+        level: Level::Picture,
+        slash: false,
+        run: |d| d.session.set_object_wrap("top-and-bottom").map(|()| String::new()),
+    },
+    Action {
+        id: "wrap-behind",
+        label: "Wrap text: Behind text",
+        level: Level::Picture,
+        slash: false,
+        run: |d| d.session.set_object_wrap("behind").map(|()| String::new()),
+    },
+    Action {
+        id: "wrap-front",
+        label: "Wrap text: In front of text",
+        level: Level::Picture,
+        slash: false,
+        run: |d| d.session.set_object_wrap("front").map(|()| String::new()),
+    },
+    Action {
+        id: "bring-forward",
+        label: "Bring forward",
+        level: Level::Picture,
+        slash: false,
+        run: |d| d.session.order_object("forward").map(|()| String::new()),
+    },
+    Action {
+        id: "send-backward",
+        label: "Send backward",
+        level: Level::Picture,
+        slash: false,
+        run: |d| d.session.order_object("backward").map(|()| String::new()),
+    },
+    Action {
+        id: "bring-to-front",
+        label: "Bring to front",
+        level: Level::Picture,
+        slash: false,
+        run: |d| d.session.order_object("front").map(|()| String::new()),
+    },
+    Action {
+        id: "send-to-back",
+        label: "Send to back",
+        level: Level::Picture,
+        slash: false,
+        run: |d| d.session.order_object("back").map(|()| String::new()),
+    },
+    Action {
+        id: "crop",
+        label: "Crop",
+        level: Level::Picture,
+        slash: false,
+        run: |d| {
+            d.view.cropping = !d.view.cropping && d.session.object_info().is_some_and(|i| i.kind == "Picture");
+            done(if d.view.cropping { "Drag a handle to crop" } else { "" })
+        },
+    },
+    Action {
+        id: "reset-picture",
+        label: "Reset picture",
+        level: Level::Picture,
+        slash: false,
+        run: |d| d.session.reset_object().map(|()| String::new()),
+    },
+    Action {
+        id: "picture-properties",
+        label: "Size and position",
+        level: Level::Picture,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Insert, Level::Picture];
+            done("")
+        },
+    },
+    Action {
+        id: "alt-text",
+        label: "Edit alt text",
+        level: Level::Picture,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Insert, Level::Picture];
+            done("")
+        },
+    },
 ];
 
 /// The command with this id.
@@ -1204,6 +1402,15 @@ pub fn applies(id: &str, doc: &Doc) -> bool {
         | "table-to-text" | "sort-table" | "select-row" | "select-column" | "select-table" => {
             doc.session.cell_at_caret().is_some()
         }
+        id if id.starts_with("wrap-")
+            || matches!(
+                id,
+                "bring-forward" | "send-backward" | "bring-to-front" | "send-to-back" | "picture-properties" | "alt-text"
+            ) =>
+        {
+            doc.session.selected_object().is_some()
+        }
+        "crop" | "reset-picture" => doc.session.object_info().is_some_and(|i| i.kind == "Picture"),
         "update-table" | "remove-table-of-contents" => {
             !unluminous_word::references::find_tocs(&doc.session.document).is_empty()
         }
