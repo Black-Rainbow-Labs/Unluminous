@@ -45,8 +45,11 @@ fn frame_xml(timeline: bool, id: u32, name: &str, size: (i64, i64)) -> String {
             "This shape represents a slicer. Slicers are supported in Excel 2010 or later.",
         )
     };
-    let tag_ns =
-        if timeline { "" } else { " xmlns:sle=\"http://schemas.microsoft.com/office/drawing/2010/slicer\"" };
+    let tag_ns = if timeline {
+        ""
+    } else {
+        " xmlns:sle=\"http://schemas.microsoft.com/office/drawing/2010/slicer\""
+    };
     let name = crate::xlsx::escape(name);
     format!(
         "<mc:AlternateContent xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\" xmlns:xdr=\"http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><mc:Choice {ns_decl} Requires=\"{requires}\"><xdr:graphicFrame macro=\"\"><xdr:nvGraphicFramePr><xdr:cNvPr id=\"{id}\" name=\"{name}\"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr><xdr:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/></xdr:xfrm><a:graphic><a:graphicData uri=\"{uri}\"><{tag}{tag_ns} name=\"{name}\"/></a:graphicData></a:graphic></xdr:graphicFrame></mc:Choice><mc:Fallback><xdr:sp macro=\"\" textlink=\"\"><xdr:nvSpPr><xdr:cNvPr id=\"0\" name=\"\"/><xdr:cNvSpPr><a:spLocks noTextEdit=\"1\"/></xdr:cNvSpPr></xdr:nvSpPr><xdr:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"{}\" cy=\"{}\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom><a:solidFill><a:prstClr val=\"white\"/></a:solidFill><a:ln w=\"1\"><a:solidFill><a:prstClr val=\"green\"/></a:solidFill></a:ln></xdr:spPr><xdr:txBody><a:bodyPr vertOverflow=\"clip\" horzOverflow=\"clip\"/><a:lstStyle/><a:p><a:r><a:rPr lang=\"en-US\" sz=\"1100\"/><a:t>{note}</a:t></a:r></a:p></xdr:txBody></xdr:sp></mc:Fallback></mc:AlternateContent>",
@@ -122,7 +125,8 @@ impl Session {
         let cache = self.book.pivots.tables[table].cache;
         let c = &mut self.book.pivots.caches[cache];
         // Excel binds a slicer only to a cache that says which versions made and refreshed it.
-        let versions = [("createdVersion", "8"), ("refreshedVersion", "8"), ("minRefreshableVersion", "3")];
+        let versions =
+            [("createdVersion", "8"), ("refreshedVersion", "8"), ("minRefreshableVersion", "3")];
         let missing = versions.iter().any(|(k, _)| !c.attrs.iter().any(|(n, _)| n == k));
         if c.slicer_id.is_none() || missing {
             c.slicer_id.get_or_insert(1_000_000_000 + u64::from(c.id) * 7919);
@@ -178,17 +182,14 @@ impl Session {
 
     /// The slicer cache for a field of a pivot table: the one there is, or a new one named `Slicer_<field>`.
     fn cache_for_field(&mut self, source: &str, table_name: &str) -> String {
-        if let Some(c) = self
-            .book
-            .slicers
-            .caches
-            .iter()
-            .find(|c| c.source.eq_ignore_ascii_case(source) && c.pivots.iter().any(|p| p == table_name))
-        {
+        if let Some(c) = self.book.slicers.caches.iter().find(|c| {
+            c.source.eq_ignore_ascii_case(source) && c.pivots.iter().any(|p| p == table_name)
+        }) {
             return c.name.clone();
         }
         let base = format!("Slicer_{}", source.replace(' ', "_"));
-        let taken = |n: &str| self.book.slicers.caches.iter().any(|c| c.name.eq_ignore_ascii_case(n));
+        let taken =
+            |n: &str| self.book.slicers.caches.iter().any(|c| c.name.eq_ignore_ascii_case(n));
         let name = if taken(&base) {
             (1..).map(|n| format!("{base}{n}")).find(|n| !taken(n)).unwrap_or_default()
         } else {
@@ -406,7 +407,8 @@ impl Session {
             .collect();
         let first = dates.iter().copied().fold(f64::INFINITY, f64::min);
         let last = dates.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-        let year = |serial: f64| crate::dates::date(serial, self.book.date1904).map_or(1900, |d| d.0);
+        let year =
+            |serial: f64| crate::dates::date(serial, self.book.date1904).map_or(1900, |d| d.0);
         let iso = |y: i64| format!("{y:04}-01-01T00:00:00");
         (iso(year(first)), iso(year(last) + 1))
     }
@@ -437,7 +439,11 @@ impl Session {
     }
 
     /// Show the items of the field whose dates are in the span and hide the others.
-    fn show_dates(&mut self, cache: &TimelineCache, span: Option<(f64, f64)>) -> Result<(), String> {
+    fn show_dates(
+        &mut self,
+        cache: &TimelineCache,
+        span: Option<(f64, f64)>,
+    ) -> Result<(), String> {
         for p in &cache.pivots {
             let Some(t) = self.book.pivots.find(p) else { continue };
             let pc = self.book.pivots.tables[t].cache;
@@ -492,8 +498,12 @@ impl Session {
         if let Some(cache) = cache {
             self.show_dates(&cache, None)?;
         }
-        let used =
-            self.book.slicers.timelines.iter().any(|t| t.cache.eq_ignore_ascii_case(&timeline.cache));
+        let used = self
+            .book
+            .slicers
+            .timelines
+            .iter()
+            .any(|t| t.cache.eq_ignore_ascii_case(&timeline.cache));
         if !used {
             self.book
                 .slicers

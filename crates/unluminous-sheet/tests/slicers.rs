@@ -103,7 +103,10 @@ fn a_choice_made_in_an_excel_file_is_saved_and_the_timeline_clears() {
         vec![("East".to_owned(), false), ("North".to_owned(), false), ("West".to_owned(), true)]
     );
     assert_eq!(after.book.slicers.timeline_caches[0].selection, None);
-    assert_eq!(after.book.slicers.caches[0].uid, s.book.slicers.caches[0].uid, "Excel's own marks are kept");
+    assert_eq!(
+        after.book.slicers.caches[0].uid, s.book.slicers.caches[0].uid,
+        "Excel's own marks are kept"
+    );
 }
 
 #[test]
@@ -131,7 +134,11 @@ fn a_slicer_made_here_filters_the_pivot_and_is_saved_and_read_again() {
     assert_eq!(after.book.slicers.caches[0].name, "Slicer_Region");
     assert_eq!(after.slicer_items("Region").unwrap(), items, "the same selection comes back");
     assert!(!shown(&after).contains(&"West".to_owned()));
-    assert_eq!(after.book.sheets[0].drawing.objects.len(), 1, "the slicer's frame is in the drawing");
+    assert_eq!(
+        after.book.sheets[0].drawing.objects.len(),
+        1,
+        "the slicer's frame is in the drawing"
+    );
     s.slicer_select("Region", None).unwrap();
     assert!(shown(&s).contains(&"West".to_owned()));
 }
@@ -148,8 +155,14 @@ fn a_timeline_made_here_keeps_the_dates_inside_its_span() {
     s.timeline_select("Day", Some((start, end))).unwrap();
     let book = save_for_excel(&s.book, "timeline");
     let cache = &book.slicers.timeline_caches[0];
-    assert_eq!(cache.selection, Some(("2026-02-01T00:00:00".to_owned(), "2026-03-31T00:00:00".to_owned())));
-    assert_eq!(cache.bounds, Some(("2026-01-01T00:00:00".to_owned(), "2027-01-01T00:00:00".to_owned())));
+    assert_eq!(
+        cache.selection,
+        Some(("2026-02-01T00:00:00".to_owned(), "2026-03-31T00:00:00".to_owned()))
+    );
+    assert_eq!(
+        cache.bounds,
+        Some(("2026-01-01T00:00:00".to_owned(), "2027-01-01T00:00:00".to_owned()))
+    );
     assert_eq!(book.slicers.timelines[0].name, "Day");
     assert!(refused(&mut s, "Units").contains("no dates"));
 }
@@ -218,7 +231,12 @@ fn a_slicer_follows_an_insert_and_goes_with_its_pivot_table_and_its_own_delete()
     let mut t = sales();
     t.slicer_add(0, "PivotTable1", "Region", None, at("J1")).unwrap();
     t.pivot_delete(0).unwrap();
-    assert!(t.book.slicers.slicers.iter().all(|x| t.book.sheets[0].drawing.objects.iter().all(|o| !o.tree.to_xml().contains(&format!("name=\"{}\"", x.name))) || true));
+    assert!(t.book.slicers.slicers.iter().all(|x| t.book.sheets[0]
+        .drawing
+        .objects
+        .iter()
+        .all(|o| !o.tree.to_xml().contains(&format!("name=\"{}\"", x.name)))
+        || true));
     let book = roundtrip(&t.book);
     assert!(book.slicers.is_empty(), "a slicer without its table is gone");
 }

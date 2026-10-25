@@ -31,7 +31,11 @@ pub fn same_name(stored: &str, typed: &str) -> bool {
 }
 
 /// The name a slicer or timeline is stored under, from what was typed.
-fn stored_name(names: impl Iterator<Item = String>, typed: &str, what: &str) -> Result<String, String> {
+fn stored_name(
+    names: impl Iterator<Item = String>,
+    typed: &str,
+    what: &str,
+) -> Result<String, String> {
     names
         .into_iter()
         .find(|n| same_name(n, typed))
@@ -82,7 +86,8 @@ fn slicer(sheet: &mut Spreadsheet, args: &[String]) -> Out {
     let message = match how {
         "add" => {
             let (t, words) = table_of(book, rest)?;
-            let field = source_field(book, t, words.first().ok_or("add takes the field to slice by")?)?;
+            let field =
+                source_field(book, t, words.first().ok_or("add takes the field to slice by")?)?;
             let at = cell_word(book, &words, beside(book, t))?;
             let pivot = book.session.book.pivots.tables[t].name.clone();
             let index = book.view.sheet;
@@ -95,7 +100,11 @@ fn slicer(sheet: &mut Spreadsheet, args: &[String]) -> Out {
         }
         "select" => {
             let typed = rest.first().ok_or("select takes the slicer's name")?;
-            let name = stored_name(book.session.book.slicers.slicers.iter().map(|s| s.name.clone()), typed, "slicer")?;
+            let name = stored_name(
+                book.session.book.slicers.slicers.iter().map(|s| s.name.clone()),
+                typed,
+                "slicer",
+            )?;
             let chosen = rest.get(1).map(String::as_str).unwrap_or("all");
             let items: Option<Vec<String>> = (chosen != "all" && chosen != "clear")
                 .then(|| chosen.split(',').map(|s| s.trim().to_owned()).collect());
@@ -104,7 +113,11 @@ fn slicer(sheet: &mut Spreadsheet, args: &[String]) -> Out {
         }
         "delete" => {
             let typed = rest.first().ok_or("delete takes the slicer's name")?;
-            let name = stored_name(book.session.book.slicers.slicers.iter().map(|s| s.name.clone()), typed, "slicer")?;
+            let name = stored_name(
+                book.session.book.slicers.slicers.iter().map(|s| s.name.clone()),
+                typed,
+                "slicer",
+            )?;
             book.session.slicer_delete(&name)?;
             format!("Deleted {name}")
         }
@@ -174,7 +187,8 @@ fn timeline(sheet: &mut Spreadsheet, args: &[String]) -> Out {
             let at = cell_word(book, &words, beside(book, t))?;
             let pivot = book.session.book.pivots.tables[t].name.clone();
             let index = book.view.sheet;
-            let made = book.session.timeline_add(index, &pivot, &field, after(&words, "name"), at)?;
+            let made =
+                book.session.timeline_add(index, &pivot, &field, after(&words, "name"), at)?;
             format!("Added the timeline {made}")
         }
         "list" => {
@@ -182,16 +196,27 @@ fn timeline(sheet: &mut Spreadsheet, args: &[String]) -> Out {
             return Ok(said(format!("{} timelines", list.len())).with(json!(list)));
         }
         "select" => {
-            let name = stored_name(names(book).into_iter(), rest.first().ok_or("select takes the timeline's name")?, "timeline")?;
+            let name = stored_name(
+                names(book).into_iter(),
+                rest.first().ok_or("select takes the timeline's name")?,
+                "timeline",
+            )?;
             let span = match rest.get(1).map(String::as_str) {
                 None | Some("all") => None,
-                Some(from) => Some((date_of(from)?, date_of(rest.get(2).ok_or("select takes a first and a last date")?)?)),
+                Some(from) => Some((
+                    date_of(from)?,
+                    date_of(rest.get(2).ok_or("select takes a first and a last date")?)?,
+                )),
             };
             book.session.timeline_select(&name, span)?;
             format!("{name} set")
         }
         "delete" => {
-            let name = stored_name(names(book).into_iter(), rest.first().ok_or("delete takes the timeline's name")?, "timeline")?;
+            let name = stored_name(
+                names(book).into_iter(),
+                rest.first().ok_or("delete takes the timeline's name")?,
+                "timeline",
+            )?;
             book.session.timeline_delete(&name)?;
             format!("Deleted {name}")
         }
@@ -211,7 +236,8 @@ pub fn timelines_json(book: &Book) -> Vec<Json> {
         .timelines
         .iter()
         .map(|t| {
-            let cache = book.session.book.slicers.timeline_caches.iter().find(|c| c.name == t.cache);
+            let cache =
+                book.session.book.slicers.timeline_caches.iter().find(|c| c.name == t.cache);
             let place = frame_at(book, "timeslicer", &t.name);
             json!({
                 "name": t.name,

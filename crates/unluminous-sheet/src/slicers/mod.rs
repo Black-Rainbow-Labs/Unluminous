@@ -19,9 +19,11 @@ pub mod session;
 pub mod sync;
 pub mod xml;
 
-pub const REL_SLICER_CACHE: &str = "http://schemas.microsoft.com/office/2007/relationships/slicerCache";
+pub const REL_SLICER_CACHE: &str =
+    "http://schemas.microsoft.com/office/2007/relationships/slicerCache";
 pub const REL_SLICER: &str = "http://schemas.microsoft.com/office/2007/relationships/slicer";
-pub const REL_TIMELINE_CACHE: &str = "http://schemas.microsoft.com/office/2011/relationships/timelineCache";
+pub const REL_TIMELINE_CACHE: &str =
+    "http://schemas.microsoft.com/office/2011/relationships/timelineCache";
 pub const REL_TIMELINE: &str = "http://schemas.microsoft.com/office/2011/relationships/timeline";
 pub const CT_SLICER_CACHE: &str = "application/vnd.ms-excel.slicerCache+xml";
 pub const CT_SLICER: &str = "application/vnd.ms-excel.slicer+xml";

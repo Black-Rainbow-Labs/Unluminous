@@ -97,6 +97,8 @@ pub enum Act {
     Paste(PasteMode),
     /// Paste text that came from another program, split into cells by tabs and lines.
     PasteText(String),
+    /// A table another program put on the clipboard as HTML.
+    PasteHtml(String),
     Sort {
         column: Option<u32>,
         ascending: bool,
@@ -541,6 +543,12 @@ fn apply_inner(book: &mut Book, copied: &mut Option<Copied>, act: Act) -> Said {
             }
             let options = unluminous_sheet::edit::clipboard::ExternalPaste::default();
             let pasted = s.paste_text(sheet, cursor, &text, options)?;
+            book.view.select_range(pasted);
+            Ok(String::new())
+        }
+        Act::PasteHtml(html) => {
+            let options = unluminous_sheet::edit::clipboard::ExternalPaste::default();
+            let pasted = s.paste_html(sheet, cursor, &html, options)?;
             book.view.select_range(pasted);
             Ok(String::new())
         }

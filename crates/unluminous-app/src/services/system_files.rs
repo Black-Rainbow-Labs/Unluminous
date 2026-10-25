@@ -39,6 +39,47 @@ pub fn put_files_on_the_clipboard(paths: &[PathBuf]) -> bool {
     !paths.is_empty() && platform::write(paths)
 }
 
+/// Whether the system clipboard's HTML may be read: set by the released binary only, so a test's window
+/// never pastes what the person running it copied.
+static HTML_ALLOWED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Let the spreadsheet read HTML off the system clipboard.
+pub fn allow_clipboard_html() {
+    HTML_ALLOWED.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The HTML on the system clipboard, as the markup alone: the fragment a browser or Excel copied, found by
+/// the offsets of the Windows "HTML Format" header, or the whole text where there is no header (macOS's
+/// `public.html`). `None` when the clipboard holds no HTML.
+pub fn clipboard_html() -> Option<String> {
+    if !HTML_ALLOWED.load(std::sync::atomic::Ordering::Relaxed) {
+        return None;
+    }
+    platform::html().map(|raw| html_fragment(&raw)).filter(|h| !h.trim().is_empty())
+}
+
+/// The markup of a CF_HTML block: between `StartFragment` and `EndFragment` byte offsets when the header
+/// names them, else after `StartHTML`, else the text as it is.
+pub fn html_fragment(raw: &str) -> String {
+    let offset = |key: &str| -> Option<usize> {
+        let at = raw.find(key)? + key.len();
+        let digits: String = raw[at..].chars().take_while(char::is_ascii_digit).collect();
+        digits.parse().ok()
+    };
+    let slice = |from: usize, to: usize| raw.get(from..to).map(str::to_owned);
+    if let (Some(a), Some(b)) = (offset("StartFragment:"), offset("EndFragment:")) {
+        if let Some(text) = slice(a, b) {
+            return text;
+        }
+    }
+    if let (Some(a), Some(b)) = (offset("StartHTML:"), offset("EndHTML:")) {
+        if let Some(text) = slice(a, b) {
+            return text;
+        }
+    }
+    raw.to_owned()
+}
+
 /// Where the pointer is, in this window's points, asked of the system rather than of egui. `None`
 /// when the platform cannot say, or when the pointer is over another program's window.
 pub fn pointer(context: &egui::Context) -> Option<egui::Pos2> {
@@ -65,7 +106,7 @@ mod platform {
     use windows_sys::Win32::Graphics::Gdi::ScreenToClient;
     use windows_sys::Win32::System::DataExchange::{
         CloseClipboard, EmptyClipboard, GetClipboardData, IsClipboardFormatAvailable,
-        OpenClipboard, SetClipboardData,
+        OpenClipboard, RegisterClipboardFormatW, SetClipboardData,
     };
     use windows_sys::Win32::System::Memory::{
         GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE,
@@ -161,6 +202,34 @@ mod platform {
 
     pub fn pointer_on_screen() -> Option<egui::Pos2> {
         None
+    }
+
+    /// The "HTML Format" the clipboard holds, as text with its header, if it holds any.
+    pub fn html() -> Option<String> {
+        let wide: Vec<u16> = "HTML Format\0".encode_utf16().collect();
+        // SAFETY: the clipboard is opened and closed here; the data is read while it is open and
+        // locked, as a zero ended string, which the format guarantees.
+        unsafe {
+            let format = RegisterClipboardFormatW(wide.as_ptr());
+            if format == 0 || IsClipboardFormatAvailable(format) == 0 {
+                return None;
+            }
+            if OpenClipboard(std::ptr::null_mut()) == 0 {
+                return None;
+            }
+            let mut text = None;
+            let handle = GetClipboardData(format);
+            if !handle.is_null() {
+                let locked = GlobalLock(handle).cast::<std::ffi::c_char>();
+                if !locked.is_null() {
+                    let bytes = std::ffi::CStr::from_ptr(locked).to_bytes();
+                    text = Some(String::from_utf8_lossy(bytes).into_owned());
+                    GlobalUnlock(handle);
+                }
+            }
+            CloseClipboard();
+            text
+        }
     }
 
     pub fn pointer(context: &egui::Context) -> Option<egui::Pos2> {
@@ -294,8 +363,21 @@ mod platform {
         }
     }
 
+    /// The HTML on the pasteboard, if there is any.
+    pub fn html() -> Option<String> {
+        // SAFETY: as in `read`; the string is nil-checked before it is used.
+        unsafe {
+            let board: Option<Retained<AnyObject>> =
+                msg_send![class!(NSPasteboard), generalPasteboard];
+            let board = board?;
+            let kind = NSString::from_str("public.html");
+            let text: Option<Retained<NSString>> = msg_send![&*board, stringForType: &*kind];
+            text.map(|t| t.to_string())
+        }
+    }
+
     pub fn pointer(context: &egui::Context) -> Option<egui::Pos2> {
-        let inside = context.input(|input| input.viewport().inner_rect)?;
+        let inside =context.input(|input| input.viewport().inner_rect)?;
         let at = pointer_on_screen()?;
         Some(egui::pos2(at.x - inside.min.x, at.y - inside.min.y))
     }
@@ -331,6 +413,10 @@ mod platform {
         false
     }
 
+    pub fn html() -> Option<String> {
+        None
+    }
+
     pub fn pointer(_context: &egui::Context) -> Option<egui::Pos2> {
         None
     }
@@ -342,8 +428,22 @@ mod platform {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(windows)]
     use super::*;
+
+    /// The fragment of a CF_HTML block is found by its byte offsets, and plain markup is left alone.
+    #[test]
+    fn the_fragment_of_a_cf_html_block_is_found_by_its_offsets() {
+        let body = "<html><body><!--StartFragment--><table><tr><td>1</td></tr></table><!--EndFragment--></body></html>";
+        let head = "Version:0.9\r\nStartHTML:0000000000\r\nEndHTML:0000000000\r\nStartFragment:0000000000\r\nEndFragment:0000000000\r\n";
+        let start = head.len() + body.find("<table>").unwrap();
+        let end = head.len() + body.find("<!--EndFragment-->").unwrap();
+        let raw = head
+            .replace("StartFragment:0000000000", &format!("StartFragment:{start:010}"))
+            .replace("EndFragment:0000000000", &format!("EndFragment:{end:010}"))
+            + body;
+        assert_eq!(html_fragment(&raw), "<table><tr><td>1</td></tr></table>");
+        assert_eq!(html_fragment("<table></table>"), "<table></table>");
+    }
 
     /// Files put on the system clipboard come back off it as the same paths, which is the round trip a
     /// paste in Explorer makes.

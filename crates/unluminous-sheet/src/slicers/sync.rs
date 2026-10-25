@@ -153,13 +153,19 @@ fn set_override(book: &mut Workbook, part: &str, content_type: &str) {
 }
 
 fn workbook_part(book: &Workbook) -> String {
-    if book.part.is_empty() { "xl/workbook.xml".to_owned() } else { book.part.clone() }
+    if book.part.is_empty() {
+        "xl/workbook.xml".to_owned()
+    } else {
+        book.part.clone()
+    }
 }
 
 /// The relationship of a workbook part of this kind that points at `part`, made when there is none.
 fn workbook_rel(book: &mut Workbook, kind: &str, part: &str) -> (String, bool) {
     let from = workbook_part(book);
-    if let Some(r) = book.kept.workbook_rels.iter().find(|r| r.kind == kind && resolve(&from, &r.target) == part) {
+    if let Some(r) =
+        book.kept.workbook_rels.iter().find(|r| r.kind == kind && resolve(&from, &r.target) == part)
+    {
         return (r.id.clone(), false);
     }
     let id = next_id(&book.kept.workbook_rels);
@@ -192,13 +198,23 @@ fn write_caches(book: &mut Workbook) {
         let cache = book.slicers.caches[i].clone();
         let Some((pivots, table, id)) = pivots_of(book, &cache.pivots) else { continue };
         let items = items_of(book, &cache, table);
-        let part = if cache.part.is_empty() { fresh_part(book, "xl/slicerCaches/slicerCache{}.xml") } else { cache.part.clone() };
+        let part = if cache.part.is_empty() {
+            fresh_part(book, "xl/slicerCaches/slicerCache{}.xml")
+        } else {
+            cache.part.clone()
+        };
         book.kept.set(&part, cache_xml(&cache, id, &pivots, &items).into_bytes());
         set_override(book, &part, CT_SLICER_CACHE);
         let (rid, added) = workbook_rel(book, REL_SLICER_CACHE, &part);
         if added {
             let entry = format!("<x14:slicerCache r:id=\"{rid}\"/>");
-            add_to_ext(workbook_ext(book), URI_SLICER_CACHES, ("x14", X14_NS), "x14:slicerCaches", &entry);
+            add_to_ext(
+                workbook_ext(book),
+                URI_SLICER_CACHES,
+                ("x14", X14_NS),
+                "x14:slicerCaches",
+                &entry,
+            );
         }
         ensure_name(book, &cache.name);
         book.slicers.caches[i].part = part.clone();
@@ -207,13 +223,23 @@ fn write_caches(book: &mut Workbook) {
     for i in 0..book.slicers.timeline_caches.len() {
         let cache = book.slicers.timeline_caches[i].clone();
         let Some((pivots, _, id)) = pivots_of(book, &cache.pivots) else { continue };
-        let part = if cache.part.is_empty() { fresh_part(book, "xl/timelineCaches/timelineCache{}.xml") } else { cache.part.clone() };
+        let part = if cache.part.is_empty() {
+            fresh_part(book, "xl/timelineCaches/timelineCache{}.xml")
+        } else {
+            cache.part.clone()
+        };
         book.kept.set(&part, timeline_cache_xml(&cache, id, &pivots).into_bytes());
         set_override(book, &part, CT_TIMELINE_CACHE);
         let (rid, added) = workbook_rel(book, REL_TIMELINE_CACHE, &part);
         if added {
             let entry = format!("<x15:timelineCacheRef r:id=\"{rid}\"/>");
-            add_to_ext(workbook_ext(book), URI_TIMELINE_CACHES, ("x15", X15_NS), "x15:timelineCacheRefs", &entry);
+            add_to_ext(
+                workbook_ext(book),
+                URI_TIMELINE_CACHES,
+                ("x15", X15_NS),
+                "x15:timelineCacheRefs",
+                &entry,
+            );
         }
         ensure_name(book, &cache.name);
         book.slicers.timeline_caches[i].part = part.clone();
@@ -228,7 +254,10 @@ fn drop_dead_workbook_parts(book: &mut Workbook, from: &str, live: &BTreeSet<Str
         .kept
         .workbook_rels
         .iter()
-        .filter(|r| (r.kind == REL_SLICER_CACHE || r.kind == REL_TIMELINE_CACHE) && !live.contains(&resolve(from, &r.target)))
+        .filter(|r| {
+            (r.kind == REL_SLICER_CACHE || r.kind == REL_TIMELINE_CACHE)
+                && !live.contains(&resolve(from, &r.target))
+        })
         .cloned()
         .collect();
     for r in dead {
@@ -246,7 +275,8 @@ fn drop_dead_workbook_parts(book: &mut Workbook, from: &str, live: &BTreeSet<Str
         .chain(book.slicers.timeline_caches.iter().map(|c| c.name.clone()))
         .collect();
     book.names.retain(|n| {
-        let ours = n.formula == "#N/A" && (n.name.starts_with("Slicer_") || n.name.starts_with("NativeTimeline_"));
+        let ours = n.formula == "#N/A"
+            && (n.name.starts_with("Slicer_") || n.name.starts_with("NativeTimeline_"));
         !ours || names.contains(&n.name)
     });
 }
@@ -267,12 +297,34 @@ fn ext_of(list: &mut Vec<(String, String)>) -> &mut String {
 /// The `slicers` and `timelines` part of every sheet, made from the slicers whose objects are on it.
 fn write_lists(book: &mut Workbook) {
     for sheet in 0..book.sheets.len() {
-        let slicers: Vec<Slicer> = book.slicers.slicers.iter().filter(|s| s.sheet == sheet).cloned().collect();
-        let timelines: Vec<Timeline> = book.slicers.timelines.iter().filter(|s| s.sheet == sheet).cloned().collect();
-        write_list(book, sheet, REL_SLICER, CT_SLICER, "xl/slicers/slicer{}.xml", URI_SLICER_LIST, ("x14", X14_NS), "x14:slicerList", "x14:slicer",
-            (!slicers.is_empty()).then(|| slicers_xml(&slicers.iter().collect::<Vec<_>>())));
-        write_list(book, sheet, REL_TIMELINE, CT_TIMELINE, "xl/timelines/timeline{}.xml", URI_TIMELINE_LIST, ("x15", X15_NS), "x15:timelineRefs", "x15:timelineRef",
-            (!timelines.is_empty()).then(|| timelines_xml(&timelines.iter().collect::<Vec<_>>())));
+        let slicers: Vec<Slicer> =
+            book.slicers.slicers.iter().filter(|s| s.sheet == sheet).cloned().collect();
+        let timelines: Vec<Timeline> =
+            book.slicers.timelines.iter().filter(|s| s.sheet == sheet).cloned().collect();
+        write_list(
+            book,
+            sheet,
+            REL_SLICER,
+            CT_SLICER,
+            "xl/slicers/slicer{}.xml",
+            URI_SLICER_LIST,
+            ("x14", X14_NS),
+            "x14:slicerList",
+            "x14:slicer",
+            (!slicers.is_empty()).then(|| slicers_xml(&slicers.iter().collect::<Vec<_>>())),
+        );
+        write_list(
+            book,
+            sheet,
+            REL_TIMELINE,
+            CT_TIMELINE,
+            "xl/timelines/timeline{}.xml",
+            URI_TIMELINE_LIST,
+            ("x15", X15_NS),
+            "x15:timelineRefs",
+            "x15:timelineRef",
+            (!timelines.is_empty()).then(|| timelines_xml(&timelines.iter().collect::<Vec<_>>())),
+        );
     }
 }
 
@@ -302,7 +354,8 @@ fn write_list(
             let part = fresh_part(book, pattern);
             book.kept.set(&part, xml.into_bytes());
             set_override(book, &part, content_type);
-            let sheet_part = if from.is_empty() { "xl/worksheets/sheet1.xml".to_owned() } else { from };
+            let sheet_part =
+                if from.is_empty() { "xl/worksheets/sheet1.xml".to_owned() } else { from };
             let id = next_id(&book.sheets[sheet].raw.rels);
             book.sheets[sheet].raw.rels.push(Relationship {
                 id: id.clone(),

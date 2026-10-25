@@ -232,7 +232,15 @@ fn list_header(root: &str, ns: &str) -> String {
     )
 }
 
-fn entry(tag: &str, name: &str, uid: &Option<String>, cache: &str, caption: &Option<String>, attrs: &[(String, String)], extra: &str) -> String {
+fn entry(
+    tag: &str,
+    name: &str,
+    uid: &Option<String>,
+    cache: &str,
+    caption: &Option<String>,
+    attrs: &[(String, String)],
+    extra: &str,
+) -> String {
     let mut out = format!("<{tag}");
     attr(&mut out, "name", name);
     if let Some(uid) = uid {
@@ -274,7 +282,11 @@ pub fn timelines_xml(timelines: &[&Timeline]) -> String {
 }
 
 /// The part of a timeline cache.
-pub fn timeline_cache_xml(cache: &TimelineCache, pivot_cache_id: u64, pivots: &[(u32, String)]) -> String {
+pub fn timeline_cache_xml(
+    cache: &TimelineCache,
+    pivot_cache_id: u64,
+    pivots: &[(u32, String)],
+) -> String {
     let mut out = String::from(HEAD);
     out.push_str(&format!(
         "<timelineCacheDefinition xmlns=\"{X15}\" xmlns:x15=\"{X15}\" xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\" mc:Ignorable=\"xr10\" xmlns:xr10=\"{XR10}\""
@@ -300,7 +312,11 @@ pub fn timeline_cache_xml(cache: &TimelineCache, pivot_cache_id: u64, pivots: &[
     attr(&mut out, "filterType", if cache.selection.is_some() { "dateBetween" } else { "unknown" });
     out.push('>');
     if let Some((a, b)) = &cache.selection {
-        out.push_str(&format!("<selection startDate=\"{}\" endDate=\"{}\"/>", escape(a), escape(b)));
+        out.push_str(&format!(
+            "<selection startDate=\"{}\" endDate=\"{}\"/>",
+            escape(a),
+            escape(b)
+        ));
     }
     if let Some((a, b)) = &cache.bounds {
         out.push_str(&format!("<bounds startDate=\"{}\" endDate=\"{}\"/>", escape(a), escape(b)));
