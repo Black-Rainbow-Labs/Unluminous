@@ -162,9 +162,60 @@ pub type Waker = Arc<dyn Fn() + Send + Sync + 'static>;
 /// own a reader it is only lent — being the reader is what makes this safe rather than a lifetime laundered
 /// through a raw pointer. What it costs is one pass over each chunk on the reader thread, which is the state
 /// machine in [`crate::reported::Scanner`] and no allocation for a stream that reports nothing.
+///
+/// **It also covers two faults in how `alacritty_terminal` sees a program end on Windows** (`task-2353`). Both
+/// were found by a run tab whose program prints one line and stops, on a machine busy enough that the threads
+/// involved ran late:
+///
+/// - **An exit before the loop starts was never seen.** The child watcher waits on the program from the moment
+///   the pseudoconsole is made, but it wakes the loop only once the loop has registered with its poller. A
+///   program that ended first put its exit into a channel nothing was woken to read, and the tab said `running`
+///   for ever. `register` asks whether the program has already ended and wakes the loop itself.
+/// - **What the console host wrote after the exit was lost.** On an exit the loop drains the pipe with one
+///   read that does not wait and stops reading. The console host writes to the pipe on its own frame, and on a
+///   busy machine a program's only line arrived after the program had gone, so the tab was empty. Waiting for
+///   the pipe to go quiet for a quarter of a second was tried and was not enough. So on Windows
+///   `next_child_event` tells the window the program ended and does **not** tell the loop: the loop goes on
+///   reading the pipe until the session is closed, which shuts it down, so whatever arrives later reaches the
+///   screen however late it is.
 struct Watching<T> {
     inner: T,
     scanner: crate::reported::Scanner,
+    /// Where the program's end is reported, because on Windows the loop is not told it.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    proxy: Proxy,
+    /// The program's process handle, as a number so this stays `Send`, for asking whether it has ended.
+    #[cfg(windows)]
+    child: usize,
+    /// Whether the program's end has been reported, so it is reported once.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    ended: bool,
+}
+
+impl Watching<alacritty_terminal::tty::Pty> {
+    fn new(
+        inner: alacritty_terminal::tty::Pty,
+        scanner: crate::reported::Scanner,
+        proxy: Proxy,
+    ) -> Self {
+        Self {
+            #[cfg(windows)]
+            child: inner.child_watcher().raw_handle() as usize,
+            inner,
+            scanner,
+            proxy,
+            ended: false,
+        }
+    }
+}
+
+/// Whether the process behind `handle` has ended, asked without waiting.
+#[cfg(windows)]
+fn has_ended(handle: usize) -> bool {
+    use windows_sys::Win32::Foundation::WAIT_OBJECT_0;
+    use windows_sys::Win32::System::Threading::WaitForSingleObject;
+    // SAFETY: the handle belongs to the pseudoterminal this value owns, which is alive while it is.
+    handle != 0 && unsafe { WaitForSingleObject(handle as _, 0) } == WAIT_OBJECT_0
 }
 
 impl<T: alacritty_terminal::tty::EventedReadWrite> std::io::Read for Watching<T> {
@@ -181,13 +232,27 @@ impl<T: alacritty_terminal::tty::EventedReadWrite> alacritty_terminal::tty::Even
     type Reader = Self;
     type Writer = T::Writer;
 
+    /// Register as the loop asks, and then wake the loop for a program that has already ended.
+    ///
+    /// The watcher's own wake is posted only to a poller it has been given, which happens in the call
+    /// below, so an exit before it was posted nowhere. Asking after the call covers every order: an exit
+    /// after it is posted by the watcher, and one before it is posted here. If the watcher's callback has
+    /// not yet run when the loop wakes, the loop finds no exit, carries on, and is woken again by the
+    /// watcher, which by then has the poller.
     unsafe fn register(
         &mut self,
         poller: &Arc<polling::Poller>,
         event: polling::Event,
         mode: polling::PollMode,
     ) -> std::io::Result<()> {
-        unsafe { self.inner.register(poller, event, mode) }
+        unsafe { self.inner.register(poller, event, mode) }?;
+        #[cfg(windows)]
+        if has_ended(self.child) {
+            use polling::os::iocp::{CompletionPacket, PollerIocpExt};
+            let wake = polling::Event::readable(alacritty_terminal::tty::PTY_CHILD_EVENT_TOKEN);
+            let _ = poller.post(CompletionPacket::new(wake));
+        }
+        Ok(())
     }
 
     fn reregister(
@@ -213,8 +278,26 @@ impl<T: alacritty_terminal::tty::EventedReadWrite> alacritty_terminal::tty::Even
 }
 
 impl<T: alacritty_terminal::tty::EventedPty> alacritty_terminal::tty::EventedPty for Watching<T> {
+    /// On Windows, the program's end is sent to the window here and the loop is never told it.
+    ///
+    /// What the window receives is what the loop would have sent: `ChildExit` with the code, or `Exit` when no
+    /// code could be read. The loop goes on reading the pipe, so output the console host writes after the exit
+    /// still reaches the screen, and it stops when the session is closed. Everywhere else the loop is told, as
+    /// before: a Unix pseudoterminal holds what the program wrote, so the loop's one drain reads all of it.
     fn next_child_event(&mut self) -> Option<alacritty_terminal::tty::ChildEvent> {
-        self.inner.next_child_event()
+        let event = self.inner.next_child_event();
+        #[cfg(windows)]
+        if let Some(alacritty_terminal::tty::ChildEvent::Exited(status)) = event {
+            // A second wake can find the channel closed, which the watcher reports as another exit.
+            if !std::mem::replace(&mut self.ended, true) {
+                match status {
+                    Some(status) => self.proxy.send_event(Event::ChildExit(status)),
+                    None => self.proxy.send_event(Event::Exit),
+                }
+            }
+            return None;
+        }
+        event
     }
 }
 
@@ -419,7 +502,8 @@ impl Session {
         // not answer: which folder the shell says it is in. See `Watching` and [`crate::reported`]. It is
         // always on, because a shell that reports its folder is followed and one that does not is unchanged.
         let reported = crate::reported::Reported::new();
-        let pty = Watching { inner: pty, scanner: crate::reported::Scanner::new(reported.clone()) };
+        let pty =
+            Watching::new(pty, crate::reported::Scanner::new(reported.clone()), proxy.clone());
         let event_loop = EventLoop::new(term.clone(), proxy, pty, true, false)?;
         let notifier = Notifier(event_loop.channel());
         event_loop.spawn();
@@ -1948,6 +2032,202 @@ Start-Sleep -Seconds 900"
             "the program's last words should still be there, and the screen holds {:?}",
             session.snapshot().text()
         );
+    }
+
+    /// A pseudoconsole whose program has already ended before the reader loop starts, read by a loop
+    /// built the way [`Session::spawn`] builds one, and the events that loop sends.
+    ///
+    /// `task-2353`. `Session::spawn` starts the program and then the loop's thread, and on a busy
+    /// machine a program that prints one line ends before that thread has run. This makes the order
+    /// certain rather than likely, which is what lets a test say what happens then.
+    #[cfg(windows)]
+    fn a_loop_started_after_the_program_ended(
+        command: &str,
+    ) -> (Receiver<Event>, Arc<FairMutex<Term<Proxy>>>) {
+        use windows_sys::Win32::System::Threading::WaitForSingleObject;
+        let options = alacritty_terminal::tty::Options {
+            shell: Some(alacritty_terminal::tty::Shell::new(
+                test_shell(),
+                vec!["/c".to_owned(), command.to_owned()],
+            )),
+            working_directory: None,
+            drain_on_exit: false,
+            env: Default::default(),
+            escape_args: true,
+        };
+        let size = Size::new(8, 60);
+        let pty =
+            alacritty_terminal::tty::new(&options, size.into(), 0).expect("start the program");
+        // SAFETY: the handle is the pseudoterminal's own and the pseudoterminal is alive here.
+        let ended = unsafe { WaitForSingleObject(pty.child_watcher().raw_handle(), 30_000) };
+        assert_eq!(ended, 0, "the program did not end in thirty seconds");
+        // The watcher's own callback runs on a wait thread when the program ends. Give it time to
+        // have run, so it finds no loop to wake, which is the order being tested.
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let (sender, events) = std::sync::mpsc::channel();
+        let proxy = Proxy { events: sender, waker: Arc::new(|| {}) };
+        let term = Arc::new(FairMutex::new(Term::new(config(), &size, proxy.clone())));
+        let pty = Watching::new(
+            pty,
+            crate::reported::Scanner::new(crate::reported::Reported::new()),
+            proxy.clone(),
+        );
+        let event_loop =
+            EventLoop::new(term.clone(), proxy, pty, true, false).expect("make the loop");
+        event_loop.spawn();
+        (events, term)
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_program_that_ends_before_the_reader_starts_is_still_seen_to_end() {
+        // `task-2353`. alacritty's Windows child watcher wakes the loop only once the loop has
+        // registered with its poller, so an exit that came first went into a channel nothing was
+        // woken to read, and a run tab said `running` for ever with the program's output on it.
+        let (events, _term) = a_loop_started_after_the_program_ended("exit 7");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            match events.recv_timeout(left) {
+                Ok(Event::ChildExit(status)) => {
+                    assert_eq!(status.code(), Some(7));
+                    break;
+                }
+                Ok(_) => {}
+                Err(_) => panic!("the loop never said the program had ended"),
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn what_a_program_printed_before_ending_reaches_a_loop_started_after_it_ended() {
+        // `task-2353`, with output: the screen the run tab would show, from the same order.
+        let marker = "unluminous-printed-before-the-loop";
+        let (events, term) = a_loop_started_after_the_program_ended(&format!("echo {marker}"));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !matches!(
+            events.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now())),
+            Ok(Event::ChildExit(_))
+        ) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the loop never said the program had ended"
+            );
+        }
+        // The console host may write the line after the exit was reported, and the loop goes on
+        // reading for exactly that reason, so the screen is watched rather than read once.
+        let screen_text = || {
+            let term = term.lock();
+            (0..term.screen_lines())
+                .map(|line| {
+                    let row = &term.grid()[Line(line as i32)];
+                    let text: String = (0..term.columns()).map(|at| row[Column(at)].c).collect();
+                    text + "\n"
+                })
+                .collect::<String>()
+        };
+        while !screen_text().contains(marker) {
+            assert!(std::time::Instant::now() < deadline, "the screen holds {:?}", screen_text());
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+    }
+
+    /// A pseudoterminal with nothing behind it whose program has just ended, which is all the
+    /// end-of-program half of [`Watching`] reads.
+    #[cfg(windows)]
+    struct Ended {
+        exits: std::collections::VecDeque<alacritty_terminal::tty::ChildEvent>,
+    }
+
+    #[cfg(windows)]
+    impl std::io::Read for Ended {
+        fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+            Err(std::io::ErrorKind::WouldBlock.into())
+        }
+    }
+
+    #[cfg(windows)]
+    impl std::io::Write for Ended {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[cfg(windows)]
+    impl alacritty_terminal::tty::EventedReadWrite for Ended {
+        type Reader = Self;
+        type Writer = Self;
+
+        unsafe fn register(
+            &mut self,
+            _: &Arc<polling::Poller>,
+            _: polling::Event,
+            _: polling::PollMode,
+        ) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn reregister(
+            &mut self,
+            _: &Arc<polling::Poller>,
+            _: polling::Event,
+            _: polling::PollMode,
+        ) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn deregister(&mut self, _: &Arc<polling::Poller>) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn reader(&mut self) -> &mut Self {
+            self
+        }
+
+        fn writer(&mut self) -> &mut Self {
+            self
+        }
+    }
+
+    #[cfg(windows)]
+    impl alacritty_terminal::tty::EventedPty for Ended {
+        fn next_child_event(&mut self) -> Option<alacritty_terminal::tty::ChildEvent> {
+            self.exits.pop_front()
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn on_windows_the_window_is_told_a_program_ended_and_the_loop_goes_on_reading() {
+        // `task-2353`. The loop stops reading the moment it is told, and the console host can still
+        // be writing the program's last line, so the loop is never told: the window is, once, with
+        // the code. A second exit, which the watcher reports when its channel has closed, says nothing.
+        use alacritty_terminal::tty::{ChildEvent, EventedPty};
+        use std::os::windows::process::ExitStatusExt;
+        let (sender, events) = std::sync::mpsc::channel();
+        let mut watching = Watching {
+            inner: Ended {
+                exits: [
+                    ChildEvent::Exited(Some(std::process::ExitStatus::from_raw(5))),
+                    ChildEvent::Exited(None),
+                ]
+                .into(),
+            },
+            scanner: crate::reported::Scanner::new(crate::reported::Reported::new()),
+            proxy: Proxy { events: sender, waker: Arc::new(|| {}) },
+            child: 0,
+            ended: false,
+        };
+        assert!(watching.next_child_event().is_none(), "the loop is not told");
+        assert!(watching.next_child_event().is_none(), "nor the second time");
+        let told: Vec<Event> = events.try_iter().collect();
+        assert_eq!(told.len(), 1, "the window is told once: {told:?}");
+        assert!(matches!(&told[0], Event::ChildExit(status) if status.code() == Some(5)));
     }
 
     #[test]

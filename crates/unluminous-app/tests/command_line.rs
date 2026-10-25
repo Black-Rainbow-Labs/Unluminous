@@ -3269,30 +3269,71 @@ fn update_check_does_not_block_the_frame_it_arrives_on() {
     let _ = held_open.join();
 }
 
+/// A scripted releases page on loopback that answers every connection with `body` until it is dropped.
+///
+/// `task-2353`. A check asks the releases address and, beside it, both channels' version lists at the
+/// same address (`fetch_the_version_lists`), so a server that answered one connection and closed left
+/// whichever request came second refused. Which one that was depended on timing, and on a busy machine
+/// it was the check: `Could not check: 127.0.0.1:51083: io: Connection refused`.
+struct ReleasesPage {
+    port: u16,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl ReleasesPage {
+    fn answering(body: &'static str) -> Self {
+        use std::io::{Read as _, Write as _};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+        let port = listener.local_addr().expect("the address").port();
+        listener.set_nonblocking(true).expect("a listener that does not wait");
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stopping = stop.clone();
+        let thread = std::thread::spawn(move || {
+            while !stopping.load(std::sync::atomic::Ordering::Relaxed) {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        let _ = stream.set_nonblocking(false);
+                        let mut buffer = [0u8; 4096];
+                        let _ = stream.read(&mut buffer);
+                        let _ = stream.write_all(
+                            format!(
+                                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\
+                                 content-length: {}\r\nconnection: close\r\n\r\n{body}",
+                                body.len()
+                            )
+                            .as_bytes(),
+                        );
+                    }
+                    Err(problem) if problem.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+        Self { port, stop, thread: Some(thread) }
+    }
+}
+
+impl Drop for ReleasesPage {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
 /// And the answer, when the releases page does answer, is the one it gave.
 #[test]
 fn update_check_answers_with_what_the_releases_page_said() {
     let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(|held| held.into_inner());
 
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
-    let port = listener.local_addr().expect("the address").port();
-    let served = std::thread::spawn(move || {
-        if let Ok((mut stream, _)) = listener.accept() {
-            use std::io::{Read as _, Write as _};
-            let mut buffer = [0u8; 4096];
-            let _ = stream.read(&mut buffer);
-            let body =
-                r#"{"tag_name":"v99.0.0","html_url":"https://example.invalid/99","body":"newer"}"#;
-            let _ = stream.write_all(
-                format!(
-                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\
-                     connection: close\r\n\r\n{body}",
-                    body.len()
-                )
-                .as_bytes(),
-            );
-        }
-    });
+    let page = ReleasesPage::answering(
+        r#"{"tag_name":"v99.0.0","html_url":"https://example.invalid/99","body":"newer"}"#,
+    );
+    let port = page.port;
     std::env::set_var("UNLUMINOUS_RELEASES", format!("http://127.0.0.1:{port}/releases/latest"));
 
     let mut harness = harness("# a file\n");
@@ -3311,7 +3352,7 @@ fn update_check_answers_with_what_the_releases_page_said() {
     );
 
     std::env::remove_var("UNLUMINOUS_RELEASES");
-    let _ = served.join();
+    drop(page);
 }
 
 /// A scripted unluminous.com serving both channels' manifests, answering `count` requests by path.
@@ -3511,25 +3552,10 @@ fn installing_the_latest_when_it_is_already_running_says_so_and_clears_the_statu
 #[test]
 fn a_newer_version_is_offered_and_dont_ask_again_declines_that_version() {
     let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(|held| held.into_inner());
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
-    let port = listener.local_addr().expect("the address").port();
-    let served = std::thread::spawn(move || {
-        if let Ok((mut stream, _)) = listener.accept() {
-            use std::io::{Read as _, Write as _};
-            let mut buffer = [0u8; 4096];
-            let _ = stream.read(&mut buffer);
-            let body =
-                r#"{"version":"98.0.0","url":"https://example.invalid/98","notes":"much later"}"#;
-            let _ = stream.write_all(
-                format!(
-                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\
-                     connection: close\r\n\r\n{body}",
-                    body.len()
-                )
-                .as_bytes(),
-            );
-        }
-    });
+    let page = ReleasesPage::answering(
+        r#"{"version":"98.0.0","url":"https://example.invalid/98","notes":"much later"}"#,
+    );
+    let port = page.port;
     std::env::set_var("UNLUMINOUS_RELEASES", format!("http://127.0.0.1:{port}/releases/latest"));
     let mut harness = harness("# a file\n");
     let ctx = harness.ctx.clone();
@@ -3540,7 +3566,6 @@ fn a_newer_version_is_offered_and_dont_ask_again_declines_that_version() {
     settle(&mut harness, "the releases page to answer", |app| {
         app.update_line().is_some_and(|line| line != "Checking...")
     });
-    let _ = served.join();
     steady(&mut harness);
 
     let status = did(&mut harness, "update status");
@@ -3562,8 +3587,8 @@ fn a_newer_version_is_offered_and_dont_ask_again_declines_that_version() {
     let refusal = refused(&mut harness, "update install");
     assert_eq!(refusal, "refused");
     // Downloading and checking without installing needs no installer behind the window. The scripted
-    // server has answered its one request, so the download itself fails later, on a thread; what is
-    // asserted is that the command took it on.
+    // page names no installer, so the download itself fails later, on a thread; what is asserted is
+    // that the command took it on.
     let started = did(&mut harness, "update install --no-restart");
     assert_eq!(started["install"]["restart"], serde_json::json!(false), "{started}");
     std::env::remove_var("UNLUMINOUS_RELEASES");

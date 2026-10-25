@@ -628,8 +628,11 @@ fn the_widgets_debug_button_starts_the_chosen_configuration_under_a_debugger() {
     pressed.get_by_label("Debug the selected configuration").click();
     // The press starts a real adapter and, behind it, a real program, and their output keeps the
     // window redrawing, so the settle is a pump rather than a run — the shape `git_harness` uses for
-    // a test whose answer arrives on another thread.
-    for _ in 0..600 {
+    // a test whose answer arrives on another thread. A deadline rather than a count of turns, because
+    // the adapter search reads folders on a thread and on a busy machine a count of 600 ran out first
+    // (`task-2353`).
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    while std::time::Instant::now() < deadline {
         pump(&mut pressed);
         if pressed.state().debug.is_some()
             || pressed.state().message.as_deref().is_some_and(|said| said.contains("node"))

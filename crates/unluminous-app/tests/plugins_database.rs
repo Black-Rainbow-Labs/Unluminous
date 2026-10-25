@@ -1027,7 +1027,10 @@ fn test_connection_does_not_stop_the_window_drawing() {
     // machine's name resolution rather than about the window.
     std::thread::spawn(move || {
         let taken = listener.accept();
-        std::thread::sleep(std::time::Duration::from_millis(2500));
+        // Ten seconds, so a frame that waited for the answer is told apart from a frame that was
+        // only slow on a busy machine: 2.5 against a limit of 2 failed at 2.12 under load
+        // (`task-2353`).
+        std::thread::sleep(std::time::Duration::from_secs(10));
         drop(taken);
     });
 
@@ -1059,7 +1062,7 @@ fn test_connection_does_not_stop_the_window_drawing() {
     steady(&mut harness);
     let took = began.elapsed();
     assert!(
-        took < std::time::Duration::from_secs(2),
+        took < std::time::Duration::from_secs(5),
         "the frame that pressed Test Connection took {took:?}; on the code as it was it held the \
          window until the server answered or the connect gave up"
     );

@@ -6,6 +6,17 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.14.3 — 2026-10-24
+
+- See a program end on a busy Windows machine (`task-2353`)
+- Rustfmt (`task-2353`)
+- The Test Connection timing test tells a held frame from a slow one (`task-2353`)
+- On Windows the loop is never told a program ended, so late output is read (`task-2353`)
+- Settle waits on a 60 s deadline rather than 600 turns (`task-2353`)
+- The update tests' releases page answers every connection (`task-2353`)
+- The thread clock test spins until the counter moves, not for 30 ms of wall clock (`task-2353`)
+- Word round 2 parity gap TDD and the inventories behind it (`task-2358`)
+
 ## 1.14.2 — 2026-10-24
 
 - Synthetic bold and italic for a face without its own, a suggestion keeps the replaced word's formatting, and the spelling card fits its text (`task-2341`)
