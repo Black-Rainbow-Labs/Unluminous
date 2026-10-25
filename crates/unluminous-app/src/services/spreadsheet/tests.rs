@@ -268,3 +268,42 @@ fn autofit_rows_fits_the_tallest_text() {
     let height = book.session.book.sheets[0].rows.get(&1).and_then(|r| r.height).unwrap();
     assert!(height > 30.0 && height < 34.0, "a 24 point row is about 32 points tall, not {height}");
 }
+
+/// The literal words a usage line offers after its verb, such as `on` and `off` in
+/// `show-formulas [on|off|toggle]`: every alternative written with `|` that is a plain lower case word.
+fn offered_words(usage: &str) -> Vec<String> {
+    let usage = usage.split(": ").next().unwrap_or("");
+    let mut words = Vec::new();
+    for token in usage.split_whitespace().skip(1) {
+        if !token.contains('|') {
+            continue;
+        }
+        for word in token.split('|') {
+            let word = word.trim_matches(|c| matches!(c, '[' | ']' | '(' | ')' | ','));
+            if !word.is_empty() && word.chars().all(|c| c.is_ascii_lowercase() || c == '-') {
+                words.push(word.to_owned());
+            }
+        }
+    }
+    words
+}
+
+#[test]
+fn every_verb_in_the_help_is_one_the_provider_runs_and_takes_the_words_it_lists() {
+    for (verb, usage) in super::commands::LIST {
+        // Each verb starts from the same data, because one may close or change the workbook.
+        let (mut sheet, _folder) = with_data("help");
+        let unknown = format!("there is no `{verb}` command");
+        if let Err(e) = sheet.command(verb, &[]) {
+            assert!(!e.contains(&unknown), "`{verb}` is in the help but nothing runs it");
+        }
+        for word in offered_words(usage) {
+            if let Err(e) = sheet.command(verb, &[word.clone()]) {
+                assert!(
+                    !e.contains(&format!("not `{word}`")),
+                    "`{verb}` lists `{word}` in its help and refuses it: {e}"
+                );
+            }
+        }
+    }
+}

@@ -120,6 +120,15 @@ pub const fn offline(
     }
 }
 
+impl Function {
+    /// The same entry answering with `f`, for a service function whose answer without its service was
+    /// measured in Excel.
+    pub const fn answering(mut self, f: ScalarFn) -> Function {
+        self.imp = Imp::Scalar(f);
+        self
+    }
+}
+
 const CATEGORIES: &[(&str, &[Function])] = &[
     ("Math", math::FUNCTIONS),
     ("Statistical", stats::FUNCTIONS),

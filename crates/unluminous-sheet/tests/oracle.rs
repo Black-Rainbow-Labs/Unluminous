@@ -321,6 +321,13 @@ fn called_names(formula: &str) -> std::collections::BTreeSet<String> {
 /// argument kinds it takes covered by what Excel answered.
 // Switched on once every lane has merged, because the lanes that add functions bring their own cases and the
 // audit's probe corpus is imported by another lane. The coordinator removes the ignore.
+/// Functions Excel gives no answer for through COM, each with what was measured. Each is tested beside its
+/// definition instead.
+const NO_EXCEL_ANSWER: &[(&str, &str)] = &[(
+    "PY",
+    "Excel 16 waits for the Python in Excel service without end when PY is entered through COM:      `PY(\"1\")` and `PY(#N/A,0)` each held Excel for the whole 90 to 600 seconds allowed.",
+)];
+
 #[test]
 #[ignore]
 fn every_function_has_five_oracle_cases() {
@@ -335,7 +342,10 @@ fn every_function_has_five_oracle_cases() {
         }
     }
     let short: Vec<String> =
-        cases.iter().filter(|(_, n)| **n < 5).map(|(name, n)| format!("{name} ({n})")).collect();
+        cases
+            .iter()
+            .filter(|(name, n)| **n < 5 && !NO_EXCEL_ANSWER.iter().any(|(f, _)| f == *name))
+            .map(|(name, n)| format!("{name} ({n})")).collect();
     assert!(
         short.is_empty(),
         "{} functions have fewer than five oracle cases: {}",
