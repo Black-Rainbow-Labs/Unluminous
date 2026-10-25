@@ -10,6 +10,9 @@
 
 use std::collections::BTreeMap;
 
+pub(crate) mod datatools;
+pub use datatools::*;
+
 use crate::calc::Engine;
 use crate::coord::{CellRef, Range, MAX_COLS, MAX_ROWS};
 use crate::formula::{self, Axis, Expr, Formula};
@@ -129,6 +132,8 @@ pub struct Session {
     pub now: f64,
     /// The year typing `10/23` means.
     pub this_year: i64,
+    /// Typing a formula into a table's data fills it down the column, as Excel's AutoCorrect option does.
+    pub table_auto_fill: bool,
     seed: u64,
 }
 
@@ -149,6 +154,7 @@ impl Session {
             modified: false,
             now,
             this_year,
+            table_auto_fill: true,
             seed: 1,
         }
     }
@@ -303,7 +309,17 @@ impl Session {
             prepared.push((*at, self.prepare(sheet, *at, text)?));
         }
         let ranges: Vec<Range> = inputs.iter().map(|(at, _)| Range::cell(*at)).collect();
-        self.remember_cells("Typing", sheet, &ranges, true);
+        // A cell of a table changes the table's definition too, so that step puts the whole workbook back.
+        let in_table = self
+            .book
+            .tables
+            .iter()
+            .any(|t| t.sheet == sheet && ranges.iter().any(|r| t.range.intersects(r)));
+        if in_table {
+            self.remember_whole("Typing");
+        } else {
+            self.remember_cells("Typing", sheet, &ranges, true);
+        }
         for (at, (value, formula, format)) in prepared {
             let s = &mut self.book.sheets[sheet];
             let old = s.cells.get(&(at.row, at.col)).cloned().unwrap_or_default();
@@ -317,6 +333,10 @@ impl Session {
             let cell = Cell { value, formula, style, rich: None, extra: old.extra.clone() };
             self.book.sheets[sheet].set(at, cell);
             self.engine.changed(&self.book, sheet, at);
+        }
+        if in_table && inputs.len() == 1 {
+            self.note_typing_in_totals(sheet, inputs[0].0);
+            self.note_typing_in_table(sheet, inputs[0].0);
         }
         self.recalculate();
         Ok(())
@@ -1600,155 +1620,6 @@ impl Session {
         Ok(())
     }
 
-    /// Sort the rows of a range by some of its columns, each ascending or descending. `header` leaves the
-    /// first row where it is.
-    pub fn sort(
-        &mut self,
-        sheet: usize,
-        range: Range,
-        keys: &[(u32, bool)],
-        header: bool,
-    ) -> Result<(), String> {
-        self.check_sheet(sheet)?;
-        if keys.is_empty() {
-            return Err("sort needs a column to sort by".to_owned());
-        }
-        if self.book.sheets[sheet].merges.iter().any(|m| m.intersects(&range)) {
-            return Err("a range with merged cells cannot be sorted".to_owned());
-        }
-        let range = clip_to_used(&self.book.sheets[sheet], range);
-        let first = range.first.row + u32::from(header);
-        if first > range.last.row {
-            return Ok(());
-        }
-        self.remember_whole("Sort");
-        let s = &self.book.sheets[sheet];
-        let rows: Vec<u32> = (first..=range.last.row).collect();
-        let mut order = rows.clone();
-        let value = |r: u32, c: u32| s.value_at(CellRef::new(r, range.first.col + c));
-        order.sort_by(|a, b| {
-            for (col, ascending) in keys {
-                let (x, y) = (value(*a, *col), value(*b, *col));
-                // Empty cells go last whichever way the sort runs.
-                let o = match (x.is_empty(), y.is_empty()) {
-                    (true, true) => std::cmp::Ordering::Equal,
-                    (true, false) => return std::cmp::Ordering::Greater,
-                    (false, true) => return std::cmp::Ordering::Less,
-                    _ => crate::functions::lookup::sort_compare(&x, &y),
-                };
-                let o = if *ascending { o } else { o.reverse() };
-                if o != std::cmp::Ordering::Equal {
-                    return o;
-                }
-            }
-            std::cmp::Ordering::Equal
-        });
-        let mut moved: Vec<((u32, u32), Cell)> = Vec::new();
-        for (new_index, old_row) in order.iter().enumerate() {
-            let new_row = rows[new_index];
-            for c in range.first.col..=range.last.col {
-                if let Some(mut cell) = self.book.sheets[sheet].cells.get(&(*old_row, c)).cloned() {
-                    if let Some(f) = &cell.formula {
-                        cell.formula = Some(Formula::from_expr(
-                            formula::shifted(&f.expr, new_row as i64 - *old_row as i64, 0),
-                            f.dynamic,
-                        ));
-                    }
-                    moved.push(((new_row, c), cell));
-                }
-            }
-        }
-        let s = &mut self.book.sheets[sheet];
-        for r in first..=range.last.row {
-            for c in range.first.col..=range.last.col {
-                s.cells.remove(&(r, c));
-            }
-        }
-        for (k, cell) in moved {
-            s.cells.insert(k, cell);
-        }
-        self.engine.rebuild(&self.book);
-        self.recalculate_all();
-        Ok(())
-    }
-
-    /// Remove the rows of a range whose values in some columns repeat an earlier row. Answers how many
-    /// were removed.
-    pub fn remove_duplicates(
-        &mut self,
-        sheet: usize,
-        range: Range,
-        columns: &[u32],
-        header: bool,
-    ) -> Result<usize, String> {
-        self.check_sheet(sheet)?;
-        let range = clip_to_used(&self.book.sheets[sheet], range);
-        let first = range.first.row + u32::from(header);
-        self.remember_whole("Remove duplicates");
-        let s = &self.book.sheets[sheet];
-        let mut seen: Vec<Vec<Value>> = Vec::new();
-        let mut keep_rows = Vec::new();
-        for r in first..=range.last.row {
-            let key: Vec<Value> =
-                columns.iter().map(|c| s.value_at(CellRef::new(r, range.first.col + c))).collect();
-            if seen.iter().any(|k| {
-                k.iter().zip(&key).all(|(a, b)| {
-                    crate::eval::equal(a, b)
-                        && std::mem::discriminant(a) == std::mem::discriminant(b)
-                })
-            }) {
-                continue;
-            }
-            seen.push(key);
-            keep_rows.push(r);
-        }
-        let removed = (range.last.row + 1 - first) as usize - keep_rows.len();
-        let mut kept: Vec<((u32, u32), Cell)> = Vec::new();
-        for (i, r) in keep_rows.iter().enumerate() {
-            for c in range.first.col..=range.last.col {
-                if let Some(cell) = s.cells.get(&(*r, c)) {
-                    kept.push(((first + i as u32, c), cell.clone()));
-                }
-            }
-        }
-        let s = &mut self.book.sheets[sheet];
-        for r in first..=range.last.row {
-            for c in range.first.col..=range.last.col {
-                s.cells.remove(&(r, c));
-            }
-        }
-        for (k, cell) in kept {
-            s.cells.insert(k, cell);
-        }
-        self.engine.rebuild(&self.book);
-        self.recalculate_all();
-        Ok(removed)
-    }
-
-    /// Split the text of a column into the columns to its right at a delimiter.
-    pub fn text_to_columns(
-        &mut self,
-        sheet: usize,
-        range: Range,
-        delimiter: &str,
-    ) -> Result<(), String> {
-        self.check_sheet(sheet)?;
-        if delimiter.is_empty() {
-            return Err("text to columns needs a delimiter".to_owned());
-        }
-        let range = clip_to_used(&self.book.sheets[sheet], range);
-        let mut inputs = Vec::new();
-        for r in range.first.row..=range.last.row {
-            let v = self.book.sheets[sheet].value_at(CellRef::new(r, range.first.col));
-            if let Value::Text(t) = v {
-                for (i, part) in t.split(delimiter).enumerate() {
-                    inputs.push((CellRef::new(r, range.first.col + i as u32), part.to_owned()));
-                }
-            }
-        }
-        self.set_inputs(sheet, &inputs)
-    }
-
     /// Find cells whose value (or formula) holds some text. Answers the cells in row order.
     pub fn find(
         &self,
@@ -2029,192 +1900,6 @@ impl Session {
         Ok(())
     }
 
-    /// Turn the filter buttons on for a range, or off with `None`.
-    pub fn set_filter(&mut self, sheet: usize, range: Option<Range>) -> Result<(), String> {
-        self.check_sheet(sheet)?;
-        self.remember_whole(if range.is_some() { "Filter" } else { "Remove filter" });
-        let s = &mut self.book.sheets[sheet];
-        if let Some(old) = &s.filter {
-            let old = old.range;
-            for r in old.first.row + 1..=old.last.row {
-                if let Some(info) = s.rows.get_mut(&r) {
-                    info.hidden = false;
-                }
-            }
-        }
-        s.filter = range.map(|r| AutoFilter {
-            range: clip_to_used(s, r),
-            columns: BTreeMap::new(),
-            sort: None,
-        });
-        self.recalculate_all();
-        Ok(())
-    }
-
-    /// Filter one column of the filter range: keep rows whose shown value is one of `values`, or all rows
-    /// with `None`.
-    pub fn filter_column(
-        &mut self,
-        sheet: usize,
-        col: u32,
-        criteria: Option<FilterCriteria>,
-    ) -> Result<(), String> {
-        self.check_sheet(sheet)?;
-        let Some(filter) = self.book.sheets[sheet].filter.clone() else {
-            return Err("this sheet has no filter".to_owned());
-        };
-        if col < filter.range.first.col || col > filter.range.last.col {
-            return Err("that column is not in the filter".to_owned());
-        }
-        self.remember_whole("Filter");
-        let offset = col - filter.range.first.col;
-        {
-            let s = &mut self.book.sheets[sheet];
-            let f = s.filter.as_mut().unwrap();
-            match criteria {
-                Some(c) => {
-                    f.columns.insert(offset, c);
-                }
-                None => {
-                    f.columns.remove(&offset);
-                }
-            }
-        }
-        self.apply_filter(sheet);
-        Ok(())
-    }
-
-    /// Hide the rows the filter's criteria leave out.
-    pub fn apply_filter(&mut self, sheet: usize) {
-        let Some(filter) = self.book.sheets[sheet].filter.clone() else { return };
-        for r in filter.range.first.row + 1..=filter.range.last.row {
-            let mut keep = true;
-            for (offset, criteria) in &filter.columns {
-                let cell = self.book.sheets[sheet]
-                    .cell(CellRef::new(r, filter.range.first.col + offset))
-                    .cloned()
-                    .unwrap_or_default();
-                let shown = shown_text(&self.book, &cell);
-                let ok = match criteria {
-                    FilterCriteria::Values { values, blank } => {
-                        if shown.is_empty() {
-                            *blank
-                        } else {
-                            values.iter().any(|v| v.eq_ignore_ascii_case(&shown))
-                        }
-                    }
-                    FilterCriteria::Custom { conditions, and } => {
-                        let results: Vec<bool> = conditions
-                            .iter()
-                            .map(|(op, val)| {
-                                custom_matches(op, val, &cell.value, self.book.date1904)
-                            })
-                            .collect();
-                        if *and {
-                            results.iter().all(|x| *x)
-                        } else {
-                            results.iter().any(|x| *x)
-                        }
-                    }
-                    FilterCriteria::Raw(_) => true,
-                };
-                if !ok {
-                    keep = false;
-                    break;
-                }
-            }
-            let s = &mut self.book.sheets[sheet];
-            let info = s.rows.entry(r).or_default();
-            info.hidden = !keep;
-            if *info == RowInfo::default() {
-                s.rows.remove(&r);
-            }
-        }
-        self.recalculate_all();
-    }
-
-    /// Make a table over a range, with a header row of names.
-    pub fn add_table(
-        &mut self,
-        sheet: usize,
-        range: Range,
-        name: Option<&str>,
-    ) -> Result<String, String> {
-        self.check_sheet(sheet)?;
-        if self.book.tables.iter().any(|t| t.sheet == sheet && t.range.intersects(&range)) {
-            return Err("a table cannot overlap another table".to_owned());
-        }
-        let name = match name {
-            Some(n) => {
-                check_defined_name(n)?;
-                n.to_owned()
-            }
-            None => (1..)
-                .map(|n| format!("Table{n}"))
-                .find(|n| self.book.table(n).is_none())
-                .unwrap_or_default(),
-        };
-        self.remember_whole("Table");
-        let s = &self.book.sheets[sheet];
-        let mut columns = Vec::new();
-        for c in range.first.col..=range.last.col {
-            let v = s.value_at(CellRef::new(range.first.row, c)).to_text();
-            let mut header =
-                if v.is_empty() { format!("Column{}", c - range.first.col + 1) } else { v };
-            while columns.contains(&header) {
-                header.push('2');
-            }
-            columns.push(header);
-        }
-        let id = self.book.tables.len() + 1;
-        let cols: String = columns
-            .iter()
-            .enumerate()
-            .map(|(i, c)| {
-                format!("<tableColumn id=\"{}\" name=\"{}\"/>", i + 1, crate::xlsx::escape(c))
-            })
-            .collect();
-        let xml = format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r\n<table xmlns=\"{}\" id=\"{id}\" name=\"{name}\" displayName=\"{name}\" ref=\"{r}\" totalsRowShown=\"0\"><autoFilter ref=\"{r}\"/><tableColumns count=\"{}\">{cols}</tableColumns><tableStyleInfo name=\"TableStyleMedium2\" showFirstColumn=\"0\" showLastColumn=\"0\" showRowStripes=\"1\" showColumnStripes=\"0\"/></table>",
-            crate::xlsx::MAIN_NS,
-            columns.len(),
-            r = range.a1()
-        );
-        // Header cells hold the names.
-        let inputs: Vec<(CellRef, String)> = columns
-            .iter()
-            .enumerate()
-            .map(|(i, c)| {
-                (CellRef::new(range.first.row, range.first.col + i as u32), format!("'{c}"))
-            })
-            .collect();
-        self.book.tables.push(Table {
-            sheet,
-            name: name.clone(),
-            range,
-            columns,
-            header_row: true,
-            totals_row: false,
-            part: String::new(),
-            xml,
-        });
-        for (at, text) in inputs {
-            let s = &mut self.book.sheets[sheet];
-            let style = s.cell(at).map_or(0, |c| c.style);
-            s.set(
-                at,
-                Cell {
-                    value: Value::text(text.trim_start_matches('\'')),
-                    style,
-                    ..Default::default()
-                },
-            );
-        }
-        self.engine.rebuild(&self.book);
-        self.recalculate_all();
-        Ok(name)
-    }
-
     // ------------------------------------------------------------------------------------------------
     // Questions.
 
@@ -2461,23 +2146,6 @@ fn list_items(session: &Session, sheet: usize, at: CellRef, v: &Validation) -> V
     match ctx.array(val) {
         Ok(a) => a.data.iter().filter(|v| !v.is_empty()).map(|v| v.to_text()).collect(),
         Err(_) => Vec::new(),
-    }
-}
-
-fn custom_matches(op: &str, val: &str, cell: &Value, date1904: bool) -> bool {
-    let target = crate::input::number_from_text(val, date1904);
-    let text = cell.to_text();
-    match (op, target, cell) {
-        ("equal", _, _) => crate::functions::criteria::wildcard_match(val, &text),
-        ("notEqual", _, _) => !crate::functions::criteria::wildcard_match(val, &text),
-        (_, Some(t), Value::Number(n)) => match op {
-            "greaterThan" => *n > t,
-            "greaterThanOrEqual" => *n >= t,
-            "lessThan" => *n < t,
-            "lessThanOrEqual" => *n <= t,
-            _ => false,
-        },
-        _ => false,
     }
 }
 

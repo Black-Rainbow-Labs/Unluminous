@@ -615,6 +615,101 @@ fn file_formula(text: &str, dynamic: bool) -> Formula {
     }
 }
 
+/// An `autoFilter` element: its range, what each column keeps and how it was last sorted.
+pub(crate) fn read_auto_filter(xml: &str, node: Node) -> Option<AutoFilter> {
+    let range = node.attribute("ref").and_then(Range::parse)?;
+    let mut columns = BTreeMap::new();
+    for fc in node.children().filter(|n| n.has_tag_name((MAIN_NS, "filterColumn"))) {
+        let id: u32 = fc.attribute("colId").and_then(|v| v.parse().ok()).unwrap_or(0);
+        columns.insert(id, read_filter_column(xml, fc));
+    }
+    let sort = child(node, "sortState").and_then(read_sort_state);
+    Some(AutoFilter { range, columns, sort })
+}
+
+/// What one `filterColumn` keeps. A filter this version has no variant for is kept as its XML.
+pub(crate) fn read_filter_column(xml: &str, fc: Node) -> FilterCriteria {
+    let number = |n: Node, name: &str| n.attribute(name).and_then(|v| v.parse::<f64>().ok());
+    // Excel keeps a filter that names parts of the date tree in an extension of the column.
+    let in_extension =
+        || fc.descendants().find(|n| n.has_tag_name((crate::xlsx::write::RICHDATA2_NS, "filters")));
+    if let Some(filters) = child(fc, "filters").or_else(in_extension) {
+        let values: Vec<String> = filters
+            .children()
+            .filter(|n| n.tag_name().name() == "filter")
+            .filter_map(|f| f.attribute("val").map(str::to_owned))
+            .collect();
+        let blank = bool_attr(filters, "blank");
+        let groups: Vec<DateGroup> = filters
+            .children()
+            .filter(|n| n.tag_name().name() == "dateGroupItem")
+            .filter_map(|g| {
+                let part = |name: &str| g.attribute(name).and_then(|v| v.parse::<u32>().ok());
+                Some(DateGroup {
+                    year: g.attribute("year")?.parse().ok()?,
+                    month: part("month"),
+                    day: part("day"),
+                    hour: part("hour"),
+                    minute: part("minute"),
+                    second: part("second"),
+                    grouping: DateGrouping::parse(g.attribute("dateTimeGrouping")?)?,
+                })
+            })
+            .collect();
+        return if groups.is_empty() {
+            FilterCriteria::Values { values, blank }
+        } else {
+            FilterCriteria::Dates { values, groups, blank }
+        };
+    }
+    if let Some(custom) = child(fc, "customFilters") {
+        return FilterCriteria::Custom {
+            conditions: custom
+                .children()
+                .filter(|n| n.tag_name().name() == "customFilter")
+                .map(|f| {
+                    (
+                        f.attribute("operator").unwrap_or("equal").to_owned(),
+                        f.attribute("val").unwrap_or("").to_owned(),
+                    )
+                })
+                .collect(),
+            and: bool_attr(custom, "and"),
+        };
+    }
+    if let Some(top) = child(fc, "top10") {
+        if let Some(value) = number(top, "val") {
+            return FilterCriteria::Top10 {
+                top: top.attribute("top") != Some("0"),
+                percent: bool_attr(top, "percent"),
+                value,
+                threshold: number(top, "filterVal"),
+            };
+        }
+    }
+    if let Some(dynamic) = child(fc, "dynamicFilter") {
+        if let Some(kind) = dynamic.attribute("type") {
+            return FilterCriteria::Dynamic {
+                kind: kind.to_owned(),
+                value: number(dynamic, "val"),
+                max: number(dynamic, "maxVal"),
+            };
+        }
+    }
+    if let Some(color) = child(fc, "colorFilter") {
+        if let Some(dxf) = color.attribute("dxfId").and_then(|v| v.parse().ok()) {
+            return FilterCriteria::Color { cell: color.attribute("cellColor") != Some("0"), dxf };
+        }
+    }
+    if let Some(icon) = child(fc, "iconFilter") {
+        if let Some(set) = icon.attribute("iconSet") {
+            let id = icon.attribute("iconId").and_then(|v| v.parse().ok()).unwrap_or(0);
+            return FilterCriteria::Icon { set: set.to_owned(), id };
+        }
+    }
+    FilterCriteria::Raw(raw(xml, fc).to_owned())
+}
+
 /// A `sortState` element: the sorted range and its levels.
 pub(crate) fn read_sort_state(node: Node) -> Option<SortState> {
     let range = node.attribute("ref").and_then(Range::parse)?;
@@ -910,7 +1005,8 @@ fn read_sheet(
                                     formula = Some(made);
                                 }
                                 Some("dataTable") => {
-                                    let cell = |name: &str| f.attribute(name).and_then(CellRef::parse);
+                                    let cell =
+                                        |name: &str| f.attribute(name).and_then(CellRef::parse);
                                     sheet.data_tables.push(DataTable {
                                         range: f
                                             .attribute("ref")
@@ -920,7 +1016,10 @@ fn read_sheet(
                                         row_input: bool_attr(f, "dtr"),
                                         r1: cell("r1"),
                                         r2: cell("r2"),
-                                        attrs: attrs_of(f, &["t", "ref", "dt2D", "dtr", "r1", "r2"]),
+                                        attrs: attrs_of(
+                                            f,
+                                            &["t", "ref", "dt2D", "dtr", "r1", "r2"],
+                                        ),
                                     });
                                 }
                                 _ => {
@@ -997,43 +1096,8 @@ fn read_sheet(
                 }
             }
             "autoFilter" => {
-                if let Some(range) = section.attribute("ref").and_then(Range::parse) {
-                    let mut columns = BTreeMap::new();
-                    for fc in
-                        section.children().filter(|n| n.has_tag_name((MAIN_NS, "filterColumn")))
-                    {
-                        let id: u32 =
-                            fc.attribute("colId").and_then(|v| v.parse().ok()).unwrap_or(0);
-                        let criteria = if let Some(filters) = child(fc, "filters") {
-                            FilterCriteria::Values {
-                                values: filters
-                                    .children()
-                                    .filter(|n| n.tag_name().name() == "filter")
-                                    .filter_map(|f| f.attribute("val").map(str::to_owned))
-                                    .collect(),
-                                blank: bool_attr(filters, "blank"),
-                            }
-                        } else if let Some(custom) = child(fc, "customFilters") {
-                            FilterCriteria::Custom {
-                                conditions: custom
-                                    .children()
-                                    .filter(|n| n.tag_name().name() == "customFilter")
-                                    .map(|f| {
-                                        (
-                                            f.attribute("operator").unwrap_or("equal").to_owned(),
-                                            f.attribute("val").unwrap_or("").to_owned(),
-                                        )
-                                    })
-                                    .collect(),
-                                and: bool_attr(custom, "and"),
-                            }
-                        } else {
-                            FilterCriteria::Raw(raw(xml, fc).to_owned())
-                        };
-                        columns.insert(id, criteria);
-                    }
-                    let sort = child(section, "sortState").and_then(read_sort_state);
-                    sheet.filter = Some(AutoFilter { range, columns, sort });
+                if let Some(filter) = read_auto_filter(xml, section) {
+                    sheet.filter = Some(filter);
                 }
             }
             "legacyDrawing" => {

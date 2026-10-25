@@ -310,8 +310,21 @@ pub enum FilterCriteria {
     Values { values: Vec<String>, blank: bool },
     /// One or two conditions such as `>= 10`, joined by and or or.
     Custom { conditions: Vec<(String, String)>, and: bool },
-    /// Kept as read: top ten, colour and dynamic filters.
+    /// Kept as read: whatever [`FilterCriteria`] has no variant for.
     Raw(String),
+    /// A value list that also names items of the date tree: every date in a year, month or day.
+    Dates { values: Vec<String>, groups: Vec<DateGroup>, blank: bool },
+    /// The top or bottom items (or percent) of the column. `threshold` is the value the last item kept has,
+    /// which Excel writes as `filterVal` and which is computed again each time the filter is applied.
+    Top10 { top: bool, percent: bool, value: f64, threshold: Option<f64> },
+    /// One of Excel's dynamic filters, by the name the file gives it: `today`, `thisWeek`, `nextMonth`,
+    /// `yearToDate`, `Q1`, `M3`, `aboveAverage` and the rest. `value` and `max` are the serial numbers (or
+    /// the average) Excel computed when the filter was applied.
+    Dynamic { kind: String, value: Option<f64>, max: Option<f64> },
+    /// Keep the cells filled with a colour, or whose text is a colour, which differential format `dxf` holds.
+    Color { cell: bool, dxf: u32 },
+    /// Keep the cells showing one icon of an icon set. `id` is -1 for the cells with no icon.
+    Icon { set: String, id: i32 },
 }
 
 /// One conditional format: the cells it covers and its rules.
@@ -817,5 +830,55 @@ impl Workbook {
     /// The table a cell is inside.
     pub fn table_at(&self, sheet: usize, at: CellRef) -> Option<&Table> {
         self.tables.iter().find(|table| table.sheet == sheet && table.range.contains(at))
+    }
+}
+
+/// One item of the year, month, day tree a filter on a date column offers (`dateGroupItem`): every date in
+/// the year, the month of the year or the day, according to `grouping`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DateGroup {
+    pub year: i32,
+    pub month: Option<u32>,
+    pub day: Option<u32>,
+    pub hour: Option<u32>,
+    pub minute: Option<u32>,
+    pub second: Option<u32>,
+    pub grouping: DateGrouping,
+}
+
+/// How much of a date a [`DateGroup`] fixes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DateGrouping {
+    Year,
+    Month,
+    Day,
+    Hour,
+    Minute,
+    Second,
+}
+
+impl DateGrouping {
+    /// The name the file gives it (`dateTimeGrouping`).
+    pub fn name(self) -> &'static str {
+        match self {
+            DateGrouping::Year => "year",
+            DateGrouping::Month => "month",
+            DateGrouping::Day => "day",
+            DateGrouping::Hour => "hour",
+            DateGrouping::Minute => "minute",
+            DateGrouping::Second => "second",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        Some(match text {
+            "year" => DateGrouping::Year,
+            "month" => DateGrouping::Month,
+            "day" => DateGrouping::Day,
+            "hour" => DateGrouping::Hour,
+            "minute" => DateGrouping::Minute,
+            "second" => DateGrouping::Second,
+            _ => return None,
+        })
     }
 }
