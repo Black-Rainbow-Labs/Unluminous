@@ -221,21 +221,10 @@ fn built() -> Session {
         (s.book.styles.dxfs.len() - 1) as u32
     };
     let rule = unluminous_sheet::model::CfRule {
-        kind: "cellIs".to_owned(),
         dxf: Some(dxf),
-        priority: 1,
-        stop: false,
         operator: Some("greaterThan".to_owned()),
-        text: None,
-        rank: None,
-        percent: false,
-        bottom: false,
-        above_average: None,
         formulas: vec!["10".to_owned()],
-        color_scale: None,
-        data_bar: None,
-        attrs: Vec::new(),
-        raw_children: String::new(),
+        ..unluminous_sheet::model::CfRule::new("cellIs")
     };
     s.add_conditional(0, vec![Range::parse("D2:D4").unwrap()], rule).unwrap();
     s.add_table(0, Range::parse("A1:D4").unwrap(), Some("Orders")).unwrap();

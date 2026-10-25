@@ -17,6 +17,12 @@ use crate::model::*;
 use crate::styles::{StyleChange, Styles};
 use crate::value::Value;
 
+mod cf_rules;
+mod outline;
+mod subtotal;
+
+pub use cf_rules::{RuleEntry, RuleMove};
+pub use subtotal::{SubtotalFunction, SubtotalSpec};
 pub mod clipboard;
 pub use clipboard::{ClipExtras, PasteKind, PasteOperation, PasteSpecial};
 mod page_edits;
@@ -725,6 +731,21 @@ impl Session {
         count: i64,
         band: Option<(u32, u32)>,
     ) {
+        self.structural_edit(sheet, axis, at, count, band);
+        self.engine.rebuild(&self.book);
+        self.recalculate_all();
+    }
+
+    /// [`Session::structural`] without calculating afterwards, for an operation that makes several moves
+    /// and calculates once at the end. The caller must rebuild the engine and recalculate.
+    fn structural_edit(
+        &mut self,
+        sheet: usize,
+        axis: Axis,
+        at: u32,
+        count: i64,
+        band: Option<(u32, u32)>,
+    ) {
         let name = self.book.sheets[sheet].name.clone();
         crate::refshift::shift_kept(
             &mut self.book,
@@ -917,8 +938,6 @@ impl Session {
                 None => false,
             }
         });
-        self.engine.rebuild(&self.book);
-        self.recalculate_all();
     }
 
     pub fn add_sheet(&mut self, name: Option<&str>, at: Option<usize>) -> Result<usize, String> {

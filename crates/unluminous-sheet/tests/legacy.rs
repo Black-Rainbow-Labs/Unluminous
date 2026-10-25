@@ -131,7 +131,7 @@ fn compare_with_excel(name: &str, book: &Workbook, dump: &serde_json::Value) -> 
 fn icon_only(sheet: &Sheet, at: CellRef) -> bool {
     sheet.conditional.iter().any(|format| {
         format.ranges.iter().any(|r| r.contains(at))
-            && format.rules.iter().any(|rule| rule.raw_children.contains("showValue=\"0\""))
+            && format.rules.iter().any(|rule| rule.icon_set.as_ref().is_some_and(|s| !s.show_value))
     })
 }
 
@@ -515,7 +515,8 @@ fn compare_conditional_formats(
         let describe = |r: &unluminous_sheet::model::CfRule| {
             let formulas: Vec<String> = r.formulas.iter().map(|f| normal_formula(f)).collect();
             // A data bar keeps the settings of Excel 2010 in an extension this version does not read.
-            let kept = if r.kind == "iconSet" { r.raw_children.as_str() } else { "" };
+            let kept =
+                if r.kind == "iconSet" { format!("{:?}", r.icon_set) } else { String::new() };
             format!(
                 "{} {:?} {formulas:?} {:?} {:?} {kept}",
                 r.kind, r.operator, r.color_scale, r.data_bar

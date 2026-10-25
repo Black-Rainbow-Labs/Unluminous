@@ -599,6 +599,12 @@ fn old_conditional_rule(
         data_bar: None,
         attrs: Vec::new(),
         raw_children: String::new(),
+        std_dev: None,
+        equal_average: false,
+        time_period: None,
+        icon_set: None,
+        data_bar_options: None,
+        x14: None,
     };
     Some((rule, dxf))
 }
@@ -678,11 +684,20 @@ fn new_conditional_rule(record: &Record) -> Option<CfRule> {
         data_bar: None,
         attrs: Vec::new(),
         raw_children: String::new(),
+        std_dev: None,
+        equal_average: false,
+        time_period: None,
+        icon_set: None,
+        data_bar_options: None,
+        x14: None,
     };
     match template {
         2 => rule.color_scale = Some(color_scale(data)?),
         3 => rule.data_bar = Some(data_bar(data)?),
-        4 => rule.raw_children = icon_set(data)?,
+        4 => {
+            rule.raw_children = icon_set(data)?;
+            crate::xlsx::cf::lift_icon_set(&mut rule);
+        }
         _ => return None,
     }
     rule.kind = match template {

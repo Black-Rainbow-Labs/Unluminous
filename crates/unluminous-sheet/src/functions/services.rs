@@ -134,55 +134,6 @@ pub const OTHER: &[Function] = &[
     ),
 ];
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn python_is_blocked_because_nothing_is_sent_to_the_service() {
-        crate::functions::testing::check(&[
-            ("PY(\"1\")", "#BLOCKED!"),
-            ("PY(\"x\",0)", "#BLOCKED!"),
-        ]);
-    }
-
-    use crate::functions::testing::eval;
-    use crate::functions::{all, find};
-    use crate::value::{ErrorKind, Value};
-
-    #[test]
-    fn a_function_that_needs_excels_service_is_known_and_answers_as_excel_does_without_it() {
-        let names = [
-            "CALL",
-            "COPILOT",
-            "CUBEKPIMEMBER",
-            "CUBEMEMBER",
-            "CUBEMEMBERPROPERTY",
-            "CUBERANKEDMEMBER",
-            "CUBESET",
-            "CUBESETCOUNT",
-            "CUBEVALUE",
-            "DETECTLANGUAGE",
-            "EUROCONVERT",
-            "IMAGE",
-            "PY",
-            "REGISTER.ID",
-            "RTD",
-            "STOCKHISTORY",
-            "TRANSLATE",
-            "WEBSERVICE",
-        ];
-        for name in names {
-            let f = find(name).unwrap_or_else(|| panic!("{name} is not known"));
-            assert!(f.offline && f.about.starts_with("Needs Excel's service"), "{name}");
-        }
-        assert_eq!(all().iter().filter(|f| f.offline).count(), names.len());
-        assert_eq!(eval("WEBSERVICE(\"https://example.com\")"), Value::Error(ErrorKind::Blocked));
-        assert_eq!(eval("TRANSLATE(\"a\",\"fr\")"), Value::Error(ErrorKind::Blocked));
-        // With no connection a cube function is #N/A, as Excel answers it (tests/oracle/services.txt).
-        assert_eq!(eval("CUBESETCOUNT(\"a\")"), Value::Error(ErrorKind::NA));
-        assert_eq!(eval("WEBSERVICE()"), Value::Error(ErrorKind::Value));
-    }
-}
-
 /// The first error among the arguments, which Excel answers with before it looks for the service.
 fn first_error(args: &[Value]) -> Option<ErrorKind> {
     args.iter().find_map(|v| if let Value::Error(e) = v { Some(*e) } else { None })
@@ -244,4 +195,53 @@ fn stock_history(ctx: &mut Ctx, args: &[Value]) -> Result<Value, ErrorKind> {
         return Err(ErrorKind::Value);
     }
     Err(ErrorKind::Blocked)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn python_is_blocked_because_nothing_is_sent_to_the_service() {
+        crate::functions::testing::check(&[
+            ("PY(\"1\")", "#BLOCKED!"),
+            ("PY(\"x\",0)", "#BLOCKED!"),
+        ]);
+    }
+
+    use crate::functions::testing::eval;
+    use crate::functions::{all, find};
+    use crate::value::{ErrorKind, Value};
+
+    #[test]
+    fn a_function_that_needs_excels_service_is_known_and_answers_as_excel_does_without_it() {
+        let names = [
+            "CALL",
+            "COPILOT",
+            "CUBEKPIMEMBER",
+            "CUBEMEMBER",
+            "CUBEMEMBERPROPERTY",
+            "CUBERANKEDMEMBER",
+            "CUBESET",
+            "CUBESETCOUNT",
+            "CUBEVALUE",
+            "DETECTLANGUAGE",
+            "EUROCONVERT",
+            "IMAGE",
+            "PY",
+            "REGISTER.ID",
+            "RTD",
+            "STOCKHISTORY",
+            "TRANSLATE",
+            "WEBSERVICE",
+        ];
+        for name in names {
+            let f = find(name).unwrap_or_else(|| panic!("{name} is not known"));
+            assert!(f.offline && f.about.starts_with("Needs Excel's service"), "{name}");
+        }
+        assert_eq!(all().iter().filter(|f| f.offline).count(), names.len());
+        assert_eq!(eval("WEBSERVICE(\"https://example.com\")"), Value::Error(ErrorKind::Blocked));
+        assert_eq!(eval("TRANSLATE(\"a\",\"fr\")"), Value::Error(ErrorKind::Blocked));
+        // With no connection a cube function is #N/A, as Excel answers it (tests/oracle/services.txt).
+        assert_eq!(eval("CUBESETCOUNT(\"a\")"), Value::Error(ErrorKind::NA));
+        assert_eq!(eval("WEBSERVICE()"), Value::Error(ErrorKind::Value));
+    }
 }
