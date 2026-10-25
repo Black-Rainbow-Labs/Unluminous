@@ -101,93 +101,110 @@ fn area(grouping: Grouping, three_d: bool) -> Group {
 /// The chart groups and axes for a type.
 pub fn build(ty: ChartType) -> Built {
     use ChartType as T;
-    let two = PRIMARY[..2].to_vec();
-    let cat_val = |between: bool| {
-        vec![
-            category_axis(PRIMARY[0], PRIMARY[1], AxisPosition::Bottom),
-            value_axis(PRIMARY[1], PRIMARY[0], AxisPosition::Left, between),
-        ]
-    };
-    let mut built = Built { groups: Vec::new(), axes: Vec::new(), view_3d: None, floor_and_walls: false, ex: None };
-    let axes_for = |built: &mut Built, g: Group, axes: Vec<Axis>| {
-        let mut g = g;
-        g.axes = axes.iter().map(|a| a.id).collect();
-        built.groups.push(g);
-        built.axes = axes;
-    };
     match ty {
-        T::ColumnClustered => axes_for(&mut built, bar(false, Grouping::Clustered, false), cat_val(true)),
-        T::ColumnStacked => axes_for(&mut built, bar(false, Grouping::Stacked, false), cat_val(true)),
-        T::ColumnStacked100 => axes_for(&mut built, bar(false, Grouping::PercentStacked, false), cat_val(true)),
-        T::Column3DClustered | T::Column3DStacked | T::Column3DStacked100 => {
-            let grouping = match ty {
-                T::Column3DClustered => Grouping::Clustered,
-                T::Column3DStacked => Grouping::Stacked,
-                _ => Grouping::PercentStacked,
-            };
-            axes_for(&mut built, bar(false, grouping, true), cat_val(true));
-            built.view_3d = Some(VIEW_3D.to_owned());
-            built.floor_and_walls = true;
+        T::ColumnClustered | T::ColumnStacked | T::ColumnStacked100 => flat(bar(false, grouping_of(ty), false), cat_val(true)),
+        T::Column3DClustered | T::Column3DStacked | T::Column3DStacked100 | T::Column3D => bar_3d(ty),
+        T::Bar3DClustered | T::Bar3DStacked | T::Bar3DStacked100 => bar_3d(ty),
+        T::BarClustered | T::BarStacked | T::BarStacked100 => flat(bar(true, grouping_of(ty), false), horizontal_axes()),
+        T::Line | T::LineMarkers | T::LineStacked | T::LineMarkersStacked | T::LineStacked100 | T::LineMarkersStacked100 => {
+            flat(line(grouping_of(ty), false), cat_val(true))
         }
-        T::Column3D | T::Bar3DClustered | T::Bar3DStacked | T::Bar3DStacked100 => {
-            let (horizontal, grouping) = match ty {
-                T::Column3D => (false, Grouping::Standard),
-                T::Bar3DClustered => (true, Grouping::Clustered),
-                T::Bar3DStacked => (true, Grouping::Stacked),
-                _ => (true, Grouping::PercentStacked),
-            };
-            let mut axes = cat_val(true);
-            if horizontal {
-                axes[0].position = AxisPosition::Left;
-                axes[1].position = AxisPosition::Bottom;
-            }
-            if grouping == Grouping::Standard {
-                axes.push(series_axis(PRIMARY[2], PRIMARY[1]));
-            }
-            axes_for(&mut built, bar(horizontal, grouping, true), axes);
-            built.view_3d = Some(VIEW_3D.to_owned());
-            built.floor_and_walls = true;
+        T::Line3D => three_d(line(Grouping::Standard, true), cat_val_ser(), VIEW_3D_PERSPECTIVE),
+        T::Pie | T::PieExploded | T::Pie3D | T::Pie3DExploded | T::PieOfPie | T::BarOfPie | T::Doughnut | T::DoughnutExploded => {
+            pie_family(ty)
         }
-        T::BarClustered | T::BarStacked | T::BarStacked100 => {
-            let grouping = match ty {
-                T::BarClustered => Grouping::Clustered,
-                T::BarStacked => Grouping::Stacked,
-                _ => Grouping::PercentStacked,
-            };
-            let mut axes = cat_val(true);
-            axes[0].position = AxisPosition::Left;
-            axes[1].position = AxisPosition::Bottom;
-            axes_for(&mut built, bar(true, grouping, false), axes);
+        T::Area | T::AreaStacked | T::AreaStacked100 => flat(area(grouping_of(ty), false), cat_val_mid()),
+        T::Area3D | T::Area3DStacked | T::Area3DStacked100 => {
+            let grouping = grouping_of(ty);
+            let axes = if grouping == Grouping::Standard { cat_val_ser() } else { cat_val(true) };
+            three_d(area(grouping, true), axes, VIEW_3D_PERSPECTIVE)
         }
-        T::Line | T::LineMarkers => axes_for(&mut built, line(Grouping::Standard, false), cat_val(true)),
-        T::LineStacked | T::LineMarkersStacked => {
-            axes_for(&mut built, line(Grouping::Stacked, false), cat_val(true))
+        T::ScatterMarkers | T::ScatterSmooth | T::ScatterSmoothNoMarkers | T::ScatterLines | T::ScatterLinesNoMarkers => {
+            flat(scatter(ty), scatter_axes())
         }
-        T::LineStacked100 | T::LineMarkersStacked100 => {
-            axes_for(&mut built, line(Grouping::PercentStacked, false), cat_val(true))
+        T::Bubble | T::Bubble3D => flat(bubble(ty), scatter_axes()),
+        T::StockHlc | T::StockOhlc => flat(stock(ty, PRIMARY[..2].to_vec()), cat_val(true)),
+        T::StockVhlc | T::StockVohlc => stock_with_volume(ty),
+        T::Surface | T::SurfaceWireframe | T::SurfaceTopView | T::SurfaceTopViewWireframe => surface(ty),
+        T::Radar | T::RadarMarkers | T::RadarFilled => flat(radar(ty), cat_val(true)),
+        T::Treemap | T::Sunburst | T::Histogram | T::Pareto | T::BoxWhisker | T::Waterfall | T::Funnel | T::Map => {
+            Built { ex: Some(build_ex(ty)), ..empty() }
         }
-        T::Line3D => {
-            let axes = vec![
-                category_axis(PRIMARY[0], PRIMARY[1], AxisPosition::Bottom),
-                value_axis(PRIMARY[1], PRIMARY[0], AxisPosition::Left, true),
-                series_axis(PRIMARY[2], PRIMARY[1]),
-            ];
-            axes_for(&mut built, line(Grouping::Standard, true), axes);
-            built.view_3d = Some(VIEW_3D_PERSPECTIVE.to_owned());
-            built.floor_and_walls = true;
+        T::Combo => flat(bar(false, Grouping::Clustered, false), cat_val(true)),
+    }
+}
+
+fn empty() -> Built {
+    Built { groups: Vec::new(), axes: Vec::new(), view_3d: None, floor_and_walls: false, ex: None }
+}
+
+/// A chart of one group drawn against some axes.
+fn flat(mut group: Group, axes: Vec<Axis>) -> Built {
+    group.axes = axes.iter().map(|a| a.id).collect();
+    Built { groups: vec![group], axes, ..empty() }
+}
+
+/// A 3D chart: one group, a view, and the floor and walls Excel draws.
+fn three_d(group: Group, axes: Vec<Axis>, view: &str) -> Built {
+    Built { view_3d: Some(view.to_owned()), floor_and_walls: true, ..flat(group, axes) }
+}
+
+/// How a type stacks its series.
+fn grouping_of(ty: ChartType) -> Grouping {
+    use ChartType as T;
+    match ty {
+        T::ColumnStacked | T::BarStacked | T::LineStacked | T::LineMarkersStacked | T::AreaStacked | T::Column3DStacked
+        | T::Bar3DStacked | T::Area3DStacked => Grouping::Stacked,
+        T::ColumnStacked100 | T::BarStacked100 | T::LineStacked100 | T::LineMarkersStacked100 | T::AreaStacked100
+        | T::Column3DStacked100 | T::Bar3DStacked100 | T::Area3DStacked100 => Grouping::PercentStacked,
+        T::Line | T::LineMarkers | T::Area | T::Area3D | T::Line3D | T::Column3D => Grouping::Standard,
+        _ => Grouping::Clustered,
+    }
+}
+
+fn cat_val(between: bool) -> Vec<Axis> {
+    vec![
+        category_axis(PRIMARY[0], PRIMARY[1], AxisPosition::Bottom),
+        value_axis(PRIMARY[1], PRIMARY[0], AxisPosition::Left, between),
+    ]
+}
+
+/// A bar chart's axes: the categories up the left and the values along the bottom.
+fn horizontal_axes() -> Vec<Axis> {
+    let mut axes = cat_val(true);
+    axes[0].position = AxisPosition::Left;
+    axes[1].position = AxisPosition::Bottom;
+    axes
+}
+
+/// Category, value and series axes, for the 3D types that have a depth axis.
+fn cat_val_ser() -> Vec<Axis> {
+    let mut axes = cat_val(true);
+    axes.push(series_axis(PRIMARY[2], PRIMARY[1]));
+    axes
+}
+
+fn bar_3d(ty: ChartType) -> Built {
+    let horizontal = matches!(ty, ChartType::Bar3DClustered | ChartType::Bar3DStacked | ChartType::Bar3DStacked100);
+    let grouping = grouping_of(ty);
+    let axes = if horizontal {
+        horizontal_axes()
+    } else if grouping == Grouping::Standard {
+        cat_val_ser()
+    } else {
+        cat_val(true)
+    };
+    three_d(bar(horizontal, grouping, true), axes, VIEW_3D)
+}
+
+fn pie_family(ty: ChartType) -> Built {
+    use ChartType as T;
+    let group = match ty {
+        T::Pie | T::PieExploded => {
+            Group { kind: GroupKind::Pie, vary_colors: Some(true), first_slice_angle: Some(0), ..Group::default() }
         }
-        T::Pie | T::PieExploded => built.groups.push(Group {
-            kind: GroupKind::Pie,
-            vary_colors: Some(true),
-            first_slice_angle: Some(0),
-            ..Group::default()
-        }),
-        T::Pie3D | T::Pie3DExploded => {
-            built.groups.push(Group { kind: GroupKind::Pie, three_d: true, vary_colors: Some(true), ..Group::default() });
-            built.view_3d = Some(VIEW_PIE_3D.to_owned());
-            built.floor_and_walls = true;
-        }
-        T::PieOfPie | T::BarOfPie => built.groups.push(Group {
+        T::Pie3D | T::Pie3DExploded => Group { kind: GroupKind::Pie, three_d: true, vary_colors: Some(true), ..Group::default() },
+        T::PieOfPie | T::BarOfPie => Group {
             kind: GroupKind::OfPie,
             of_pie: if ty == T::BarOfPie { OfPieKind::Bar } else { OfPieKind::Pie },
             vary_colors: Some(true),
@@ -196,123 +213,80 @@ pub fn build(ty: ChartType) -> Built {
             second_size: Some(75),
             series_lines: true,
             ..Group::default()
-        }),
-        T::Doughnut | T::DoughnutExploded => built.groups.push(Group {
+        },
+        _ => Group {
             kind: GroupKind::Doughnut,
             vary_colors: Some(true),
             first_slice_angle: Some(0),
             hole_size: Some(50),
             ..Group::default()
-        }),
-        T::Area => axes_for(&mut built, area(Grouping::Standard, false), cat_val_mid()),
-        T::AreaStacked => axes_for(&mut built, area(Grouping::Stacked, false), cat_val_mid()),
-        T::AreaStacked100 => axes_for(&mut built, area(Grouping::PercentStacked, false), cat_val_mid()),
-        T::Area3D | T::Area3DStacked | T::Area3DStacked100 => {
-            let grouping = match ty {
-                T::Area3D => Grouping::Standard,
-                T::Area3DStacked => Grouping::Stacked,
-                _ => Grouping::PercentStacked,
-            };
-            let mut axes = cat_val(true);
-            if grouping == Grouping::Standard {
-                axes.push(series_axis(PRIMARY[2], PRIMARY[1]));
-            }
-            axes_for(&mut built, area(grouping, true), axes);
-            built.view_3d = Some(VIEW_3D_PERSPECTIVE.to_owned());
-            built.floor_and_walls = true;
-        }
-        T::ScatterMarkers | T::ScatterSmooth | T::ScatterSmoothNoMarkers | T::ScatterLines | T::ScatterLinesNoMarkers => {
-            let style = match ty {
-                T::ScatterSmooth => "smoothMarker",
-                T::ScatterSmoothNoMarkers => "smooth",
-                T::ScatterLines => "lineMarker",
-                T::ScatterLinesNoMarkers => "lineMarker",
-                _ => "lineMarker",
-            };
-            let g = Group {
-                kind: GroupKind::Scatter,
-                scatter_style: Some(style.to_owned()),
-                vary_colors: Some(false),
-                ..Group::default()
-            };
-            axes_for(&mut built, g, scatter_axes());
-        }
-        T::Bubble | T::Bubble3D => {
-            let g = Group {
-                kind: GroupKind::Bubble,
-                vary_colors: Some(false),
-                bubble_scale: Some(100),
-                show_negative_bubbles: Some(false),
-                bubble_3d: ty == T::Bubble3D,
-                ..Group::default()
-            };
-            axes_for(&mut built, g, scatter_axes());
-        }
-        T::StockHlc | T::StockOhlc => {
-            let g = Group {
-                kind: GroupKind::Stock,
-                hi_low_lines: true,
-                up_down_bars: (ty == T::StockOhlc).then_some(150),
-                ..Group::default()
-            };
-            axes_for(&mut built, g, cat_val(true));
-        }
-        T::StockVhlc | T::StockVohlc => {
-            let volume = Group { axes: two.clone(), ..bar(false, Grouping::Clustered, false) };
-            let stock = Group {
-                kind: GroupKind::Stock,
-                hi_low_lines: true,
-                up_down_bars: (ty == T::StockVohlc).then_some(150),
-                axes: SECONDARY.to_vec(),
-                ..Group::default()
-            };
-            built.groups = vec![volume, stock];
-            built.axes = cat_val(true);
-            let mut cat2 = category_axis(SECONDARY[0], SECONDARY[1], AxisPosition::Bottom);
-            cat2.deleted = true;
-            let mut val2 = value_axis(SECONDARY[1], SECONDARY[0], AxisPosition::Right, true);
-            val2.major_gridlines = None;
-            val2.crosses = Crosses::Maximum;
-            built.axes.push(cat2);
-            built.axes.push(val2);
-        }
-        T::Surface | T::SurfaceWireframe | T::SurfaceTopView | T::SurfaceTopViewWireframe => {
-            let top = matches!(ty, T::SurfaceTopView | T::SurfaceTopViewWireframe);
-            let g = Group {
-                kind: GroupKind::Surface,
-                three_d: !top,
-                wireframe: matches!(ty, T::SurfaceWireframe | T::SurfaceTopViewWireframe),
-                ..Group::default()
-            };
-            let axes = vec![
-                category_axis(PRIMARY[0], PRIMARY[1], AxisPosition::Bottom),
-                value_axis(PRIMARY[1], PRIMARY[0], AxisPosition::Left, true),
-                series_axis(PRIMARY[2], PRIMARY[1]),
-            ];
-            axes_for(&mut built, g, axes);
-            built.view_3d = Some(if top { VIEW_CONTOUR } else { VIEW_SURFACE }.to_owned());
-            built.floor_and_walls = true;
-        }
-        T::Radar | T::RadarMarkers | T::RadarFilled => {
-            let style = match ty {
-                T::RadarMarkers => "marker",
-                T::RadarFilled => "filled",
-                _ => "standard",
-            };
-            let g = Group {
-                kind: GroupKind::Radar,
-                radar_style: Some(style.to_owned()),
-                vary_colors: Some(false),
-                ..Group::default()
-            };
-            axes_for(&mut built, g, cat_val(true));
-        }
-        T::Treemap | T::Sunburst | T::Histogram | T::Pareto | T::BoxWhisker | T::Waterfall | T::Funnel | T::Map => {
-            built.ex = Some(build_ex(ty));
-        }
-        T::Combo => axes_for(&mut built, bar(false, Grouping::Clustered, false), cat_val(true)),
+        },
+    };
+    let solid_3d = matches!(ty, T::Pie3D | T::Pie3DExploded);
+    Built {
+        groups: vec![group],
+        view_3d: solid_3d.then(|| VIEW_PIE_3D.to_owned()),
+        floor_and_walls: solid_3d,
+        ..empty()
     }
-    built
+}
+
+fn scatter(ty: ChartType) -> Group {
+    let style = match ty {
+        ChartType::ScatterSmooth => "smoothMarker",
+        ChartType::ScatterSmoothNoMarkers => "smooth",
+        _ => "lineMarker",
+    };
+    Group { kind: GroupKind::Scatter, scatter_style: Some(style.to_owned()), vary_colors: Some(false), ..Group::default() }
+}
+
+fn bubble(ty: ChartType) -> Group {
+    Group {
+        kind: GroupKind::Bubble,
+        vary_colors: Some(false),
+        bubble_scale: Some(100),
+        show_negative_bubbles: Some(false),
+        bubble_3d: ty == ChartType::Bubble3D,
+        ..Group::default()
+    }
+}
+
+fn stock(ty: ChartType, axes: Vec<u32>) -> Group {
+    let with_bars = matches!(ty, ChartType::StockOhlc | ChartType::StockVohlc);
+    Group { kind: GroupKind::Stock, hi_low_lines: true, up_down_bars: with_bars.then_some(150), axes, ..Group::default() }
+}
+
+/// Volume columns on the primary axes and the stock group on the secondary ones.
+fn stock_with_volume(ty: ChartType) -> Built {
+    let volume = Group { axes: PRIMARY[..2].to_vec(), ..bar(false, Grouping::Clustered, false) };
+    let mut axes = cat_val(true);
+    let mut cat2 = category_axis(SECONDARY[0], SECONDARY[1], AxisPosition::Bottom);
+    cat2.deleted = true;
+    let mut val2 = value_axis(SECONDARY[1], SECONDARY[0], AxisPosition::Right, true);
+    val2.major_gridlines = None;
+    val2.crosses = Crosses::Maximum;
+    axes.extend([cat2, val2]);
+    Built { groups: vec![volume, stock(ty, SECONDARY.to_vec())], axes, ..empty() }
+}
+
+fn surface(ty: ChartType) -> Built {
+    let top = matches!(ty, ChartType::SurfaceTopView | ChartType::SurfaceTopViewWireframe);
+    let group = Group {
+        kind: GroupKind::Surface,
+        three_d: !top,
+        wireframe: matches!(ty, ChartType::SurfaceWireframe | ChartType::SurfaceTopViewWireframe),
+        ..Group::default()
+    };
+    three_d(group, cat_val_ser(), if top { VIEW_CONTOUR } else { VIEW_SURFACE })
+}
+
+fn radar(ty: ChartType) -> Group {
+    let style = match ty {
+        ChartType::RadarMarkers => "marker",
+        ChartType::RadarFilled => "filled",
+        _ => "standard",
+    };
+    Group { kind: GroupKind::Radar, radar_style: Some(style.to_owned()), vary_colors: Some(false), ..Group::default() }
 }
 
 fn cat_val_mid() -> Vec<Axis> {

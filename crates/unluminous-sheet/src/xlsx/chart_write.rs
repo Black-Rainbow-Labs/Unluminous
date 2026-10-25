@@ -356,108 +356,103 @@ fn line_element(g: &Group, slot: usize, on: bool, plain: &str) -> String {
 
 /// What follows a group's series and data labels, before its axis ids.
 fn group_tail(g: &Group) -> String {
-    let mut out = String::new();
-    let lines = |out: &mut String| out.push_str(&line_element(g, 0, g.drop_lines, "<c:dropLines/>"));
-    let up_down = || match g.up_down_bars {
+    match g.kind {
+        GroupKind::Bar => bar_tail(g),
+        GroupKind::Line => line_tail(g),
+        GroupKind::Stock => stock_tail(g),
+        GroupKind::Area => format!("{}{}", drop_lines(g), depth(g)),
+        GroupKind::Pie if g.three_d => String::new(),
+        GroupKind::Pie => num_val("firstSliceAng", g.first_slice_angle.unwrap_or(0)),
+        GroupKind::Doughnut => format!(
+            "{}{}",
+            num_val("firstSliceAng", g.first_slice_angle.unwrap_or(0)),
+            num_val("holeSize", g.hole_size.unwrap_or(50))
+        ),
+        GroupKind::OfPie => of_pie_tail(g),
+        GroupKind::Bubble => bubble_tail(g),
+        GroupKind::Surface => opt(&g.band_formats).to_owned(),
+        GroupKind::Scatter | GroupKind::Radar => String::new(),
+    }
+}
+
+fn drop_lines(g: &Group) -> String {
+    line_element(g, 0, g.drop_lines, "<c:dropLines/>")
+}
+
+fn hi_low_lines(g: &Group) -> String {
+    line_element(g, 1, g.hi_low_lines, "<c:hiLowLines/>")
+}
+
+fn up_down_bars(g: &Group) -> String {
+    match g.up_down_bars {
         Some(w) => g.raw_lines[2].clone().unwrap_or_else(|| {
             format!("<c:upDownBars><c:gapWidth val=\"{w}\"/><c:upBars/><c:downBars/></c:upDownBars>")
         }),
         None => String::new(),
+    }
+}
+
+/// The depth of a 3D group.
+fn depth(g: &Group) -> String {
+    match (g.three_d, g.gap_depth) {
+        (true, Some(d)) => num_val("gapDepth", d),
+        _ => String::new(),
+    }
+}
+
+fn bar_tail(g: &Group) -> String {
+    let mut out = g.gap_width.map(|w| num_val("gapWidth", w)).unwrap_or_default();
+    if g.three_d {
+        out.push_str(&depth(g));
+        if let Some(shape) = &g.shape {
+            out.push_str(&format!("<c:shape val=\"{shape}\"/>"));
+        }
+    } else {
+        out.push_str(&g.overlap.map(|o| num_val("overlap", o)).unwrap_or_default());
+        out.push_str(&line_element(g, 3, g.series_lines, "<c:serLines/>"));
+    }
+    out
+}
+
+fn line_tail(g: &Group) -> String {
+    let mut out = format!("{}{}{}", drop_lines(g), hi_low_lines(g), up_down_bars(g));
+    if g.three_d {
+        out.push_str(&depth(g));
+    } else {
+        out.push_str(&g.marker.map(|m| bool_val("marker", m)).unwrap_or_default());
+        out.push_str(&g.smooth.map(|s| bool_val("smooth", s)).unwrap_or_default());
+    }
+    out
+}
+
+fn stock_tail(g: &Group) -> String {
+    format!("{}{}{}", drop_lines(g), hi_low_lines(g), up_down_bars(g))
+}
+
+fn of_pie_tail(g: &Group) -> String {
+    let mut out = g.gap_width.map(|w| num_val("gapWidth", w)).unwrap_or_default();
+    let split = match g.split_by {
+        SplitBy::Auto => None,
+        SplitBy::Position => Some("pos"),
+        SplitBy::Value => Some("val"),
+        SplitBy::Percent => Some("percent"),
+        SplitBy::Custom => Some("cust"),
     };
-    match g.kind {
-        GroupKind::Bar => {
-            if let Some(w) = g.gap_width {
-                out.push_str(&num_val("gapWidth", w));
-            }
-            if g.three_d {
-                if let Some(d) = g.gap_depth {
-                    out.push_str(&num_val("gapDepth", d));
-                }
-                if let Some(shape) = &g.shape {
-                    out.push_str(&format!("<c:shape val=\"{shape}\"/>"));
-                }
-            } else {
-                if let Some(o) = g.overlap {
-                    out.push_str(&num_val("overlap", o));
-                }
-                out.push_str(&line_element(g, 3, g.series_lines, "<c:serLines/>"));
-            }
-        }
-        GroupKind::Line => {
-            lines(&mut out);
-            out.push_str(&line_element(g, 1, g.hi_low_lines, "<c:hiLowLines/>"));
-            out.push_str(&up_down());
-            if g.three_d {
-                if let Some(d) = g.gap_depth {
-                    out.push_str(&num_val("gapDepth", d));
-                }
-            } else {
-                if let Some(m) = g.marker {
-                    out.push_str(&bool_val("marker", m));
-                }
-                if let Some(s) = g.smooth {
-                    out.push_str(&bool_val("smooth", s));
-                }
-            }
-        }
-        GroupKind::Stock => {
-            lines(&mut out);
-            out.push_str(&line_element(g, 1, g.hi_low_lines, "<c:hiLowLines/>"));
-            out.push_str(&up_down());
-        }
-        GroupKind::Area => {
-            lines(&mut out);
-            if g.three_d {
-                if let Some(d) = g.gap_depth {
-                    out.push_str(&num_val("gapDepth", d));
-                }
-            }
-        }
-        GroupKind::Pie => {
-            if !g.three_d {
-                out.push_str(&num_val("firstSliceAng", g.first_slice_angle.unwrap_or(0)));
-            }
-        }
-        GroupKind::Doughnut => {
-            out.push_str(&num_val("firstSliceAng", g.first_slice_angle.unwrap_or(0)));
-            out.push_str(&num_val("holeSize", g.hole_size.unwrap_or(50)));
-        }
-        GroupKind::OfPie => {
-            if let Some(w) = g.gap_width {
-                out.push_str(&num_val("gapWidth", w));
-            }
-            let split = match g.split_by {
-                SplitBy::Auto => None,
-                SplitBy::Position => Some("pos"),
-                SplitBy::Value => Some("val"),
-                SplitBy::Percent => Some("percent"),
-                SplitBy::Custom => Some("cust"),
-            };
-            if let Some(split) = split {
-                out.push_str(&format!("<c:splitType val=\"{split}\"/>"));
-            }
-            if let Some(at) = g.split_at {
-                out.push_str(&num_val("splitPos", f64_text(at)));
-            }
-            out.push_str(opt(&g.custom_split));
-            if let Some(size) = g.second_size {
-                out.push_str(&num_val("secondPieSize", size));
-            }
-            out.push_str(&line_element(g, 3, g.series_lines, "<c:serLines/>"));
-        }
-        GroupKind::Bubble => {
-            if let Some(s) = g.bubble_scale {
-                out.push_str(&num_val("bubbleScale", s));
-            }
-            if let Some(n) = g.show_negative_bubbles {
-                out.push_str(&bool_val("showNegBubbles", n));
-            }
-            if let Some(r) = &g.size_represents {
-                out.push_str(&format!("<c:sizeRepresents val=\"{r}\"/>"));
-            }
-        }
-        GroupKind::Surface => out.push_str(opt(&g.band_formats)),
-        GroupKind::Scatter | GroupKind::Radar => {}
+    if let Some(split) = split {
+        out.push_str(&format!("<c:splitType val=\"{split}\"/>"));
+    }
+    out.push_str(&g.split_at.map(|at| num_val("splitPos", f64_text(at))).unwrap_or_default());
+    out.push_str(opt(&g.custom_split));
+    out.push_str(&g.second_size.map(|size| num_val("secondPieSize", size)).unwrap_or_default());
+    out.push_str(&line_element(g, 3, g.series_lines, "<c:serLines/>"));
+    out
+}
+
+fn bubble_tail(g: &Group) -> String {
+    let mut out = g.bubble_scale.map(|s| num_val("bubbleScale", s)).unwrap_or_default();
+    out.push_str(&g.show_negative_bubbles.map(|n| bool_val("showNegBubbles", n)).unwrap_or_default());
+    if let Some(r) = &g.size_represents {
+        out.push_str(&format!("<c:sizeRepresents val=\"{r}\"/>"));
     }
     out
 }
@@ -508,59 +503,66 @@ fn name_xml(name: &str, filtered: bool) -> String {
 
 /// One series, with its elements in the order its kind's schema gives them.
 fn series_xml(s: &ChartSeries, kind: GroupKind, ids: (u32, u32), tag: &str, is_text: TextTest) -> String {
-    let f = &s.fmt;
+    let filtered = tag == "c15:ser";
     let mut out = format!("<{tag}><c:idx val=\"{}\"/><c:order val=\"{}\"/>", ids.0, ids.1);
     if let Some(name) = &s.name {
-        out.push_str(&name_xml(name, tag == "c15:ser"));
+        out.push_str(&name_xml(name, filtered));
     }
-    out.push_str(opt(&f.sp_pr));
-    let (marker, xy) = match kind {
-        GroupKind::Line | GroupKind::Stock | GroupKind::Radar => (true, false),
-        GroupKind::Scatter => (true, true),
-        GroupKind::Bubble => (false, true),
-        _ => (false, false),
-    };
+    out.push_str(opt(&s.fmt.sp_pr));
+    out.push_str(&series_options(s, kind));
+    out.push_str(&series_decorations(s, kind));
+    out.push_str(&series_data(s, kind, is_text, filtered));
+    out.push_str(&series_ext(s));
+    out.push_str(&format!("</{tag}>"));
+    out
+}
+
+/// The options a kind of series has between its format and its data: inversion, explosion, marker, points.
+fn series_options(s: &ChartSeries, kind: GroupKind) -> String {
+    let f = &s.fmt;
+    let mut out = String::new();
     match kind {
         GroupKind::Bar | GroupKind::Bubble => {
-            if let Some(v) = f.invert_if_negative {
-                out.push_str(&bool_val("invertIfNegative", v));
-            }
+            out.push_str(&f.invert_if_negative.map(|v| bool_val("invertIfNegative", v)).unwrap_or_default());
             if kind == GroupKind::Bar {
                 out.push_str(opt(&f.picture_options));
             }
         }
         GroupKind::Area => out.push_str(opt(&f.picture_options)),
         GroupKind::Pie | GroupKind::Doughnut | GroupKind::OfPie => {
-            if let Some(e) = f.explosion {
-                out.push_str(&num_val("explosion", e));
-            }
+            out.push_str(&f.explosion.map(|e| num_val("explosion", e)).unwrap_or_default());
         }
         _ => {}
     }
-    if marker {
-        if let Some(m) = &f.marker {
-            out.push_str(&marker_xml(m));
-        }
+    let has_marker = matches!(kind, GroupKind::Line | GroupKind::Stock | GroupKind::Radar | GroupKind::Scatter);
+    if let (true, Some(m)) = (has_marker, &f.marker) {
+        out.push_str(&marker_xml(m));
     }
-    for p in &f.points {
-        out.push_str(&point_xml(p));
-    }
+    f.points.iter().for_each(|p| out.push_str(&point_xml(p)));
+    out
+}
+
+/// Data labels, trendlines and error bars.
+fn series_decorations(s: &ChartSeries, kind: GroupKind) -> String {
+    let f = &s.fmt;
+    let mut out = String::new();
     if kind != GroupKind::Surface {
-        if let Some(labels) = &f.labels {
-            out.push_str(&labels_xml(labels));
-        }
+        out.push_str(&f.labels.as_ref().map(labels_xml).unwrap_or_default());
     }
-    if !matches!(kind, GroupKind::Pie | GroupKind::Doughnut | GroupKind::OfPie | GroupKind::Radar | GroupKind::Surface) {
-        for t in &f.trendlines {
-            out.push_str(&trendline_xml(t));
-        }
-        for e in &f.error_bars {
-            out.push_str(&error_bars_xml(e, kind));
-        }
+    let fitted = !matches!(kind, GroupKind::Pie | GroupKind::Doughnut | GroupKind::OfPie | GroupKind::Radar | GroupKind::Surface);
+    if fitted {
+        f.trendlines.iter().for_each(|t| out.push_str(&trendline_xml(t)));
+        f.error_bars.iter().for_each(|e| out.push_str(&error_bars_xml(e, kind)));
     }
+    out
+}
+
+/// The cells of a series, and what follows them.
+fn series_data(s: &ChartSeries, kind: GroupKind, is_text: TextTest, filtered: bool) -> String {
+    let f = &s.fmt;
     let text = s.categories.as_deref().is_some_and(is_text);
-    let filtered = tag == "c15:ser";
-    if xy {
+    let mut out = String::new();
+    if matches!(kind, GroupKind::Scatter | GroupKind::Bubble) {
         if let Some(x) = &s.categories {
             out.push_str(&data_xml("xVal", x, text, filtered));
         }
@@ -569,28 +571,20 @@ fn series_xml(s: &ChartSeries, kind: GroupKind, ids: (u32, u32), tag: &str, is_t
             out.push_str(&data_xml("bubbleSize", sizes, false, filtered));
         }
         if kind == GroupKind::Bubble {
-            if let Some(b) = f.bubble_3d {
-                out.push_str(&bool_val("bubble3D", b));
-            }
+            out.push_str(&f.bubble_3d.map(|b| bool_val("bubble3D", b)).unwrap_or_default());
         }
     } else {
         if let Some(c) = &s.categories {
             out.push_str(&data_xml("cat", c, text, filtered));
         }
         out.push_str(&data_xml("val", &s.values, false, filtered));
-        if kind == GroupKind::Bar {
-            if let Some(shape) = &f.shape {
-                out.push_str(&format!("<c:shape val=\"{shape}\"/>"));
-            }
+        if let (GroupKind::Bar, Some(shape)) = (kind, &f.shape) {
+            out.push_str(&format!("<c:shape val=\"{shape}\"/>"));
         }
     }
     if matches!(kind, GroupKind::Line | GroupKind::Stock | GroupKind::Scatter) {
-        if let Some(sm) = f.smooth {
-            out.push_str(&bool_val("smooth", sm));
-        }
+        out.push_str(&f.smooth.map(|sm| bool_val("smooth", sm)).unwrap_or_default());
     }
-    out.push_str(&series_ext(s));
-    out.push_str(&format!("</{tag}>"));
     out
 }
 
