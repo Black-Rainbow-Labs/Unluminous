@@ -275,11 +275,20 @@ fn offered_words(usage: &str) -> Vec<String> {
     let usage = usage.split(": ").next().unwrap_or("");
     let mut words = Vec::new();
     for token in usage.split_whitespace().skip(1) {
-        if !token.contains('|') {
+        let parts: Vec<&str> = token.split('|').collect();
+        if parts.len() < 2 {
             continue;
         }
-        for word in token.split('|') {
-            let word = word.trim_matches(|c| matches!(c, '[' | ']' | '(' | ')' | ','));
+        for (i, part) in parts.iter().enumerate() {
+            // Only the bracket that opens the group may lead and only the one that closes it may trail;
+            // `[scope]|edit` is an optional argument beside a word, not two words.
+            let mut word = *part;
+            if i == 0 {
+                word = word.trim_start_matches('[');
+            }
+            if i + 1 == parts.len() {
+                word = word.trim_end_matches(',').trim_end_matches(']');
+            }
             if !word.is_empty() && word.chars().all(|c| c.is_ascii_lowercase() || c == '-') {
                 words.push(word.to_owned());
             }
