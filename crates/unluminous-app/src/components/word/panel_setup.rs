@@ -4,6 +4,7 @@
 use egui::RichText;
 use unluminous_word::layout::section::Geometry;
 
+use super::kit;
 use super::panel::{actions_row, heading};
 use crate::services::plugin_ui::{Look, Request};
 use crate::services::word::Doc;
@@ -61,7 +62,7 @@ pub fn page_setup(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>)
         .and_then(|s| unluminous_word::props::on_off(&s.root, "w:mirrorMargins"))
         .unwrap_or(false);
     let mut mirror = mirrored;
-    if ui.checkbox(&mut mirror, "Mirror margins (inside and outside, for binding)").changed() {
+    if kit::check(ui, &mut mirror, "Mirror margins (inside and outside, for binding)").changed() {
         doc.session.set_mirror_margins(mirror);
     }
     heading(ui, "Paper");
@@ -78,7 +79,7 @@ pub fn page_setup(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>)
         for (label, value) in
             [("Top", "top"), ("Center", "center"), ("Justified", "both"), ("Bottom", "bottom")]
         {
-            if ui.selectable_label(geometry.vertical_align == value, label).clicked() {
+            if kit::toggle(ui, geometry.vertical_align == value, label).clicked() {
                 let _ = doc.session.set_vertical_alignment(value);
             }
         }
@@ -86,7 +87,7 @@ pub fn page_setup(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>)
     heading(ui, "Line numbers");
     let numbers = geometry.line_numbers.clone();
     ui.horizontal_wrapped(|ui| {
-        if ui.selectable_label(numbers.is_none(), "None").clicked() {
+        if kit::toggle(ui, numbers.is_none(), "None").clicked() {
             doc.session.set_line_numbers(None);
         }
         for (label, restart) in [
@@ -95,7 +96,7 @@ pub fn page_setup(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>)
             ("Continuous", "continuous"),
         ] {
             let chosen = numbers.as_ref().is_some_and(|n| n.2 == restart);
-            if ui.selectable_label(chosen, label).clicked() {
+            if kit::toggle(ui, chosen, label).clicked() {
                 let (count_by, start, distance) =
                     numbers.as_ref().map_or((1, 1, 18.0), |n| (n.0, n.1, n.3));
                 doc.session.set_line_numbers(Some((count_by, start, restart, distance)));
@@ -132,17 +133,17 @@ pub fn page_setup(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>)
         .and_then(|s| unluminous_word::props::on_off(&s.root, "w:autoHyphenation"))
         .unwrap_or(false);
     let mut hyphenate = auto;
-    if ui.checkbox(&mut hyphenate, "Hyphenate automatically").changed() {
+    if kit::check(ui, &mut hyphenate, "Hyphenate automatically").changed() {
         doc.session.set_auto_hyphenation(hyphenate);
     }
     heading(ui, "Page border");
     ui.horizontal_wrapped(|ui| {
-        if ui.selectable_label(geometry.page_border.is_none(), "None").clicked() {
+        if kit::toggle(ui, geometry.page_border.is_none(), "None").clicked() {
             doc.session.set_page_border(None);
         }
         for (label, width) in [("Thin box", 0.5), ("Box", 1.5), ("Thick box", 3.0)] {
             let chosen = geometry.page_border.is_some_and(|b| (b.0 - width).abs() < 0.2);
-            if ui.selectable_label(chosen, label).clicked() {
+            if kit::toggle(ui, chosen, label).clicked() {
                 let colour = doc
                     .view
                     .fields
@@ -168,7 +169,7 @@ pub fn page_setup(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>)
     });
     heading(ui, "Headers and footers");
     let mut first = geometry.title_page;
-    if ui.checkbox(&mut first, "Different first page").changed() {
+    if kit::check(ui, &mut first, "Different first page").changed() {
         doc.session.set_different_first_page(first);
     }
     let odd_even = doc
@@ -179,7 +180,7 @@ pub fn page_setup(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>)
         .and_then(|s| unluminous_word::props::on_off(&s.root, "w:evenAndOddHeaders"))
         .unwrap_or(false);
     let mut even = odd_even;
-    if ui.checkbox(&mut even, "Different odd and even pages").changed() {
+    if kit::check(ui, &mut even, "Different odd and even pages").changed() {
         doc.session.set_different_odd_even(even);
     }
     ui.horizontal_wrapped(|ui| {
@@ -189,7 +190,7 @@ pub fn page_setup(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>)
             ("Link footer to previous", true, true),
             ("Unlink footer", true, false),
         ] {
-            if ui.button(label).clicked() {
+            if kit::button(ui, label).clicked() {
                 if let Err(problem) = doc.session.link_to_previous(footer, "default", link) {
                     requests.push(Request::Message(problem));
                 }
@@ -222,7 +223,7 @@ pub fn page_setup(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>)
             geometry.page_number_format.as_str()
         };
     ui.horizontal(|ui| {
-        numbering_changed |= ui.checkbox(&mut restart, "Start at").changed();
+        numbering_changed |= kit::check(ui, &mut restart, "Start at").changed();
         numbering_changed |= ui
             .add_enabled(restart, egui::DragValue::new(&mut start).range(0.0..=32767.0).speed(0.2))
             .changed();
@@ -258,7 +259,7 @@ pub fn modify_style(
     );
     let styles = resolver.listed("paragraph");
     drop(resolver);
-    ui.label(RichText::new(&name).strong().size(look.font_size * 1.1));
+    ui.label(RichText::new(&name).size(15.0 * kit::zoom(ui.ctx())).color(kit::ink().i900));
     let mut set = |doc: &mut Doc, property: &str, value: String| {
         if let Err(problem) = doc.session.modify_style(&id, property, &value) {
             requests.push(Request::Message(problem));
@@ -292,12 +293,12 @@ pub fn modify_style(
         for (label, property, on) in
             [("Bold", "bold", run_look.bold), ("Italic", "italic", run_look.italic)]
         {
-            if ui.selectable_label(on, label).clicked() {
+            if kit::toggle(ui, on, label).clicked() {
                 set(doc, property, if on { "off" } else { "on" }.into());
             }
         }
         let underlined = run_look.underline != unluminous_word::props::Underline::None;
-        if ui.selectable_label(underlined, "Underline").clicked() {
+        if kit::toggle(ui, underlined, "Underline").clicked() {
             set(doc, "underline", if underlined { "off" } else { "on" }.into());
         }
     });
@@ -309,7 +310,7 @@ pub fn modify_style(
         if ui.color_edit_button_srgba(&mut colour).changed() {
             set(doc, "colour", format!("{:02X}{:02X}{:02X}", colour.r(), colour.g(), colour.b()));
         }
-        if ui.button("Automatic").clicked() {
+        if kit::button(ui, "Automatic").clicked() {
             set(doc, "colour", "auto".into());
         }
     });
@@ -318,7 +319,7 @@ pub fn modify_style(
         for (label, value) in
             [("Left", "left"), ("Center", "center"), ("Right", "right"), ("Justify", "justify")]
         {
-            if ui.button(label).clicked() {
+            if kit::button(ui, label).clicked() {
                 set(doc, "align", value.into());
             }
         }
@@ -337,7 +338,7 @@ pub fn modify_style(
     ui.horizontal(|ui| {
         ui.label("Line spacing");
         for (label, value) in [("1.0", "1"), ("1.15", "1.15"), ("1.5", "1.5"), ("2.0", "2")] {
-            if ui.button(label).clicked() {
+            if kit::button(ui, label).clicked() {
                 set(doc, "line", value.into());
             }
         }
@@ -362,18 +363,18 @@ pub fn modify_style(
     }
     heading(ui, "This style");
     ui.horizontal_wrapped(|ui| {
-        if ui.button("Update to match the selection").clicked() {
+        if kit::button(ui, "Update to match the selection").clicked() {
             match doc.session.update_style_to_match() {
                 Ok(id) => requests.push(Request::Message(format!("{id} updated to match"))),
                 Err(problem) => requests.push(Request::Message(problem)),
             }
         }
-        if ui.button("Revert to Word's own").clicked() {
+        if kit::button(ui, "Revert to Word's own").clicked() {
             if let Err(problem) = doc.session.revert_style(&id) {
                 requests.push(Request::Message(problem));
             }
         }
-        if ui.button("Delete").clicked() {
+        if kit::button(ui, "Delete").clicked() {
             match doc.session.delete_style(&id) {
                 Ok(()) => {
                     doc.view.modify_style = None;
@@ -403,6 +404,7 @@ const BLOCKS: [(&str, u32, u32); 12] = [
 
 /// Symbol: the characters of a block, the ones used lately, and Word's special characters.
 pub fn symbols(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<Request>) {
+    let _ = look;
     let font = doc.session.look_at_caret().font.to_string();
     ui.label(RichText::new(format!("In {font}")).weak());
     if !doc.view.recent_symbols.is_empty() {
@@ -410,8 +412,7 @@ pub fn symbols(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut
         let recent = doc.view.recent_symbols.clone();
         ui.horizontal_wrapped(|ui| {
             for symbol in recent {
-                if ui.button(RichText::new(symbol.to_string()).size(look.font_size * 1.2)).clicked()
-                {
+                if kit::button(ui, symbol.to_string()).clicked() {
                     insert_symbol(doc, symbol);
                 }
             }
@@ -459,9 +460,10 @@ pub fn symbols(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut
     ui.horizontal_wrapped(|ui| {
         for code in from..=to {
             let Some(character) = char::from_u32(code) else { continue };
-            let button =
-                egui::Button::new(RichText::new(character.to_string()).size(look.font_size * 1.2))
-                    .min_size(egui::vec2(26.0, 26.0));
+            let button = egui::Button::new(
+                RichText::new(character.to_string()).size(15.0 * kit::zoom(ui.ctx())),
+            )
+            .min_size(egui::vec2(26.0, 26.0));
             let response = ui.add(button);
             if response.clicked() {
                 pressed = Some(character);
@@ -527,7 +529,7 @@ pub fn note_options(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request
         };
         ui.horizontal_wrapped(|ui| {
             for (value, label) in restarts {
-                if ui.selectable_label(restart == *value, *label).clicked() {
+                if kit::toggle(ui, restart == *value, *label).clicked() {
                     restart = (*value).to_owned();
                 }
             }
@@ -539,7 +541,7 @@ pub fn note_options(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request
         };
         ui.horizontal_wrapped(|ui| {
             for (value, label) in places {
-                if ui.selectable_label(place == *value, *label).clicked() {
+                if kit::toggle(ui, place == *value, *label).clicked() {
                     place = (*value).to_owned();
                 }
             }
@@ -553,7 +555,7 @@ pub fn note_options(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request
         doc.view
             .fields
             .insert(if endnote { "endnote-place" } else { "footnote-place" }, place.clone());
-        if ui.button(format!("Apply to {}", title.to_lowercase())).clicked() {
+        if kit::button(ui, format!("Apply to {}", title.to_lowercase())).clicked() {
             doc.session.set_note_options(endnote, &format, 1, &restart, &place);
             requests.push(Request::Message(format!("{title} options set")));
         }

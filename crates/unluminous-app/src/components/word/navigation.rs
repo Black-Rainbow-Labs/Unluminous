@@ -16,24 +16,36 @@ pub fn show(
 ) {
     let _ = requests;
     ui.painter().rect_filled(rect, 0.0, look.ground(look.palette.panel));
-    ui.painter().line_segment(
-        [rect.right_top(), rect.right_bottom()],
-        Stroke::new(1.0, look.palette.divider),
-    );
+    crate::components::chrome_kit::groove(ui.painter(), rect.right_top(), rect.right_bottom());
+    let z = super::kit::zoom(ui.ctx());
     let mut inner =
-        ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(Vec2::new(10.0, 10.0))));
+        ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(Vec2::new(12.0, 12.0) * z)));
     inner.set_clip_rect(rect);
-    inner.label(RichText::new("Navigation").strong());
-    inner.add_space(4.0);
-    // Headings, Pages and Results, as Word's Navigation pane has them.
-    inner.horizontal(|ui| {
-        for (n, name) in ["Headings", "Pages", "Results"].iter().enumerate() {
-            if ui.selectable_label(doc.view.navigation_tab == n as u8, *name).clicked() {
-                doc.view.navigation_tab = n as u8;
-            }
-        }
+    super::kit::style_the_panel(&mut inner);
+    inner.label(RichText::new("Navigation").size(15.0 * z).color(super::kit::ink().i900));
+    inner.add_space(6.0 * z);
+    // Headings, Pages and Results, as Word's Navigation pane has them: a carved track, the one showing
+    // raised out of it.
+    let (track, _) = inner.allocate_exact_size(
+        egui::vec2(inner.available_width(), crate::components::settings_kit::SEGMENT_TRACK * z),
+        egui::Sense::hover(),
+    );
+    let chosen = doc.view.navigation_tab as usize;
+    let picked = super::kit::layer(&mut inner, "navigation-tabs", track, |rux| {
+        crate::components::settings_kit::segmented(
+            rux,
+            track,
+            "Navigation",
+            &["Headings", "Pages", "Results"],
+            Some(chosen),
+            40.0 * z,
+            false,
+        )
     });
-    inner.add_space(4.0);
+    if let Some(n) = picked {
+        doc.view.navigation_tab = n as u8;
+    }
+    inner.add_space(8.0 * z);
     match doc.view.navigation_tab {
         1 => return pages(&mut inner, look, doc),
         2 => return results(&mut inner, look, doc),
@@ -49,7 +61,7 @@ pub fn show(
             ui.horizontal(|ui| {
                 ui.add_space(12.0 * f32::from(level.saturating_sub(1)));
                 let here = current.first() >= path.first() && path == current;
-                let label = ui.selectable_label(here, RichText::new(&text).size(look.font_size * if level == 1 { 1.0 } else { 0.92 }));
+                let label = ui.selectable_label(here, RichText::new(&text).size(12.5 * z * if level == 1 { 1.0 } else { 0.94 }));
                 if label.with_hint(format!("Page {page}")).clicked() {
                     doc.session.select(Pos::new(path.clone(), 0), Pos::new(path, 0));
                     doc.view.reveal = true;
@@ -86,7 +98,7 @@ fn pages(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc) {
                     egui::pos2(rect.center().x, sheet.bottom() + 11.0),
                     egui::Align2::CENTER_CENTER,
                     page.number.to_string(),
-                    egui::FontId::proportional(look.font_size * 0.85),
+                    egui::FontId::proportional(11.0 * super::kit::zoom(ui.ctx())),
                     look.palette.text_dim,
                 );
                 response.widget_info(|| {
@@ -215,7 +227,7 @@ fn results(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc) {
                 if ui
                     .selectable_label(
                         doc.session.selection == *hit,
-                        RichText::new(label).size(look.font_size * 0.9),
+                        RichText::new(label).size(12.0 * super::kit::zoom(ui.ctx())),
                     )
                     .clicked()
                 {

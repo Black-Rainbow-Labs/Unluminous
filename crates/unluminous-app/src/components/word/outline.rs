@@ -5,8 +5,16 @@
 //!
 //! A row put under a collapsed heading is hidden; a heading moved while collapsed takes its whole
 //! section with it. Typing goes to the paragraph the caret is in, as in Print Layout.
+//!
+//! `task-2366`: the tools are a strip of pills above the paper, and a pill whose tool cannot do anything
+//! where the caret is (Demote on body text, Move Up on the first paragraph) is drawn quiet and takes no
+//! press, through `actions::applies`, rather than answering with an error. The marks beside the rows are
+//! drawn, because the characters Word uses for them are not in every face.
 
-use egui::{Rect, RichText, Sense, Stroke, Vec2};
+use egui::{Pos2, Rect, RichText, Sense, Vec2};
+
+use super::kit;
+use crate::components::controls::WithHint;
 use unluminous_word::position::{self, Pos, StoryId};
 
 use crate::services::plugin_ui::{Look, Request};
@@ -82,12 +90,21 @@ pub fn show(
     rect: Rect,
     requests: &mut Vec<Request>,
 ) {
-    ui.painter().rect_filled(rect, 0.0, crate::theme::color::word_paper());
+    let z = kit::zoom(ui.ctx());
+    // One row of tools when the tab is wide enough, and the level and the switch on a second row when not.
+    let tool_rows = if tools_width(ui) + 24.0 * z <= rect.width() { 1.0 } else { 2.0 };
+    let strip = Rect::from_min_size(
+        rect.min,
+        Vec2::new(rect.width(), TOOLS * z * tool_rows - (tool_rows - 1.0) * 8.0 * z),
+    );
+    let paper = Rect::from_min_max(Pos2::new(rect.left(), strip.bottom()), rect.max);
+    ui.painter().rect_filled(strip, 0.0, look.ground(look.palette.panel));
+    crate::components::chrome_kit::groove(ui.painter(), strip.left_bottom(), strip.right_bottom());
+    toolbar(ui, doc, strip, requests);
+    ui.painter().rect_filled(paper, 0.0, crate::theme::color::word_paper());
     let mut inner =
-        ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(Vec2::new(16.0, 8.0))));
-    inner.set_clip_rect(rect);
-    toolbar(&mut inner, look, doc, requests);
-    inner.add_space(6.0);
+        ui.new_child(egui::UiBuilder::new().max_rect(paper.shrink2(Vec2::new(24.0, 12.0) * z)));
+    inner.set_clip_rect(paper);
     let all = rows(doc);
     let visible = shown(&all, doc.view.outline_level, &doc.view.outline_collapsed);
     let current = doc.session.selection.head.path.first().copied();
@@ -104,9 +121,9 @@ pub fn show(
                 }
                 let indent = 22.0 * f32::from(row.level.min(10).saturating_sub(1).min(8));
                 let size = if row.level < 10 {
-                    look.font_size * (1.25 - 0.04 * f32::from(row.level))
+                    13.0 * z * (1.3 - 0.05 * f32::from(row.level))
                 } else {
-                    look.font_size
+                    13.0 * z
                 };
                 let text = if row.level == 10 && doc.view.first_line_only {
                     row.text.lines().next().unwrap_or_default().chars().take(90).collect::<String>()
@@ -115,20 +132,11 @@ pub fn show(
                 };
                 ui.horizontal(|ui| {
                     ui.add_space(indent);
-                    // A plus for a heading with something under it, a minus for one with nothing, a circle
-                    // for body text, as Word marks them; a press on a plus folds or opens the heading.
-                    let mark = match (row.level < 10, row.has_children) {
-                        (true, true) if doc.view.outline_collapsed.contains(&row.path) => {
-                            "\u{2295}"
-                        }
-                        (true, true) => "\u{2296}",
-                        (true, false) => "\u{2212}",
-                        _ => "\u{25E6}",
-                    };
-                    let mark_response = ui.add(
-                        egui::Label::new(RichText::new(mark).color(ink)).sense(Sense::click()),
-                    );
-                    if mark_response.clicked() && row.has_children {
+                    // A chevron for a heading with something under it, pointing down while it is open and
+                    // right while it is folded; a short bar for a heading with nothing under it; a dot for
+                    // body text. A press on a chevron folds or opens the heading.
+                    let folded = doc.view.outline_collapsed.contains(&row.path);
+                    if row_mark(ui, row.level, row.has_children, folded, size) && row.has_children {
                         fold = Some(row.path.clone());
                     }
                     let mut words =
@@ -141,11 +149,11 @@ pub fn show(
                     let here = current == row.path.first().copied();
                     let response = ui.add(egui::Label::new(words).sense(Sense::click()).wrap());
                     if here {
-                        ui.painter().rect_stroke(
-                            response.rect.expand(2.0),
-                            3.0,
-                            Stroke::new(1.0, crate::theme::color::accent()),
-                            egui::StrokeKind::Outside,
+                        // A soft wash of the accent behind the row the caret is in.
+                        ui.painter().rect_filled(
+                            response.rect.expand2(Vec2::new(6.0, 2.0) * z),
+                            6.0 * z,
+                            crate::theme::color::accent().gamma_multiply(0.12),
                         );
                     }
                     if response.clicked() {
@@ -166,45 +174,153 @@ pub fn show(
     }
 }
 
-/// The Outlining tools.
-fn toolbar(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<Request>) {
-    let _ = look;
-    ui.horizontal_wrapped(|ui| {
-        for (label, id) in [
-            ("Promote to Heading 1", "outline-to-heading-1"),
-            ("Promote", "promote-heading"),
-            ("Demote", "demote-heading"),
-            ("Demote to Body Text", "outline-to-body"),
-            ("Move Up", "outline-move-up"),
-            ("Move Down", "outline-move-down"),
-            ("Expand", "outline-expand"),
-            ("Collapse", "outline-collapse"),
-        ] {
-            if ui.button(label).clicked() {
-                super::run_action(doc, id, requests);
+/// How tall the strip of tools is, before the tab's zoom.
+const TOOLS: f32 = 46.0;
+
+/// The mark beside a row, drawn: a chevron for a heading with something under it, a short bar for a heading
+/// with nothing under it, a dot for body text. Answers whether it was pressed.
+fn row_mark(ui: &mut egui::Ui, level: u8, has_children: bool, folded: bool, size: f32) -> bool {
+    let z = kit::zoom(ui.ctx());
+    let ink = egui::Color32::from_gray(110); // any ground: the outline is drawn on paper
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(size.max(14.0 * z)), Sense::click());
+    let centre = rect.center();
+    let painter = ui.painter();
+    let stroke = egui::Stroke::new(1.6 * z, ink);
+    match (level < 10, has_children) {
+        (true, true) => {
+            let r = 3.5 * z;
+            let points = match folded {
+                true => vec![
+                    centre + Vec2::new(-r * 0.5, -r),
+                    centre + Vec2::new(r * 0.6, 0.0),
+                    centre + Vec2::new(-r * 0.5, r),
+                ],
+                false => vec![
+                    centre + Vec2::new(-r, -r * 0.5),
+                    centre + Vec2::new(0.0, r * 0.6),
+                    centre + Vec2::new(r, -r * 0.5),
+                ],
+            };
+            let _ = painter.add(egui::Shape::line(points, stroke));
+            if response.hovered() {
+                let ring = egui::Stroke::new(1.0, ink.gamma_multiply(0.6));
+                painter.circle_stroke(centre, 7.0 * z, ring);
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             }
         }
-        let mut level = doc.view.outline_level;
-        egui::ComboBox::from_id_salt(("word-outline-level", &doc.key))
-            .selected_text(if level >= 10 {
-                "All Levels".to_owned()
-            } else {
-                format!("Level {level}")
-            })
-            .show_ui(ui, |ui| {
-                crate::components::controls::set_in_the_list_size(ui);
-                for n in 1..=9u8 {
-                    ui.selectable_value(&mut level, n, format!("Level {n}"));
-                }
-                ui.selectable_value(&mut level, 10, "All Levels");
-            });
-        doc.view.outline_level = level;
-        ui.checkbox(&mut doc.view.first_line_only, "Show first line only");
-        if ui.button("Close Outline View").clicked() {
-            doc.view.mode = crate::services::word::Mode::Print;
-            doc.laid = u64::MAX;
+        (true, false) => {
+            let half = Vec2::new(3.5 * z, 0.0);
+            painter.line_segment([centre - half, centre + half], stroke);
         }
+        _ => {
+            painter.circle_filled(centre, 2.0 * z, ink);
+        }
+    }
+    let name = match (level < 10, has_children, folded) {
+        (true, true, true) => "Expand heading",
+        (true, true, false) => "Collapse heading",
+        (true, false, _) => "Heading",
+        _ => "Body text",
+    };
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name));
+    response.clicked()
+}
+
+/// The tools, each as its words on the pill, its name, and the action it runs.
+const OUTLINE_TOOLS: [(&str, &str, &str); 8] = [
+    ("To Heading 1", "Promote to Heading 1", "outline-to-heading-1"),
+    ("Promote", "Promote", "promote-heading"),
+    ("Demote", "Demote", "demote-heading"),
+    ("To Body Text", "Demote to Body Text", "outline-to-body"),
+    ("Move Up", "Move Up", "outline-move-up"),
+    ("Move Down", "Move Down", "outline-move-down"),
+    ("Expand", "Expand", "outline-expand"),
+    ("Collapse", "Collapse", "outline-collapse"),
+];
+
+/// How wide the whole strip of tools is on one row: the pills, the gaps between their groups, the level and
+/// the switch.
+fn tools_width(ui: &egui::Ui) -> f32 {
+    let z = kit::zoom(ui.ctx());
+    let pills: f32 =
+        OUTLINE_TOOLS.iter().map(|(label, ..)| kit::pill_width(ui, label) + 5.0 * z).sum();
+    pills + 16.0 * z + 12.0 * z + 118.0 * z + 14.0 * z + 40.0 * z + 8.0 * z + 100.0 * z
+}
+
+/// The Outlining tools, as pills across `strip`, then the level to show and whether body text shows its
+/// first line only, on the same row or on a second one when the tab is narrow.
+fn toolbar(ui: &mut egui::Ui, doc: &mut Doc, strip: Rect, requests: &mut Vec<Request>) {
+    let z = kit::zoom(ui.ctx());
+    let two_rows = strip.height() > TOOLS * z + 1.0;
+    let row_height = (TOOLS - 8.0) * z;
+    let mut middle = match two_rows {
+        true => strip.top() + 4.0 * z + row_height / 2.0,
+        false => strip.center().y,
+    };
+    let mut x = strip.left() + 12.0 * z;
+    for (n, (label, name, id)) in OUTLINE_TOOLS.iter().enumerate() {
+        // A little more room between the groups: the level, the moves, the folds.
+        if n == 4 || n == 6 {
+            x += 8.0 * z;
+        }
+        let width = kit::pill_width(ui, label);
+        let rect = Rect::from_min_size(
+            Pos2::new(x, middle - kit::PILL * z / 2.0),
+            Vec2::new(width, kit::PILL * z),
+        );
+        x += width + 5.0 * z;
+        let enabled = crate::services::word::actions::applies(id, doc);
+        if kit::pill_at(ui, rect, label, name, false, enabled).with_hint(*name).clicked() {
+            super::run_action(doc, id, requests);
+        }
+    }
+    match two_rows {
+        true => {
+            x = strip.left() + 12.0 * z;
+            middle += row_height;
+        }
+        false => x += 12.0 * z,
+    }
+    let level = doc.view.outline_level;
+    let shown = if level >= 10 { "All levels".to_owned() } else { format!("Level {level}") };
+    let chip = Rect::from_min_size(
+        Pos2::new(x, middle - kit::CHIP * z / 2.0),
+        Vec2::new(118.0 * z, kit::CHIP * z),
+    );
+    let chosen = kit::select_chip(ui, chip, "Show level", &shown, 150.0 * z, |ui| {
+        let mut chosen = None;
+        for n in 1..=10u8 {
+            let label = if n == 10 { "All levels".to_owned() } else { format!("Level {n}") };
+            if crate::components::controls::menu_row(ui, &label, "", true, level == n, 0.0) {
+                chosen = Some(n);
+            }
+        }
+        chosen
     });
+    if let Some(n) = chosen {
+        doc.view.outline_level = n;
+    }
+    x = chip.right() + 14.0 * z;
+    let track = Rect::from_min_size(Pos2::new(x, middle - 11.0 * z), Vec2::new(40.0 * z, 22.0 * z));
+    let label = Rect::from_min_size(
+        Pos2::new(track.right() + 8.0 * z, middle - 11.0 * z),
+        Vec2::new(110.0 * z, 22.0 * z),
+    );
+    let mut first = doc.view.first_line_only;
+    kit::layer(ui, "outline-first-line", track, |rux| {
+        crate::components::settings_kit::switch(
+            rux,
+            track,
+            "Show first line only",
+            &mut first,
+            label,
+        );
+    });
+    doc.view.first_line_only = first;
+    let ink = kit::ink();
+    let size = 12.0 * z;
+    let galley = kit::words(ui, "First line only", size, ink.i700, label.width());
+    kit::draw_by_capitals(ui.painter(), label.left(), middle, galley, size, ink.i700);
 }
 
 /// Fold or open the heading at the caret, as Expand and Collapse do.

@@ -231,6 +231,7 @@ fn paint_comments(
     area: Rect,
     tops: &[Pos2],
 ) {
+    let _ = look;
     let zoom = doc.view.zoom;
     let comments = doc.session.comments();
     let mut starts: std::collections::HashMap<String, Pos> = std::collections::HashMap::new();
@@ -260,7 +261,7 @@ fn paint_comments(
         let text = comment["text"].as_str().unwrap_or("").to_owned();
         let body = painter.layout(
             text,
-            egui::FontId::proportional(look.font_size * 0.9),
+            egui::FontId::proportional(12.0 * super::kit::zoom(ui.ctx())),
             if resolved { crate::theme::color::word_ink_dim() } else { ink },
             width - 16.0,
         );
@@ -288,7 +289,7 @@ fn paint_comments(
             card.left_top() + Vec2::new(8.0, 6.0),
             egui::Align2::LEFT_TOP,
             name,
-            egui::FontId::proportional(look.font_size * 0.8),
+            egui::FontId::proportional(10.5 * super::kit::zoom(ui.ctx())),
             crate::theme::color::word_ink_dim(),
         );
         painter.galley(card.left_top() + Vec2::new(8.0, 22.0), body, ink);

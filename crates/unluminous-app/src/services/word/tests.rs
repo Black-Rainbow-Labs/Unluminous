@@ -589,3 +589,70 @@ fn a_new_document_from_a_template_is_a_document() {
     std::fs::remove_file(&path).unwrap();
     std::fs::remove_dir(&folder).unwrap();
 }
+
+/// **Promote, Demote and Outline view's tools are offered only where they would do something**, so none of
+/// them answers with an error such as `body text is already the lowest level`. `task-2366`.
+#[test]
+fn the_outline_tools_are_offered_only_where_they_work() {
+    let (mut word, key) = word_with("blank.docx");
+    run(&mut word, "type Title\nBody text\nSection");
+    run(&mut word, "select 1 0");
+    run(&mut word, "style Heading 1");
+    run(&mut word, "select 3 0");
+    run(&mut word, "style Heading 2");
+    let applies = |word: &mut Word, id: &str| actions::applies(id, word.doc(&key).unwrap());
+    // On body text: nothing demotes it, and it can be promoted and moved both ways.
+    run(&mut word, "select 2 0");
+    assert!(!applies(&mut word, "demote-heading"));
+    assert!(!applies(&mut word, "outline-to-body"));
+    assert!(applies(&mut word, "promote-heading"));
+    assert!(applies(&mut word, "outline-to-heading-1"));
+    assert!(applies(&mut word, "outline-move-up"));
+    assert!(applies(&mut word, "outline-move-down"));
+    // On Heading 1 at the top: it cannot be promoted or moved up, and it can be demoted and folded.
+    run(&mut word, "select 1 0");
+    assert!(!applies(&mut word, "promote-heading"));
+    assert!(!applies(&mut word, "outline-to-heading-1"));
+    assert!(!applies(&mut word, "outline-move-up"));
+    assert!(!applies(&mut word, "move-paragraph-up"));
+    assert!(applies(&mut word, "demote-heading"));
+    assert!(applies(&mut word, "outline-collapse"));
+    assert!(!applies(&mut word, "outline-expand"));
+    // On the last paragraph it cannot move down, and a heading with nothing under it does not fold.
+    run(&mut word, "select 3 0");
+    assert!(!applies(&mut word, "outline-move-down"));
+    assert!(!applies(&mut word, "outline-collapse"));
+    // And the command search, which lists only what applies, does not offer Demote on body text.
+    run(&mut word, "select 2 0");
+    let offered: Vec<&str> = actions::search("demote", false)
+        .into_iter()
+        .filter(|a| actions::applies(a.id, word.doc(&key).unwrap()))
+        .map(|a| a.id)
+        .collect();
+    assert!(
+        !offered.contains(&"demote-heading") && !offered.contains(&"outline-to-body"),
+        "{offered:?}"
+    );
+}
+
+/// **The window's status bar says the page, the words, tracking and spelling for a Word tab, and each fact
+/// runs a Word command when pressed.** `task-2366`.
+#[test]
+fn the_status_bar_says_the_page_and_the_words_and_each_runs_a_command() {
+    let (mut word, key) = word_with("blank.docx");
+    run(&mut word, "type One two three");
+    let status = word.tab_status(&key).expect("a Word tab has a status");
+    assert_eq!(status.kind, "Word document");
+    let texts: Vec<&str> = status.items.iter().map(|i| i.text.as_str()).collect();
+    assert_eq!(texts, ["Page 1 of 1", "3 words"]);
+    run(&mut word, "track on");
+    let status = word.tab_status(&key).unwrap();
+    assert!(status.items.iter().any(|i| i.text == "Tracking changes"));
+    for item in &status.items {
+        let words = item.press.clone().expect("each fact can be pressed");
+        word.command(&words[0], &words[1..]).unwrap_or_else(|e| panic!("{}: {e}", item.name));
+    }
+    let doc = word.doc(&key).unwrap();
+    assert_eq!(doc.view.goto.as_deref(), Some(""), "the page opened Go To");
+    assert!(!doc.session.tracking, "the tracking fact turned it off");
+}

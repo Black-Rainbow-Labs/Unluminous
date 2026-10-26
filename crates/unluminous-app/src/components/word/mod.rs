@@ -9,6 +9,7 @@ pub mod banner;
 pub mod context_menu;
 pub mod format_bar;
 pub mod keys;
+pub mod kit;
 pub mod navigation;
 pub mod objects;
 pub mod outline;
@@ -25,8 +26,6 @@ use egui::{Rect, Vec2};
 use crate::services::plugin_ui::{Look, Request};
 use crate::services::word::{Config, Doc};
 
-/// How tall the format bar is, before the tab's zoom.
-pub const BAR: f32 = 40.0;
 /// How wide the panel is.
 pub const PANEL: f32 = 320.0;
 /// How wide the navigation pane is.
@@ -38,25 +37,23 @@ pub fn show(doc: &mut Doc, config: &Config, ui: &mut egui::Ui, look: &Look<'_>) 
     doc.drawn += 1;
     let mut requests = Vec::new();
     let area = ui.max_rect();
-    let scale = look.scale();
-    let bar = Rect::from_min_size(area.min, Vec2::new(area.width(), BAR * scale));
+    // Every part of the tab's chrome is the design's size times the tab's own zoom (`task-2366`).
+    let scale = look.zoom();
+    kit::set_zoom(ui.ctx(), scale);
+    let bar = Rect::from_min_size(area.min, Vec2::new(area.width(), format_bar::HEIGHT * scale));
     let panel_width =
         if doc.view.panel.is_empty() { 0.0 } else { (PANEL * scale).min(area.width() * 0.5) };
     let navigation_width =
         if doc.view.navigation { (NAVIGATION * scale).min(area.width() * 0.3) } else { 0.0 };
-    let status_height = views::STATUS * scale;
-    let status =
-        Rect::from_min_max(egui::pos2(area.left(), area.bottom() - status_height), area.max);
     // A document opened read only, or with a recovered copy to offer, has a strip under the bar.
     let banner_height = if banner::wanted(doc) { banner::HEIGHT * scale } else { 0.0 };
     let banner = Rect::from_min_size(
         egui::pos2(area.left(), bar.bottom()),
         Vec2::new(area.width(), banner_height),
     );
-    let body = Rect::from_min_max(
-        egui::pos2(area.left(), banner.bottom()),
-        egui::pos2(area.right(), status.top()),
-    );
+    // The pages run to the bottom of the tab: what a strip under them used to say is in the window's own
+    // status bar (`services::word::status`).
+    let body = Rect::from_min_max(egui::pos2(area.left(), banner.bottom()), area.max);
     let ruler_height = if doc.view.ruler && doc.view.mode == crate::services::word::Mode::Print {
         views::RULER * scale
     } else {
@@ -107,7 +104,6 @@ pub fn show(doc: &mut Doc, config: &Config, ui: &mut egui::Ui, look: &Look<'_>) 
     if ruler_height > 0.0 {
         views::ruler(ui, look, doc, ruler, pages);
     }
-    views::status(ui, look, doc, status, &mut requests);
     if navigation_width > 0.0 {
         let rect = Rect::from_min_max(body.min, egui::pos2(pages.left(), body.bottom()));
         navigation::show(ui, look, doc, rect, &mut requests);

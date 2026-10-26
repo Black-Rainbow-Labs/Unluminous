@@ -190,6 +190,7 @@ impl UnluminousApp {
         // Last, once every popup has been drawn: glass under the ones egui framed itself (`task-2281`).
         crate::theme::glass::glaze_the_popups(ui.ctx());
         crate::components::designer::kit::end_frame(ui.ctx());
+        crate::components::word::kit::end_frame(ui.ctx());
         self.end_the_frame(ui);
     }
 
@@ -1594,6 +1595,10 @@ impl UnluminousApp {
                 format!("{} \u{00B7} {:.0} pt", style.family, style.size),
             ),
         };
+        // What a plugin's tab says about itself: the Word tab's page, words and tracking (`task-2366`).
+        let plugin_status = self.files.active().plugin.clone().and_then(|tab| {
+            self.plugin_ui.provider(&tab.plugin).and_then(|provider| provider.tab_status(&tab.key))
+        });
         // What the tab holds. A rendered tab says what the page really is — the HTML file it opened,
         // or `Web page` for an address — rather than the `Plain text` its empty document reads as.
         let kind = if self.files.active().is_browser() {
@@ -1602,7 +1607,10 @@ impl UnluminousApp {
                 None => "Web page",
             }
         } else if self.files.active().is_a_plugin() {
-            "Plugin"
+            match &plugin_status {
+                Some(status) => status.kind.as_str(),
+                None => "Plugin",
+            }
         } else if self.files.active().unrenderable.is_some() {
             // A file Unluminous cannot show, which is not plain text whatever its empty document reads as.
             "Not shown"
@@ -1635,6 +1643,7 @@ impl UnluminousApp {
                     .and_then(|git| git.message.as_deref())
                     .or(self.message.as_deref()),
                 git: branch.as_deref(),
+                items: plugin_status.as_ref().map_or(&[], |status| status.items.as_slice()),
             },
             self.settings.window_opacity(),
         );
@@ -1645,6 +1654,22 @@ impl UnluminousApp {
                 Pos2::new(status_rect.left(), status_rect.top()),
                 Pos2::new(status_rect.right(), status_rect.top()),
             );
+        }
+        // A press on one of a plugin tab's items runs the provider command it names, which is the path
+        // `plugins run` takes.
+        if let (Some(index), Some(status)) = (outcome.item, plugin_status.as_ref()) {
+            let words = status.items.get(index).and_then(|item| item.press.clone());
+            let plugin = self.files.active().plugin.as_ref().map(|tab| tab.plugin.clone());
+            if let (Some(words), Some(plugin)) = (words, plugin) {
+                if let Some(provider) = self.plugin_ui.provider(&plugin) {
+                    // What the command said is not repeated in the bar: the press opened what it is
+                    // about, and only a refusal needs saying.
+                    if let Err(problem) = provider.command(&words[0], &words[1..]) {
+                        self.message = Some(problem);
+                    }
+                }
+                ui.ctx().request_repaint();
+            }
         }
         // The flag is the menu entry's twin, so it goes through `run_action` like a press of the entry.
         if outcome.reported {

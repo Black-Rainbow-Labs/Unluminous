@@ -10,7 +10,7 @@ mod common;
 use common::*;
 
 use egui::{Key, Modifiers};
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT, Queryable};
 use egui_kittest::Harness;
 use unluminous_app::UnluminousApp;
 
@@ -442,19 +442,91 @@ fn a_table_column_edge_is_dragged() {
     );
 }
 
+/// Open the View chip in the format bar and choose `name` from its list.
+fn choose_view(harness: &mut Harness<'static, UnluminousApp>, name: &str) {
+    harness.get_by_label("View mode").click();
+    steady(harness);
+    harness.get_by_label(name).click();
+    steady(harness);
+}
+
+/// **Bold, italic and the rest are in the Text options flyout, which opens and closes from its chip in the
+/// format bar, and its Bold sets bold at the caret.** `task-2366`.
+#[test]
+fn the_text_options_flyout_holds_bold_and_the_lists() {
+    let (_, mut harness) = a_word_window("unluminous-word-text-options", "blank.docx");
+    type_text(&mut harness, "plain ");
+    assert!(harness.query_by_label("Bold").is_none(), "bold is behind the chip");
+    harness.get_by_label("Text options").click();
+    steady(&mut harness);
+    harness.get_by_label("Numbered list");
+    harness.get_by_label("Justify");
+    harness.snapshot(shot("word_text_options"));
+    harness.get_by_label("Bold").click();
+    steady(&mut harness);
+    type_text(&mut harness, "strong");
+    let runs = paragraphs(&mut harness)[0]["runs"].as_array().cloned().unwrap();
+    let last = runs.last().unwrap();
+    assert_eq!(last["text"], "strong");
+    assert_eq!(last["bold"], true);
+}
+
+/// **The paragraph style chip lists the styles and sets the one chosen.** `task-2366`.
+#[test]
+fn the_style_chip_lists_the_styles_and_sets_one() {
+    let (_, mut harness) = a_word_window("unluminous-word-style-chip", "blank.docx");
+    type_text(&mut harness, "A heading");
+    harness.get_by_label("Paragraph style").click();
+    steady(&mut harness);
+    harness.snapshot(shot("word_style_list"));
+    harness.get_by_label("Heading 2").click();
+    steady(&mut harness);
+    assert_eq!(paragraphs(&mut harness)[0]["style"], "Heading 2");
+}
+
+/// **The page, the words and the spelling are in the window's status bar, and a press on the page opens
+/// Go To.** The Word tab draws no strip of its own under the pages. `task-2366`.
+#[test]
+fn the_window_status_bar_says_the_page_and_opens_go_to() {
+    let (_, mut harness) = a_word_window("unluminous-word-status", "styles.docx");
+    harness.get_by_label("Status: words");
+    assert!(harness.query_by_label("Status: language").is_none(), "the language is gone");
+    harness.get_by_label("Status: page").click();
+    steady(&mut harness);
+    harness.get_by_label("Close Go To");
+    harness.snapshot(shot("word_go_to"));
+}
+
+/// **Outline view does not offer a tool that would fail where the caret is.** On body text, Demote and
+/// Demote to Body Text are drawn quiet and a press on them does nothing and says nothing. `task-2366`.
+#[test]
+fn outline_view_does_not_offer_a_tool_that_would_fail() {
+    let (_, mut harness) = a_word_window("unluminous-word-outline-tools", "styles.docx");
+    choose_view(&mut harness, "Outline");
+    let body = paragraphs(&mut harness).iter().position(|p| p["style"] == "Normal").unwrap() + 1;
+    did(&mut harness, &format!("plugins run word select {body} 0"));
+    steady(&mut harness);
+    for name in ["Demote", "Demote to Body Text"] {
+        assert!(harness.get_by_label(name).accesskit_node().is_disabled(), "{name} is not offered");
+    }
+    assert!(!harness.get_by_label("Promote").accesskit_node().is_disabled(), "Promote is");
+    harness.get_by_label("Demote").click();
+    steady(&mut harness);
+    assert_eq!(paragraphs(&mut harness)[body - 1]["style"], "Normal", "nothing changed");
+    assert!(harness.query_by_label_contains("lowest level").is_none(), "and nothing was said");
+}
+
 /// **Read Mode, Outline view, Fit Width, the thumbnails and Print.**
 #[test]
 fn the_views_and_print_work_from_the_window() {
     let (folder, mut harness) = a_word_window("unluminous-word-views", "styles.docx");
-    harness.get_by_label("View: Read Mode").click();
-    steady(&mut harness);
+    choose_view(&mut harness, "Read Mode");
     assert_eq!(current(&mut harness)["mode"], "read");
     harness.snapshot(shot("word_read_mode"));
     harness.key_press(Key::Escape);
     steady(&mut harness);
     assert_eq!(current(&mut harness)["mode"], "print");
-    harness.get_by_label("View: Outline").click();
-    steady(&mut harness);
+    choose_view(&mut harness, "Outline");
     assert_eq!(current(&mut harness)["mode"], "outline");
     harness.snapshot(shot("word_outline"));
     let heading =

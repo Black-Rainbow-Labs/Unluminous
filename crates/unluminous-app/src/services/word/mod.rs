@@ -12,6 +12,7 @@ pub mod files;
 pub mod fonts;
 pub mod print;
 pub mod spelling;
+pub mod status;
 #[cfg(test)]
 mod tests;
 
@@ -1260,6 +1261,11 @@ impl UiProvider for Word {
     fn modified(&self, key: &str) -> bool {
         let (key, _) = split_window_key(key);
         self.docs.iter().any(|doc| doc.key == key && doc.modified())
+    }
+
+    fn tab_status(&self, key: &str) -> Option<crate::services::plugin_ui::TabStatus> {
+        let (key, _) = split_window_key(key);
+        self.docs.iter().find(|doc| doc.key == key).map(status::of)
     }
 
     fn save(&mut self, key: &str) -> Result<String, String> {
