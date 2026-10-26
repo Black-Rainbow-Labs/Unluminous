@@ -48,7 +48,14 @@ if ($Unregister) {
 
 if ($Register) {
     $me = Join-Path $Here 'nightly.ps1'
-    $action = New-ScheduledTaskAction -Execute 'pwsh.exe' -Argument "-NoProfile -File `"$me`""
+    # pwsh by its full path. On this machine pwsh is the Microsoft Store package, whose only
+    # pwsh.exe on PATH is an alias under %LOCALAPPDATA%\Microsoft\WindowsApps, and Task Scheduler
+    # does not search that PATH: with -Execute 'pwsh.exe' every start ended with 0x80070002, file not
+    # found, including the run on 2026-10-26. The alias's own path works and survives Store updates;
+    # the path it resolves to names the package version and breaks at the next update.
+    $alias = Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\pwsh.exe'
+    $pwsh = if (Test-Path -LiteralPath $alias) { $alias } else { (Get-Command pwsh.exe).Source }
+    $action = New-ScheduledTaskAction -Execute $pwsh -Argument "-NoProfile -File `"$me`""
     $trigger = New-ScheduledTaskTrigger -Daily -At 3am
     # Run whether or not somebody is logged in would need a stored credential, which this script will
     # not ask for. It runs as the person who registered it, when they are logged in, which is what a
