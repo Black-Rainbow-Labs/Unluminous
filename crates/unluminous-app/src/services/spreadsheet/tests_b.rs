@@ -520,6 +520,26 @@ fn draw_a_frame(sheet: &mut Spreadsheet) {
     output.textures_delta.clear();
 }
 
+/// In the page layout view the paper's margins and the desk are space in the axes, and the cells on a page
+/// are typed into with the keyboard exactly as in the normal view.
+#[test]
+fn a_cell_in_the_page_layout_view_is_typed_into_and_read_back() {
+    let (mut sheet, _folder) = with_columns("layout-typing");
+    run(&mut sheet, "view layout");
+    draw_a_frame(&mut sheet);
+    let book = sheet.current_book().unwrap();
+    let axes = book.view.axes.as_ref().unwrap();
+    assert!(axes.paged && axes.rows.has_leads(), "the paper is space between the cells");
+    assert!(axes.rows.start(0) > 0.0, "the top margin is above the first row");
+    run(&mut sheet, "select B2");
+    run(&mut sheet, "type hello");
+    assert_eq!(text(&mut sheet, "B2"), "hello");
+    run(&mut sheet, "view normal");
+    draw_a_frame(&mut sheet);
+    assert!(!sheet.current_book().unwrap().view.axes.as_ref().unwrap().paged);
+    assert_eq!(text(&mut sheet, "B2"), "hello");
+}
+
 #[test]
 fn every_popup_of_this_lane_draws_a_frame() {
     let (mut sheet, _folder) = with_sales("frames");

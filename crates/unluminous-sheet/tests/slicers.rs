@@ -231,12 +231,6 @@ fn a_slicer_follows_an_insert_and_goes_with_its_pivot_table_and_its_own_delete()
     let mut t = sales();
     t.slicer_add(0, "PivotTable1", "Region", None, at("J1")).unwrap();
     t.pivot_delete(0).unwrap();
-    assert!(t.book.slicers.slicers.iter().all(|x| t.book.sheets[0]
-        .drawing
-        .objects
-        .iter()
-        .all(|o| !o.tree.to_xml().contains(&format!("name=\"{}\"", x.name)))
-        || true));
     let book = roundtrip(&t.book);
     assert!(book.slicers.is_empty(), "a slicer without its table is gone");
 }

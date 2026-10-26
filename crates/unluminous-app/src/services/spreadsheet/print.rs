@@ -32,6 +32,56 @@ pub fn layout_of(book: &Book) -> PageLayout {
     unluminous_sheet::pages::paginate::paginate(&book.session.book, book.view.sheet, &options)
 }
 
+/// The desk between two sheets of paper in the page layout view, in screen points at a zoom of one.
+pub const PAPER_GAP: f32 = 18.0;
+
+/// A length on paper in points, as screen points at a zoom of one (a screen point is three quarters of a
+/// paper point, as the row heights are).
+pub fn paper_to_screen(points: f64) -> f32 {
+    (points * 4.0 / 3.0) as f32
+}
+
+/// Make the sheet showing the page layout view's: leave the paper's margins and the desk between pages in
+/// the axes, before the first row and column of each page, so every cell keeps its place on its own page
+/// and selecting, typing and dragging work as they do in the normal view. Done once for each build of the
+/// axes, and undone (the axes built again) when the view goes back to normal.
+pub fn gap_the_axes(book: &mut Book) {
+    use unluminous_sheet::model::ViewKind;
+    let want = book.session.book.sheets[book.view.sheet].view.kind == ViewKind::PageLayout;
+    let have = book.view.axes.as_ref().is_some_and(|a| a.paged);
+    if want == have {
+        return;
+    }
+    if !want {
+        book.view.axes = None;
+        let revision = book.revision;
+        let sheet = &book.session.book.sheets[book.view.sheet];
+        book.view.axes(sheet, revision);
+        return;
+    }
+    let layout = layout_of(book);
+    let m = layout.margins;
+    let (left, right) = (paper_to_screen(m.left), paper_to_screen(m.right));
+    let (top, bottom) = (paper_to_screen(m.top), paper_to_screen(m.bottom));
+    let mut rows = std::collections::BTreeMap::new();
+    let mut cols = std::collections::BTreeMap::new();
+    for area in &layout.areas {
+        rows.insert(area.range.first.row, PAPER_GAP + top);
+        cols.insert(area.range.first.col, PAPER_GAP + left);
+        for b in area.row_breaks.iter().filter(|b| b.at > area.range.first.row) {
+            rows.insert(b.at, bottom + PAPER_GAP + top);
+        }
+        for b in area.col_breaks.iter().filter(|b| b.at > area.range.first.col) {
+            cols.insert(b.at, right + PAPER_GAP + left);
+        }
+    }
+    if let Some(axes) = book.view.axes.as_mut() {
+        axes.rows = axes.rows.clone().with_leads(rows.into_iter().collect());
+        axes.columns = axes.columns.clone().with_leads(cols.into_iter().collect());
+        axes.paged = true;
+    }
+}
+
 /// A time of day as Excel prints it: `3:07 PM`.
 fn clock_text(hour: u8, minute: u8) -> String {
     let (h, suffix) = match hour {
