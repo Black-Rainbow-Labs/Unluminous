@@ -252,6 +252,10 @@ fn page_marks(ui: &egui::Ui, book: &Book, frame: Frame, look: &Look<'_>) {
         return;
     }
     let layout = cached_layout(ui, book);
+    if kind == ViewKind::PageLayout {
+        paper_pages(ui, book, frame, look, &layout);
+        return;
+    }
     let painter = ui.painter().with_clip_rect(frame.cells);
     let blue = Color32::from_rgb(0x1F, 0x6F, 0xD0);
     for area in &layout.areas {
@@ -278,34 +282,61 @@ fn page_marks(ui: &egui::Ui, book: &Book, frame: Frame, look: &Look<'_>) {
     }
     for page in &layout.pages {
         let rect = frame.range(book, page.body);
-        if kind == ViewKind::PageBreakPreview {
-            let size = (rect.width().min(rect.height()) / 3.0).clamp(18.0, 120.0);
-            painter.text(
-                rect.center(),
-                Align2::CENTER_CENTER,
-                format!("Page {}", page.number),
-                egui::FontId::proportional(size),
-                look.palette.text_faint.gamma_multiply(0.45),
+        let size = (rect.width().min(rect.height()) / 3.0).clamp(18.0, 120.0);
+        painter.text(
+            rect.center(),
+            Align2::CENTER_CENTER,
+            format!("Page {}", page.number),
+            egui::FontId::proportional(size),
+            look.palette.text_faint.gamma_multiply(0.45),
+        );
+    }
+}
+
+/// The page layout view's furniture: the desk between sheets, then for each page the white margins round its
+/// cells, a shadow, and the header and footer in the margins. The cells themselves are the grid's own, drawn
+/// in the gaps `print::gap_the_axes` left for the paper, so they are selected and edited as in the normal view.
+fn paper_pages(ui: &egui::Ui, book: &Book, frame: Frame, look: &Look<'_>, layout: &PageLayout) {
+    let painter = ui.painter().with_clip_rect(frame.cells);
+    let m = layout.margins;
+    let z = frame.zoom;
+    let edge = |pt: f64| print::paper_to_screen(pt) * z;
+    let papers: Vec<(Rect, Rect, &unluminous_sheet::pages::layout::Page)> = layout
+        .pages
+        .iter()
+        .filter_map(|page| {
+            let body = frame.range(book, page.body);
+            let paper = Rect::from_min_max(
+                body.min - Vec2::new(edge(m.left), edge(m.top)),
+                body.max + Vec2::new(edge(m.right), edge(m.bottom)),
             );
-        } else {
-            page_layout_strips(&painter, rect, page, look);
+            paper.intersects(frame.cells).then_some((paper, body, page))
+        })
+        .collect();
+    let mut desk = vec![frame.cells];
+    for (paper, _, _) in &papers {
+        desk = desk.into_iter().flat_map(|r| without(r, *paper)).collect();
+    }
+    for r in desk {
+        painter.rect_filled(r, 0, look.palette.control);
+    }
+    for (paper, body, page) in &papers {
+        painter.rect_filled(paper.translate(Vec2::new(2.0, 3.0)), 0, Color32::from_black_alpha(50));
+        for r in without(*paper, *body) {
+            painter.rect_filled(r, 0, Color32::WHITE);
         }
+        painter.rect_stroke(*paper, 0, Stroke::new(1.0, Color32::from_gray(0xC0)), egui::StrokeKind::Inside);
+        margin_text(&painter, *paper, *body, page, z, look);
     }
 }
 
-fn line(painter: &egui::Painter, a: Pos2, b: Pos2, color: Color32, solid: bool) {
-    if solid {
-        painter.line_segment([a, b], Stroke::new(2.0, color));
-    } else {
-        painter.extend(egui::Shape::dashed_line(&[a, b], Stroke::new(1.0, color), 6.0, 4.0));
-    }
-}
-
-/// The header above a page's cells and the footer below them, in the page layout view.
-fn page_layout_strips(
+/// The header in the top margin of a sheet of paper and the footer in the bottom one.
+fn margin_text(
     painter: &egui::Painter,
-    rect: Rect,
+    paper: Rect,
+    body: Rect,
     page: &unluminous_sheet::pages::layout::Page,
+    zoom: f32,
     look: &Look<'_>,
 ) {
     use unluminous_sheet::pages::headerfooter::Sections;
@@ -317,21 +348,40 @@ fn page_layout_strips(
             .collect::<Vec<_>>()
             .join("   ")
     };
-    let font = egui::FontId::proportional(10.0);
-    painter.text(
-        rect.left_top() + Vec2::new(4.0, -4.0),
-        Align2::LEFT_BOTTOM,
-        join(&page.header),
-        font.clone(),
-        look.palette.text_dim,
-    );
-    painter.text(
-        rect.left_bottom() + Vec2::new(4.0, 4.0),
-        Align2::LEFT_TOP,
-        join(&page.footer),
-        font,
-        look.palette.text_dim,
-    );
+    let font = egui::FontId::proportional((10.0 * zoom).max(6.0));
+    let ink = look.palette.text_dim;
+    let at = Pos2::new(body.left() + 4.0, (paper.top() + body.top()) / 2.0);
+    painter.text(at, Align2::LEFT_CENTER, join(&page.header), font.clone(), ink);
+    let at = Pos2::new(body.left() + 4.0, (body.bottom() + paper.bottom()) / 2.0);
+    painter.text(at, Align2::LEFT_CENTER, join(&page.footer), font, ink);
+}
+
+/// What is left of `rect` when `hole` is cut out of it: up to four rectangles.
+fn without(rect: Rect, hole: Rect) -> Vec<Rect> {
+    if !rect.intersects(hole) {
+        return vec![rect];
+    }
+    let hole = rect.intersect(hole);
+    let mut out = Vec::with_capacity(4);
+    let mut add = |r: Rect| {
+        if r.width() > 0.0 && r.height() > 0.0 {
+            out.push(r);
+        }
+    };
+    add(Rect::from_min_max(rect.min, Pos2::new(rect.max.x, hole.min.y)));
+    add(Rect::from_min_max(Pos2::new(rect.min.x, hole.max.y), rect.max));
+    add(Rect::from_min_max(Pos2::new(rect.min.x, hole.min.y), Pos2::new(hole.min.x, hole.max.y)));
+    add(Rect::from_min_max(Pos2::new(hole.max.x, hole.min.y), Pos2::new(rect.max.x, hole.max.y)));
+    out
+}
+
+
+fn line(painter: &egui::Painter, a: Pos2, b: Pos2, color: Color32, solid: bool) {
+    if solid {
+        painter.line_segment([a, b], Stroke::new(2.0, color));
+    } else {
+        painter.extend(egui::Shape::dashed_line(&[a, b], Stroke::new(1.0, color), 6.0, 4.0));
+    }
 }
 
 /// The print preview's pages as the PDF writer has them, made again only when the workbook changed.

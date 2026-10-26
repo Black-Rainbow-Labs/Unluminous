@@ -7392,7 +7392,7 @@ rules:
 
 `tasks/task-2338-spreadsheet-prd.md` and `-tdd.md` are the design. The Spreadsheet plugin opens `.xlsx`, `.xlsm`,
 `.csv` and `.tsv` files. `crates/unluminous-sheet` is everything with no window in it: the zip, SpreadsheetML read
-and written, the formula language, the evaluator and its 330 functions, recalculation, number formats, CSV, and
+and written, the formula language, the evaluator and its 523 functions, recalculation, number formats, CSV, and
 every editing operation as an undoable `edit::Session` call. Seven rules:
 
 - **What is not modelled is kept.** Every part the writer does not regenerate is written back as the bytes it was

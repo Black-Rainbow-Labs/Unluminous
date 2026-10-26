@@ -35,6 +35,7 @@ pub mod verbs_b_files;
 pub mod verbs_b_page;
 pub mod verbs_b_pivot;
 pub mod verbs_b_pivot_more;
+pub mod verbs_b_slicers;
 pub mod view;
 pub mod view_a;
 pub mod view_c;
@@ -49,6 +50,7 @@ mod tests;
 mod tests_a;
 #[cfg(test)]
 mod tests_c;
+#[cfg(test)]
 mod tests_b;
 
 use std::path::{Path, PathBuf};

@@ -172,7 +172,17 @@ pub fn read_cache(book: &Workbook, id: u32, definition: &str) -> Option<PivotCac
         definition_part: definition.to_owned(),
         records_part,
         dirty: false,
+        slicer_id: read_slicer_id(root),
     })
+}
+
+/// The number slicers and timelines know a cache by, kept in an extension of its definition.
+fn read_slicer_id(root: Node) -> Option<u64> {
+    let list = child(root, "extLst")?;
+    list.descendants()
+        .find(|n| n.is_element() && n.tag_name().name() == "pivotCacheDefinition")
+        .and_then(|n| n.attribute("pivotCacheId"))
+        .and_then(|v| v.parse().ok())
 }
 
 fn read_source(root: Node) -> Option<CacheSource> {
@@ -648,7 +658,9 @@ fn read_filters(table: &mut PivotTable, list: Node) -> Option<()> {
                     filter.top = flag(n, "top", true);
                     filter.value1 = n.attribute("val").unwrap_or("0").to_owned();
                 }
-                "customFilter" if kind.is_value() && !kind.is_top() => {
+                "customFilter"
+                    if (kind.is_value() || kind == FilterKind::DateBetween) && !kind.is_top() =>
+                {
                     if filter.value1.is_empty() {
                         filter.value1 = n.attribute("val").unwrap_or("").to_owned();
                     } else if filter.value2.is_none() {

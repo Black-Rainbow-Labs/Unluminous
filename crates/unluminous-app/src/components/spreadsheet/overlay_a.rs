@@ -135,9 +135,7 @@ pub fn icon(painter: &egui::Painter, cell: Rect, pick: &IconPick) {
         painter.text(
             c,
             egui::Align2::CENTER_CENTER,
-            if filled > 0.99 {
-                "\u{2605}"
-            } else if filled > 0.4 {
+            if filled > 0.4 {
                 "\u{2605}"
             } else {
                 "\u{2606}"

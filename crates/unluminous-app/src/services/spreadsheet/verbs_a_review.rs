@@ -94,7 +94,7 @@ fn comment_change(book: &mut Book, word: &str, rest: &[String]) -> Result<String
 pub fn comments_answer(book: &Book, cell: Option<&str>) -> Answer {
     let index = book.view.sheet;
     let s = &book.session.book.sheets[index];
-    let only = cell.and_then(|w| CellRef::parse(w));
+    let only = cell.and_then(CellRef::parse);
     let threads: Vec<Json> = book
         .session
         .thread_rows(Some(index))

@@ -19,6 +19,14 @@ const XML_HEAD: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"ye
 
 /// The workbook as the bytes of an `.xlsx` file. Its formulas' values should already be computed.
 pub fn write(book: &Workbook) -> Result<Vec<u8>, String> {
+    // Slicers and timelines that changed are written into the workbook's kept parts first.
+    let slicers_synced;
+    let book = if crate::slicers::sync::needs_sync(book) {
+        slicers_synced = crate::slicers::sync::synced(book);
+        &slicers_synced
+    } else {
+        book
+    };
     // A drawing whose objects changed is written from them first; the writer then keeps it like any part.
     let synced;
     let book = if crate::objects::write::needs_sync(book) {

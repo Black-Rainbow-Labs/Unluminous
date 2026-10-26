@@ -352,7 +352,7 @@ fn pivot_filters_sorts_slicers_and_refresh_follow_the_data() {
     assert_eq!(text(&mut sheet, "E2"), "Tea");
     run(&mut sheet, "slicer add Item in Sales name Items");
     let selected = run(&mut sheet, "slicer select Items Cake");
-    let items = selected.value["items"].as_array().unwrap();
+    let items = selected.value[0]["items"].as_array().unwrap();
     assert!(items.iter().any(|i| i["name"] == "Tea" && i["selected"] == false));
     assert!(!read_text(&mut sheet, "E1:F4").contains("Tea"), "the slicer hid Tea");
     run(&mut sheet, "slicer select Items all");
@@ -518,6 +518,26 @@ fn draw_a_frame(sheet: &mut Spreadsheet) {
         },
     );
     output.textures_delta.clear();
+}
+
+/// In the page layout view the paper's margins and the desk are space in the axes, and the cells on a page
+/// are typed into with the keyboard exactly as in the normal view.
+#[test]
+fn a_cell_in_the_page_layout_view_is_typed_into_and_read_back() {
+    let (mut sheet, _folder) = with_columns("layout-typing");
+    run(&mut sheet, "view layout");
+    draw_a_frame(&mut sheet);
+    let book = sheet.current_book().unwrap();
+    let axes = book.view.axes.as_ref().unwrap();
+    assert!(axes.paged && axes.rows.has_leads(), "the paper is space between the cells");
+    assert!(axes.rows.start(0) > 0.0, "the top margin is above the first row");
+    run(&mut sheet, "select B2");
+    run(&mut sheet, "type hello");
+    assert_eq!(text(&mut sheet, "B2"), "hello");
+    run(&mut sheet, "view normal");
+    draw_a_frame(&mut sheet);
+    assert!(!sheet.current_book().unwrap().view.axes.as_ref().unwrap().paged);
+    assert_eq!(text(&mut sheet, "B2"), "hello");
 }
 
 #[test]

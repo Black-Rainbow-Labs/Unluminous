@@ -61,6 +61,7 @@ impl BorderSides {
 
 /// One change, or one move of the selection.
 #[derive(Debug, Clone, PartialEq)]
+#[allow(clippy::large_enum_variant)] // an Act is made once per key press, so the size of one is of no cost
 pub enum Act {
     /// Choose these ranges; the last is the current one and its first cell is the active cell.
     Select(Vec<Range>),
@@ -97,6 +98,8 @@ pub enum Act {
     Paste(PasteMode),
     /// Paste text that came from another program, split into cells by tabs and lines.
     PasteText(String),
+    /// A table another program put on the clipboard as HTML.
+    PasteHtml(String),
     Sort {
         column: Option<u32>,
         ascending: bool,
@@ -541,6 +544,12 @@ fn apply_inner(book: &mut Book, copied: &mut Option<Copied>, act: Act) -> Said {
             }
             let options = unluminous_sheet::edit::clipboard::ExternalPaste::default();
             let pasted = s.paste_text(sheet, cursor, &text, options)?;
+            book.view.select_range(pasted);
+            Ok(String::new())
+        }
+        Act::PasteHtml(html) => {
+            let options = unluminous_sheet::edit::clipboard::ExternalPaste::default();
+            let pasted = s.paste_html(sheet, cursor, &html, options)?;
             book.view.select_range(pasted);
             Ok(String::new())
         }

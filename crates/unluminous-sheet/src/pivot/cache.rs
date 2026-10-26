@@ -291,6 +291,8 @@ pub struct PivotCache {
     pub records_part: String,
     /// Changed since its parts were written.
     pub dirty: bool,
+    /// The number slicers and timelines know this cache by (`x14:pivotCacheDefinition/@pivotCacheId`).
+    pub slicer_id: Option<u64>,
 }
 
 /// What a refresh changed in the items of a field, so a table can follow: for each old item, its new place.
@@ -325,6 +327,7 @@ impl PivotCache {
             definition_part: String::new(),
             records_part: String::new(),
             dirty: true,
+            slicer_id: None,
         };
         cache.read_source(book, sheet, range, false)?;
         Ok(cache)

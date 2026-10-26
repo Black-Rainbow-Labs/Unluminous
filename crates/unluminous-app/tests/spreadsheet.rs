@@ -85,6 +85,24 @@ fn typing_a_formula_and_pressing_enter_writes_it_and_moves_down() {
     assert_eq!(cell["value"], serde_json::Value::Null, "Ctrl+Z undoes the cell");
 }
 
+/// In the page layout view the cells sit on their sheets of paper and are typed into with the keys of the
+/// normal view: a letter starts editing, Enter writes the cell and moves down.
+#[test]
+fn a_cell_in_the_page_layout_view_is_typed_into_and_read_back() {
+    let (_, mut harness) = a_workbook_window("unluminous-sheet-layout-typing", "prices.csv");
+    did(&mut harness, "plugins run spreadsheet view layout");
+    steady(&mut harness);
+    did(&mut harness, "plugins run spreadsheet select D2");
+    type_text(&mut harness, "=B2*C2");
+    let v = view(&mut harness);
+    assert_eq!(v["current"]["editing"]["text"], "=B2*C2");
+    press(&mut harness, egui::Key::Enter, Modifiers::NONE);
+    let v = view(&mut harness);
+    assert_eq!(v["current"]["selection"]["active"], "D3", "Enter moves down");
+    let cell = did(&mut harness, "plugins run spreadsheet cell D2");
+    assert_eq!(cell["value"], serde_json::json!(14.0));
+}
+
 #[test]
 fn the_format_panel_goes_down_a_level_at_a_time() {
     let (_, mut harness) = a_workbook_window("unluminous-sheet-panel", "prices.csv");

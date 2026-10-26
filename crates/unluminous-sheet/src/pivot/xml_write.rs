@@ -140,6 +140,12 @@ pub fn used_fields(cache_index: usize, tables: &[PivotTable], count: usize) -> V
                 used[d.field] |= false;
             }
         }
+        // A field in no area that lists its items, as a slicer or a timeline makes it, shares them too.
+        for (f, field) in t.fields.iter().enumerate() {
+            if f < count && !field.items.is_empty() {
+                used[f] = true;
+            }
+        }
     }
     used
 }
@@ -187,6 +193,9 @@ pub fn cache_definition(
             ));
         }
         out.push_str("</calculatedItems>");
+    }
+    if let Some(id) = cache.slicer_id {
+        out.push_str(&format!("<extLst><ext uri=\"{{725AE2AE-9491-48be-B2B4-4EB974FC3084}}\" xmlns:x14=\"http://schemas.microsoft.com/office/spreadsheetml/2009/9/main\"><x14:pivotCacheDefinition pivotCacheId=\"{id}\"/></ext></extLst>"));
     }
     out.push_str("</pivotCacheDefinition>");
     out
@@ -802,7 +811,7 @@ fn filter_xml(field: usize, f: &Filter) -> String {
     if let Some(d) = f.data {
         attr(&mut out, "iMeasureFld", &d.to_string());
     }
-    if !f.kind.is_top() && !f.kind.is_value() {
+    if !f.kind.is_top() && !f.kind.is_value() && f.kind != FilterKind::DateBetween {
         attr(&mut out, "stringValue1", &f.value1);
         if let Some(v) = &f.value2 {
             attr(&mut out, "stringValue2", v);
@@ -810,7 +819,11 @@ fn filter_xml(field: usize, f: &Filter) -> String {
     }
     out.push_str("><autoFilter ref=\"A1\"><filterColumn colId=\"0\">");
     out.push_str(&filter_column(f));
-    out.push_str("</filterColumn></autoFilter></filter>");
+    out.push_str("</filterColumn></autoFilter>");
+    if f.kind == FilterKind::DateBetween {
+        out.push_str("<extLst><ext uri=\"{0605FD5F-26C8-4aeb-8148-2DB25E43C511}\" xmlns:x15=\"http://schemas.microsoft.com/office/spreadsheetml/2010/11/main\"><x15:pivotFilter useWholeDay=\"1\"/></ext></extLst>");
+    }
+    out.push_str("</filter>");
     out
 }
 
@@ -850,7 +863,7 @@ fn filter_column(f: &Filter) -> String {
         FilterKind::CaptionLessThanOrEqual | FilterKind::ValueLessThanOrEqual => {
             (vec![(Some("lessThanOrEqual"), v1.clone())], false)
         }
-        FilterKind::CaptionBetween | FilterKind::ValueBetween => {
+        FilterKind::CaptionBetween | FilterKind::ValueBetween | FilterKind::DateBetween => {
             (vec![(Some("greaterThanOrEqual"), v1.clone()), (Some("lessThanOrEqual"), v2)], true)
         }
         FilterKind::CaptionNotBetween | FilterKind::ValueNotBetween => {

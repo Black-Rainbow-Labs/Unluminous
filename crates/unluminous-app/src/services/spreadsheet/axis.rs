@@ -24,6 +24,10 @@ pub struct Axis {
     exceptions: Vec<(u32, f32)>,
     /// For each exception, how much the ones before it and itself add over the default.
     added: Vec<f32>,
+    /// Space left empty before an index (the paper between two pages in the page layout view), in order.
+    leads: Vec<(u32, f32)>,
+    /// For each lead, how much it and the ones before it add.
+    lead_sum: Vec<f32>,
 }
 
 /// The pixels a column width in the file's characters is.
@@ -62,7 +66,37 @@ impl Axis {
             sum += size - default;
             added.push(sum);
         }
-        Axis { count, default, exceptions, added }
+        Axis { count, default, exceptions, added, leads: Vec::new(), lead_sum: Vec::new() }
+    }
+
+    /// This axis with empty space before some indexes: `(index, space)` pairs. Where an index starts moves
+    /// by the space before it, and the size of the index before it does not change, so the space is a gap.
+    pub fn with_leads(mut self, mut leads: Vec<(u32, f32)>) -> Axis {
+        leads.sort_by_key(|(index, _)| *index);
+        leads.dedup_by_key(|(index, _)| *index);
+        let mut sum = 0.0;
+        self.lead_sum = leads
+            .iter()
+            .map(|(_, space)| {
+                sum += space;
+                sum
+            })
+            .collect();
+        self.leads = leads;
+        self
+    }
+
+    /// Whether any space has been left before an index.
+    pub fn has_leads(&self) -> bool {
+        !self.leads.is_empty()
+    }
+
+    /// The space left before `index` and everything before it.
+    fn lead_to(&self, index: u32) -> f32 {
+        match self.leads.partition_point(|(at, _)| *at <= index) {
+            0 => 0.0,
+            n => self.lead_sum[n - 1],
+        }
     }
 
     /// The columns of a sheet.
@@ -104,7 +138,9 @@ impl Axis {
     /// Where `index` starts.
     pub fn start(&self, index: u32) -> f32 {
         let n = self.before(index);
-        index as f32 * self.default + if n == 0 { 0.0 } else { self.added[n - 1] }
+        index as f32 * self.default
+            + if n == 0 { 0.0 } else { self.added[n - 1] }
+            + self.lead_to(index)
     }
 
     /// How large `index` is.

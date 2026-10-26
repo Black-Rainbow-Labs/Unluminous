@@ -269,6 +269,7 @@ impl UnluminousApp {
     /// for the same reason (`task-2276`).
     pub fn use_the_system_clipboard(&mut self) {
         self.system_clipboard = true;
+        crate::services::system_files::allow_clipboard_html();
         self.report_reaches_out = true;
     }
 

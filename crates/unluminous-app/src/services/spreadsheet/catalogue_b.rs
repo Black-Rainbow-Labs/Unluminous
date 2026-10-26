@@ -669,7 +669,7 @@ fn slicer_items(book: &Book, t: usize) -> Vec<Item> {
             &format!("timeline add #{} {at}", f + 1),
         ));
     }
-    for s in &book.view.lane_b.slicers {
+    for s in &book.session.book.slicers.slicers {
         items.push(run(
             &format!("Show every item of {}", s.name),
             "",

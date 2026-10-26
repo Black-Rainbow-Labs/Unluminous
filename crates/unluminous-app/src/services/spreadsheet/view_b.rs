@@ -86,30 +86,6 @@ pub struct After {
     /// Whether the menu of the button is open.
     pub open: bool,
 }
-
-/// One slicer: a list of buttons that filter a pivot table by the items of one field.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Slicer {
-    pub name: String,
-    pub pivot: String,
-    pub field: String,
-    pub sheet: usize,
-    /// The top left cell of the slicer's box.
-    pub at: unluminous_sheet::coord::CellRef,
-}
-
-/// One timeline: a bar over the dates of a pivot table's date field.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Timeline {
-    pub name: String,
-    pub pivot: String,
-    pub field: String,
-    pub sheet: usize,
-    pub at: unluminous_sheet::coord::CellRef,
-    /// The first and last date serial the timeline keeps; `None` keeps every date.
-    pub span: Option<(f64, f64)>,
-}
-
 /// The print preview.
 #[derive(Debug, Clone, Default)]
 pub struct Preview {
@@ -128,6 +104,4 @@ pub struct State {
     /// The PivotTable Fields pane is open, and what is typed in its search box.
     pub pivot_pane: bool,
     pub pivot_search: String,
-    pub slicers: Vec<Slicer>,
-    pub timelines: Vec<Timeline>,
 }

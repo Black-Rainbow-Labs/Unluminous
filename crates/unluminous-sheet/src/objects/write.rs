@@ -83,7 +83,15 @@ fn empty_drawing() -> Elem {
 
 /// The anchor element for an object whose tree is its content.
 fn wrap_in_anchor(obj: &DrawingObject) -> Elem {
-    let prefix = obj.tree.prefix().to_owned();
+    // A slicer's content is an `mc:AlternateContent`, so the drawing's own prefix is the one its frame has.
+    let prefix = if obj.tree.local() == "AlternateContent" {
+        obj.tree
+            .find("graphicFrame")
+            .or_else(|| obj.tree.find("sp"))
+            .map_or_else(|| "xdr".to_owned(), |e| e.prefix().to_owned())
+    } else {
+        obj.tree.prefix().to_owned()
+    };
     let p = if prefix.is_empty() { String::new() } else { format!("{prefix}:") };
     let local = match obj.anchor.kind {
         AnchorKind::TwoCell => "twoCellAnchor",
