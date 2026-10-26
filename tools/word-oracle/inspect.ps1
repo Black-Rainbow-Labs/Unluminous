@@ -1,11 +1,35 @@
 # Opens a .docx read only in Word and writes what Word reports about it as JSON.
 # Usage: pwsh -NoProfile -File tools/word-oracle/inspect.ps1 -Path <file.docx> -Out <out.json>
-param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Out)
+#
+# With -Serve it starts one Word and inspects one document for each line read from standard input,
+# until standard input closes (task-2368). Starting and quitting Word, with the cloud fonts loaded, is
+# most of the time a single report takes, so a caller with many documents keeps one server. A request
+# is one JSON line, {"path": "...", "out": "...", "password": "...", "lines": true}, and each answer is one line on
+# standard output that starts with "WORD-ORACLE " followed by JSON: {"ok": true, "timings": {...}} or
+# {"ok": false, "error": "..."}. Lines that do not start with the marker are not answers. The first
+# answer, {"ready": true, ...}, is written once Word has started. The process id of that Word is
+# written to -PidFile, so a caller that gives up on a report stops that Word. "lines": false leaves out
+# the lines of each paragraph, which on a long document is half of the report's time, for a caller
+# that does not read them.
+#
+#   pwsh -NoProfile -File tools/word-oracle/inspect.ps1 -Serve -PidFile <file>
+[CmdletBinding(DefaultParameterSetName = 'One')]
+param(
+    [Parameter(Mandatory, ParameterSetName = 'One')][string]$Path,
+    [Parameter(Mandatory, ParameterSetName = 'One')][string]$Out,
+    [Parameter(ParameterSetName = 'One')][string]$Password = '',
+    [Parameter(Mandatory, ParameterSetName = 'Serve')][switch]$Serve,
+    [Parameter(ParameterSetName = 'Serve')][string]$PidFile = '',
+    # How long a served Word may live at most. A single report that hangs is the caller's to stop.
+    [Parameter(ParameterSetName = 'Serve')][int]$LifetimeSeconds = 14400
+)
 
 . "$PSScriptRoot/WordCom.ps1"
 $MIXED = 9999999
 $script:ThemeCache = @{}
 $script:Doc = $null
+# Milliseconds spent on the per line questions and on the character runs of the current document.
+$script:Spent = @{ lines = [Diagnostics.Stopwatch]::new(); runs = [Diagnostics.Stopwatch]::new() }
 
 # Runs a script block and returns $Default when it throws.
 function Try-Get {
@@ -158,6 +182,34 @@ function Get-RunsSafe {
     } catch { return $null }
 }
 
+# The lines Word broke a paragraph into: each line's text and the top of its first character, read with
+# the predefined \Line bookmark at the start of each line. Null when the document is too long to ask.
+function Get-Lines {
+    param($doc, $para)
+    if (-not $script:AskLines) { return $null }
+    # A cell's lines take a selection move each, which on a long table runs past the inspect timeout, and
+    # the line test compares body paragraphs only.
+    if (Try-Get { [bool]$para.Range.Information(12) } $false) { return $null }
+    $list = New-Object System.Collections.Generic.List[object]
+    try {
+        $r = $para.Range
+        $sel = $doc.ActiveWindow.Selection
+        $pos = $r.Start
+        $guard = 0
+        while ($pos -lt $r.End -and $guard -lt 400) {
+            $guard++
+            $sel.SetRange($pos, $pos)
+            $line = $doc.Bookmarks.Item('\Line').Range
+            if ($line.End -le $pos) { break }
+            $end = [math]::Min($line.End, $r.End)
+            $text = ([string]$doc.Range($pos, $end).Text) -replace "\r$", '' -replace "\u0007", ''
+            $list.Add([ordered]@{ text = $text; top = (Round2 ($doc.Range($pos, $pos).Information(6))); left = (Round2 ($doc.Range($pos, $pos).Information(5))); page = [int]$doc.Range($pos, $pos).Information(3) })
+            $pos = $end
+        }
+    } catch { return $null }
+    return , $list.ToArray()
+}
+
 # Reads one paragraph into the report shape.
 function Read-Paragraph {
     param($doc, $para, [int]$index)
@@ -165,6 +217,12 @@ function Read-Paragraph {
     $f = $para.Format
     $listType = Try-Get { $r.ListFormat.ListType } 0
     $text = ([string]$r.Text) -replace "\r$", '' -replace "\u0007", ''
+    $script:Spent.runs.Start()
+    $runs = Get-RunsSafe $doc $para
+    $script:Spent.runs.Stop()
+    $script:Spent.lines.Start()
+    $lines = Get-Lines $doc $para
+    $script:Spent.lines.Stop()
     [ordered]@{
         index = $index
         text = $text
@@ -184,7 +242,8 @@ function Read-Paragraph {
         top = (Round2 (Try-Get { $doc.Range($r.Start, $r.Start).Information(6) } 0))
         left = (Round2 (Try-Get { $doc.Range($r.Start, $r.Start).Information(5) } 0))
         lastTop = (Round2 (Try-Get { $e = [math]::Max($r.Start, $r.End - 1); $doc.Range($e, $e).Information(6) } 0))
-        runs = (Get-RunsSafe $doc $para)
+        runs = $runs
+        lines = $lines
     }
 }
 
@@ -219,6 +278,8 @@ function Read-HeaderFooter {
     $o = [ordered]@{}
     foreach ($k in 1, 2, 3) {
         $o[$names[$k]] = Try-Get { $h = $collection.Item($k); if ($h.Exists) { ([string]$h.Range.Text) -replace "\r$", '' } else { '' } } ''
+        $o[$names[$k] + 'Pictures'] = Try-Get { $h = $collection.Item($k); if ($h.Exists) { [int]$h.Range.InlineShapes.Count } else { 0 } } 0
+        $o[$names[$k] + 'Tables'] = Try-Get { $h = $collection.Item($k); if ($h.Exists) { [int]$h.Range.Tables.Count } else { 0 } } 0
     }
     return $o
 }
@@ -254,6 +315,25 @@ function Map-Collection {
 }
 
 # Reads a built in document property by name through late binding.
+# The custom properties, through InvokeMember: a DocumentProperty answers nothing to ordinary late binding.
+function Read-Custom {
+    param($doc)
+    $list = New-Object System.Collections.Generic.List[object]
+    try {
+        $bt = [System.__ComObject]
+        $props = $doc.CustomDocumentProperties
+        $count = [int]$bt.InvokeMember('Count', 'GetProperty', $null, $props, $null)
+        for ($i = 1; $i -le $count; $i++) {
+            $p = $bt.InvokeMember('Item', 'GetProperty', $null, $props, @($i))
+            $list.Add([ordered]@{
+                name = [string]$bt.InvokeMember('Name', 'GetProperty', $null, $p, $null)
+                value = [string]$bt.InvokeMember('Value', 'GetProperty', $null, $p, $null)
+            })
+        }
+    } catch { }
+    return , $list
+}
+
 function Read-BuiltIn {
     param($doc, [string]$name)
     try {
@@ -289,12 +369,22 @@ function Get-Report {
         comments = (Map-Collection $doc.Comments { param($c) [ordered]@{ author = [string]$c.Author; text = [string]$c.Range.Text; scope = (Try-Get { [string]$c.Scope.Text } ''); done = (Try-Get { [bool]$c.Done } $false) } })
         revisions = (Map-Collection $doc.Revisions { param($r) [ordered]@{ type = [int]$r.Type; author = [string]$r.Author; text = (Try-Get { [string]$r.Range.Text } '') } })
         inlineShapes = (Map-Collection $doc.InlineShapes { param($s) [ordered]@{ width = (Round2 $s.Width); height = (Round2 $s.Height); type = [int]$s.Type } })
-        shapes = (Map-Collection $doc.Shapes { param($s) [ordered]@{ type = [int]$s.Type; width = (Round2 $s.Width); height = (Round2 $s.Height); left = (Round2 $s.Left); top = (Round2 $s.Top) } })
+        shapes = (Map-Collection $doc.Shapes { param($s) [ordered]@{ type = [int]$s.Type; width = (Round2 $s.Width); height = (Round2 $s.Height); left = (Round2 $s.Left); top = (Round2 $s.Top); wrap = (Try-Get { [int]$s.WrapFormat.Type } -1); side = (Try-Get { [int]$s.WrapFormat.Side } -1); text = (Try-Get { if ($s.TextFrame.HasText) { [string]$s.TextFrame.TextRange.Text } else { '' } } ''); page = (Try-Get { [int]$s.Anchor.Information(3) } 0); autoShape = (Try-Get { [int]$s.AutoShapeType } 0) } })
+        contentControls = (Map-Collection $doc.ContentControls { param($c) [ordered]@{ type = [int]$c.Type; title = [string]$c.Title; tag = [string]$c.Tag; text = (Try-Get { [string]$c.Range.Text } ''); checked = (Try-Get { [bool]$c.Checked } $false) } })
+        oMaths = (Map-Collection $doc.OMaths { param($m) [ordered]@{ text = (Try-Get { [string]$m.Range.Text } ''); type = (Try-Get { [int]$m.Type } 0) } })
+        settings = [ordered]@{ autoHyphenation = (Try-Get { [bool]$doc.AutoHyphenation } $false); hyphenationZone = (Round2 (Try-Get { $doc.HyphenationZone } 0)); consecutiveHyphensLimit = (Try-Get { [int]$doc.ConsecutiveHyphensLimit } 0); compatibilityMode = (Try-Get { [int]$doc.CompatibilityMode } 0) }
+        footnoteOptions = [ordered]@{ numberStyle = (Try-Get { [int]$doc.Footnotes.NumberStyle } 0); numberingRule = (Try-Get { [int]$doc.Footnotes.NumberingRule } 0); startingNumber = (Try-Get { [int]$doc.Footnotes.StartingNumber } 0); location = (Try-Get { [int]$doc.Footnotes.Location } 0) }
+        endnoteOptions = [ordered]@{ numberStyle = (Try-Get { [int]$doc.Endnotes.NumberStyle } 0); numberingRule = (Try-Get { [int]$doc.Endnotes.NumberingRule } 0); startingNumber = (Try-Get { [int]$doc.Endnotes.StartingNumber } 0); location = (Try-Get { [int]$doc.Endnotes.Location } 0) }
+        footnotePages = (Map-Collection $doc.Footnotes { param($n) [ordered]@{ reference = (Try-Get { [int]$n.Reference.Information(3) } 0); first = (Try-Get { [int]$doc.Range($n.Range.Start, $n.Range.Start).Information(3) } 0); last = (Try-Get { $e = [math]::Max($n.Range.Start, $n.Range.End - 1); [int]$doc.Range($e, $e).Information(3) } 0); mark = (Try-Get { [string]$n.Reference.Text } '') } })
         fields = (Map-Collection $doc.Fields { param($f) [ordered]@{ type = [int]$f.Type; code = (Try-Get { [string]$f.Code.Text } ''); result = (Try-Get { [string]$f.Result.Text } '') } })
         tablesOfContents = (Try-Get { [int]$doc.TablesOfContents.Count } 0)
         bookmarks = (Map-Collection $doc.Bookmarks { param($b) [string]$b.Name })
         hyperlinks = (Map-Collection $doc.Hyperlinks { param($h) [ordered]@{ address = [string]$h.Address; subAddress = [string]$h.SubAddress; text = [string]$h.TextToDisplay } })
-        properties = [ordered]@{ title = (Read-BuiltIn $doc 'Title'); subject = (Read-BuiltIn $doc 'Subject'); author = (Read-BuiltIn $doc 'Author'); keywords = (Read-BuiltIn $doc 'Keywords') }
+        properties = [ordered]@{ title = (Read-BuiltIn $doc 'Title'); subject = (Read-BuiltIn $doc 'Subject'); author = (Read-BuiltIn $doc 'Author'); keywords = (Read-BuiltIn $doc 'Keywords'); company = (Read-BuiltIn $doc 'Company'); manager = (Read-BuiltIn $doc 'Manager'); category = (Read-BuiltIn $doc 'Category') }
+        customProperties = (Read-Custom $doc)
+        tableStyles = (Map-Collection $doc.Tables { param($t) (Try-Get { [string]$t.Style.NameLocal } '') })
+        protection = [ordered]@{ type = (Try-Get { [int]$doc.ProtectionType } -1); trackRevisions = (Try-Get { [bool]$doc.TrackRevisions } $false); writeReserved = (Try-Get { [bool]$doc.WriteReserved } $false); hasPassword = (Try-Get { [bool]$doc.HasPassword } $false) }
+        heading1 = [ordered]@{ font = (Try-Get { [string]$doc.Styles.Item(-2).Font.Name } ''); size = (Try-Get { Round2 $doc.Styles.Item(-2).Font.Size } 0) }
     }
 }
 
@@ -305,24 +395,107 @@ function Write-Report {
     [IO.File]::WriteAllText($outPath, $json, (New-Object Text.UTF8Encoding($false)))
 }
 
-$fullPath = (Resolve-Path -LiteralPath $Path).Path
+# Opens one document read only in the running Word, writes its report to $Out and closes it. Answers
+# how long each part took, in milliseconds.
+function Invoke-Inspection {
+    param($word, [string]$Path, [string]$Out, [string]$Password = '', [bool]$Lines = $true)
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    $timings = [ordered]@{}
+    $fullPath = (Resolve-Path -LiteralPath $Path).Path
+    $outPath = [IO.Path]::GetFullPath($Out)
+    $script:ThemeCache = @{}
+    $script:Doc = $null
+    $script:Spent.lines.Reset()
+    $script:Spent.runs.Reset()
+    # Asking for every line is slow, so it is done for documents of a few hundred paragraphs or fewer.
+    $script:AskLines = $Lines
+    # Records an earlier, stopped Word left about this folder would make this open wait on a hidden dialog.
+    $folder = Split-Path -Parent $fullPath
+    Clear-WordResiliency -Folder $folder
+    $timings.resiliency = $clock.ElapsedMilliseconds
+    try {
+        $clock.Restart()
+        try {
+            # An encrypted document is opened with its password; Word ignores one given for a document with none.
+            $doc = $word.Documents.Open($fullPath, $false, $true, $false, $Password)
+        } catch {
+            $report = [ordered]@{ file = [IO.Path]::GetFileName($fullPath); opened = $false; error = $_.Exception.Message }
+            Write-Report $report $outPath
+            $timings.open = $clock.ElapsedMilliseconds
+            return $timings
+        }
+        $script:Doc = $doc
+        try { if ($doc.Paragraphs.Count -gt 400) { $script:AskLines = $false } } catch { }
+        # Positions are only right in Print Layout view.
+        try { $doc.ActiveWindow.View.Type = 3 } catch { try { $doc.Windows.Item(1).View.Type = 3 } catch { } }
+        $timings.open = $clock.ElapsedMilliseconds
+        try {
+            $clock.Restart()
+            $report = Get-Report $doc ([IO.Path]::GetFileName($fullPath))
+            $timings.report = $clock.ElapsedMilliseconds
+            $timings.lines = $script:Spent.lines.ElapsedMilliseconds
+            $timings.runs = $script:Spent.runs.ElapsedMilliseconds
+            $clock.Restart()
+            Write-Report $report $outPath
+            $timings.write = $clock.ElapsedMilliseconds
+        } finally {
+            $clock.Restart()
+            try { $doc.Close(0) } catch { }
+            [void][Runtime.InteropServices.Marshal]::ReleaseComObject($doc)
+            $timings.close = $clock.ElapsedMilliseconds
+        }
+    } finally {
+        Clear-WordResiliency -Folder $folder
+    }
+    return $timings
+}
+
+# Writes one answer line for a caller of -Serve.
+function Write-Answer {
+    param($answer)
+    [Console]::Out.WriteLine('WORD-ORACLE ' + ($answer | ConvertTo-Json -Compress -Depth 5))
+    [Console]::Out.Flush()
+}
+
+# Starts one Word and inspects a document for every request line until standard input closes.
+function Invoke-Server {
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    $handle = $null
+    try {
+        $handle = Start-WordApp -PidFile $PidFile -TimeoutSeconds $LifetimeSeconds
+        Write-Answer ([ordered]@{ ready = $true; pid = $handle.Pid; fonts = @($handle.Fonts).Count; start = $clock.ElapsedMilliseconds })
+        while ($null -ne ($line = [Console]::In.ReadLine())) {
+            if ($line.Trim() -eq '') { continue }
+            try {
+                $request = $line | ConvertFrom-Json
+                $password = if ($request.password) { [string]$request.password } else { '' }
+                $lines = $request.lines -ne $false
+                $timings = Invoke-Inspection $handle.App ([string]$request.path) ([string]$request.out) $password $lines
+                Write-Answer ([ordered]@{ ok = $true; timings = $timings })
+            } catch {
+                Write-Answer ([ordered]@{ ok = $false; error = $_.Exception.Message })
+            }
+        }
+    } finally {
+        $clock.Restart()
+        Stop-WordApp $handle
+        if ($PidFile) { Remove-Item -LiteralPath $PidFile -ErrorAction SilentlyContinue -Confirm:$false }
+        [Console]::Error.WriteLine("inspect.ps1: Word stopped in $($clock.ElapsedMilliseconds) ms")
+    }
+}
+
+if ($Serve) {
+    Invoke-Server
+    return
+}
+
 $outPath = [IO.Path]::GetFullPath($Out)
 $handle = $null
+Clear-WordResiliency -Folder (Split-Path -Parent (Resolve-Path -LiteralPath $Path).Path)
 try {
-    $handle = Start-WordApp
-    $word = $handle.App
-    try {
-        $doc = $word.Documents.Open($fullPath, $false, $true, $false)
-    } catch {
-        $report = [ordered]@{ file = [IO.Path]::GetFileName($fullPath); opened = $false; error = $_.Exception.Message }
-        Write-Report $report $outPath
-        return
-    }
-    $script:Doc = $doc
-    # Positions are only right in Print Layout view.
-    try { $doc.ActiveWindow.View.Type = 3 } catch { try { $doc.Windows.Item(1).View.Type = 3 } catch { } }
-    try { Write-Report (Get-Report $doc ([IO.Path]::GetFileName($fullPath))) $outPath }
-    finally { try { $doc.Close(0) } catch { } }
+    $handle = Start-WordApp -PidFile "$outPath.pid"
+    $null = Invoke-Inspection $handle.App $Path $Out $Password
 } finally {
     Stop-WordApp $handle
+    Remove-Item -LiteralPath "$outPath.pid" -ErrorAction SilentlyContinue -Confirm:$false
 }

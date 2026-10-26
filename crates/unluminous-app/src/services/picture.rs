@@ -329,9 +329,162 @@ pub fn decode_bytes(bytes: &[u8]) -> Result<egui::ColorImage, String> {
     Ok(egui::ColorImage { size, pixels, source_size: egui::vec2(size[0] as f32, size[1] as f32) })
 }
 
+/// The longest side, in pixels, a vector picture is drawn at: sharp at the zooms a page is read at, and
+/// small enough that a page of them does not hold hundreds of megabytes of texture.
+const VECTOR_SIDE: f32 = 1600.0;
+
+/// Whether these bytes are a picture `decode_vector` reads rather than a bitmap: an SVG, an EMF (whose
+/// header says ` EMF` at byte 40) or a WMF (a placeable one starts `D7 CD C6 9A`, a plain one has a
+/// header of type 1 or 2 with a size of 9 words).
+pub fn is_vector(bytes: &[u8]) -> bool {
+    let head = &bytes[..bytes.len().min(512)];
+    let text = String::from_utf8_lossy(head);
+    text.trim_start_matches('\u{feff}').trim_start().starts_with('<') && text.contains("<svg")
+        || bytes.get(40..44) == Some(b" EMF")
+        || bytes.starts_with(&[0xd7, 0xcd, 0xc6, 0x9a])
+        || matches!(bytes.get(0..4), Some([1 | 2, 0, 9, 0]))
+}
+
+/// Draw an SVG, EMF or WMF picture into pixels (task-2359, TDD 5.3): an EMF or a WMF is turned into SVG
+/// by `emf-core` first, and the SVG is drawn by `resvg` with its longest side [`VECTOR_SIDE`] pixels.
+pub fn decode_vector(bytes: &[u8]) -> Result<egui::ColorImage, String> {
+    let svg = if bytes.get(40..44) == Some(b" EMF")
+        || !String::from_utf8_lossy(&bytes[..bytes.len().min(512)]).contains("<svg")
+    {
+        emf_core::converter::convert_to_svg(bytes).map_err(|problem| format!("{problem}"))?
+    } else {
+        bytes.to_vec()
+    };
+    let options = resvg::usvg::Options { fontdb: system_fonts(), ..Default::default() };
+    let tree =
+        resvg::usvg::Tree::from_data(&svg, &options).map_err(|problem| format!("{problem}"))?;
+    let size = tree.size();
+    let scale = VECTOR_SIDE / size.width().max(size.height()).max(1.0);
+    let (w, h) = (
+        (size.width() * scale).ceil().max(1.0) as u32,
+        (size.height() * scale).ceil().max(1.0) as u32,
+    );
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(w, h).ok_or("the picture has no size")?;
+    resvg::render(
+        &tree,
+        resvg::tiny_skia::Transform::from_scale(scale, scale),
+        &mut pixmap.as_mut(),
+    );
+    let pixels = pixmap
+        .data()
+        .chunks_exact(4)
+        .map(|p| egui::Color32::from_rgba_premultiplied(p[0], p[1], p[2], p[3]))
+        .collect();
+    Ok(egui::ColorImage {
+        size: [w as usize, h as usize],
+        pixels,
+        source_size: egui::vec2(w as f32, h as f32),
+    })
+}
+
+/// A bitmap, or a vector picture drawn by [`decode_vector`].
+pub fn decode_any(bytes: &[u8]) -> Result<egui::ColorImage, String> {
+    if is_vector(bytes) {
+        return decode_vector(bytes);
+    }
+    decode_bytes(bytes)
+}
+
+/// The machine's fonts, read once, for the words in a vector picture.
+fn system_fonts() -> std::sync::Arc<resvg::usvg::fontdb::Database> {
+    static FONTS: std::sync::OnceLock<std::sync::Arc<resvg::usvg::fontdb::Database>> =
+        std::sync::OnceLock::new();
+    FONTS
+        .get_or_init(|| {
+            let mut fonts = resvg::usvg::fontdb::Database::new();
+            fonts.load_system_fonts();
+            std::sync::Arc::new(fonts)
+        })
+        .clone()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_svg_is_drawn_and_a_png_is_not_taken_for_one() {
+        let svg = br##"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="#ff0000"/></svg>"##;
+        assert!(is_vector(svg));
+        let image = decode_any(svg).expect("an SVG is drawn");
+        assert_eq!(image.size, [1600, 800]);
+        assert_eq!(image.pixels[0], egui::Color32::from_rgb(255, 0, 0));
+        assert!(!is_vector(&[0x89, b'P', b'N', b'G', 13, 10, 26, 10]));
+    }
+
+    #[test]
+    fn an_emf_is_drawn_through_svg() {
+        // EMR_HEADER (bounds 0,0 to 99,49, frame in hundredths of a millimetre), one red brush
+        // rectangle and EMR_EOF: the smallest EMF that draws something.
+        let mut emf: Vec<u8> = Vec::new();
+        let u32le = |v: u32, out: &mut Vec<u8>| out.extend_from_slice(&v.to_le_bytes());
+        let i32le = |v: i32, out: &mut Vec<u8>| out.extend_from_slice(&v.to_le_bytes());
+        // Header: type 1, size 108.
+        u32le(1, &mut emf);
+        u32le(108, &mut emf);
+        for v in [0, 0, 99, 49] {
+            i32le(v, &mut emf);
+        }
+        for v in [0, 0, 2646, 1323] {
+            i32le(v, &mut emf);
+        }
+        u32le(0x464D_4520, &mut emf);
+        u32le(0x0001_0000, &mut emf);
+        let total_at = emf.len();
+        u32le(0, &mut emf);
+        u32le(5, &mut emf);
+        emf.extend_from_slice(&3u16.to_le_bytes());
+        emf.extend_from_slice(&0u16.to_le_bytes());
+        u32le(0, &mut emf);
+        u32le(0, &mut emf);
+        u32le(0, &mut emf);
+        for v in [1920, 1080, 508, 286] {
+            i32le(v, &mut emf);
+        }
+        u32le(0, &mut emf);
+        u32le(0, &mut emf);
+        u32le(0, &mut emf);
+        for v in [508_000, 285_750] {
+            u32le(v, &mut emf);
+        }
+        assert_eq!(emf.len(), 108);
+        // EMR_CREATEBRUSHINDIRECT index 1, solid red.
+        u32le(39, &mut emf);
+        u32le(24, &mut emf);
+        u32le(1, &mut emf);
+        u32le(0, &mut emf);
+        u32le(0x0000_00ff, &mut emf);
+        u32le(0, &mut emf);
+        // EMR_SELECTOBJECT 1.
+        u32le(37, &mut emf);
+        u32le(12, &mut emf);
+        u32le(1, &mut emf);
+        // EMR_RECTANGLE.
+        u32le(43, &mut emf);
+        u32le(24, &mut emf);
+        for v in [0, 0, 99, 49] {
+            i32le(v, &mut emf);
+        }
+        // EMR_EOF.
+        u32le(14, &mut emf);
+        u32le(20, &mut emf);
+        u32le(0, &mut emf);
+        u32le(16, &mut emf);
+        u32le(20, &mut emf);
+        let total = emf.len() as u32;
+        emf[total_at..total_at + 4].copy_from_slice(&total.to_le_bytes());
+        assert!(is_vector(&emf));
+        let image = decode_any(&emf).expect("an EMF is drawn");
+        assert!(
+            image.pixels.iter().any(|p| p.r() > 200 && p.g() < 60),
+            "the red rectangle is in the picture"
+        );
+    }
 
     /// A four by two PNG, written out so the decoder has something real to read.
     fn sample(name: &str) -> std::path::PathBuf {

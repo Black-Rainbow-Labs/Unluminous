@@ -4422,7 +4422,11 @@ impl UnluminousApp {
             self.realm.recent_anchor,
             &mut state,
             &rows,
-            std::time::SystemTime::now(),
+            // The clock a test's window holds still (`task-2364`), the real one everywhere else.
+            std::time::UNIX_EPOCH
+                + std::time::Duration::from_secs(
+                    crate::services::agent_tasks::clock::seconds_for_drawing(),
+                ),
         );
         if let Some(path) = outcome.open {
             if self.open_a_realm(&path).is_ok() {

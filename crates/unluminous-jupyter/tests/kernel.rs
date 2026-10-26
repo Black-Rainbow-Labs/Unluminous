@@ -87,7 +87,12 @@ impl Session {
             *signal.0.lock().unwrap() = true;
             signal.1.notify_all();
         });
-        let folder = std::env::temp_dir();
+        // A folder of its own, not the temporary folder itself: a kernel lists the folder it starts in
+        // on its first import, and a temporary folder of 166,000 entries left by other test suites made
+        // every start take longer than the three minutes the bridge waits (measured: 17 s in an empty
+        // folder, no answer in 188 s in the temporary folder).
+        let folder = std::env::temp_dir().join("unluminous-kernel-tests");
+        std::fs::create_dir_all(&folder).expect("the kernel tests' folder can be made");
         let kernel = Kernel::start(python, kernel_name, &folder, waker).expect("the bridge starts");
         Session { kernel, log: Vec::new(), wake, python: python.to_path_buf(), _place: place }
     }

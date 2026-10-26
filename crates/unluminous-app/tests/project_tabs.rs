@@ -314,7 +314,8 @@ fn the_folder_button_opens_the_folder_the_picker_answers_in_a_new_tab() {
     let [alpha, _, gamma] = projects();
     let mut harness = window_on(&alpha);
     fn picker(_: &str, _: &std::path::Path) -> Option<std::path::PathBuf> {
-        Some(std::env::temp_dir().join("unluminous-project-tabs-gamma"))
+        // Where `projects` built it: every fixture is under `fixtures_root` (`task-2364`).
+        Some(fixtures_root().join("unluminous-project-tabs-gamma"))
     }
     harness.state_mut().app_mut().folder_picker = picker;
     harness.get_by_label("New Project Tab").click();

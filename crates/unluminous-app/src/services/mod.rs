@@ -68,6 +68,7 @@ pub mod project_symbols;
 /// The Realm: the canvas of nodes `task-1904` asks for.
 pub mod realm;
 pub mod recycle;
+pub mod rich_clipboard;
 pub mod run_configurations;
 pub mod scene_blur;
 pub mod scheduling;

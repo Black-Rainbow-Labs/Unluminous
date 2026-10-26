@@ -230,6 +230,26 @@ impl Pending {
         }
     }
 
+    /// A request from a test, answered down the channel this returns, exactly as a connection's is.
+    ///
+    /// `task-2364`. A window test drove a command with `run_command_line` and needed the answer on the
+    /// frame it was asked, so a command that holds its answer until a thread replies, such as
+    /// `editor signature --wait`, failed whenever the thread was slower than the frame. A request made
+    /// here goes into `cli_waiting` like one from `unluminous-cli`, and the frames the test draws answer
+    /// it when it is ready or when its own deadline passes.
+    pub fn for_a_test(request: Request) -> (Self, std::sync::mpsc::Receiver<Reply>) {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let pending = Pending {
+            request,
+            reply: Some(sender),
+            taken: Arc::new(AtomicBool::new(true)),
+            abandoned: Arc::new(AtomicBool::new(false)),
+            queued_at: Instant::now(),
+            patience: Duration::from_secs(24 * 60 * 60),
+        };
+        (pending, receiver)
+    }
+
     /// The command's wire name, such as `tab.open`.
     pub fn command(&self) -> &str {
         &self.request.command

@@ -605,6 +605,11 @@ pub struct PaneState {
     pub scenes: crate::services::mermaid_scene::MermaidScenes,
     /// Give the composer the keyboard on the next frame, which is what a component's `fill` asks for.
     pub focus_the_prompt: bool,
+    /// Put the composer's caret after the last character of the draft on the next frame, which is where
+    /// dictated words leave it (`task-2364`). egui keeps a text box's caret where it was when its text is
+    /// replaced from outside, so words heard while the box had the keyboard grew in front of a caret left
+    /// at the start of the prompt, and the next key a person pressed went before them.
+    pub caret_to_the_end: bool,
     /// Whether the components hold still rather than move: for a person who asked for less motion, and
     /// for a test that photographs a frame. `plugins run agent-chat motion off`.
     pub still: bool,
@@ -1047,6 +1052,7 @@ impl AgentChat {
     fn put_the_words(&mut self, words: &str) {
         let Some(dictating) = self.dictating.as_mut() else { return };
         self.draft = dictating.put(&self.draft, words);
+        self.ui.caret_to_the_end = true;
     }
 
     /// The request that runs a `voice` command for this chat. `task-2290`.

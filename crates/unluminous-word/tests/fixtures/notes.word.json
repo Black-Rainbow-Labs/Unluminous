@@ -7,7 +7,7 @@
   "characters": 862,
   "charactersWithSpaces": 1017,
   "paragraphCount": 7,
-  "lines": 13,
+  "lines": 14,
   "paragraphs": [
     {
       "index": 1,
@@ -50,6 +50,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Footnotes and endnotes"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Footnotes and endnotes",
+          "top": 90.0,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -112,6 +120,20 @@
           "hidden": false,
           "text": "\u0002"
         }
+      ],
+      "lines": [
+        {
+          "text": "Paragraph with footnote 1. Of that the surprise opens and paragraph spacing while scrolls ",
+          "top": 122.25,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "of that the. Margin the a shows with between the through plain wraps margin.\u0002",
+          "top": 139.5,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -172,6 +194,20 @@
           "allCaps": false,
           "hidden": false,
           "text": "\u0002"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Paragraph with footnote 2. The a shows with between the through plain wraps margin the a ",
+          "top": 164.25,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "shows with. Each careful lines reader pages text at without editor document each careful.\u0002",
+          "top": 181.5,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -234,6 +270,20 @@
           "hidden": false,
           "text": "\u0002"
         }
+      ],
+      "lines": [
+        {
+          "text": "Paragraph with footnote 3. Plain wraps margin the a shows with between. Without editor ",
+          "top": 206.25,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "document each careful lines reader pages text at without editor document.\u0002",
+          "top": 223.5,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -256,10 +306,10 @@
       "outlineLevel": 10,
       "page": 1,
       "inTable": false,
-      "lineCount": 2,
+      "lineCount": 3,
       "top": 248.25,
       "left": 72.0,
-      "lastTop": 265.5,
+      "lastTop": 282.0,
       "runs": [
         {
           "font": "Aptos",
@@ -295,6 +345,26 @@
           "hidden": false,
           "text": "\u0002"
         }
+      ],
+      "lines": [
+        {
+          "text": "Paragraph with footnote 4. Editor document each careful lines reader pages text at. ",
+          "top": 248.25,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "Paragraph spacing while scrolls of that the surprise opens and paragraph spacing while ",
+          "top": 265.5,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "scrolls.\u0002",
+          "top": 282.0,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -318,9 +388,9 @@
       "page": 1,
       "inTable": false,
       "lineCount": 2,
-      "top": 290.25,
+      "top": 306.75,
       "left": 72.0,
-      "lastTop": 307.5,
+      "lastTop": 324.0,
       "runs": [
         {
           "font": "Aptos",
@@ -356,6 +426,20 @@
           "hidden": false,
           "text": "\u0002"
         }
+      ],
+      "lines": [
+        {
+          "text": "Paragraph with endnote 1. A shows with between the through plain wraps margin. Careful ",
+          "top": 306.75,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "lines reader pages text at without editor document each careful lines reader pages.\u0002",
+          "top": 324.0,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -379,9 +463,9 @@
       "page": 1,
       "inTable": false,
       "lineCount": 2,
-      "top": 332.25,
+      "top": 348.75,
       "left": 72.0,
-      "lastTop": 349.5,
+      "lastTop": 366.0,
       "runs": [
         {
           "font": "Aptos",
@@ -417,6 +501,20 @@
           "hidden": false,
           "text": "\u0002"
         }
+      ],
+      "lines": [
+        {
+          "text": "Paragraph with endnote 2. Wraps margin the a shows with between the through plain. ",
+          "top": 348.75,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "Editor document each careful lines reader pages text.\u0002",
+          "top": 366.0,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     }
   ],
@@ -438,13 +536,25 @@
       "sectionStart": 2,
       "headers": {
         "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
         "first": "",
-        "even": ""
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
       },
       "footers": {
         "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
         "first": "",
-        "even": ""
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
       }
     }
   ],
@@ -462,6 +572,52 @@
   "revisions": [],
   "inlineShapes": [],
   "shapes": [],
+  "contentControls": [],
+  "oMaths": [],
+  "settings": {
+    "autoHyphenation": false,
+    "hyphenationZone": 9999999.0,
+    "consecutiveHyphensLimit": 0,
+    "compatibilityMode": 15
+  },
+  "footnoteOptions": {
+    "numberStyle": 0,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 0
+  },
+  "endnoteOptions": {
+    "numberStyle": 2,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 1
+  },
+  "footnotePages": [
+    {
+      "reference": 1,
+      "first": 1,
+      "last": 1,
+      "mark": "\u0002"
+    },
+    {
+      "reference": 1,
+      "first": 1,
+      "last": 1,
+      "mark": "\u0002"
+    },
+    {
+      "reference": 1,
+      "first": 1,
+      "last": 1,
+      "mark": "\u0002"
+    },
+    {
+      "reference": 1,
+      "first": 1,
+      "last": 1,
+      "mark": "\u0002"
+    }
+  ],
   "fields": [],
   "tablesOfContents": 0,
   "bookmarks": [],

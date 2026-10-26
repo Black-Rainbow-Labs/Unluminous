@@ -5547,6 +5547,22 @@ is only known once the events it sent have been read.
 `a_program_that_prints_and_stops_leaves_what_it_printed_in_its_tab` is the guard, and it fails on
 the code as it was.
 
+**On a busy Windows machine a program's end is seen through `session::Watching`** (`task-2353`).
+`alacritty_terminal`'s child watcher wakes the reader loop only once the loop has registered with its
+poller, so a program that ended before the loop's thread ran was never seen to end: the run said
+`running` for ever with its output on the screen. And the loop stops reading the moment it is told the
+program ended, while the console host writes on its own frame, so a last line that arrived after the exit
+was lost and the tab was empty. `Watching::register` wakes the loop for a program that has already ended.
+On Windows `Watching::next_child_event` sends the window `ChildExit` itself and never tells the loop, so
+the loop goes on reading until the session is closed. Waiting for the pipe to be quiet for 250 ms was
+tried first and still lost the line in a full suite run. Both faults only showed under load: the window
+test passed every time on an idle machine and failed with 36 threads of `tools/perf-smooth/load.mjs`
+running. `a_program_that_ends_before_the_reader_starts_is_still_seen_to_end` starts the loop after the
+program has ended, so it fails on the old code every time.
+
+**A window opened on a folder another test window just used waits for that window's writes**
+(`harness_in`), because what a project remembers is written on a thread (`project_state::save_later`).
+
 **Plugins contribute data, not types.** The answer to "should running node mean a Node plugin" is
 no: node is how JavaScript runs, and the JavaScript manifest says so itself with `run.file = node
 {file}`. `run.project` names a detector **built into Unluminous**, checked against
@@ -6877,6 +6893,71 @@ Tests must not read or write the settings of the person running them. `Unluminou
 released binary calls `load_settings` and a test that wants a store calls `use_store` with a folder of its
 own.
 
+### A test fails because of the code, never because of the machine (`task-2364`)
+
+`tasks/task-2364-test-strategy-tdd.md` is the design and the measurements. task-2359 lost hours to failures
+that had nothing to do with its change, and each one sent it round a 40 minute window suite or a 35 minute
+release again. The rules:
+
+- **Run the window suite with the runner**: `pwsh tools/capped.ps1 node tools/window-suite.mjs --run`. It
+  gives the run a temporary folder of its own (removed at the end), runs a failed test once more on its own,
+  and records the run. It builds once and runs two binaries at a time (`--jobs N` changes that), each with its
+  share of the test threads; `--jobs 1` is `cargo test --test '*'`.
+  `--only word,git`, `--repeat N` and `--load N` (that many busy threads beside it) are for measuring.
+- **Every test writes only in a folder of its own.** `sample_folder()` is read only, and it panics naming the
+  file when a test has added or removed one. A test that changes a project copies it first
+  (`copy_out_of_the_repository`, `fixture(name)`). Before Atrius 0.3.2 the code index wrote
+  `atrius-index-fence-<n>` into the root of a project that is not a git repository for 250 ms; it now writes it
+  in its own index folder (`task-2370`) and falls back to the root only when that folder cannot be made or
+  watched. A test that lists or copies a project still leaves it out, as the explorer does
+  (`common::is_the_code_index_fence`).
+- **No single test holds a binary open.** A binary takes as long as its longest test, so a sweep over cases that
+  each open a window is one test per case (`every_action_changes_the_window_or_says_why_it_cannot_<n>`,
+  `every_drop_lands_where_the_preview_said_it_would_<n>_...`). libtest prints `has been running for over 60
+  seconds` for a test that needs splitting.
+- **Every picture is rendered through `common::PatientRenderer`**: at most four renders in flight in a binary,
+  and a render that failed (`PollError` under load, never a picture that differs) tried three times.
+- **wgpu-hal is vendored (`vendor/wgpu-hal`, `task-2369`) so a shader FXC compiled is cached as bytes.** FXC's
+  `ID3DBlob` counts its references without atomics, and wgpu's per device shader cache cloned one blob for every
+  thread making the same pipeline, so the blob was freed while cached. A window binary then aborted with
+  `misaligned pointer dereference` in `windows_core::Interface::assume_vtable`, or ended with no message. A
+  binary that ends either way again is a COM object shared between threads; `vendor/wgpu-hal/UNLUMINOUS.md` has
+  the measurement and `many_threads_make_renderers_on_the_shared_devices_at_once` is the test.
+- **Dependencies are optimized in test builds** (`[profile.test.package."*"] opt-level = 2`); our crates are not.
+  A window test spends its time in egui, `vello_cpu`, `rux` and `image`, and unoptimized one frame of a busy page
+  took seconds. The whole window suite went from 9.6 to 4.0 minutes with every picture unchanged.
+- **A tab whose document is replaced forgets what was worked out for the old one** (`forget_what_was_worked_out`),
+  whichever tab it is. Every document counts its text revisions from one, so a kept layout looks current to the
+  new document; a reload of a file showing in the other pane of a split was painted past the end of its text,
+  which ends a release build (found by the loaded every action walk, fixed in `reread_a_tab`).
+- **A relative time on the screen comes from `agent_tasks::clock::now_for_drawing`** (or `seconds_for_drawing`),
+  never from the real clock directly. A test window holds that clock at the moment it was built, so `just now`
+  stays `just now` however long a loaded run takes; the board's own timestamps still use `clock::now`.
+- **Nothing depends on `%TEMP%`.** `tools/test.mjs` and the runner point `TMP`, `TEMP` and `TMPDIR` at a run
+  folder under `%TEMP%\unluminous-tests`, so a test, Python and PowerShell all write there, and a run removes
+  its own folder. `node tools/clean-test-leftovers.mjs [--delete]` is for what earlier runs left.
+- **A wait is a deadline and a condition**: `common::wait_until`, a minute. Never a count of frames. A command
+  that holds its answer (`--wait`, `--wait-for`) is driven with `did()`, which waits for the window's answer
+  the way the control channel does (`UnluminousApp::start_command_line`).
+- **A test that drives another program stops it when it gives up.** `word_live` stops the Word whose process
+  id `inspect.ps1` writes, and `inspect.ps1` clears Word's Resiliency records for its folder.
+- **A test binary that asks another program many questions starts it once** (`task-2368`). `word_live` keeps
+  one `inspect.ps1 -Serve` for the binary, one request at a time, and starts a fresh one after a report that
+  times out. Starting and quitting Word was 10 to 15 s of each of 55 reports: the binary went from 1,259 s to
+  211 s on the same machine. `Start-WordApp` names its Word by a window caption, never by which `WINWORD`
+  appeared, because another agent's Word can start at the same moment.
+- **One `cargo test` a crate in the gate**, so one failure costs the other crates nothing, and the Word and
+  kernel tests run after the other lanes, on a quiet machine.
+- **A flake is retried once and recorded.** A test that fails and then passes on its own does not stop a
+  release, and is written to `_agent_output/test-runs/flakes.jsonl` in the main checkout. `node tools/flakes.mjs`
+  names them; the release prints it. **A test named twice in 14 days gets a ticket**, and is fixed or marked
+  `#[ignore = "quarantined: task-N <what fails>"]` until it is.
+- **A receipt is only written by a run of the whole binary**, or by the runner's retry. Other crates'
+  `tests/*.rs` do not make a receipt stale; test fixtures and `sample-diagrams/` do.
+- **Merge `origin/main` into the ticket's branch before the gate and the window suite**, not after. The release
+  merges it before it checks the receipts, so a suite run on a branch that main has since moved past is run
+  again. `git -C <worktree> fetch` and `git -C <worktree> merge origin/main`, then the gate, then the suite.
+
 ### Driving the real window must never leave a key held down
 
 Layer 4 is the one that reaches outside the process. A script that drives the real window presses a
@@ -7585,7 +7666,8 @@ Eight rules, each found by measuring:
   COM and writes Word's report; `make-fixtures.ps1` makes the fixtures with Word. The reports are committed, so
   `tests/oracle.rs` and `tests/pagination.rs` need no Word. `tests/word_live.rs` writes documents with Unluminous,
   has Word open them, and fails if Word repairs one; it passes with a printed line where Word is not installed,
-  and `UNLUMINOUS_REQUIRE_WORD=1` makes that a failure.
+  and `UNLUMINOUS_REQUIRE_WORD=1` makes that a failure. It asks one Word for every report through
+  `inspect.ps1 -Serve`, without the per line questions, which none of its tests reads.
 - **Word's paragraph spacing is the larger of the space after and the space before, never their sum.**
   Measured against Word 16's positions: a paragraph with 8 points after and a heading with 8 before are 8
   points apart.
@@ -7611,8 +7693,9 @@ Three additions to the plugin contract, which `task-2338` adds for workbooks wit
 `OpenKeyedTab`, `RenameTab` and `CloseKeyedTab`. A Word tab saves as it closes, like a text tab; an untitled one asks
 where to go.
 
-There is no ribbon. The format bar has the style, bold, italic, underline, the two lists, the alignment and the
-`Aa` and `+` buttons that open the drill down panel; `/` at the start of an empty paragraph and `Ctrl+/` anywhere
+There is no ribbon. The format bar has the paragraph style, `Text options` (a flyout with bold, italic, underline,
+strikethrough, the scripts, the lists and the alignment), the view, and the `Format`, `Insert` and `Find a command`
+chips (`task-2366`, below); `/` at the start of an empty paragraph and `Ctrl+/` anywhere
 search `services::word::actions::ACTIONS`, which is also what `plugins run word action <id>` runs, so the four ways
 in are one list. `# `, `- `, `1. ` and `> ` at a paragraph's start become a heading, a list or a quote.
 
@@ -7630,3 +7713,52 @@ is `overlays::remember_popup` and `overlays::a_popup_covers`; a new popup calls 
 
 Spell check is `unluminous_word::spell` (SCOWL en_US through `spellbook`, inflated only on first use) and
 `services::word::spelling`, which caches each paragraph's result by its checked text. TDD section 13 has the rules.
+
+### Word round 3: the Word tab is drawn in the design system (`task-2366`)
+
+`tasks/task-2366-word-design-tdd.md` is the design. Rules it left:
+
+- **Every part of the Word chrome is drawn with `components/word/kit.rs`**: the round chip, the select chip, the pill,
+  the switch, the swatches, the section heading, and `kit::style_the_panel` for the egui widgets the deep panel levels
+  still use. A new control in the Word tab is built from the kit, not from `ui.button` or a hand painted rectangle.
+- **Sizes are the design's points times `Look::zoom()`**, the tab's own zoom, never `look.font_size` or `look.scale()`.
+  Those follow the editor's font, and on a machine whose interface font is 24 points they set the whole Word chrome at
+  twice the size of the window's menus. `kit::set_zoom` records the zoom once a frame.
+- **No mark is a character.** A Lucide mark is kept as path data in `theme::svg_icon` (`lucide!`); `✕`, `‹`, `⊕` and
+  `■` drew empty boxes in faces without them.
+- **The Word tab draws no strip under the pages.** The page, the words, Track Changes and the spelling count are items
+  in the window's status bar, from `UiProvider::tab_status` (`services::word::status`), and a press runs the provider
+  command the item names. Any plugin tab can say what it is and its facts this way.
+- **A tool that would fail is not offered.** `actions::applies` answers for Promote, Demote, Outline view's tools and
+  the paragraph moves through `Session::promoted_style`, `paragraph_can_move` and `section_bounds`, the same checks the
+  commands make; the panel's pills, the outline toolbar and the command search all ask it.
+
+### Word round 2 (`task-2359`)
+
+`tasks/task-2358-word-round2-tdd.md` is the design and `tasks/task-2358-word-gap-matrix.md` the status of every
+Word feature. Rules it left:
+
+- **Word itself settles every disagreement.** A new rule gets a fixture made by `tools/word-oracle/make-fixtures.ps1`
+  and Word's report beside it. Office's property objects (`BuiltInDocumentProperties`, `CustomDocumentProperties`)
+  answer only through `InvokeMember`, in both scripts.
+- **A Word started through COM can stay running after `Quit`.** `convert.ps1` stops the process that owns its
+  document's window. A Word killed while it opened a file marks that path in `Resiliency\DisabledItems` and asks
+  about it on every later open, which hangs a script with no window; a Word PDF reflow asks a question
+  `DisplayAlerts` does not stop, so `convert.ps1` sets `DisableConvertPdfWarning` for the run and puts it back.
+- **Files Word reads for us**: `.doc`, `.rtf`, `.odt`, `.wps` and `.pdf` open through `unluminous_word::convert`
+  (the script compiled in), on a thread, as `services::word::files::Waiting`. The tab holds the document under the
+  original file with no `path`, so Save asks for a `.docx`. `.txt`, `.md` and `.html` open with Open as Document.
+  Save As `.rtf` and `.odt` go through Word; `.txt`, `.html`, `.md` and `.pdf` are copies.
+- **Encryption is `unluminous_word::crypto`** (ECMA-376 agile, checked against Word both ways). An encrypted file
+  waits in its tab for the password and is encrypted again when saved. Restrict Editing and Password to Modify are
+  `Session::may_edit`, which every edit asks; a refusal is `Session::refused`, said as a notice.
+- **AutoRecover is on, AutoSave is off.** `files::keep_the_files` runs from `catch_up`: a copy in
+  `<settings>/recovery/<hash>.asd` every ten minutes, offered on the next open, taken away on save or close.
+- **New Word Document reads `Normal.dotm` and the locale only in the released binary**
+  (`files::allow_the_office_template`, called from `main`).
+- **A keystroke lays out one paragraph** (`layout::lay_out_cached`); `tests/cache.rs` checks cached pages are the
+  pages on every fixture.
+- **Every Word verb has a section in `unluminous-cli/docs/word.md`**, and
+  `every_word_verb_has_a_paragraph_in_its_reference` fails without it.
+- **Field results are checked against Word's**: `tests/fields.rs` compares `Session::evaluated_fields` with the
+  results Word gave every code and switch in `field-codes.docx`.

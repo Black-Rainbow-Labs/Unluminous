@@ -216,6 +216,16 @@ fn html_escape(text: &str) -> String {
     text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
 }
 
+/// Paragraphs as an HTML fragment, in the same markup the page export writes, for the clipboard.
+pub fn fragment_html(document: &Document, paragraphs: &[crate::model::Paragraph]) -> String {
+    let resolver = Resolver::new(document);
+    let mut counters = crate::numbering::Counters::default();
+    let blocks: Vec<Block> = paragraphs.iter().cloned().map(Block::Paragraph).collect();
+    let mut out = String::new();
+    html_blocks(document, &resolver, &mut counters, &blocks, &mut out);
+    out
+}
+
 /// The document as one HTML page, with its fonts, sizes, colours and alignment inline, and pictures
 /// embedded, so it opens in a browser as it looks.
 pub fn to_html(document: &Document) -> String {
@@ -387,10 +397,21 @@ pub fn paragraphs_value(
     to: usize,
     with_runs: bool,
 ) -> Vec<serde_json::Value> {
+    paragraphs_value_in(document, &document.body, from, to, with_runs)
+}
+
+/// [`paragraphs_value`] for the paragraphs of any story: a header, a note, a comment or a text box.
+pub fn paragraphs_value_in(
+    document: &Document,
+    blocks: &[Block],
+    from: usize,
+    to: usize,
+    with_runs: bool,
+) -> Vec<serde_json::Value> {
     let resolver = Resolver::new(document);
     let mut counters = crate::numbering::Counters::default();
     let mut out = Vec::new();
-    for (index, (path, p)) in position::paragraphs(&document.body).into_iter().enumerate() {
+    for (index, (path, p)) in position::paragraphs(blocks).into_iter().enumerate() {
         let look = resolver.paragraph(&p.props, None);
         let label =
             look.numbering.and_then(|(num, level)| counters.next(&resolver.numbering, num, level));
@@ -408,7 +429,7 @@ pub fn paragraphs_value(
             value["list"] =
                 serde_json::json!({ "label": label.text, "level": look.numbering.map(|(_, l)| l) });
         }
-        if let Some((_, row, cell)) = position::cell_of(&document.body, &path) {
+        if let Some((_, row, cell)) = position::cell_of(blocks, &path) {
             value["cell"] = serde_json::json!({ "row": row + 1, "column": cell + 1 });
         }
         if look.align != Align::Left {

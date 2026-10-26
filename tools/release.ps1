@@ -655,6 +655,9 @@ if ($carryingOn) {
             $testArguments = @((Join-Path $Repo 'tools\test.mjs'))
             if ($FullTests) { $testArguments += '--all' }
             Invoke-Checked 'node tools\test.mjs' { & node @testArguments }
+            # A test that failed and then passed on its own does not stop a release (`task-2364`), so the
+            # release says which tests have done that lately, where the person releasing reads it.
+            & node (Join-Path $Repo 'tools\flakes.mjs')
         }
     } else {
         Write-Host 'Skipped by -SkipTests.' -ForegroundColor Yellow

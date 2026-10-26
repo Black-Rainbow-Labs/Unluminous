@@ -13,7 +13,7 @@ pub fn fixtures() -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = std::fs::read_dir(&folder)
         .expect("the fixtures folder")
         .filter_map(|entry| entry.ok().map(|e| e.path()))
-        .filter(|path| path.extension().is_some_and(|e| e == "docx"))
+        .filter(|path| path.extension().is_some_and(|e| e == "docx" || e == "dotx" || e == "docm"))
         .collect();
     files.sort();
     assert!(!files.is_empty(), "no fixtures in {}", folder.display());

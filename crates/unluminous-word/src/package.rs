@@ -214,6 +214,27 @@ impl Package {
         self.content_types_dirty = true;
     }
 
+    /// Take a part out of the package with everything that names it: its content type override, its own
+    /// relationships, and every relationship of another part that points at it.
+    pub fn remove_part(&mut self, name: &str) {
+        self.parts.retain(|part| part.name != name);
+        let before = self.overrides.len();
+        self.overrides.retain(|(part, _)| part != name);
+        if self.overrides.len() != before {
+            self.content_types_dirty = true;
+        }
+        let own = rels_name(name);
+        self.parts.retain(|part| part.name != own);
+        self.rels.remove(name);
+        for (source, rels) in self.rels.iter_mut() {
+            let before = rels.rels.len();
+            rels.rels.retain(|rel| rel.external || Package::resolve(source, &rel.target) != name);
+            if rels.rels.len() != before {
+                rels.dirty = true;
+            }
+        }
+    }
+
     /// Make sure an extension has a default content type, for a new picture.
     pub fn ensure_default(&mut self, extension: &str, kind: &str) {
         let extension = extension.to_lowercase();

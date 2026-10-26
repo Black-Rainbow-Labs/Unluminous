@@ -388,7 +388,7 @@ pub(crate) fn comment_section(
     // Which comments are being read as their source, and the cache the rendered ones are drawn from. Taken out
     // of `board` before the closure below, because `board.markdown` is borrowed for the whole of it.
     let raw_comments = board.detail().comments_raw.clone();
-    let now = clock::now();
+    let now = clock::now_for_drawing();
     let agent = look.palette.agent;
     // **Oldest first, newest at the bottom, and the list opens scrolled to the bottom** (`task-2269`: *"Comments in
     // task modal should show the latest comment at the bottom."*). A ticket's comments are a conversation, read

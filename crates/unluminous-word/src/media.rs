@@ -37,14 +37,7 @@ pub fn insert_picture(
     let bytes = bytes.to_vec();
     let name = name.to_owned();
     session.change(Scope::Whole, move |document, selection, _| {
-        let part = document.package.unused_name("word/media/image", &extension);
-        document.package.set_part(&part, bytes.clone());
-        document.package.ensure_default(&extension, content_type(&extension));
-        let main = document.main.clone();
-        let target = Package::relative(&main, &part);
-        let id = document.package.rels_mut(&main).add(kind::IMAGE, &target, false);
-        let shape = next_shape_id(document);
-        let drawing = drawing(&id, shape, &name, width, height);
+        let drawing = add_picture(document, &bytes, &extension, width, height, &name);
         let at = selection.ordered().1.clone();
         let (props, wraps) = crate::position::paragraph(document, &at.story, &at.path)
             .map(|p| crate::edit::props_at(p, at.offset))
@@ -69,6 +62,63 @@ pub fn insert_picture(
         Selection::caret(at.at(at.offset + len))
     });
     Ok(())
+}
+
+/// Put a picture's bytes in the package as a media part the main part points at, and answer the inline
+/// `w:drawing` that shows it, `width` by `height` points.
+pub fn add_picture(
+    document: &mut Document,
+    bytes: &[u8],
+    extension: &str,
+    width: f32,
+    height: f32,
+    name: &str,
+) -> El {
+    let part = document.package.unused_name("word/media/image", extension);
+    document.package.set_part(&part, bytes.to_vec());
+    document.package.ensure_default(extension, content_type(extension));
+    let main = document.main.clone();
+    let target = Package::relative(&main, &part);
+    let id = document.package.rels_mut(&main).add(kind::IMAGE, &target, false);
+    let shape = next_shape_id(document);
+    drawing(&id, shape, name, width, height)
+}
+
+/// A picture's size in pixels, read from the header of a PNG, a GIF, a BMP or a JPEG.
+pub fn picture_size(bytes: &[u8]) -> Option<(u32, u32)> {
+    let be32 =
+        |at: usize| bytes.get(at..at + 4).map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]));
+    let le16 = |at: usize| bytes.get(at..at + 2).map(|b| u16::from_le_bytes([b[0], b[1]]) as u32);
+    let le32 = |at: usize| {
+        bytes.get(at..at + 4).map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]).unsigned_abs())
+    };
+    if bytes.starts_with(b"\x89PNG") {
+        return Some((be32(16)?, be32(20)?));
+    }
+    if bytes.starts_with(b"GIF8") {
+        return Some((le16(6)?, le16(8)?));
+    }
+    if bytes.starts_with(b"BM") {
+        return Some((le32(18)?, le32(22)?));
+    }
+    if bytes.starts_with(&[0xff, 0xd8]) {
+        let mut at = 2;
+        while at + 9 < bytes.len() {
+            if bytes[at] != 0xff {
+                at += 1;
+                continue;
+            }
+            let marker = bytes[at + 1];
+            let length = u16::from_be_bytes([bytes[at + 2], bytes[at + 3]]) as usize;
+            if (0xc0..=0xcf).contains(&marker) && !matches!(marker, 0xc4 | 0xc8 | 0xcc) {
+                let height = u16::from_be_bytes([bytes[at + 5], bytes[at + 6]]) as u32;
+                let width = u16::from_be_bytes([bytes[at + 7], bytes[at + 8]]) as u32;
+                return Some((width, height));
+            }
+            at += 2 + length;
+        }
+    }
+    None
 }
 
 /// A `wp:docPr` id no shape in the document has.
@@ -170,7 +220,7 @@ mod tests {
             Default::default(),
         );
         let picture = pages.pages[0].items.iter().find_map(|i| match i {
-            crate::layout::Item::Picture { rect, part } => Some((rect.w, rect.h, part.clone())),
+            crate::layout::Item::Picture { rect, part, .. } => Some((rect.w, rect.h, part.clone())),
             _ => None,
         });
         assert_eq!(picture, Some((100.0, 50.0, "word/media/image1.png".to_owned())));

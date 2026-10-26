@@ -2103,10 +2103,19 @@ mod tests {
         //   41,636   `task-2341` merged with `task-2338`, adding the Word plugin's tool: 35 verbs, each summary cut
         //            to one line of arguments first, which took 470 tokens off; the rest is the tool and its verb
         //            enum, which no wording removes. The ceiling moves to 42,000.
+        //   43,135   `task-2359` adding the Word plugin's round 2 verbs (23 more: pictures, stories, protection,
+        //            properties, conversion, AutoSave, the views and print), each summary its arguments in one
+        //            line. They are the agent's half of the Word features the round added, and Word's own
+        //            verbs are only in the Word tool. The ceiling moves to 44,000.
         //   43,368   `task-2360` adding the Spreadsheet verbs for data tools, outlines, rules, what if,
         //            protection, styles, themes and review (37 verbs, each with a usage line). The ceiling
         //            moves to 45,000.
-        //   45,118   `task-2360` adding the chart verbs (16 verbs: `chart` for every type Excel offers, and`n        //            `chart-data`, `-move`, `-series`, `-axis`, `-labels`, `-trendline`, `-errors` and the rest),`n        //            one for each family of Excel's chart commands, each with a short usage line. Without them an`n        //            agent could make a column chart and nothing else. The ceiling moves to 46,000.
+        //   45,118   `task-2360` adding the chart verbs (16 verbs: `chart` for every type Excel offers, and
+        //            `chart-data`, `-move`, `-series`, `-axis`, `-labels`, `-trendline`, `-errors` and the rest),
+        //            one for each family of Excel's chart commands, each with a short usage line. Without them an
+        //            agent could make a column chart and nothing else. The ceiling moves to 46,000.
+        //   46,616   `task-2360` merged with `task-2359`, which carries both rounds: the Word verbs and the
+        //            Spreadsheet verbs. The ceiling moves to 47,000.
         //
         // **The number being hard to hold is itself `task-1804` §4.2's finding**, and what
         // changed with it is that there is now an answer: `mcp serve --areas` equips an agent with
@@ -2114,7 +2123,7 @@ mod tests {
         // `editor,git` rather than 18,511 for all of it. This ceiling goes on saying when the
         // *default* has grown, which is what it is for; it is no longer the only lever there is.
         assert!(
-            grouped.len() / 4 < 46_000,
+            grouped.len() / 4 < 47_000,
             "grouped MCP schema exceeded budget: {} bytes",
             grouped.len()
         );

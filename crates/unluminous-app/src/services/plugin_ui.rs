@@ -259,6 +259,12 @@ impl<'a> Look<'a> {
         Look { chrome, ..self }
     }
 
+    /// The pane's own zoom, with nothing of the editor's font in it: what a provider multiplies the design's
+    /// fixed sizes by (`task-2366`).
+    pub fn zoom(&self) -> f32 {
+        self.zoom
+    }
+
     /// How much bigger everything drawn at a fixed size has to be, from the font the editor is set in.
     ///
     /// **Because Unluminous offers 48 and 64 point text.** Every height on the board was written for the default 16
@@ -487,6 +493,13 @@ pub enum Request {
     /// The clipboard is the platform's and the window owns the one handle to it, which is why a provider asks
     /// rather than reaching: two owners of a clipboard is two programs fighting over one selection.
     Copy(String),
+    /// Formatted text for the clipboard: the plain text, an HTML fragment and RTF, all three put on
+    /// the system clipboard at once (`services::rich_clipboard`), so a paste in Word or a browser keeps
+    /// the formatting (task-2359). A window a test built puts the text only, through egui.
+    CopyRich { text: String, html: String, rtf: String },
+    /// What the clipboard holds as HTML, RTF and text, answered through [`UiProvider::answered`] as
+    /// `{ "html": …, "rtf": …, "text": … }`, each null when the clipboard does not hold it.
+    ClipboardRich { id: String },
     /// Run one of Unluminous's own commands and hand the answer back through [`UiProvider::answered`].
     ///
     /// **The one path a command becomes a change is `UnluminousApp::run_cli`**, and this is how a provider
@@ -523,6 +536,27 @@ pub enum Request {
     RenameTab { key: String, label: String },
     /// Close the keyed tab, saving it first when it has changes, as closing any tab does.
     CloseKeyedTab { key: String },
+}
+
+/// What the window's status bar says about a plugin's tab: what kind of tab it is, and the facts after
+/// that, each of which may be pressed (`task-2366`). The Word tab says `Word document`, the page the caret
+/// is on, the words, whether changes are tracked and how many words are misspelled.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct TabStatus {
+    /// In place of `Plugin`.
+    pub kind: String,
+    pub items: Vec<StatusItem>,
+}
+
+/// One fact in the status bar.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StatusItem {
+    pub text: String,
+    /// The accessible name, which a test finds it by.
+    pub name: String,
+    /// The provider command a press runs, as its words, `["action", "go-to"]`: the path `plugins run` takes,
+    /// so a press and an agent's command are the same call. `None` is a fact that cannot be pressed.
+    pub press: Option<Vec<String>>,
 }
 
 /// What a command answered.
@@ -695,6 +729,13 @@ pub trait UiProvider: std::fmt::Debug {
     /// The tab with this key was closed, so whatever it held can be let go of.
     fn closed(&mut self, key: &str) {
         let _ = key;
+    }
+
+    /// What the window's status bar says while the tab with this key is showing (`task-2366`). The default
+    /// says nothing, and the bar names the tab a plugin tab.
+    fn tab_status(&self, key: &str) -> Option<TabStatus> {
+        let _ = key;
+        None
     }
 
     /// Whether this provider takes a key press itself while one of its tabs has the keyboard, before the

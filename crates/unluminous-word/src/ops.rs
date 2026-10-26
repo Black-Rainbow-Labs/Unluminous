@@ -693,7 +693,7 @@ impl Session {
                 }
             };
             if let Some(header) = document.headers.iter_mut().find(|h| h.id == id) {
-                header.story.blocks = vec![Block::Paragraph(paragraph)];
+                replace_header_text(&mut header.story.blocks, paragraph);
                 header.dirty = true;
             }
             selection.clone()
@@ -746,28 +746,190 @@ impl Session {
                 ..Run::text("", reference_props)
             };
             if let Some(t) = tracking {
+                let ins = document.next_id();
                 run.wraps.push(Wrap::new(
                     El::new("w:ins")
-                        .with("w:id", id.to_string())
+                        .with("w:id", ins.to_string())
                         .with("w:author", t.author.clone())
                         .with("w:date", t.date.clone()),
                 ));
             }
             let len = run.len();
+            let Some(p) = position::paragraph_mut(document, &at.story, &at.path) else {
+                return selection.clone();
+            };
             p.runs.insert(index, run);
             for mark in &mut p.marks {
                 if mark.offset > at.offset {
                     mark.offset += len;
                 }
             }
-            Selection::caret(at.at(at.offset + len))
+            // The caret goes into the new note, after its text, as Word's Insert Footnote leaves it.
+            let story = if endnote { StoryId::Endnote(id) } else { StoryId::Footnote(id) };
+            let end = position::paragraph(document, &story, &[0]).map_or(0, Paragraph::len);
+            Selection::caret(Pos { story, path: vec![0], offset: end })
         });
+    }
+
+    /// Turn the footnote whose reference is at the caret into an endnote, or an endnote into a
+    /// footnote: the note's text moves to the other part under a new number, its styles and its own
+    /// reference mark change kind, and the reference in the text names it.
+    pub fn convert_note(&mut self) -> Result<(), String> {
+        let at = self.selection.ordered().0.clone();
+        let paragraph = position::paragraph(&self.document, &at.story, &at.path)
+            .ok_or("the caret is not in text")?;
+        let mut offset = 0;
+        let mut found = None;
+        for run in &paragraph.runs {
+            if (offset == at.offset || offset + run.len() == at.offset) && found.is_none() {
+                if let Content::Object(el) = &run.content {
+                    if matches!(el.name.as_str(), "w:footnoteReference" | "w:endnoteReference") {
+                        found = Some((
+                            el.name == "w:endnoteReference",
+                            el.attr("w:id").and_then(|i| i.parse::<i64>().ok()),
+                        ));
+                    }
+                }
+            }
+            offset += run.len();
+        }
+        let (from_endnote, Some(old_id)) =
+            found.ok_or("the caret is not at a footnote or endnote reference")?
+        else {
+            return Err("the note has no number".into());
+        };
+        for style in ["FootnoteText", "FootnoteReference", "EndnoteText", "EndnoteReference"] {
+            let _ = builtin::ensure_style(&mut self.document, style);
+        }
+        self.change(Scope::Whole, move |document, selection, _| {
+            let to_endnote = !from_endnote;
+            let source =
+                if from_endnote { document.endnotes.as_mut() } else { document.footnotes.as_mut() };
+            let Some(source) = source else { return selection.clone() };
+            let Some(index) = source.notes.iter().position(|n| n.id() == Some(old_id)) else {
+                return selection.clone();
+            };
+            let mut note = source.notes.remove(index);
+            source.dirty = true;
+            let new_id = ensure_notes_part(document, to_endnote);
+            let (kind, text_style, reference_style, own) = if to_endnote {
+                ("w:endnote", "EndnoteText", "EndnoteReference", "w:endnoteRef")
+            } else {
+                ("w:footnote", "FootnoteText", "FootnoteReference", "w:footnoteRef")
+            };
+            note.el.name = kind.into();
+            note.el.set_attr("w:id", new_id.to_string());
+            let (old_text, old_reference) = if from_endnote {
+                ("EndnoteText", "EndnoteReference")
+            } else {
+                ("FootnoteText", "FootnoteReference")
+            };
+            for block in &mut note.blocks {
+                let Block::Paragraph(p) = block else { continue };
+                if p.props.val_of("w:pStyle") == Some(old_text) {
+                    p.props.put(El::new("w:pStyle").with("w:val", text_style));
+                }
+                for run in &mut p.runs {
+                    if let Content::Object(el) = &mut run.content {
+                        if matches!(el.name.as_str(), "w:footnoteRef" | "w:endnoteRef") {
+                            el.name = own.into();
+                        }
+                    }
+                    if run.props.val_of("w:rStyle") == Some(old_reference) {
+                        let mut props = (*run.props).clone();
+                        props.put(El::new("w:rStyle").with("w:val", reference_style));
+                        run.props = Arc::new(props);
+                    }
+                }
+            }
+            let target =
+                if to_endnote { document.endnotes.as_mut() } else { document.footnotes.as_mut() };
+            if let Some(target) = target {
+                target.notes.push(note);
+                target.dirty = true;
+            }
+            if let Some(p) = position::paragraph_mut(document, &at.story, &at.path) {
+                for run in &mut p.runs {
+                    if let Content::Object(el) = &mut run.content {
+                        let name =
+                            if from_endnote { "w:endnoteReference" } else { "w:footnoteReference" };
+                        if el.name == name && el.attr("w:id") == Some(old_id.to_string().as_str()) {
+                            el.name = if to_endnote {
+                                "w:endnoteReference"
+                            } else {
+                                "w:footnoteReference"
+                            }
+                            .into();
+                            el.set_attr("w:id", new_id.to_string());
+                            if run.props.val_of("w:rStyle") == Some(old_reference) {
+                                let mut props = (*run.props).clone();
+                                props.put(El::new("w:rStyle").with("w:val", reference_style));
+                                run.props = Arc::new(props);
+                            }
+                        }
+                    }
+                }
+            }
+            selection.clone()
+        });
+        Ok(())
+    }
+
+    /// The note whose reference is at or just before `at`: its story.
+    pub fn note_at(&self, at: &Pos) -> Option<StoryId> {
+        let paragraph = position::paragraph(&self.document, &at.story, &at.path)?;
+        let mut offset = 0;
+        for run in &paragraph.runs {
+            if offset == at.offset || offset + run.len() == at.offset {
+                if let Content::Object(el) = &run.content {
+                    let id = el.attr("w:id").and_then(|i| i.parse::<i64>().ok());
+                    match (el.name.as_str(), id) {
+                        ("w:footnoteReference", Some(id)) => return Some(StoryId::Footnote(id)),
+                        ("w:endnoteReference", Some(id)) => return Some(StoryId::Endnote(id)),
+                        _ => {}
+                    }
+                }
+            }
+            offset += run.len();
+        }
+        None
+    }
+
+    /// Empty the header or footer the caret is in, keeping its paragraph's formatting, as Word's Remove
+    /// Header does.
+    pub fn remove_header_at_caret(&mut self) -> Result<(), String> {
+        let StoryId::Header(rid) = self.selection.head.story.clone() else {
+            return Err("the caret is not in a header or footer".into());
+        };
+        self.change(Scope::Story, move |document, selection, _| {
+            if let Some(blocks) = position::story_mut(document, &StoryId::Header(rid.clone())) {
+                let props = blocks
+                    .iter()
+                    .find_map(|b| b.as_paragraph())
+                    .map(|p| p.props.clone())
+                    .unwrap_or_default();
+                let mut paragraph = Paragraph::new();
+                paragraph.props = props;
+                *blocks = vec![Block::Paragraph(paragraph)];
+            }
+            Selection::caret(Pos { story: selection.head.story.clone(), path: vec![0], offset: 0 })
+        });
+        Ok(())
     }
 
     // ---- Comments ----
 
     /// Add a comment on the selection (or the word at the caret) by the session's author. Answers its id.
     pub fn add_comment(&mut self, text: &str) -> i64 {
+        // Restrict Editing to comments lets a comment through.
+        let permitted = self.protection.as_deref() == Some("comments") && !self.read_only;
+        self.permit = permitted;
+        let id = self.add_comment_inner(text);
+        self.permit = false;
+        id
+    }
+
+    fn add_comment_inner(&mut self, text: &str) -> i64 {
         let text = text.to_owned();
         let author =
             if self.author.is_empty() { "Unluminous".to_owned() } else { self.author.clone() };
@@ -782,7 +944,9 @@ impl Session {
                 author.split_whitespace().filter_map(|w| w.chars().next()).collect();
             let mut paragraph = Paragraph::new();
             paragraph.props.put(El::new("w:pStyle").with("w:val", "CommentText"));
-            paragraph.attrs.push(("w14:paraId".into(), random_para_id(id)));
+            let para_id = random_para_id(id);
+            paragraph.attrs.push(("w14:paraId".into(), para_id.clone()));
+            add_comment_to_side_parts(document, &para_id, &author);
             let reference_props = Arc::new(
                 El::new("w:rPr").with_child(El::new("w:rStyle").with("w:val", "CommentReference")),
             );
@@ -945,6 +1109,112 @@ impl Session {
         Ok(id)
     }
 
+    /// Change a comment's text. Its first paragraph keeps the annotation mark and its id, so a reply
+    /// and the resolved state still find it; any other paragraphs it had go.
+    pub fn edit_comment(&mut self, id: i64, text: &str) -> Result<(), String> {
+        let exists = self
+            .document
+            .comments
+            .as_ref()
+            .is_some_and(|p| p.notes.iter().any(|n| n.id() == Some(id)));
+        if !exists {
+            return Err(format!("there is no comment {id}"));
+        }
+        let text = text.to_owned();
+        self.change(Scope::Whole, move |document, selection, _| {
+            let Some(part) = document.comments.as_mut() else { return selection.clone() };
+            let Some(note) = part.notes.iter_mut().find(|n| n.id() == Some(id)) else {
+                return selection.clone();
+            };
+            let first = note.blocks.iter().position(|b| matches!(b, Block::Paragraph(_)));
+            if let Some(first) = first {
+                note.blocks.truncate(first + 1);
+                if let Block::Paragraph(p) = &mut note.blocks[first] {
+                    let props = p
+                        .runs
+                        .iter()
+                        .find(|r| matches!(r.content, Content::Text(_)))
+                        .map_or_else(no_props, |r| Arc::clone(&r.props));
+                    p.runs.retain(|r| matches!(&r.content, Content::Object(el) if el.name == "w:annotationRef"));
+                    p.runs.push(Run::text(text.clone(), props));
+                    p.marks.clear();
+                }
+            }
+            part.dirty = true;
+            selection.clone()
+        });
+        Ok(())
+    }
+
+    /// Delete every comment in the document. Answers how many.
+    pub fn delete_all_comments(&mut self) -> usize {
+        let ids: Vec<i64> = self
+            .document
+            .comments
+            .as_ref()
+            .map(|p| p.notes.iter().filter_map(Story::id).filter(|id| *id >= 0).collect())
+            .unwrap_or_default();
+        if ids.is_empty() {
+            return 0;
+        }
+        self.change(Scope::Whole, |document, selection, _| {
+            let paras: Vec<String> = document
+                .comments
+                .as_ref()
+                .map(|p| p.notes.iter().filter_map(last_para_id).collect())
+                .unwrap_or_default();
+            for para in paras {
+                remove_comment_from_side_parts(document, &para);
+            }
+            for id in &ids {
+                remove_comment_pieces(&mut document.body, &id.to_string());
+            }
+            if let Some(part) = document.comments.as_mut() {
+                part.notes.retain(|n| n.id().is_none_or(|id| id < 0));
+                part.dirty = true;
+            }
+            let len = position::paragraph(document, &selection.head.story, &selection.head.path)
+                .map_or(0, Paragraph::len);
+            Selection::caret(selection.head.at(selection.head.offset.min(len)))
+        });
+        ids.len()
+    }
+
+    /// Select the next (or previous) comment's range after the caret, wrapping round. Answers its id.
+    pub fn go_to_comment(&mut self, forward: bool) -> Option<i64> {
+        let mut starts: Vec<(Pos, Pos, i64)> = Vec::new();
+        for (path, p) in position::paragraphs(&self.document.body) {
+            for mark in p.marks.iter().filter(|m| m.el.name == "w:commentRangeStart") {
+                let Some(id) = mark.el.attr("w:id").and_then(|i| i.parse().ok()) else { continue };
+                let end = position::paragraphs(&self.document.body).into_iter().find_map(
+                    |(end_path, q)| {
+                        q.marks
+                            .iter()
+                            .find(|m| {
+                                m.el.name == "w:commentRangeEnd"
+                                    && m.el.attr("w:id") == mark.el.attr("w:id")
+                            })
+                            .map(|m| Pos::new(end_path.clone(), m.offset))
+                    },
+                );
+                let start = Pos::new(path.clone(), mark.offset);
+                starts.push((start.clone(), end.unwrap_or(start), id));
+            }
+        }
+        if starts.is_empty() {
+            return None;
+        }
+        let caret = self.selection.ordered().0.clone();
+        let chosen = if forward {
+            starts.iter().find(|(s, _, _)| *s > caret).or(starts.first())
+        } else {
+            starts.iter().rev().find(|(s, _, _)| *s < caret).or(starts.last())
+        }?
+        .clone();
+        self.select(chosen.0, chosen.1);
+        Some(chosen.2)
+    }
+
     /// Mark a comment resolved, or open again.
     pub fn resolve_comment(&mut self, id: i64, done: bool) -> Result<(), String> {
         let part = self.document.comments.as_ref().ok_or("the document has no comments")?;
@@ -974,6 +1244,14 @@ impl Session {
         }
         self.change(Scope::Whole, |document, selection, _| {
             let key = id.to_string();
+            let para = document
+                .comments
+                .as_ref()
+                .and_then(|p| p.notes.iter().find(|n| n.id() == Some(id)))
+                .and_then(last_para_id);
+            if let Some(para) = para {
+                remove_comment_from_side_parts(document, &para);
+            }
             if let Some(part) = document.comments.as_mut() {
                 part.notes.retain(|n| n.id() != Some(id));
                 part.dirty = true;
@@ -1116,181 +1394,6 @@ impl Session {
         });
     }
 
-    /// Insert a table of contents at the caret, from the headings at levels 1 to `levels`, with the page
-    /// numbers `pages` gives. Each entry links to its heading through a `_Toc` bookmark, as Word's does.
-    pub fn insert_toc(&mut self, levels: u8, pages: &crate::layout::Pages) {
-        let entries = self.toc_entries(levels, pages);
-        let width = self
-            .section_at_caret()
-            .map_or(468.0, |s| crate::layout::section::Geometry::of(&s).text_width());
-        for level in 1..=levels {
-            let _ = builtin::ensure_style(&mut self.document, &format!("TOC{level}"));
-        }
-        let _ = builtin::ensure_style(&mut self.document, "TOCHeading");
-        self.change(Scope::Whole, move |document, selection, _| {
-            let mut blocks = Vec::new();
-            let mut heading = Paragraph::new();
-            heading.props.put(El::new("w:pStyle").with("w:val", "TOCHeading"));
-            heading.runs.push(Run::text("Contents", no_props()));
-            blocks.push(Block::Paragraph(heading));
-            for (index, (level, text, page, path)) in entries.iter().enumerate() {
-                let bookmark = format!("_Toc{:09}", 100_000_000 + index as u64 * 7919 + text.len() as u64);
-                if let Some(p) = position::paragraph_mut(document, &StoryId::Body, path) {
-                    let id = 9_000 + index;
-                    let len = p.len();
-                    p.marks.push(Mark { offset: 0, el: El::new("w:bookmarkStart").with("w:id", id.to_string()).with("w:name", bookmark.clone()), wraps: Vec::new() });
-                    p.marks.push(Mark { offset: len, el: El::new("w:bookmarkEnd").with("w:id", id.to_string()), wraps: Vec::new() });
-                    p.marks.sort_by_key(|m| m.offset);
-                }
-                let mut entry = Paragraph::new();
-                entry.props.put(El::new("w:pStyle").with("w:val", format!("TOC{level}")));
-                entry.props.put(El::new("w:tabs").with_child(El::new("w:tab").with("w:val", "right").with("w:leader", "dot").with("w:pos", twips(width - 0.5))));
-                let link = Wrap::new(El::new("w:hyperlink").with("w:anchor", bookmark).with("w:history", "1"));
-                let field = |content: Content| Run { props: no_props(), content, wraps: Vec::new(), attrs: Arc::default() };
-                if index == 0 {
-                    entry.runs.push(field(Content::FieldChar(El::new("w:fldChar").with("w:fldCharType", "begin"))));
-                    entry.runs.push(field(Content::Instr(format!(" TOC \\o \"1-{levels}\" \\h \\z \\u "))));
-                    entry.runs.push(field(Content::FieldChar(El::new("w:fldChar").with("w:fldCharType", "separate"))));
-                }
-                for content in [Content::Text(text.clone()), Content::Tab, Content::Text(page.to_string())] {
-                    entry.runs.push(Run { wraps: vec![Arc::clone(&link)], ..field(content) });
-                }
-                if index + 1 == entries.len() {
-                    entry.runs.push(field(Content::FieldChar(El::new("w:fldChar").with("w:fldCharType", "end"))));
-                }
-                blocks.push(Block::Paragraph(entry));
-            }
-            if entries.is_empty() {
-                let mut none = Paragraph::new();
-                none.runs.push(Run::text("No headings were found. Apply a Heading style to a paragraph and update the table.", no_props()));
-                blocks.push(Block::Paragraph(none));
-            }
-            let at = selection.head.clone();
-            let Some(blocks_of) = position::story_mut(document, &at.story) else { return selection.clone() };
-            let Some((container, index)) = position::container_mut(blocks_of, &at.path) else { return selection.clone() };
-            let count = blocks.len();
-            for (k, block) in blocks.into_iter().enumerate() {
-                container.insert(index + k, block);
-            }
-            let mut path = at.path.clone();
-            *path.last_mut().expect("a path") += count as u32;
-            Selection::caret(Pos { story: at.story, path, offset: 0 })
-        });
-    }
-
-    /// The headings a table of contents lists: level, text, page and where each is.
-    pub fn toc_entries(
-        &self,
-        levels: u8,
-        pages: &crate::layout::Pages,
-    ) -> Vec<(u8, String, u32, Vec<u32>)> {
-        let resolver = crate::styles::Resolver::new(&self.document);
-        let mut out = Vec::new();
-        for (path, p) in position::paragraphs(&self.document.body) {
-            if path.len() != 1 {
-                continue;
-            }
-            let look = resolver.paragraph(&p.props, None);
-            let Some(level) = look.outline_level else { continue };
-            if level >= levels || look.style.starts_with("TOC") {
-                continue;
-            }
-            let text = crate::session::clean_text(&p.visible_text()).trim().to_owned();
-            if text.is_empty() {
-                continue;
-            }
-            let page = pages
-                .find(&Pos::new(path.clone(), 0))
-                .map_or(1, |(index, _)| pages.pages[index].number);
-            out.push((level + 1, text, page, path));
-        }
-        out
-    }
-
-    /// Bring every field up to date that can be: the date and time, and a table of contents. Answers
-    /// how many fields changed.
-    pub fn update_fields(&mut self, pages: &crate::layout::Pages) -> usize {
-        let mut count = 0;
-        // A table of contents is rebuilt where it stands.
-        if let Some((first, last, levels)) = self.find_toc() {
-            let entries = self.toc_entries(levels, pages);
-            if !entries.is_empty() {
-                let at = Pos::new(first.clone(), 0);
-                self.selection = Selection::caret(at);
-                let blocks_before = last[0] - first[0] + 1;
-                self.change(Scope::Whole, |document, selection, _| {
-                    for _ in 0..blocks_before {
-                        document.body.remove(first[0] as usize);
-                    }
-                    if document.body.is_empty() {
-                        document.body.push(Block::Paragraph(Paragraph::new()));
-                    }
-                    selection.clone()
-                });
-                // Leave out the old heading if the rebuilt one would repeat it.
-                self.insert_toc(levels, pages);
-                count += 1;
-            }
-        }
-        let date = now_iso();
-        self.change(Scope::Story, |document, selection, _| {
-            for (path, _) in position::paragraphs(&document.body)
-                .into_iter()
-                .map(|(p, x)| (p, x.len()))
-                .collect::<Vec<_>>()
-            {
-                if let Some(p) = position::paragraph_mut(document, &StoryId::Body, &path) {
-                    count += update_dates_in(p, &date);
-                }
-            }
-            selection.clone()
-        });
-        count
-    }
-
-    /// The body paragraphs a table of contents field spans, and its levels.
-    fn find_toc(&self) -> Option<(Vec<u32>, Vec<u32>, u8)> {
-        let mut start: Option<(Vec<u32>, u8)> = None;
-        for (path, p) in position::paragraphs(&self.document.body) {
-            if path.len() != 1 {
-                continue;
-            }
-            for run in &p.runs {
-                if let Content::Instr(code) = &run.content {
-                    let (kind, rest) = crate::layout::fields::split(code);
-                    if kind == "TOC" && start.is_none() {
-                        let levels = rest
-                            .split("\\o")
-                            .nth(1)
-                            .and_then(|s| s.trim().trim_matches('"').split('-').nth(1))
-                            .and_then(|n| n.trim_matches('"').parse().ok())
-                            .unwrap_or(3);
-                        start = Some((path.clone(), levels));
-                    }
-                }
-                if let (Some((first, levels)), Content::FieldChar(el)) = (&start, &run.content) {
-                    if el.attr("w:fldCharType") == Some("end") {
-                        // The heading above the field, when it is a TOC Heading, goes with it.
-                        let mut first = first.clone();
-                        if first[0] > 0 {
-                            let above = position::paragraph(
-                                &self.document,
-                                &StoryId::Body,
-                                &[first[0] - 1],
-                            );
-                            if above.and_then(|a| a.props.val_of("w:pStyle")) == Some("TOCHeading")
-                            {
-                                first[0] -= 1;
-                            }
-                        }
-                        return Some((first, path.clone(), *levels));
-                    }
-                }
-            }
-        }
-        None
-    }
-
     // ---- Text ----
 
     /// Change the case of the selection: `upper`, `lower`, `sentence`, `title` or `toggle`.
@@ -1380,6 +1483,35 @@ fn section_sect_mut<'a>(document: &'a mut Document, path: &Option<Vec<u32>>) -> 
     }
 }
 
+/// Put `paragraph`'s runs in place of the text of the first paragraph of a header story that holds
+/// text, keeping that paragraph's properties and everything else in the story: a logo, a table, the
+/// other paragraphs (task-2359, D2). A story with no paragraph of text gets `paragraph` added at its end.
+fn replace_header_text(blocks: &mut Vec<Block>, paragraph: Paragraph) {
+    let target = blocks.iter_mut().find_map(|block| match block {
+        Block::Paragraph(p) if !p.visible_text().trim().is_empty() => Some(p),
+        _ => None,
+    });
+    match target {
+        Some(existing) => {
+            // A picture or a shape in the paragraph stays where it is; the text after it is replaced.
+            existing.runs.retain(|run| {
+                run.content.picture().is_some()
+                    || matches!(run.content, Content::ParagraphObject(_))
+            });
+            existing.runs.extend(paragraph.runs);
+            let length = existing.len();
+            for mark in &mut existing.marks {
+                mark.offset = mark.offset.min(length);
+            }
+        }
+        // An empty header Word made is one empty paragraph, which the text goes into.
+        None => match blocks.iter_mut().find_map(Block::as_paragraph_mut) {
+            Some(existing) if existing.runs.is_empty() => existing.runs = paragraph.runs,
+            _ => blocks.push(Block::Paragraph(paragraph)),
+        },
+    }
+}
+
 /// A header or footer paragraph, with `{PAGE}` and `{NUMPAGES}` as fields.
 fn header_paragraph(style: &str, text: &str) -> Paragraph {
     let mut paragraph = Paragraph::new();
@@ -1420,6 +1552,11 @@ fn header_paragraph(style: &str, text: &str) -> Paragraph {
 }
 
 /// A new, empty header or footer part, registered with the package. Answers its relationship id.
+/// A new, empty header or footer part with its relationship, for another module. Answers its id.
+pub(crate) fn new_header_part_for(document: &mut Document, footer: bool) -> String {
+    new_header_part(document, footer)
+}
+
 fn new_header_part(document: &mut Document, footer: bool) -> String {
     let stem = if footer { "word/footer" } else { "word/header" };
     let name = document.package.unused_name(stem, "xml");
@@ -1659,6 +1796,98 @@ fn set_comment_extended(document: &mut Document, comment: i64, parent: Option<&s
     document.package.set_part(&name, text.into_bytes());
 }
 
+const COMMENTS_IDS: &str = "http://schemas.microsoft.com/office/2016/09/relationships/commentsIds";
+const COMMENTS_EXTENSIBLE: &str =
+    "http://schemas.microsoft.com/office/2018/08/relationships/commentsExtensible";
+const PEOPLE: &str = "http://schemas.microsoft.com/office/2011/relationships/people";
+
+/// Change a part the main part points at with a relationship of type `kind`, when there is one, and
+/// write it back. Answers whether there was such a part.
+fn edit_related_part(document: &mut Document, kind: &str, edit: impl FnOnce(&mut El)) -> bool {
+    let Some(rel) = document
+        .package
+        .rels
+        .get(&document.main)
+        .and_then(|rels| rels.rels.iter().find(|r| r.kind == kind).cloned())
+    else {
+        return false;
+    };
+    let name = Package::resolve(&document.main, &rel.target);
+    let Some(mut root) = document.package.part(&name).and_then(|b| crate::xml::parse_bytes(b).ok())
+    else {
+        return false;
+    };
+    edit(&mut root);
+    document.package.set_part(&name, crate::write::whole_part(&root).into_bytes());
+    true
+}
+
+/// Record a new comment in the parts Word keeps beside the comments, those the file already has:
+/// `commentsIds` (a durable id for the comment's paragraph), `commentsExtensible` (that id and the date)
+/// and `people` (the author) (task-2359, D8).
+fn add_comment_to_side_parts(document: &mut Document, para: &str, author: &str) {
+    let durable = random_para_id(i64::from(para.len() as u32) + 7);
+    edit_related_part(document, COMMENTS_IDS, |root| {
+        root.children.push(Node::El(
+            El::new("w16cid:commentId")
+                .with("w16cid:paraId", para.to_owned())
+                .with("w16cid:durableId", durable.clone()),
+        ));
+    });
+    // Word lists every comment in commentsExtended, open (`w15:done="0"`) unless it is resolved; a reply
+    // has its parent set there later by `set_comment_extended`, which replaces this entry.
+    edit_related_part(document, COMMENTS_EXTENDED, |root| {
+        root.children.push(Node::El(
+            El::new("w15:commentEx").with("w15:paraId", para.to_owned()).with("w15:done", "0"),
+        ));
+    });
+    let date = now_iso();
+    edit_related_part(document, COMMENTS_EXTENSIBLE, |root| {
+        root.children.push(Node::El(
+            El::new("w16cex:commentExtensible")
+                .with("w16cex:durableId", durable.clone())
+                .with("w16cex:dateUtc", date.clone()),
+        ));
+    });
+    edit_related_part(document, PEOPLE, |root| {
+        let known = root.elements().any(|person| person.attr("w15:author") == Some(author));
+        if !known {
+            root.children.push(Node::El(
+                El::new("w15:person").with("w15:author", author.to_owned()).with_child(
+                    El::new("w15:presenceInfo")
+                        .with("w15:providerId", "None")
+                        .with("w15:userId", author.to_owned()),
+                ),
+            ));
+        }
+    });
+}
+
+/// Take a deleted comment out of `commentsIds`, `commentsExtensible` and `commentsExtended`.
+fn remove_comment_from_side_parts(document: &mut Document, para: &str) {
+    let mut durable: Option<String> = None;
+    edit_related_part(document, COMMENTS_IDS, |root| {
+        root.children.retain(|node| match node {
+            Node::El(el) if el.attr("w16cid:paraId") == Some(para) => {
+                durable = el.attr("w16cid:durableId").map(str::to_owned);
+                false
+            }
+            _ => true,
+        });
+    });
+    if let Some(durable) = durable {
+        edit_related_part(document, COMMENTS_EXTENSIBLE, |root| {
+            root.children.retain(|node| {
+                !matches!(node, Node::El(el) if el.attr("w16cex:durableId") == Some(durable.as_str()))
+            });
+        });
+    }
+    edit_related_part(document, COMMENTS_EXTENDED, |root| {
+        root.children
+            .retain(|node| !matches!(node, Node::El(el) if el.attr("w15:paraId") == Some(para)));
+    });
+}
+
 fn remove_comment_pieces(blocks: &mut [Block], id: &str) {
     for block in blocks {
         match block {
@@ -1712,85 +1941,6 @@ fn next_mark_id(document: &Document, name: &str) -> i64 {
         .max()
         .unwrap_or(-1)
         + 1
-}
-
-/// Replace the results of DATE and TIME fields in one paragraph. Answers how many.
-fn update_dates_in(paragraph: &mut Paragraph, now: &str) -> usize {
-    let mut count = 0;
-    let mut code = String::new();
-    let mut state = 0; // 0 outside, 1 in code, 2 in result
-    let mut first_result = true;
-    let mut value = None::<String>;
-    for run in &mut paragraph.runs {
-        match &mut run.content {
-            Content::FieldChar(el) => match el.attr("w:fldCharType") {
-                Some("begin") => {
-                    state = 1;
-                    code.clear();
-                }
-                Some("separate") => {
-                    state = 2;
-                    first_result = true;
-                    let (kind, rest) = crate::layout::fields::split(&code);
-                    value = matches!(kind.as_str(), "DATE" | "TIME" | "CREATEDATE" | "SAVEDATE")
-                        .then(|| format_date(now, &rest, &kind));
-                }
-                _ => {
-                    state = 0;
-                    if value.take().is_some() {
-                        count += 1;
-                    }
-                }
-            },
-            Content::Instr(text) if state == 1 => code.push_str(text),
-            Content::Text(text) if state == 2 => {
-                if let Some(v) = &value {
-                    *text = if first_result { v.clone() } else { String::new() };
-                    first_result = false;
-                }
-            }
-            _ => {}
-        }
-    }
-    paragraph.merge_runs();
-    count
-}
-
-/// A date in the form a field's `\@` switch asks for, with the common pictures Word offers.
-pub fn format_date(iso: &str, rest: &str, kind: &str) -> String {
-    let (y, mo, d) = (&iso[0..4], &iso[5..7], &iso[8..10]);
-    let (h, mi) = (&iso[11..13], &iso[14..16]);
-    let month: usize = mo.parse().unwrap_or(1);
-    const MONTHS: [&str; 12] = [
-        "January",
-        "February",
-        "March",
-        "April",
-        "May",
-        "June",
-        "July",
-        "August",
-        "September",
-        "October",
-        "November",
-        "December",
-    ];
-    let picture = rest.split("\\@").nth(1).map(|p| p.trim().trim_matches('"').to_owned());
-    match picture.as_deref() {
-        Some(p) => {
-            let mut out = p.to_owned();
-            out = out.replace("yyyy", y).replace("yy", &y[2..]);
-            out = out
-                .replace("MMMM", MONTHS[month.saturating_sub(1).min(11)])
-                .replace("MMM", &MONTHS[month.saturating_sub(1).min(11)][..3]);
-            out = out.replace("MM", mo);
-            out = out.replace("dd", d).replace('d', d.trim_start_matches('0'));
-            out = out.replace("HH", h).replace("mm", mi);
-            out
-        }
-        None if kind == "TIME" => format!("{h}:{mi}"),
-        None => format!("{}/{}/{y}", month, d.trim_start_matches('0')),
-    }
 }
 
 fn recase(text: &str, how: &str, start_of_sentence: &mut bool) -> String {
@@ -2041,9 +2191,5 @@ mod tests {
         let mut flag = true;
         assert_eq!(recase("hello world. again", "sentence", &mut flag), "Hello world. Again");
         assert_eq!(recase("hello world", "title", &mut true), "Hello World");
-        assert_eq!(
-            format_date("2026-10-23T16:25:00Z", "\\@ \"d MMMM yyyy\"", "DATE"),
-            "23 October 2026"
-        );
     }
 }

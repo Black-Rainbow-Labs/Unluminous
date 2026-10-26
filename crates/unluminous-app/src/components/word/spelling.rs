@@ -1,7 +1,7 @@
 //! Spell check on the pages: the red wavy line under a misspelled or repeated word, the right click on
 //! one, and the card that offers what it could be, Ignore All and Add to Dictionary.
 
-use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Shape, Stroke, Vec2};
+use egui::{Color32, FontId, Pos2, Rect, Sense, Shape, Stroke, Vec2};
 use unluminous_word::position::{self, Pos};
 use unluminous_word::spell::Kind;
 
@@ -97,6 +97,7 @@ pub fn show_menu(
     area: Rect,
     requests: &mut Vec<Request>,
 ) {
+    let _ = look;
     if !spelling::menu_is_current(doc) {
         doc.view.spell_menu = None;
         return;
@@ -122,14 +123,12 @@ pub fn show_menu(
     if menu.word.kind == Kind::Spelling {
         rows.push(("Add to Dictionary".to_owned(), Choice::Add));
     }
-    let layer = egui::LayerId::new(egui::Order::Foreground, ui.id().with("word-spelling"));
-    let painter = ui.ctx().layer_painter(layer);
+    let z = super::kit::zoom(ui.ctx());
     let title = title_of(&menu);
     let labels: Vec<&str> = rows.iter().map(|(label, _)| label.as_str()).collect();
-    let size = card_size(&painter, look, &title, &labels, area.width());
+    let size = card_size(ui, &title, &labels, area.width());
     let (row, head, width) = (size.row, size.head, size.width);
-    let scale = look.scale();
-    let height = head + row * rows.len() as f32 + 8.0 * scale;
+    let height = head + row * rows.len() as f32 + 16.0;
     let below =
         origin + Vec2::new(line.x_of(start.offset) * zoom, (line.top + line.height) * zoom + 4.0);
     let x = below.x.clamp(area.left() + 4.0, (area.right() - width - 4.0).max(area.left() + 4.0));
@@ -139,42 +138,43 @@ pub fn show_menu(
     } else {
         below.y
     };
-    let card = Rect::from_min_size(Pos2::new(x, y), Vec2::new(width, height));
-    super::overlays::remember_popup(ui, card);
-    painter.rect_filled(card.translate(Vec2::new(0.0, 3.0)), 8.0, Color32::from_black_alpha(80)); // any ground: the shadow under a card
-    painter.rect(
-        card,
-        8.0,
-        look.palette.menu,
-        Stroke::new(1.0, look.palette.control_border),
-        egui::StrokeKind::Inside,
-    );
-    painter.text(
-        card.left_top() + Vec2::new(12.0, head / 2.0 + 2.0),
-        Align2::LEFT_CENTER,
-        title,
-        title_font(look),
-        look.palette.text_dim,
-    );
+    let ink = super::kit::ink();
     let mut chosen = None;
-    for (n, (label, choice)) in rows.into_iter().enumerate() {
-        let r = Rect::from_min_size(
-            card.left_top() + Vec2::new(4.0, head + 4.0 * scale + row * n as f32),
-            Vec2::new(width - 8.0, row),
-        );
-        let response = ui.interact(r, ui.id().with(("word-spelling-row", n)), Sense::click());
-        if response.hovered() {
-            painter.rect_filled(r, 5.0, look.palette.selected_row);
-        }
-        let strong = matches!(choice, Choice::Replace(_));
-        let font = FontId::proportional(look.font_size);
-        let ink = if strong { look.palette.text_strong } else { look.palette.text };
-        painter.text(r.left_center() + Vec2::new(8.0, 0.0), Align2::LEFT_CENTER, &label, font, ink);
-        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &label));
-        if response.clicked() {
-            chosen = Some(choice);
-        }
-    }
+    let shown = egui::Area::new(ui.id().with("word-spelling"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(Pos2::new(x, y))
+        .show(ui.ctx(), |ui| {
+            crate::components::controls::menu_frame(ui).show(ui, |ui| {
+                ui.set_width(width - 16.0);
+                ui.spacing_mut().item_spacing.y = 0.0;
+                let (top, _) =
+                    ui.allocate_exact_size(Vec2::new(width - 16.0, head), Sense::hover());
+                let small = 11.5 * z;
+                let galley = super::kit::words(ui, &title, small, ink.i400, top.width() - 20.0);
+                let left = top.left() + 10.0 * z;
+                super::kit::draw_by_capitals(
+                    ui.painter(),
+                    left,
+                    top.center().y,
+                    galley,
+                    small,
+                    ink.i400,
+                );
+                for (label, choice) in rows {
+                    let strong = matches!(choice, Choice::Replace(_));
+                    let clicked = match strong {
+                        true => super::kit::styled_row(ui, &label, 12.5 * z, true, false),
+                        false => {
+                            crate::components::controls::menu_row(ui, &label, "", true, false, 0.0)
+                        }
+                    };
+                    if clicked {
+                        chosen = Some(choice);
+                    }
+                }
+            });
+        });
+    super::overlays::remember_popup(ui, shown.response.rect);
     if let Some(choice) = chosen {
         choose(doc, choice, &menu.word.word, requests);
     }
@@ -191,11 +191,6 @@ fn title_of(menu: &crate::services::word::SpellMenu) -> String {
     }
 }
 
-/// The font of the card's top line.
-fn title_font(look: &Look<'_>) -> FontId {
-    FontId::proportional(look.font_size * 0.85)
-}
-
 /// How tall a row and the top line are, and how wide the card is.
 struct CardSize {
     row: f32,
@@ -203,32 +198,23 @@ struct CardSize {
     width: f32,
 }
 
-/// Size the card to what it says (`task-2341`). The text follows the editor's font size, so a fixed width
-/// let the top line run out past the card's right edge at a large font. The card is at least 220 points
-/// wide, wide enough for its longest line, and never wider than the area it is drawn in.
-fn card_size(
-    painter: &egui::Painter,
-    look: &Look<'_>,
-    title: &str,
-    labels: &[&str],
-    room: f32,
-) -> CardSize {
-    let scale = look.scale();
-    let measure = |text: &str, font: FontId| {
-        painter.layout_no_wrap(text.to_owned(), font, Color32::PLACEHOLDER).size().x
+/// Size the card to what it says (`task-2341`): at least 240 points wide, wide enough for its longest line,
+/// and never wider than the area it is drawn in. The sizes are the design's times the tab's zoom
+/// (`task-2366`).
+fn card_size(ui: &egui::Ui, title: &str, labels: &[&str], room: f32) -> CardSize {
+    let z = super::kit::zoom(ui.ctx());
+    let measure = |text: &str, size: f32| {
+        ui.fonts_mut(|f| {
+            f.layout_no_wrap(text.to_owned(), FontId::proportional(size), Color32::PLACEHOLDER)
+                .size()
+                .x
+        })
     };
-    let title_width = measure(title, title_font(look)) + 24.0;
-    let label_width = labels
-        .iter()
-        .map(|label| measure(label, FontId::proportional(look.font_size)) + 24.0)
-        .fold(0.0, f32::max);
-    let width =
-        (220.0 * scale).max(title_width).max(label_width).min((room - 8.0).max(220.0 * scale));
-    CardSize {
-        row: (26.0 * scale).max(look.font_size * 1.6),
-        head: (26.0 * scale).max(look.font_size * 0.85 * 1.8),
-        width,
-    }
+    let title_width = measure(title, 11.5 * z) + 40.0 * z;
+    let label_width =
+        labels.iter().map(|label| measure(label, 12.5 * z) + 72.0 * z).fold(0.0, f32::max);
+    let width = (240.0 * z).max(title_width).max(label_width).min((room - 8.0).max(240.0 * z));
+    CardSize { row: crate::components::controls::MENU_ROW * z, head: 28.0 * z, width }
 }
 
 /// Do what a row of the card says.

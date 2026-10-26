@@ -129,12 +129,24 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         let Some(before) = thread_cpu_ms() else { return };
+        // Spin until the counter says 10 ms were used, with five seconds to get there. A fixed 30 ms
+        // of the wall clock read as 7 ms on a busy machine, where the thread was not running for most
+        // of it (`task-2353`); a counter that never moves still fails.
         let spin = std::time::Instant::now();
         let mut sum = 0u64;
-        while spin.elapsed().as_millis() < 30 {
-            sum = sum.wrapping_add(std::hint::black_box(1));
+        let mut after = before;
+        while after < before + 10.0 && spin.elapsed().as_secs() < 5 {
+            for _ in 0..10_000 {
+                sum = sum.wrapping_add(std::hint::black_box(1));
+            }
+            let now = thread_cpu_ms().expect("it answered once");
+            assert!(now >= after, "the reading went backwards, from {after} ms to {now} ms");
+            after = now;
         }
-        let after = thread_cpu_ms().expect("it answered once");
-        assert!(after >= before + 10.0, "30 ms of spinning read as {} ms ({sum})", after - before);
+        assert!(
+            after >= before + 10.0,
+            "five seconds of spinning read as {} ms ({sum})",
+            after - before
+        );
     }
 }

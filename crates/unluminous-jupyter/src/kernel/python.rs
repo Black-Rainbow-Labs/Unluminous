@@ -115,7 +115,7 @@ fn drain<R: Read + Send + 'static>(pipe: Option<R>) -> std::thread::JoinHandle<S
 /// it does not run, does not answer within fifteen seconds, or answers something else.
 pub fn probe(path: &Path) -> Option<Python> {
     let mut asked = command(path);
-    asked.args(["-c", PROBE_SCRIPT]).current_dir(std::env::temp_dir());
+    asked.args(["-c", PROBE_SCRIPT]).current_dir(quiet_folder());
     let output = run_with_limit(asked, PROBE_TIMEOUT).ok().filter(|output| output.success)?;
     let line = output.stdout.lines().rev().find(|line| line.trim_start().starts_with('{'))?;
     let answer: Value = serde_json::from_str(line).ok()?;
@@ -257,7 +257,7 @@ pub fn rust_install_command(python: &Path) -> Vec<String> {
 /// error text when it has no `jupyter_client` or does not answer within thirty seconds.
 pub fn list_kernelspecs(python: &Path) -> Result<Vec<KernelSpec>, String> {
     let mut asked = command(python);
-    asked.args(["-c", SPECS_SCRIPT]).current_dir(std::env::temp_dir());
+    asked.args(["-c", SPECS_SCRIPT]).current_dir(quiet_folder());
     let output = run_with_limit(asked, SPECS_TIMEOUT)?;
     if !output.success {
         return Err(output.stderr.lines().last().unwrap_or("the Python failed").to_owned());
@@ -283,4 +283,15 @@ pub(super) fn specs_of(value: &Value) -> Vec<KernelSpec> {
             language: text(row, "language"),
         })
         .collect()
+}
+
+/// An empty folder to run a Python in. Not the temporary folder itself: Python lists the folder it runs in on
+/// its first import, and a temporary folder holding 166,000 entries left by test suites made asking a Python
+/// about itself take seconds and a kernel's start take longer than the bridge waits (task-2359).
+pub fn quiet_folder() -> PathBuf {
+    let folder = std::env::temp_dir().join("unluminous-python");
+    match std::fs::create_dir_all(&folder) {
+        Ok(()) => folder,
+        Err(_) => std::env::temp_dir(),
+    }
 }

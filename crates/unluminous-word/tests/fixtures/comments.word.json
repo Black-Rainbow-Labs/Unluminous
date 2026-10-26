@@ -51,6 +51,20 @@
           "hidden": false,
           "text": "Commented paragraph 1. Margin the a shows with between the through plain wraps margin the. Document each careful lines reader pages text at without editor."
         }
+      ],
+      "lines": [
+        {
+          "text": "Commented paragraph 1. Margin the a shows with between the through plain wraps margin ",
+          "top": 72.0,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "the. Document each careful lines reader pages text at without editor.",
+          "top": 89.25,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -94,6 +108,20 @@
           "allCaps": false,
           "hidden": false,
           "text": "Commented paragraph 2. Each careful lines reader pages text at without editor document each careful lines. While scrolls of that the surprise opens and paragraph spacing while."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Commented paragraph 2. Each careful lines reader pages text at without editor document ",
+          "top": 114.0,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "each careful lines. While scrolls of that the surprise opens and paragraph spacing while.",
+          "top": 131.25,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -139,6 +167,20 @@
           "hidden": false,
           "text": "Commented paragraph 3. Scrolls of that the surprise opens and paragraph spacing while scrolls of that the. Wraps margin the a shows with between the through plain wraps margin."
         }
+      ],
+      "lines": [
+        {
+          "text": "Commented paragraph 3. Scrolls of that the surprise opens and paragraph spacing while ",
+          "top": 156.0,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "scrolls of that the. Wraps margin the a shows with between the through plain wraps margin.",
+          "top": 173.25,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -183,6 +225,20 @@
           "hidden": false,
           "text": "Commented paragraph 4. Paragraph spacing while scrolls of that the surprise. The through plain wraps margin the a shows with between the through plain."
         }
+      ],
+      "lines": [
+        {
+          "text": "Commented paragraph 4. Paragraph spacing while scrolls of that the surprise. The through ",
+          "top": 198.0,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "plain wraps margin the a shows with between the through plain.",
+          "top": 215.25,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     }
   ],
@@ -204,13 +260,25 @@
       "sectionStart": 2,
       "headers": {
         "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
         "first": "",
-        "even": ""
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
       },
       "footers": {
         "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
         "first": "",
-        "even": ""
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
       }
     }
   ],
@@ -245,6 +313,27 @@
   "revisions": [],
   "inlineShapes": [],
   "shapes": [],
+  "contentControls": [],
+  "oMaths": [],
+  "settings": {
+    "autoHyphenation": false,
+    "hyphenationZone": 9999999.0,
+    "consecutiveHyphensLimit": 0,
+    "compatibilityMode": 15
+  },
+  "footnoteOptions": {
+    "numberStyle": 0,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 0
+  },
+  "endnoteOptions": {
+    "numberStyle": 2,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 1
+  },
+  "footnotePages": [],
   "fields": [],
   "tablesOfContents": 0,
   "bookmarks": [],

@@ -71,8 +71,73 @@ fn paragraph_toggle(doc: &mut Doc, name: &'static str) -> Result<String, String>
     Ok(String::new())
 }
 
+/// Fit Width and One Page: the zoom that makes the page as wide as the pane, or the whole page fit.
+fn fit(doc: &mut Doc, whole: bool) {
+    let Some(page) = doc.pages.pages.first() else { return };
+    let across = (doc.view.pane_width - 48.0) / page.width;
+    let down = (doc.view.viewport_height - 32.0) / page.height;
+    doc.view.zoom = if whole { across.min(down) } else { across }.clamp(0.1, 5.0);
+    doc.view.multiple = false;
+}
+
+/// Outline view's Move Up and Move Down: a folded heading takes its whole section, anything else moves alone.
+fn outline_move(doc: &mut Doc, up: bool) -> Result<String, String> {
+    let head = doc.session.selection.head.clone();
+    if doc.view.outline_collapsed.contains(&head.path) {
+        let old = head.path.clone();
+        doc.session.move_section(up)?;
+        doc.view.outline_collapsed.remove(&old);
+        doc.view.outline_collapsed.insert(doc.session.selection.head.path.clone());
+    } else {
+        doc.session.move_paragraph(up)?;
+    }
+    Ok(String::new())
+}
+
+/// The next or the previous footnote reference in the body after the caret, as Next Footnote goes.
+fn note_step(doc: &mut Doc, forward: bool) -> Result<String, String> {
+    let at = doc.session.selection.head.clone();
+    let mut references: Vec<unluminous_word::position::Pos> = Vec::new();
+    for (path, paragraph) in unluminous_word::position::paragraphs(&doc.session.document.body) {
+        let mut offset = 0;
+        for run in &paragraph.runs {
+            if let unluminous_word::model::Content::Object(el) = &run.content {
+                if el.name == "w:footnoteReference" {
+                    references.push(unluminous_word::position::Pos::new(path.clone(), offset));
+                }
+            }
+            offset += run.len();
+        }
+    }
+    let found = if forward {
+        references.into_iter().find(|p| *p > at)
+    } else {
+        references.into_iter().rev().find(|p| *p < at)
+    };
+    let pos = found.ok_or("there is no footnote there")?;
+    doc.session.select(pos.clone(), pos);
+    Ok(String::new())
+}
+
+fn underline_kind(doc: &mut Doc, kind: &'static str) -> Result<String, String> {
+    let on = doc.session.look_at_caret().underline != props::Underline::parse(kind);
+    doc.session.format(move |rpr| props::set_val(rpr, "w:u", on.then_some(kind)));
+    Ok(String::new())
+}
+
+/// The selection's size, a point at a time, as Ctrl+] and Ctrl+[ step it.
+fn font_step(doc: &mut Doc, by: f32) -> Result<String, String> {
+    let size = (doc.session.look_at_caret().size + by).clamp(1.0, 1638.0);
+    let half_points = ((size * 2.0).round() as i64).to_string();
+    doc.session.format(move |rpr| {
+        props::set_val(rpr, "w:sz", Some(half_points.as_str()));
+        props::set_val(rpr, "w:szCs", Some(half_points.as_str()));
+    });
+    Ok(String::new())
+}
+
 fn style(doc: &mut Doc, id: &'static str) -> Result<String, String> {
-    doc.session.apply_style(id)?;
+    doc.session.apply_style_where_it_fits(id)?;
     Ok(String::new())
 }
 
@@ -557,6 +622,84 @@ pub const ACTIONS: &[Action] = &[
         },
     },
     Action {
+        id: "merge-cells",
+        label: "Merge cells",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.merge_cells().map(|()| String::new()),
+    },
+    Action {
+        id: "split-table",
+        label: "Split table",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.split_table().map(|()| String::new()),
+    },
+    Action {
+        id: "distribute-rows",
+        label: "Distribute rows",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            let heights = super::commands::row_heights(d);
+            d.session.distribute(true, &heights).map(|()| String::new())
+        },
+    },
+    Action {
+        id: "distribute-columns",
+        label: "Distribute columns",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.distribute(false, &[]).map(|()| String::new()),
+    },
+    Action {
+        id: "table-to-text",
+        label: "Convert table to text",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.table_to_text("tab").map(|()| String::new()),
+    },
+    Action {
+        id: "text-to-table",
+        label: "Convert text to table",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.text_to_table("tab").map(|()| String::new()),
+    },
+    Action {
+        id: "sort-table",
+        label: "Sort table A to Z",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            let column = d.session.selected_cells().map_or(0, |r| r.cells.0);
+            d.session
+                .sort_table(column, unluminous_word::tables::SortBy::Text, false, false)
+                .map(|()| String::new())
+        },
+    },
+    Action {
+        id: "select-row",
+        label: "Select row",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.select_in_table("row").map(|()| String::new()),
+    },
+    Action {
+        id: "select-column",
+        label: "Select column",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.select_in_table("column").map(|()| String::new()),
+    },
+    Action {
+        id: "select-table",
+        label: "Select table",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.select_in_table("table").map(|()| String::new()),
+    },
+    Action {
         id: "picture",
         label: "Picture...",
         level: Level::Insert,
@@ -640,7 +783,7 @@ pub const ACTIONS: &[Action] = &[
         slash: true,
         run: |d| {
             let now = unluminous_word::session::now_iso();
-            let shown = unluminous_word::ops::format_date(&now, "\\@ \"d MMMM yyyy\"", "DATE");
+            let shown = unluminous_word::fields::format_date(&now, Some("d MMMM yyyy"), false);
             d.session.insert_field("DATE \\@ \"d MMMM yyyy\"", &shown);
             Ok(String::new())
         },
@@ -812,12 +955,77 @@ pub const ACTIONS: &[Action] = &[
         level: Level::References,
         slash: true,
         run: |d| {
-            let _ = d.session.apply_style("Caption");
-            d.session.type_text("Figure ");
-            let count = 1 + unluminous_word::position::paragraphs(&d.session.document.body).iter().filter(|(_, p)| p.runs.iter().any(|r| matches!(&r.content, unluminous_word::model::Content::Instr(c) if c.contains("SEQ Figure")))).count();
-            d.session.insert_field("SEQ Figure \\* ARABIC", &count.to_string());
+            let pages = d.pages.clone();
+            d.session.insert_caption("Figure", "", true, &pages);
             Ok(String::new())
         },
+    },
+    Action {
+        id: "table-of-figures",
+        label: "Table of figures",
+        level: Level::References,
+        slash: false,
+        run: |d| {
+            let pages = d.pages.clone();
+            let options = unluminous_word::references::TocOptions {
+                caption: Some("Figure".into()),
+                ..Default::default()
+            };
+            d.session.insert_toc_with(&options, &pages);
+            Ok(String::new())
+        },
+    },
+    Action {
+        id: "update-table",
+        label: "Update table of contents",
+        level: Level::References,
+        slash: false,
+        run: |d| {
+            let pages = d.pages.clone();
+            let count = d.session.update_tocs(&pages);
+            Ok(format!("{count} tables updated"))
+        },
+    },
+    Action {
+        id: "remove-table-of-contents",
+        label: "Remove table of contents",
+        level: Level::References,
+        slash: false,
+        run: |d| {
+            if d.session.remove_toc() {
+                Ok("Table of contents removed".into())
+            } else {
+                Err("there is no table of contents".into())
+            }
+        },
+    },
+    Action {
+        id: "unlink-fields",
+        label: "Unlink fields",
+        level: Level::References,
+        slash: false,
+        run: |d| Ok(format!("{} fields replaced with their results", d.session.unlink_fields())),
+    },
+    Action {
+        id: "lock-fields",
+        label: "Lock fields",
+        level: Level::References,
+        slash: false,
+        run: |d| Ok(format!("{} fields locked", d.session.lock_fields(true))),
+    },
+    Action {
+        id: "unlock-fields",
+        label: "Unlock fields",
+        level: Level::References,
+        slash: false,
+        run: |d| Ok(format!("{} fields unlocked", d.session.lock_fields(false))),
+    },
+    Action {
+        id: "remove-link",
+        label: "Remove link",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.remove_hyperlink().map(|()| "Link removed".to_owned()),
     },
     // Review
     Action {
@@ -883,6 +1091,26 @@ pub const ACTIONS: &[Action] = &[
         },
     },
     Action {
+        id: "word-count",
+        label: "Word count",
+        level: Level::Review,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Review];
+            done("")
+        },
+    },
+    Action {
+        id: "go-to",
+        label: "Go to page, heading or bookmark (Ctrl+G)",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.goto = Some(String::new());
+            done("")
+        },
+    },
+    Action {
         id: "spelling",
         label: "Spelling (F7)",
         level: Level::Review,
@@ -905,6 +1133,17 @@ pub const ACTIONS: &[Action] = &[
         },
     },
     // Document
+    Action {
+        id: "field-codes",
+        label: "Show field codes",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.codes = !d.view.codes;
+            d.laid = 0;
+            Ok(String::new())
+        },
+    },
     Action {
         id: "formatting-marks",
         label: "Show formatting marks",
@@ -1034,9 +1273,1031 @@ pub const ACTIONS: &[Action] = &[
         slash: false,
         run: |d| export(d, "txt"),
     },
+    Action {
+        id: "text-box",
+        label: "Text box",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_textbox(144.0, 72.0).map(|()| String::new()),
+    },
+    Action {
+        id: "shape-rect",
+        label: "Shape: Rectangle",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_shape("rect", 72.0, 72.0).map(|()| String::new()),
+    },
+    Action {
+        id: "shape-roundrect",
+        label: "Shape: Rounded rectangle",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_shape("roundRect", 72.0, 72.0).map(|()| String::new()),
+    },
+    Action {
+        id: "shape-ellipse",
+        label: "Shape: Oval",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_shape("ellipse", 72.0, 72.0).map(|()| String::new()),
+    },
+    Action {
+        id: "shape-line",
+        label: "Shape: Line",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_shape("line", 144.0, 0.0).map(|()| String::new()),
+    },
+    Action {
+        id: "shape-straightconnector1",
+        label: "Shape: Straight connector",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_shape("straightConnector1", 144.0, 0.0).map(|()| String::new()),
+    },
+    Action {
+        id: "shape-rightarrow",
+        label: "Shape: Right arrow",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_shape("rightArrow", 72.0, 72.0).map(|()| String::new()),
+    },
+    Action {
+        id: "shape-leftarrow",
+        label: "Shape: Left arrow",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_shape("leftArrow", 72.0, 72.0).map(|()| String::new()),
+    },
+    Action {
+        id: "shape-uparrow",
+        label: "Shape: Up arrow",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_shape("upArrow", 72.0, 72.0).map(|()| String::new()),
+    },
+    Action {
+        id: "shape-downarrow",
+        label: "Shape: Down arrow",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_shape("downArrow", 72.0, 72.0).map(|()| String::new()),
+    },
+    Action {
+        id: "shape-triangle",
+        label: "Shape: Triangle",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_shape("triangle", 72.0, 72.0).map(|()| String::new()),
+    },
+    Action {
+        id: "shape-diamond",
+        label: "Shape: Diamond",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_shape("diamond", 72.0, 72.0).map(|()| String::new()),
+    },
+    Action {
+        id: "wrap-inline",
+        label: "Wrap text: In line with text",
+        level: Level::Picture,
+        slash: false,
+        run: |d| d.session.set_object_wrap("inline").map(|()| String::new()),
+    },
+    Action {
+        id: "wrap-square",
+        label: "Wrap text: Square",
+        level: Level::Picture,
+        slash: false,
+        run: |d| d.session.set_object_wrap("square").map(|()| String::new()),
+    },
+    Action {
+        id: "wrap-tight",
+        label: "Wrap text: Tight",
+        level: Level::Picture,
+        slash: false,
+        run: |d| d.session.set_object_wrap("tight").map(|()| String::new()),
+    },
+    Action {
+        id: "wrap-through",
+        label: "Wrap text: Through",
+        level: Level::Picture,
+        slash: false,
+        run: |d| d.session.set_object_wrap("through").map(|()| String::new()),
+    },
+    Action {
+        id: "wrap-top-and-bottom",
+        label: "Wrap text: Top and bottom",
+        level: Level::Picture,
+        slash: false,
+        run: |d| d.session.set_object_wrap("top-and-bottom").map(|()| String::new()),
+    },
+    Action {
+        id: "wrap-behind",
+        label: "Wrap text: Behind text",
+        level: Level::Picture,
+        slash: false,
+        run: |d| d.session.set_object_wrap("behind").map(|()| String::new()),
+    },
+    Action {
+        id: "wrap-front",
+        label: "Wrap text: In front of text",
+        level: Level::Picture,
+        slash: false,
+        run: |d| d.session.set_object_wrap("front").map(|()| String::new()),
+    },
+    Action {
+        id: "bring-forward",
+        label: "Bring forward",
+        level: Level::Picture,
+        slash: false,
+        run: |d| d.session.order_object("forward").map(|()| String::new()),
+    },
+    Action {
+        id: "send-backward",
+        label: "Send backward",
+        level: Level::Picture,
+        slash: false,
+        run: |d| d.session.order_object("backward").map(|()| String::new()),
+    },
+    Action {
+        id: "bring-to-front",
+        label: "Bring to front",
+        level: Level::Picture,
+        slash: false,
+        run: |d| d.session.order_object("front").map(|()| String::new()),
+    },
+    Action {
+        id: "send-to-back",
+        label: "Send to back",
+        level: Level::Picture,
+        slash: false,
+        run: |d| d.session.order_object("back").map(|()| String::new()),
+    },
+    Action {
+        id: "crop",
+        label: "Crop",
+        level: Level::Picture,
+        slash: false,
+        run: |d| {
+            d.view.cropping =
+                !d.view.cropping && d.session.object_info().is_some_and(|i| i.kind == "Picture");
+            done(if d.view.cropping { "Drag a handle to crop" } else { "" })
+        },
+    },
+    Action {
+        id: "reset-picture",
+        label: "Reset picture",
+        level: Level::Picture,
+        slash: false,
+        run: |d| d.session.reset_object().map(|()| String::new()),
+    },
+    Action {
+        id: "picture-properties",
+        label: "Size and position",
+        level: Level::Picture,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Insert, Level::Picture];
+            done("")
+        },
+    },
+    Action {
+        id: "alt-text",
+        label: "Edit alt text",
+        level: Level::Picture,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Insert, Level::Picture];
+            done("")
+        },
+    },
+    Action {
+        id: "font-dialog",
+        label: "Font",
+        level: Level::Text,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Text];
+            done("")
+        },
+    },
+    Action {
+        id: "paragraph-dialog",
+        label: "Paragraph",
+        level: Level::Paragraph,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Paragraph];
+            done("")
+        },
+    },
+    Action {
+        id: "styles-level",
+        label: "Styles",
+        level: Level::Styles,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Styles];
+            done("")
+        },
+    },
+    Action {
+        id: "insert-link",
+        label: "Link",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Insert];
+            d.view.fields.insert("link", String::new());
+            done("Type the address in the panel")
+        },
+    },
+    Action {
+        id: "edit-link",
+        label: "Edit hyperlink",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            let at = d.session.selection.head.clone();
+            let (address, _) = d.session.hyperlink_at(&at).ok_or("the caret is not on a link")?;
+            d.view.panel = vec![Level::Root, Level::Insert];
+            d.view.fields.insert("link", address);
+            done("Change the address in the panel")
+        },
+    },
+    Action {
+        id: "insert-row-above",
+        label: "Insert row above",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.table_op("row-above").map(|()| String::new()),
+    },
+    Action {
+        id: "insert-row-below",
+        label: "Insert row below",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.table_op("row-below").map(|()| String::new()),
+    },
+    Action {
+        id: "insert-column-left",
+        label: "Insert column to the left",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.table_op("column-left").map(|()| String::new()),
+    },
+    Action {
+        id: "insert-column-right",
+        label: "Insert column to the right",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.table_op("column-right").map(|()| String::new()),
+    },
+    Action {
+        id: "delete-row",
+        label: "Delete row",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.table_op("delete-row").map(|()| String::new()),
+    },
+    Action {
+        id: "delete-column",
+        label: "Delete column",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.table_op("delete-column").map(|()| String::new()),
+    },
+    Action {
+        id: "delete-table",
+        label: "Delete table",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.table_op("delete-table").map(|()| String::new()),
+    },
+    Action {
+        id: "split-cells",
+        label: "Split cells",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.table_op("split").map(|()| String::new()),
+    },
+    Action {
+        id: "table-properties",
+        label: "Table properties",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Insert, Level::TableProperties];
+            done("")
+        },
+    },
+    Action {
+        id: "borders-and-shading",
+        label: "Borders and shading",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Insert, Level::TableProperties];
+            done("")
+        },
+    },
+    Action {
+        id: "update-field",
+        label: "Update field",
+        level: Level::References,
+        slash: false,
+        run: |d| {
+            let pages = d.pages.clone();
+            let count = d.session.update_selected_fields(&pages);
+            Ok(format!("{count} fields updated"))
+        },
+    },
+    Action {
+        id: "edit-field",
+        label: "Edit field",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Insert];
+            d.view.fields.insert("field", String::new());
+            done("Type the field code in the panel")
+        },
+    },
+    Action {
+        id: "go-to-note",
+        label: "Go to note",
+        level: Level::References,
+        slash: false,
+        run: |d| {
+            let at = d.session.selection.head.clone();
+            let story = d.session.note_at(&at).ok_or("the caret is not at a note reference")?;
+            let pos = unluminous_word::position::Pos { story, path: vec![0], offset: 0 };
+            d.session.select(pos.clone(), pos);
+            done("")
+        },
+    },
+    Action {
+        id: "convert-note",
+        label: "Convert note",
+        level: Level::References,
+        slash: false,
+        run: |d| d.session.convert_note().map(|()| String::new()),
+    },
+    Action {
+        id: "remove-header",
+        label: "Remove header or footer",
+        level: Level::Page,
+        slash: false,
+        run: |d| d.session.remove_header_at_caret().map(|()| String::new()),
+    },
+    Action {
+        id: "close-header",
+        label: "Close header and footer",
+        level: Level::Page,
+        slash: false,
+        run: |d| {
+            let first = d.pages.pages.iter().find_map(|p| p.first.clone()).unwrap_or_default();
+            d.session.select(first.clone(), first);
+            done("")
+        },
+    },
+    Action {
+        id: "list-bullet",
+        label: "List Bullet style",
+        level: Level::Lists,
+        slash: false,
+        run: |d| style(d, "ListBullet"),
+    },
+    Action {
+        id: "hanging-indent",
+        label: "Hanging indent",
+        level: Level::Paragraph,
+        slash: false,
+        run: |d| {
+            d.session.hanging_indent(true);
+            done("")
+        },
+    },
+    Action {
+        id: "reduce-hanging-indent",
+        label: "Reduce hanging indent",
+        level: Level::Paragraph,
+        slash: false,
+        run: |d| {
+            d.session.hanging_indent(false);
+            done("")
+        },
+    },
+    Action {
+        id: "reset-paragraph",
+        label: "Reset paragraph formatting",
+        level: Level::Paragraph,
+        slash: false,
+        run: |d| {
+            d.session.reset_paragraph();
+            done("")
+        },
+    },
+    Action {
+        id: "toggle-space-before",
+        label: "Twelve points before",
+        level: Level::Paragraph,
+        slash: false,
+        run: |d| {
+            d.session.toggle_space_before();
+            done("")
+        },
+    },
+    Action {
+        id: "double-underline",
+        label: "Double underline",
+        level: Level::Text,
+        slash: false,
+        run: |d| underline_kind(d, "double"),
+    },
+    Action {
+        id: "underline-words",
+        label: "Underline words only",
+        level: Level::Text,
+        slash: false,
+        run: |d| underline_kind(d, "words"),
+    },
+    Action {
+        id: "symbol-font",
+        label: "Symbol font",
+        level: Level::Text,
+        slash: false,
+        run: |d| {
+            d.session.symbol_font();
+            done("")
+        },
+    },
+    Action {
+        id: "cycle-case",
+        label: "Change case",
+        level: Level::Text,
+        slash: false,
+        run: |d| {
+            let text = d.session.selected_text();
+            let how =
+                if text.chars().any(char::is_lowercase) && text.chars().any(char::is_uppercase) {
+                    "lower"
+                } else if text.chars().any(char::is_lowercase) {
+                    "upper"
+                } else {
+                    "title"
+                };
+            d.session.change_case(how);
+            done("")
+        },
+    },
+    Action {
+        id: "grow-font-one",
+        label: "Grow font one point",
+        level: Level::Text,
+        slash: false,
+        run: |d| font_step(d, 1.0),
+    },
+    Action {
+        id: "shrink-font-one",
+        label: "Shrink font one point",
+        level: Level::Text,
+        slash: false,
+        run: |d| font_step(d, -1.0),
+    },
+    Action {
+        id: "bookmark-dialog",
+        label: "Bookmark",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Insert];
+            d.view.fields.insert("bookmark", String::new());
+            done("Type the bookmark name in the panel")
+        },
+    },
+    Action {
+        id: "next-field",
+        label: "Next field",
+        level: Level::References,
+        slash: false,
+        run: |d| d.session.select_next_field(true).map(|()| String::new()),
+    },
+    Action {
+        id: "previous-field",
+        label: "Previous field",
+        level: Level::References,
+        slash: false,
+        run: |d| d.session.select_next_field(false).map(|()| String::new()),
+    },
+    Action {
+        id: "ellipsis",
+        label: "Ellipsis",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.session.type_text("\u{2026}");
+            done("")
+        },
+    },
+    Action {
+        id: "copyright",
+        label: "Copyright sign",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.session.type_text("\u{a9}");
+            done("")
+        },
+    },
+    Action {
+        id: "registered",
+        label: "Registered sign",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.session.type_text("\u{ae}");
+            done("")
+        },
+    },
+    Action {
+        id: "trademark",
+        label: "Trademark sign",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.session.type_text("\u{2122}");
+            done("")
+        },
+    },
+    Action {
+        id: "nonbreaking-space",
+        label: "Nonbreaking space",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.session.type_text("\u{a0}");
+            done("")
+        },
+    },
+    Action {
+        id: "em-dash",
+        label: "Em dash",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.session.type_text("\u{2014}");
+            done("")
+        },
+    },
+    Action {
+        id: "en-dash",
+        label: "En dash",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.session.type_text("\u{2013}");
+            done("")
+        },
+    },
+    Action {
+        id: "section-sign",
+        label: "Section sign",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.session.type_text("\u{a7}");
+            done("")
+        },
+    },
+    Action {
+        id: "paragraph-sign",
+        label: "Paragraph sign",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.session.type_text("\u{b6}");
+            done("")
+        },
+    },
+    Action {
+        id: "nonbreaking-hyphen",
+        label: "Nonbreaking hyphen",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.session.insert_hyphen(false);
+            done("")
+        },
+    },
+    Action {
+        id: "optional-hyphen",
+        label: "Optional hyphen",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.session.insert_hyphen(true);
+            done("")
+        },
+    },
+    Action {
+        id: "unicode-toggle",
+        label: "Toggle character code",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.toggle_unicode().map(|()| String::new()),
+    },
+    Action {
+        id: "promote-heading",
+        label: "Promote heading",
+        level: Level::Styles,
+        slash: false,
+        run: |d| d.session.promote_heading(true).map(|()| String::new()),
+    },
+    Action {
+        id: "demote-heading",
+        label: "Demote heading",
+        level: Level::Styles,
+        slash: false,
+        run: |d| d.session.promote_heading(false).map(|()| String::new()),
+    },
+    Action {
+        id: "move-paragraph-up",
+        label: "Move paragraph up",
+        level: Level::Paragraph,
+        slash: false,
+        run: |d| d.session.move_paragraph(true).map(|()| String::new()),
+    },
+    Action {
+        id: "move-paragraph-down",
+        label: "Move paragraph down",
+        level: Level::Paragraph,
+        slash: false,
+        run: |d| d.session.move_paragraph(false).map(|()| String::new()),
+    },
+    Action {
+        id: "print",
+        label: "Print",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Document, Level::Print];
+            done("")
+        },
+    },
+    Action {
+        id: "print-now",
+        label: "Print every page",
+        level: Level::Document,
+        slash: false,
+        run: |d| super::print::print(d, &super::print::PrintOptions::default()),
+    },
+    Action {
+        id: "ruler",
+        label: "Ruler",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.ruler = !d.view.ruler;
+            done("")
+        },
+    },
+    Action {
+        id: "read-mode",
+        label: "Read Mode",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.mode = super::Mode::Read;
+            d.laid = u64::MAX;
+            done("")
+        },
+    },
+    Action {
+        id: "print-layout",
+        label: "Print Layout",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.mode = super::Mode::Print;
+            d.laid = u64::MAX;
+            done("")
+        },
+    },
+    Action {
+        id: "outline-view",
+        label: "Outline",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.mode = super::Mode::Outline;
+            done("")
+        },
+    },
+    Action {
+        id: "fit-width",
+        label: "Page width",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            fit(d, false);
+            done("")
+        },
+    },
+    Action {
+        id: "fit-page",
+        label: "One page",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            fit(d, true);
+            done("")
+        },
+    },
+    Action {
+        id: "multiple-pages",
+        label: "Multiple pages",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.multiple = !d.view.multiple;
+            done("")
+        },
+    },
+    Action {
+        id: "gridlines",
+        label: "Gridlines",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.gridlines = !d.view.gridlines;
+            done("")
+        },
+    },
+    Action {
+        id: "field-shading-always",
+        label: "Field Shading Always",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.field_shading = "always";
+            done("Fields are shaded")
+        },
+    },
+    Action {
+        id: "field-shading-selected",
+        label: "Field Shading When Selected",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.field_shading = "selected";
+            done("A field is shaded while it is selected")
+        },
+    },
+    Action {
+        id: "field-shading-never",
+        label: "Field Shading Never",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.field_shading = "never";
+            done("Fields are not shaded")
+        },
+    },
+    Action {
+        id: "new-window",
+        label: "New Window",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.new_window = true;
+            done("")
+        },
+    },
+    Action {
+        id: "zoom-dialog",
+        label: "Zoom",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Document];
+            done("")
+        },
+    },
+    Action {
+        id: "outline-to-heading-1",
+        label: "Promote to Heading 1",
+        level: Level::Styles,
+        slash: false,
+        run: |d| style(d, "Heading1"),
+    },
+    Action {
+        id: "outline-to-body",
+        label: "Demote to body text",
+        level: Level::Styles,
+        slash: false,
+        run: |d| style(d, "Normal"),
+    },
+    Action {
+        id: "outline-move-up",
+        label: "Move up",
+        level: Level::Styles,
+        slash: false,
+        run: |d| outline_move(d, true),
+    },
+    Action {
+        id: "outline-move-down",
+        label: "Move down",
+        level: Level::Styles,
+        slash: false,
+        run: |d| outline_move(d, false),
+    },
+    Action {
+        id: "outline-expand",
+        label: "Expand",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            crate::components::word::outline::fold_at_caret(d, true);
+            done("")
+        },
+    },
+    Action {
+        id: "outline-collapse",
+        label: "Collapse",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            crate::components::word::outline::fold_at_caret(d, false);
+            done("")
+        },
+    },
+    Action {
+        id: "next-footnote",
+        label: "Next footnote",
+        level: Level::References,
+        slash: false,
+        run: |d| note_step(d, true),
+    },
+    Action {
+        id: "previous-footnote",
+        label: "Previous footnote",
+        level: Level::References,
+        slash: false,
+        run: |d| note_step(d, false),
+    },
+    Action {
+        id: "blank-page",
+        label: "Blank page",
+        level: Level::Insert,
+        slash: true,
+        run: |d| {
+            d.session.insert_break(PAGE_BREAK);
+            d.session.insert_break(PAGE_BREAK);
+            done("")
+        },
+    },
+    Action {
+        id: "cover-page",
+        label: "Cover page",
+        level: Level::Insert,
+        slash: true,
+        run: |d| d.session.insert_cover_page("Title", "Subtitle", "").map(|()| String::new()),
+    },
+    Action {
+        id: "page-setup",
+        label: "Page setup",
+        level: Level::Page,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Page, Level::PageSetup];
+            done("")
+        },
+    },
+    Action {
+        id: "symbol-dialog",
+        label: "Symbol",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Insert, Level::Symbol];
+            done("")
+        },
+    },
+    Action {
+        id: "sort-paragraphs",
+        label: "Sort paragraphs",
+        level: Level::Paragraph,
+        slash: false,
+        run: |d| d.session.sort_paragraphs(true).map(|()| String::new()),
+    },
 ];
 
 /// The command with this id.
+/// Whether an action can be used where the caret is. One that cannot is left out of the lists rather
+/// than dimmed: a comment cannot be added in a header or footer, a link can only be removed from a link,
+/// and the table of contents can only be updated or removed when there is one.
+pub fn applies(id: &str, doc: &Doc) -> bool {
+    use unluminous_word::position::StoryId;
+    let head = &doc.session.selection.head;
+    match id {
+        "comment" => !matches!(head.story, StoryId::Header(_)),
+        "remove-link" => doc.session.hyperlink_at(head).is_some(),
+        "merge-cells" | "split-table" | "distribute-rows" | "distribute-columns"
+        | "table-to-text" | "sort-table" | "select-row" | "select-column" | "select-table" => {
+            doc.session.cell_at_caret().is_some()
+        }
+        id if id.starts_with("wrap-")
+            || matches!(
+                id,
+                "bring-forward"
+                    | "send-backward"
+                    | "bring-to-front"
+                    | "send-to-back"
+                    | "picture-properties"
+                    | "alt-text"
+            ) =>
+        {
+            doc.session.selected_object().is_some()
+        }
+        "crop" | "reset-picture" => doc.session.object_info().is_some_and(|i| i.kind == "Picture"),
+        "insert-row-above"
+        | "insert-row-below"
+        | "insert-column-left"
+        | "insert-column-right"
+        | "delete-row"
+        | "delete-column"
+        | "delete-table"
+        | "split-cells"
+        | "table-properties"
+        | "borders-and-shading" => doc.session.cell_at_caret().is_some(),
+        "edit-link" => doc.session.hyperlink_at(head).is_some(),
+        "go-to-note" | "convert-note" => doc.session.note_at(head).is_some(),
+        "remove-header" | "close-header" => matches!(head.story, StoryId::Header(_)),
+        "update-table" | "remove-table-of-contents" => {
+            !unluminous_word::references::find_tocs(&doc.session.document).is_empty()
+        }
+        // Promote and demote, and Outline view's tools: offered only where they would do something, so
+        // none of them answers with an error (`task-2366`).
+        "promote-heading" => doc.session.promoted_style(true).is_ok(),
+        "demote-heading" => doc.session.promoted_style(false).is_ok(),
+        "outline-to-heading-1" => {
+            in_a_paragraph(doc) && doc.session.heading_level_at_caret() != Some(1)
+        }
+        "outline-to-body" => doc.session.heading_level_at_caret().is_some(),
+        "move-paragraph-up" => doc.session.paragraph_can_move(true).is_ok(),
+        "move-paragraph-down" => doc.session.paragraph_can_move(false).is_ok(),
+        "outline-move-up" | "outline-move-down" => {
+            let up = id == "outline-move-up";
+            match doc.view.outline_collapsed.contains(&head.path) {
+                true => doc.session.section_bounds(up).is_ok(),
+                false => doc.session.paragraph_can_move(up).is_ok(),
+            }
+        }
+        "outline-expand" => doc.view.outline_collapsed.contains(&head.path),
+        "outline-collapse" => {
+            !doc.view.outline_collapsed.contains(&head.path) && heading_has_children(doc)
+        }
+        _ => true,
+    }
+}
+
+/// Whether the caret is in a paragraph of the body, which is where Outline view's tools work.
+fn in_a_paragraph(doc: &Doc) -> bool {
+    let head = &doc.session.selection.head;
+    unluminous_word::position::paragraph(&doc.session.document, &head.story, &head.path).is_some()
+}
+
+/// Whether the heading at the caret has anything under it before the next heading of its level or higher,
+/// which is what Collapse folds.
+fn heading_has_children(doc: &Doc) -> bool {
+    use unluminous_word::model::Block;
+    let head = &doc.session.selection.head;
+    if head.story != unluminous_word::position::StoryId::Body || head.path.len() != 1 {
+        return false;
+    }
+    let resolver = unluminous_word::styles::Resolver::new(&doc.session.document);
+    let level = |block: &Block| match block {
+        Block::Paragraph(p) => {
+            resolver.paragraph(&p.props, None).outline_level.map_or(10, |l| l + 1)
+        }
+        _ => 10,
+    };
+    let index = head.path[0] as usize;
+    let Some(this) = doc.session.document.body.get(index).map(level) else { return false };
+    this < 10 && doc.session.document.body.get(index + 1).is_some_and(|next| level(next) > this)
+}
+
+/// Whether F4 repeats an action: one that formats the selection or puts something in, not one that
+/// moves, finds, undoes, opens a view or exports.
+pub fn repeatable(action: &Action) -> bool {
+    matches!(
+        action.level,
+        Level::Text | Level::Paragraph | Level::Styles | Level::Lists | Level::Insert
+    ) && !matches!(action.id, "copy-formatting" | "find" | "replace" | "select-all")
+}
+
 pub fn find(id: &str) -> Option<&'static Action> {
     ACTIONS.iter().find(|action| action.id == id)
 }

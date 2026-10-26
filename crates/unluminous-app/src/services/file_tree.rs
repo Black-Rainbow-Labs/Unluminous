@@ -556,9 +556,11 @@ fn read_directory(path: &Path, shows: &[String]) -> std::io::Result<Vec<Entry>> 
         if name.starts_with('.') && !shows.contains(&name) {
             continue;
         }
-        // The code index's fence, which it writes into a project that is not a git repository and removes
+        // The code index's fence, which it wrote into a project that is not a git repository and removed
         // a quarter of a second later (`atrius_index::freshness`). Listed, it flashed into the explorer and
-        // into a folder node's picture for that quarter of a second (`task-2247`).
+        // into a folder node's picture for that quarter of a second (`task-2247`). Since Atrius 0.3.2 it is
+        // written in the index's own folder (`task-2370`), and in the project only when that folder cannot
+        // be made or watched, or by an older Atrius host on the same project.
         if name.starts_with("atrius-index-fence-") {
             continue;
         }

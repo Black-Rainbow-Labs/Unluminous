@@ -66,6 +66,9 @@ pub struct Status<'a> {
     /// The branch, how far it is from its upstream, and anything half-finished. Absent when the
     /// folder that is open is not in a repository.
     pub git: Option<&'a str>,
+    /// What a plugin's tab says about itself after the kind: the Word tab's page, words, tracking and
+    /// spelling (`task-2366`). Each is a quiet word that can be pressed.
+    pub items: &'a [crate::services::plugin_ui::StatusItem],
 }
 
 /// How far in from the right edge the flag sits, and how large the round place it is pressed in is.
@@ -79,11 +82,13 @@ pub struct Outcome {
     /// The branch button's response, which the window opens the branch list from. Absent outside a
     /// repository, where there is no branch to draw.
     pub branch: Option<egui::Response>,
+    /// Which of the tab's own items was pressed.
+    pub item: Option<usize>,
 }
 
 /// Draw the status bar into `area`, and say what was pressed in it.
 pub fn show(ui: &egui::Ui, area: Rect, status: &Status<'_>, opacity: f32) -> Outcome {
-    let Status { name, unsaved, kind, encoding, position, detail, message, git } = *status;
+    let Status { name, unsaved, kind, encoding, position, detail, message, git, items } = *status;
     let painter = ui.painter_at(area);
     // The bottom two corners are rounded to match the window.
     painter.rect_filled(
@@ -133,6 +138,8 @@ pub fn show(ui: &egui::Ui, area: Rect, status: &Status<'_>, opacity: f32) -> Out
         );
     }
 
+    let item = tab_items(ui, &painter, area, &mut pen, items, &font);
+
     // The font, or the picture's size, sits against the right edge, and the branch sits before it,
     // which is where every editor with a status bar puts it. Worked out before the message is drawn,
     // because where they end is what says how much room the message has.
@@ -167,7 +174,59 @@ pub fn show(ui: &egui::Ui, area: Rect, status: &Status<'_>, opacity: f32) -> Out
             );
         }
     }
-    Outcome { reported, branch }
+    Outcome { reported, branch, item }
+}
+
+/// A plugin tab's own items after the kind, each behind a divider and drawn as a quiet button: the words in
+/// the dim ink, the hover wash and the pointing hand under the pointer. Answers the one pressed.
+fn tab_items(
+    ui: &egui::Ui,
+    painter: &egui::Painter,
+    area: Rect,
+    pen: &mut f32,
+    items: &[crate::services::plugin_ui::StatusItem],
+    font: &egui::FontId,
+) -> Option<usize> {
+    use crate::components::controls::WithHint as _;
+    let middle = area.center().y;
+    let mut pressed = None;
+    for (index, item) in items.iter().enumerate() {
+        *pen += 12.0;
+        let bar = painter.layout_no_wrap("\u{2502}".to_owned(), font.clone(), color::divider());
+        painter.galley(Pos2::new(*pen, middle - bar.size().y / 2.0), bar.clone(), color::divider());
+        *pen += bar.size().x + 6.0;
+        let galley = painter.layout_no_wrap(item.text.clone(), font.clone(), color::text_dim());
+        let hit = Rect::from_min_max(
+            Pos2::new(*pen - 4.0, middle - 10.0),
+            Pos2::new(*pen + galley.size().x + 4.0, middle + 10.0),
+        );
+        let sense = if item.press.is_some() { egui::Sense::click() } else { egui::Sense::hover() };
+        let response = ui.interact(hit, ui.id().with(("status-bar-item", index)), sense);
+        let tint = match item.press.is_some() && response.hovered() {
+            true => {
+                painter.rect_filled(
+                    hit,
+                    CornerRadius::same(size::CONTROL_CORNER),
+                    crate::components::controls::hover_fill(),
+                );
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                color::text_strong()
+            }
+            false => color::text_dim(),
+        };
+        painter.galley(Pos2::new(*pen, middle - galley.size().y / 2.0), galley.clone(), tint);
+        *pen += galley.size().x;
+        let response = match item.press.is_some() {
+            true => response.with_hint(&item.name),
+            false => response,
+        };
+        let named = item.name.clone();
+        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &named));
+        if response.clicked() {
+            pressed = Some(index);
+        }
+    }
+    pressed
 }
 
 /// The branch icon and the branch's words, drawn as a button whose words start at `words_from`.

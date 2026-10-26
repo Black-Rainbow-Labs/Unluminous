@@ -6,6 +6,82 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.16.4 — 2026-10-26
+
+- Atrius 0.3.2, whose fence is no longer written into a project that is not a git repository (`task-2370`)
+
+## 1.16.3 — 2026-10-25
+
+- Word_live keeps one Word for the whole binary through inspect.ps1 -Serve (`task-2368`)
+- Start-WordApp names its own Word by caption; docs and measurements (`task-2368`)
+
+## 1.16.2 — 2026-10-25
+
+- Cache FXC shaders as bytes in a vendored wgpu-hal, so threads sharing a device no longer free a cached ID3DBlob (`task-2369`)
+
+## 1.16.1 — 2026-10-25
+
+- The panel's rows wrap in a narrow panel instead of running past its edge (`task-2366`)
+
+## 1.16.0 — 2026-10-25
+
+- The Word tab drawn in the design system (`task-2366`)
+- Word settings page in the Settings cards, palette rules kept, TDD brought in line with the build (`task-2366`)
+- The ruler picture with its new tick colour (`task-2366`)
+
+## 1.15.2 — 2026-10-25
+
+- Work in progress, test isolation and runners (not yet built) (`task-2364`)
+- Fixtures per binary, split long tests, renderer that waits, held commands answered by frames, dictation caret, walk drives what it counts (`task-2364`)
+- Dependencies optimized in test builds, a held drawing clock, the shared folder writer fixed, a stand-in npm, the runner keeps a failed attempt's pictures and defaults to two binaries (`task-2364`)
+- The design document's measurements and ranking, and the rules in CLAUDE.md (`task-2364`)
+- A reloaded tab forgets its old layout (a crash in a split view), the renderer catches kittest's poll timeout panic, the runner records how a binary ended (`task-2364`)
+
+## 1.15.1 — 2026-10-25
+
+- The Word status area fits its strip: its words are sized to the strip, the view buttons and zoom are laid out first, and an item that does not fit the room left is left out rather than drawn over them (`task-2359`)
+- The right click menu is sized as the window's menus are rather than by the document's font, its Synonyms are the word's most common meaning only, and Read Mode offers no formatting bubble (`task-2359`)
+- The right click menu's accepted picture at its new size (`task-2359`)
+
+## 1.15.0 — 2026-10-25
+
+- Spreadsheet round 2 parity gap TDD (`task-2357`)
+- The oracle compares every field Word reports, pagination is exact, Word required in the gate (`task-2359`)
+- Round trip damage fixes, layout rules, and an oracle that has Aptos (`task-2359`)
+- Text boxes, shapes and wrapping, hyphenation, balanced columns, page fields in the body, the field evaluator, tables of contents in Word's shape, captions, cross references and the field commands (`task-2359`)
+- Field codes view, Insert Field, autocorrect as you type with its Proofing level, the custom table of contents level, Ctrl+Alt heading chords (`task-2359`)
+- Fixtures rebuilt with Aptos, justified lines shrink their spaces, right tabs fit, picture lines, wrap polygons, the rich clipboard and paste options, editable notes and comments, links followed (`task-2359`)
+- Pagination exact on every fixture: line spacing hangs into the bottom margin, three line paragraphs move whole, top and bottom pictures take their paragraph over, borders in row heights, widow lines in split rows, the separator's own height (`task-2359`)
+- Word's find language with wildcards and formatting, Go To, F4, tables (select, merge, split, convert, sort, distribute, properties, styles, borders), style editing, review (tracked formatting, display modes, lock tracking, accessibility, inspector) (`task-2359`)
+- List definitions and picture bullets, Word's list and table styles in the built in template with their numbering, an offline WordNet thesaurus, commentsExtended for new comments (`task-2359`)
+- Pictures and shapes as objects (select, handles, move, resize, crop, wrap, position, alt text, order), text boxes and the ten shapes inserted, EMF, WMF and SVG drawn, pictures pasted, linked text boxes, text frames, table style conditional formats, paragraph border room (`task-2359`)
+- The right click menu for text, tables, pictures, headers, fields and notes, Word's chords as a table a person can move, Print with pages, copies, odd or even and pages per sheet, Go Back, Extend Selection, Alt+X, promote and demote, move paragraph (`task-2359`)
+- The ruler with indents and tab stops, Read Mode, Outline view, Fit Width and One Page, Multiple Pages, the zoom slider and the status area, page thumbnails, the theme paper, gridlines and New Window (`task-2359`)
+- Page setup (custom and mirrored margins, paper, vertical alignment, line numbers, hyphenation, page borders, first and odd and even pages, page numbering, link to previous), note options, settings kept in the schema's order, and the layout draws vertical alignment, line numbers, page borders and mirrored margins (`task-2359`)
+- Page setup, Modify Style, Symbol and Note options levels; text effects drawn; theme colours, every highlight, scale, raise, kerning and ligatures; paragraph borders by side, shading, outline level, sorting, leaders and bar tabs; blank and cover pages, dates, property fields, text from a file; Markdown and text import; cross references from the panel (`task-2359`)
+- Drag a table column's edge, read and select any story, locate a place on the screen, paragraph info, and window tests for the right click menu, picture handles and wrap, the ruler, a footnote's chord, Ctrl+Alt+1, a column edge, the views, Print and Modify Style (`task-2359`)
+- A paragraph cache, so a keystroke lays out only the paragraph it changed (1.4 ms on long.docx, 244 pages open in 358 ms), with tests that cached pages are the pages on every fixture (`task-2359`)
+- Agile encryption to open and save documents with a password, Restrict Editing enforced and Password to Modify, a tagged PDF with its outline, document information and PDF/A-2b, and 69 layout rule tests (`task-2359`)
+- Open .doc, .rtf, .odt, .wps and .pdf through Word, Save As .rtf and .odt through Word and .txt, .html, .md and .pdf as copies, Open as Document for text and Markdown, encrypted documents wait for their password, Password to Modify and Restrict Editing verbs, AutoSave and AutoRecover, new from Normal.dotm or a template, and the Summary, Statistics and Custom properties (`task-2359`)
+- Field shading, the Word verbs' reference in docs/word.md with its test, a round two Word live test (text box, table style, split table, wrapped picture, cross reference, caption, custom contents, modified style, equation, tracked formatting, locked tracking, custom property) and an encrypted one, every field code and switch checked against Word's result, Word's CardText into the thousands and its space for an unused #, and the MCP ceiling at 44,000 (`task-2359`)
+- Rustfmt over the round, and clippy with warnings as errors clean (`task-2359`)
+- Protect Document controls in the Document level (Encrypt with Password, Password to Modify, Restrict Editing) through the protect verb, and the gap matrix statuses after the round (`task-2359`)
+- Field shading and the drawing grid are palette roles, the thumbnail and crop handle greys say why they are the same on any ground, and two files are written through write_atomically (`task-2359`)
+- A Python is asked about itself and a test kernel is started in an empty folder of its own, not the temporary folder, whose 166,000 entries made every kernel start outlast the bridge's three minutes (`task-2359`)
+- The picture window test writes its picture before the window opens, so the folder pane lists it in every run (`task-2359`)
+- The Word live tests use one Word at a time and give each report ten minutes, because parallel Words now and then stopped answering under the release's load and left the suite waiting (`task-2359`)
+
+## 1.14.3 — 2026-10-24
+
+- See a program end on a busy Windows machine (`task-2353`)
+- Rustfmt (`task-2353`)
+- The Test Connection timing test tells a held frame from a slow one (`task-2353`)
+- On Windows the loop is never told a program ended, so late output is read (`task-2353`)
+- Settle waits on a 60 s deadline rather than 600 turns (`task-2353`)
+- The update tests' releases page answers every connection (`task-2353`)
+- The thread clock test spins until the counter moves, not for 30 ms of wall clock (`task-2353`)
+- Word round 2 parity gap TDD and the inventories behind it (`task-2358`)
+
 ## 1.14.2 — 2026-10-24
 
 - Synthetic bold and italic for a face without its own, a suggestion keeps the replaced word's formatting, and the spelling card fits its text (`task-2341`)

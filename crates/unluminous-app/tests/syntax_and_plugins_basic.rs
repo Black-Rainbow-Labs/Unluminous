@@ -76,7 +76,7 @@ fn a_typescript_file_is_coloured_by_its_plugin() {
 fn a_css_file_is_coloured_by_its_plugin() {
     // `task-1671`. Not a repository, for the reason the TypeScript one above gives: a window in one
     // has a git message in its status bar for the first few frames.
-    let folder = std::env::temp_dir().join("unluminous-screenshot-css");
+    let folder = fixtures_root().join("unluminous-screenshot-css");
     std::fs::create_dir_all(&folder).expect("make the folder");
     let path = folder.join("site.css");
     std::fs::write(
@@ -131,7 +131,7 @@ fn a_css_file_is_coloured_by_its_plugin() {
 fn an_html_file_is_coloured_by_its_plugin() {
     // `task-1694`. Not a repository, for the reason the CSS one above gives: a window in one has a
     // git message in its status bar for the first few frames.
-    let folder = std::env::temp_dir().join("unluminous-screenshot-html");
+    let folder = fixtures_root().join("unluminous-screenshot-html");
     std::fs::create_dir_all(&folder).expect("make the folder");
     let path = folder.join("page.html");
     std::fs::write(
@@ -204,7 +204,7 @@ fn the_plugins_page_lists_the_ones_that_ship_with_unluminous() {
     let mut harness = harness("");
     // A store of its own, because `Customise` writes a plugin's folder out under it and a test must
     // not touch the settings of the person running it.
-    let store = std::env::temp_dir().join("unluminous-plugins-page-store");
+    let store = fixtures_root().join("unluminous-plugins-page-store");
     let _ = std::fs::remove_dir_all(&store);
     harness.state_mut().use_store(unluminous_app::services::store::Store::at(&store));
     harness.state_mut().settings_window.open();
@@ -519,7 +519,7 @@ fn diagram_folder() -> std::path::PathBuf {
     static FOLDER: OnceLock<std::path::PathBuf> = OnceLock::new();
     FOLDER
         .get_or_init(|| {
-            let root = std::env::temp_dir().join("unluminous-mermaid-samples");
+            let root = fixtures_root().join("unluminous-mermaid-samples");
             std::fs::create_dir_all(&root).expect("make the folder");
             let from =
                 std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sample-diagrams");
@@ -653,7 +653,7 @@ fn side_by_side_shows_a_mermaid_source_and_its_diagram_at_once() {
 fn a_first_word_that_names_no_diagram_type_says_so_rather_than_drawing_nothing() {
     // A folder of its own, because the samples' folder is shared and a file added to it would change
     // the explorer in every other test's picture.
-    let folder = std::env::temp_dir().join("unluminous-mermaid-unknown-type");
+    let folder = fixtures_root().join("unluminous-mermaid-unknown-type");
     std::fs::create_dir_all(&folder).expect("make the folder");
     let path = folder.join("unknown.mmd");
     std::fs::write(
@@ -859,7 +859,7 @@ fn mermaid_gallery_of_every_block_in_a_folder() {
         std::env::var("UNLUMINOUS_MERMAID_GALLERY_OUT").expect("a folder for the pictures"),
     );
     std::fs::create_dir_all(&out).expect("make the picture folder");
-    let blocks = std::env::temp_dir().join("unluminous-mermaid-gallery");
+    let blocks = fixtures_root().join("unluminous-mermaid-gallery");
     std::fs::create_dir_all(&blocks).expect("make the block folder");
     let mut names = Vec::new();
     for folder in source.split(';') {

@@ -1889,7 +1889,7 @@ fn field_column(
     // The JIRA field that was here is gone (`task-2293`): *"Get rid of the JIRA input. We don't need to track this
     // any longer."*
     pen = caption(rux, pen, area.min.x, "Created");
-    let now = clock::now();
+    let now = clock::now_for_drawing();
     let said = clock::relative(&task.created_at, &now);
     let galley = rux.text(Style::sans(12.5), &said, theme.ink.i700);
     let tall = galley.size().y;

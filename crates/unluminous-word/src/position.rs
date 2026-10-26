@@ -19,6 +19,8 @@ pub enum StoryId {
     Footnote(i64),
     Endnote(i64),
     Comment(i64),
+    /// The text in a text box, by its drawing's `wp:docPr` id.
+    TextBox(i64),
 }
 
 /// A paragraph's address inside its story.
@@ -94,6 +96,7 @@ pub fn story<'a>(document: &'a Document, id: &StoryId) -> Option<&'a Vec<Block>>
         StoryId::Comment(n) => {
             &document.comments.as_ref()?.notes.iter().find(|s| s.id() == Some(*n))?.blocks
         }
+        StoryId::TextBox(n) => &document.textboxes.iter().find(|t| t.id == *n)?.blocks,
     })
 }
 
@@ -109,6 +112,11 @@ pub fn story_mut<'a>(document: &'a mut Document, id: &StoryId) -> Option<&'a mut
         StoryId::Footnote(n) => notes_mut(document.footnotes.as_mut()?, *n)?,
         StoryId::Endnote(n) => notes_mut(document.endnotes.as_mut()?, *n)?,
         StoryId::Comment(n) => notes_mut(document.comments.as_mut()?, *n)?,
+        StoryId::TextBox(n) => {
+            let textbox = document.textboxes.iter_mut().find(|t| t.id == *n)?;
+            textbox.dirty = true;
+            &mut textbox.blocks
+        }
     })
 }
 

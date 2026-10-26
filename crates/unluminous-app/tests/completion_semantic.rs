@@ -194,22 +194,15 @@ fn typescript_folder() -> std::path::PathBuf {
     ])
 }
 
-/// Runs frames until a condition holds, with a short sleep between them because a server's answer
-/// comes from another process. Panics with `what` when it never does.
+/// Runs frames until a condition holds, because a server's answer comes from another process.
+/// Panics with `what` when it has not after a minute (`common::wait_until`, `task-2364`: this counted
+/// 800 tries, about eight seconds on a quiet machine).
 fn until(
     harness: &mut Harness<'static, UnluminousApp>,
     what: &str,
     done: impl Fn(&UnluminousApp) -> bool,
 ) {
-    for _ in 0..800 {
-        pump(harness);
-        if done(harness.state()) {
-            steady(harness);
-            return;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(10));
-    }
-    panic!("{what} never happened");
+    wait_until(harness, what, done);
 }
 
 /// A window on a folder with the named file open and its index built, and, when `server` is true, the

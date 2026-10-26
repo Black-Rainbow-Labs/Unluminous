@@ -65,6 +65,20 @@ pub struct Session {
     pub revision: u64,
     /// Changed since it was opened or saved.
     pub modified: bool,
+    /// The file the document was opened from or saved to, for the `FILENAME` and `FILESIZE` fields.
+    pub file: Option<std::path::PathBuf>,
+    /// Which corrections are made as words are typed.
+    pub autocorrect_rules: crate::autocorrect::Rules,
+    /// Opened without its password to modify: nothing can be changed (task-2359, TDD 5.6).
+    pub read_only: bool,
+    /// Restrict Editing, when the document enforces it: `readOnly`, `comments`, `trackedChanges` or
+    /// `forms`.
+    pub protection: Option<String>,
+    /// Why the last edit was refused, for the window to say.
+    pub refused: Option<String>,
+    /// An operation Restrict Editing allows is running (a comment under `comments`, the protection
+    /// itself), so its change is let through.
+    pub(crate) permit: bool,
     undo: Vec<Entry>,
     redo: Vec<Entry>,
 }
@@ -85,6 +99,16 @@ impl Session {
             .as_ref()
             .and_then(|s| props::on_off(&s.root, "w:trackRevisions"))
             .unwrap_or(false);
+        let settings = document.settings.as_ref().map(|s| &s.root);
+        let protection = settings
+            .and_then(|s| s.child("w:documentProtection"))
+            .filter(|p| props::on_off_attr(p.attr("w:enforcement")))
+            .and_then(|p| p.attr("w:edit"))
+            .filter(|e| *e != "none")
+            .map(str::to_owned);
+        let read_only = settings
+            .and_then(|s| s.child("w:writeProtection"))
+            .is_some_and(|w| w.attr("w:hash").is_some() || w.attr("w:hashValue").is_some());
         Session {
             document,
             selection: Selection::caret(Pos::new(first, 0)),
@@ -93,6 +117,12 @@ impl Session {
             author: String::new(),
             revision: 1,
             modified: false,
+            file: None,
+            autocorrect_rules: crate::autocorrect::Rules::default(),
+            read_only,
+            protection,
+            refused: None,
+            permit: false,
             undo: Vec::new(),
             redo: Vec::new(),
         }
@@ -120,12 +150,59 @@ impl Session {
         })
     }
 
+    /// Whether the document may be changed now, under Restrict Editing and Password to Modify. A refusal
+    /// is kept in `refused` for the window to say.
+    pub fn may_edit(&mut self) -> bool {
+        if self.permit {
+            return true;
+        }
+        let refusal = if self.read_only {
+            Some("this document was opened read only: give its password to modify it")
+        } else {
+            match self.protection.as_deref() {
+                Some("readOnly") => Some("Restrict Editing allows no changes to this document"),
+                Some("comments")
+                    if !matches!(
+                        self.selection.head.story,
+                        crate::position::StoryId::Comment(_)
+                    ) =>
+                {
+                    Some("Restrict Editing allows only comments in this document")
+                }
+                Some("forms") if !self.in_a_form_field() => {
+                    Some("Restrict Editing allows only filling in forms in this document")
+                }
+                _ => None,
+            }
+        };
+        self.refused = refusal.map(str::to_owned);
+        refusal.is_none()
+    }
+
+    /// Whether the caret is in a content control or a form field, which `forms` protection lets a person
+    /// type in.
+    fn in_a_form_field(&self) -> bool {
+        let head = &self.selection.head;
+        let Some(paragraph) = position::paragraph(&self.document, &head.story, &head.path) else {
+            return false;
+        };
+        let (_, wraps) = edit::props_at(paragraph, head.offset);
+        wraps.iter().any(|w| w.el.name == "w:sdt")
+            || matches!(
+                position::block(&self.document.body, &head.path[..1]),
+                Some(crate::model::Block::Sdt(_))
+            )
+    }
+
     /// Run a change, recording what it needs for undo.
     pub fn change(
         &mut self,
         scope: Scope,
         change: impl FnOnce(&mut Document, &Selection, Option<&Tracking>) -> Selection,
     ) {
+        if !self.may_edit() {
+            return;
+        }
         let before = match scope {
             Scope::Story => {
                 let story = self.selection.head.story.clone();
@@ -209,6 +286,9 @@ impl Session {
 
     /// Type text at the selection, replacing it, as a keyboard or a paste does.
     pub fn type_text(&mut self, text: &str) {
+        if !self.may_edit() {
+            return;
+        }
         if text.is_empty() {
             return;
         }
@@ -275,6 +355,9 @@ impl Session {
 
     /// Enter: a new paragraph.
     pub fn enter(&mut self) {
+        if !self.may_edit() {
+            return;
+        }
         self.change(Scope::Story, |document, selection, tracking| {
             let at = if selection.is_empty() {
                 selection.head.clone()
@@ -297,6 +380,9 @@ impl Session {
 
     /// Backspace.
     pub fn backspace(&mut self, unit: Unit) {
+        if !self.may_edit() {
+            return;
+        }
         self.change(Scope::Story, |document, selection, tracking| {
             if !selection.is_empty() {
                 return Selection::caret(edit::delete_range(
@@ -312,6 +398,9 @@ impl Session {
 
     /// Delete.
     pub fn delete(&mut self, unit: Unit) {
+        if !self.may_edit() {
+            return;
+        }
         self.change(Scope::Story, |document, selection, tracking| {
             if !selection.is_empty() {
                 return Selection::caret(edit::delete_range(
@@ -390,7 +479,12 @@ impl Session {
             return;
         }
         let change = Arc::new(change);
-        self.change(Scope::Story, move |document, selection, _| {
+        self.change(Scope::Story, move |document, selection, tracking| {
+            // With Track Changes on, what the text looked like before goes into a w:rPrChange.
+            if let Some(t) = tracking {
+                let (from, to) = selection.ordered();
+                Session::track_run_formatting(document, from, to, &t.author);
+            }
             edit::format_range(document, &selection.anchor, &selection.head, &|el| change(el));
             selection.clone()
         });
@@ -417,7 +511,11 @@ impl Session {
 
     /// Change the paragraph properties of every paragraph the selection touches.
     pub fn format_paragraphs(&mut self, change: impl Fn(&mut El) + 'static) {
-        self.change(Scope::Story, move |document, selection, _| {
+        self.change(Scope::Story, move |document, selection, tracking| {
+            if let Some(t) = tracking {
+                let (from, to) = selection.ordered();
+                Session::track_paragraph_formatting(document, from, to, &t.author);
+            }
             edit::format_paragraphs(document, &selection.anchor, &selection.head, &change);
             selection.clone()
         });
@@ -562,6 +660,10 @@ impl Session {
 
     /// Turn Track Changes on or off, and say so in the file's settings as Word does.
     pub fn set_tracking(&mut self, on: bool) {
+        if !on && self.protection.as_deref() == Some("trackedChanges") {
+            self.refused = Some("Restrict Editing keeps Track Changes on in this document".into());
+            return;
+        }
         self.tracking = on;
         if let Some(settings) = self.document.settings.as_mut() {
             props::set_on_off(&mut settings.root, "w:trackRevisions", on.then_some(true));
@@ -574,41 +676,16 @@ impl Session {
 
     /// Every match of `needle` in the body's visible text, as selections.
     pub fn find(&self, needle: &str, match_case: bool, whole_word: bool) -> Vec<Selection> {
-        if needle.is_empty() {
-            return Vec::new();
-        }
-        let story = self.selection.head.story.clone();
-        let Some(blocks) = position::story(&self.document, &story) else { return Vec::new() };
-        let mut found = Vec::new();
-        let fold = |s: &str| if match_case { s.to_owned() } else { s.to_lowercase() };
-        let needle_folded = fold(needle);
-        for (path, paragraph) in position::paragraphs(blocks) {
-            let text = paragraph.flat_text();
-            // Lower casing can change byte lengths; search per character position in the original.
-            let haystack = fold(&text);
-            if haystack.len() != text.len() {
-                continue;
-            }
-            let mut from = 0;
-            while let Some(at) = haystack[from..].find(&needle_folded) {
-                let start = from + at;
-                let end = start + needle_folded.len();
-                let starts_a_word =
-                    text[..start].chars().last().is_none_or(|c| !c.is_alphanumeric());
-                let ends_a_word = text[end..].chars().next().is_none_or(|c| !c.is_alphanumeric());
-                if !whole_word || (starts_a_word && ends_a_word) {
-                    found.push(Selection {
-                        anchor: Pos { story: story.clone(), path: path.clone(), offset: start },
-                        head: Pos { story: story.clone(), path: path.clone(), offset: end },
-                    });
-                }
-                from = end.max(start + 1);
-                while !text.is_char_boundary(from) {
-                    from += 1;
-                }
-            }
-        }
-        found
+        let search = crate::search::Search {
+            query: crate::find::Query {
+                text: needle.to_owned(),
+                match_case,
+                whole_word,
+                wildcards: false,
+            },
+            ..crate::search::Search::default()
+        };
+        self.search(&search).unwrap_or_default()
     }
 
     /// Replace every match, as one undo step. Answers how many were replaced.

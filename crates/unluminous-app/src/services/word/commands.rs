@@ -47,6 +47,41 @@ fn on(text: Option<&String>) -> Option<bool> {
     }
 }
 
+/// The story `--story <kind> [n]` names, and the words after it: `body`, `header <n>`, `footer <n>`
+/// (the nth header or footer part), `footnote <id>`, `endnote <id>`, `comment <id>` or `textbox <n>`.
+fn story_from(
+    document: &unluminous_word::model::Document,
+    arguments: &[String],
+) -> Result<(StoryId, Vec<String>), String> {
+    let at = arguments.iter().position(|a| a == "--story").ok_or("--story names a story")?;
+    let kind = arguments
+        .get(at + 1)
+        .ok_or("--story takes body, header, footer, footnote, endnote, comment or textbox")?;
+    let number = arguments.get(at + 2).and_then(|n| n.parse::<i64>().ok());
+    let used = if number.is_some() { 3 } else { 2 };
+    let rest: Vec<String> = arguments
+        .iter()
+        .enumerate()
+        .filter(|(i, a)| (*i < at || *i >= at + used) && a.as_str() != "--runs")
+        .map(|(_, a)| a.clone())
+        .collect();
+    let n = number.unwrap_or(1);
+    let story = match kind.as_str() {
+        "body" => StoryId::Body,
+        "header" | "footer" => {
+            let footer = kind == "footer";
+            let header = document.headers.iter().filter(|h| h.footer == footer).nth((n - 1).max(0) as usize).ok_or_else(|| format!("there is no {kind} {n}"))?;
+            StoryId::Header(header.id.clone())
+        }
+        "footnote" => StoryId::Footnote(n),
+        "endnote" => StoryId::Endnote(n),
+        "comment" => StoryId::Comment(n),
+        "textbox" => StoryId::TextBox(document.textboxes.get((n - 1).max(0) as usize).ok_or_else(|| format!("there is no text box {n}"))?.id),
+        other => return Err(format!("--story takes body, header, footer, footnote, endnote, comment or textbox, not {other}")),
+    };
+    Ok((story, rest))
+}
+
 /// The body paragraph numbered `n` from 1, as `read` numbers them.
 fn paragraph_path(doc: &Doc, n: usize) -> Result<Vec<u32>, String> {
     let all = position::paragraphs(&doc.session.document.body);
@@ -55,6 +90,166 @@ fn paragraph_path(doc: &Doc, n: usize) -> Result<Vec<u32>, String> {
         .nth(n.saturating_sub(1))
         .map(|(path, _)| path)
         .ok_or_else(|| format!("there is no paragraph {n}: the document has {count}"))
+}
+
+/// A search from a verb's words: the text, `--case`, `--word`, `--wildcards`, `--all-stories` and
+/// `--format=bold,italic,underline,highlight,color:RRGGBB,style:<id>,align:center`.
+fn search_from(arguments: &[String]) -> Result<unluminous_word::search::Search, String> {
+    Ok(unluminous_word::search::Search {
+        query: unluminous_word::find::Query {
+            text: rest(&words(arguments), 0),
+            match_case: flag(arguments, "--case"),
+            whole_word: flag(arguments, "--word"),
+            wildcards: flag(arguments, "--wildcards"),
+        },
+        format: format_from(arguments, "--format=")?,
+        every_story: flag(arguments, "--all-stories"),
+    })
+}
+
+/// The formatting a `--format=` (or `--with-format=`) word names: comma separated, each `bold`,
+/// `italic`, `underline`, `highlight`, `not-bold` and so on, `color:RRGGBB`, `style:<id>`, `align:<a>`.
+fn format_from(
+    arguments: &[String],
+    prefix: &str,
+) -> Result<unluminous_word::search::Format, String> {
+    let mut format = unluminous_word::search::Format::default();
+    let Some(list) = arguments.iter().find_map(|a| a.strip_prefix(prefix)) else {
+        return Ok(format);
+    };
+    for item in list.split(',').map(str::trim).filter(|i| !i.is_empty()) {
+        let (not, name) = match item.strip_prefix("not-") {
+            Some(name) => (true, name),
+            None => (false, item),
+        };
+        match name.split_once(':') {
+            Some(("color" | "colour", hex)) => {
+                format.colour =
+                    Some(props::Rgb::parse(hex).ok_or_else(|| format!("{hex} is not a colour"))?)
+            }
+            Some(("style", id)) => format.style = Some(id.to_owned()),
+            Some(("align", a)) => {
+                format.align = Some(match a {
+                    "center" | "centre" => props::Align::Center,
+                    "right" => props::Align::Right,
+                    "justify" => props::Align::Justify,
+                    _ => props::Align::Left,
+                })
+            }
+            _ => match name {
+                "bold" => format.bold = Some(!not),
+                "italic" => format.italic = Some(!not),
+                "underline" => format.underline = Some(!not),
+                "highlight" => format.highlight = Some(!not),
+                other => return Err(format!("{other} is not a formatting the search knows")),
+            },
+        }
+    }
+    Ok(format)
+}
+
+/// `fields [update|unlink|lock|unlock|list]`: Update Fields, and the field commands on the selection.
+fn fields(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
+    match arguments.get(1).map_or("update", String::as_str) {
+        "update" => {
+            doc.ensure_pages();
+            let pages = doc.pages.clone();
+            let count = doc.session.update_fields(&pages);
+            Ok(Answer::said(format!("{count} fields updated")))
+        }
+        "unlink" => {
+            let count = doc.session.unlink_fields();
+            Ok(Answer::said(format!("{count} fields replaced with their results")))
+        }
+        "lock" | "unlock" => {
+            let lock = arguments[1] == "lock";
+            let count = doc.session.lock_fields(lock);
+            Ok(Answer::said(format!("{count} fields {}", if lock { "locked" } else { "unlocked" })))
+        }
+        "list" => {
+            let list = unluminous_word::references::field_list(&doc.session.document);
+            let said = list
+                .iter()
+                .map(|(n, code, result)| format!("{n}: {code} = {result}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            Ok(Answer::said(said).with(json!(list
+                .iter()
+                .map(|(n, code, result)| json!({ "paragraph": n, "code": code, "result": result }))
+                .collect::<Vec<_>>())))
+        }
+        other => Err(format!("fields takes update, unlink, lock, unlock or list, not {other}")),
+    }
+}
+
+/// `toc insert [levels] [--figures <label>] [--no-pages] [--no-links] [--leader dot|hyphen|underscore|none]`,
+/// `toc update` and `toc remove`.
+fn toc(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
+    doc.ensure_pages();
+    let pages = doc.pages.clone();
+    match arguments.get(1).map_or("insert", String::as_str) {
+        "insert" => {
+            let value = |name: &str| {
+                arguments.iter().position(|a| a == name).and_then(|i| arguments.get(i + 1)).cloned()
+            };
+            let options = unluminous_word::references::TocOptions {
+                levels: arguments.get(2).and_then(|n| n.parse().ok()).unwrap_or(3),
+                page_numbers: !flag(arguments, "--no-pages"),
+                hyperlinks: !flag(arguments, "--no-links"),
+                leader: value("--leader").unwrap_or_else(|| "dot".into()),
+                caption: value("--figures"),
+                ..Default::default()
+            };
+            doc.session.insert_toc_with(&options, &pages);
+            Ok(Answer::said(if options.caption.is_some() {
+                "Table of figures added"
+            } else {
+                "Table of contents added"
+            }))
+        }
+        "update" => {
+            let count = doc.session.update_tocs(&pages);
+            Ok(Answer::said(format!("{count} tables updated")))
+        }
+        "remove" => {
+            if doc.session.remove_toc() {
+                Ok(Answer::said("Table of contents removed"))
+            } else {
+                Err("there is no table of contents".into())
+            }
+        }
+        other => Err(format!("toc takes insert, update or remove, not {other}")),
+    }
+}
+
+/// `link show`, `link edit <address> [text]`, `link tip <tooltip>` and `link remove`, for the
+/// hyperlink at the caret.
+fn link(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
+    let at = doc.session.selection.head.clone();
+    match arguments.get(1).map_or("show", String::as_str) {
+        "show" => {
+            let (address, tip) =
+                doc.session.hyperlink_at(&at).ok_or("the caret is not in a link")?;
+            Ok(Answer::said(address.clone()).with(json!({ "address": address, "tooltip": tip })))
+        }
+        "edit" => {
+            let address = arguments.get(2).ok_or("link edit takes an address")?;
+            let text = (arguments.len() > 3).then(|| rest(arguments, 3));
+            let tip = doc.session.hyperlink_at(&at).and_then(|(_, t)| t);
+            doc.session.edit_hyperlink(address, text.as_deref(), tip.as_deref())?;
+            Ok(Answer::said("Link changed"))
+        }
+        "tip" | "tooltip" => {
+            let (address, _) = doc.session.hyperlink_at(&at).ok_or("the caret is not in a link")?;
+            doc.session.edit_hyperlink(&address, None, Some(&rest(arguments, 2)))?;
+            Ok(Answer::said("Link tip changed"))
+        }
+        "remove" => {
+            doc.session.remove_hyperlink()?;
+            Ok(Answer::said("Link removed"))
+        }
+        other => Err(format!("link takes show, open, edit, tip or remove, not {other}")),
+    }
 }
 
 /// Run one command.
@@ -67,14 +262,52 @@ pub fn run(word: &mut Word, command: &str, arguments: &[String]) -> Result<Answe
             return Ok(Answer::said(format!("Opened {}", path.display())));
         }
         "new" => {
-            let path = arguments.first().map(PathBuf::from);
-            let key = word.new_document(path.as_deref())?;
+            // new [path] [--template <file>]
+            let template = arguments
+                .iter()
+                .position(|a| a == "--template")
+                .and_then(|i| arguments.get(i + 1))
+                .map(PathBuf::from);
+            let path = arguments
+                .iter()
+                .enumerate()
+                .find(|(i, a)| {
+                    !a.starts_with("--") && (*i == 0 || arguments[i - 1] != "--template")
+                })
+                .map(|(_, a)| PathBuf::from(a));
+            let key = word.new_from(path.as_deref(), template.as_deref())?;
             let label = word.doc(&key)?.label();
             word.outbox.push(Request::OpenKeyedTab { key: key.clone(), label: label.clone() });
             return Ok(Answer::said(format!("New document {label}")).with(json!({ "key": key })));
         }
+        // The Word menu's Open as Document: a file dialog, then the file opened as a document.
+        "open-as-document" if arguments.is_empty() => {
+            let chosen = rfd::FileDialog::new()
+                .set_title("Open as Document")
+                .set_directory(word.project.clone().unwrap_or_default())
+                .add_filter(
+                    "Documents",
+                    &[
+                        "docx", "dotx", "docm", "dotm", "doc", "rtf", "odt", "wps", "pdf", "txt",
+                        "md", "html", "htm",
+                    ],
+                )
+                .pick_file()
+                .ok_or("Nothing was opened")?;
+            let words = vec!["--as-document".to_owned(), chosen.display().to_string()];
+            return run(word, "open", &words);
+        }
+        "open-as-document" => {
+            let mut words = vec!["--as-document".to_owned()];
+            words.extend(arguments.iter().cloned());
+            return run(word, "open", &words);
+        }
         "open" => {
-            let path = PathBuf::from(rest(arguments, 0));
+            // open [--as-document] <path>: a .txt, .md, .html or .pdf opens as a Word document with the flag.
+            let as_document = flag(arguments, "--as-document");
+            let words: Vec<String> =
+                arguments.iter().filter(|a| *a != "--as-document").cloned().collect();
+            let path = PathBuf::from(rest(&words, 0));
             let path = match (path.is_relative(), &word.project) {
                 (true, Some(project)) => project.join(path),
                 _ => path,
@@ -82,16 +315,30 @@ pub fn run(word: &mut Word, command: &str, arguments: &[String]) -> Result<Answe
             if !path.is_file() {
                 return Err(format!("{} is not a file", path.display()));
             }
+            if as_document {
+                let key = super::tab_key(&path);
+                word.load(&key, &path)?;
+                let label = super::files::name_of(&path);
+                word.outbox.push(Request::OpenKeyedTab { key: key.clone(), label });
+                return Ok(Answer::said(format!("Opening {} as a document", path.display()))
+                    .with(json!({ "key": key })));
+            }
             word.outbox.push(Request::OpenFile(path.clone()));
             return Ok(Answer::said(format!("Opening {}", path.display()))
                 .with(json!({ "key": super::tab_key(&path) })));
         }
         "docs" => {
-            let docs: Vec<serde_json::Value> = word
+            let mut docs: Vec<serde_json::Value> = word
                 .docs
                 .iter()
-                .map(|d| json!({ "key": d.key, "path": d.path, "modified": d.modified(), "pages": d.pages.pages.len(), "current": word.current.as_deref() == Some(d.key.as_str()) }))
+                .map(|d| json!({ "key": d.key, "path": d.path, "convertedFrom": d.converted_from, "encrypted": d.password.is_some(), "modified": d.modified(), "pages": d.pages.pages.len(), "current": word.current.as_deref() == Some(d.key.as_str()) }))
                 .collect();
+            // A tab still waiting for Word, or for a password, is listed with what it is waiting for.
+            docs.extend(
+                word.waiting
+                    .iter()
+                    .map(|(key, waiting)| json!({ "key": key, "waiting": waiting.sentence() })),
+            );
             return Ok(Answer::said(format!("{} documents open", docs.len())).with(json!(docs)));
         }
         "use" => {
@@ -126,16 +373,163 @@ pub fn run(word: &mut Word, command: &str, arguments: &[String]) -> Result<Answe
                 Answer::said(format!("Saved {}", saved.display())).with(json!({ "path": saved }))
             );
         }
+        "autocorrect" => return autocorrect(word, arguments),
+        "password" => {
+            let password = rest(arguments, 0);
+            let key = word
+                .current
+                .clone()
+                .filter(|k| word.waiting.iter().any(|(w, _)| w == k))
+                .or_else(|| word.waiting.first().map(|(k, _)| k.clone()))
+                .ok_or("no document is waiting for a password")?;
+            word.give_password(&key, &password)?;
+            return Ok(Answer::said(format!("Opened {}", word.doc(&key)?.label())));
+        }
+        "autosave" | "autorecover" => {
+            let value = on(arguments.first());
+            let slot = if command == "autosave" {
+                &mut word.config.autosave
+            } else {
+                &mut word.config.autorecover
+            };
+            if let Some(value) = value {
+                *slot = value;
+                if let Some(folder) = &word.folder {
+                    word.config.write(folder)?;
+                }
+            }
+            let now =
+                if command == "autosave" { word.config.autosave } else { word.config.autorecover };
+            let name = if command == "autosave" { "AutoSave" } else { "AutoRecover" };
+            return Ok(Answer::said(format!("{name} is {}", if now { "on" } else { "off" }))
+                .with(json!({ "on": now })));
+        }
+        "link" if arguments.first().map(String::as_str) == Some("open") => {
+            let doc = word.current_doc()?;
+            let at = doc.session.selection.head.clone();
+            let (address, _) = doc.session.hyperlink_at(&at).ok_or("the caret is not in a link")?;
+            let mut requests = Vec::new();
+            crate::components::word::page_view::follow_link(doc, &address, &mut requests);
+            word.outbox.extend(requests);
+            return Ok(
+                Answer::said(format!("Following {address}")).with(json!({ "address": address }))
+            );
+        }
         _ => {}
     }
     let doc = word.current_doc()?;
     document_command(doc, command, arguments)
 }
 
+/// `autocorrect [<rule> on|off]`: the rules, or one switched, for every open document and the settings.
+fn autocorrect(word: &mut Word, arguments: &[String]) -> Result<Answer, String> {
+    use unluminous_word::autocorrect::RULES;
+    if let (Some(name), Some(value)) = (arguments.first(), on(arguments.get(1))) {
+        let slot = word.config.autocorrect.slot(name).ok_or_else(|| {
+            format!(
+                "{name} is not a rule: {}",
+                RULES.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")
+            )
+        })?;
+        *slot = value;
+        let rules = word.config.autocorrect.clone();
+        for doc in &mut word.docs {
+            doc.session.autocorrect_rules = rules.clone();
+        }
+        if let Some(folder) = &word.folder {
+            word.config.write(folder)?;
+        }
+        return Ok(Answer::said(format!("{name} is {}", if value { "on" } else { "off" })));
+    }
+    let list: Vec<_> = RULES
+        .iter()
+        .map(|(name, label)| json!({ "rule": name, "label": label, "on": word.config.autocorrect.get(name) }))
+        .collect();
+    Ok(Answer::said(format!("{} rules", list.len())).with(json!(list)))
+}
+
 /// A command about the current document.
 fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Result<Answer, String> {
     let session = &mut doc.session;
     match command {
+        "read" if arguments.iter().any(|a| a == "--story") => {
+            let (story, rest) = story_from(&session.document, arguments)?;
+            let numbers: Vec<usize> = rest.iter().filter_map(|a| a.parse().ok()).collect();
+            let from = numbers.first().copied().unwrap_or(1);
+            let to = numbers.get(1).copied().unwrap_or(if numbers.is_empty() {
+                usize::MAX
+            } else {
+                from
+            });
+            let blocks =
+                position::story(&session.document, &story).ok_or("there is no such story")?;
+            let paragraphs = unluminous_word::export::paragraphs_value_in(
+                &session.document,
+                blocks,
+                from,
+                to,
+                flag(arguments, "--runs"),
+            );
+            Ok(Answer::said(format!(
+                "{} paragraphs in {}",
+                paragraphs.len(),
+                super::story_name(&story)
+            ))
+            .with(json!(paragraphs)))
+        }
+        "locate" => {
+            // locate <paragraph> [offset] [--story <kind> [n]]: where that place is drawn in the window, for
+            // a press there.
+            let (story, rest) = if arguments.iter().any(|a| a == "--story") {
+                story_from(&session.document, arguments)?
+            } else {
+                (StoryId::Body, arguments.to_vec())
+            };
+            let numbers: Vec<usize> = rest.iter().filter_map(|a| a.parse().ok()).collect();
+            let blocks =
+                position::story(&session.document, &story).ok_or("there is no such story")?;
+            let all = position::paragraphs(blocks);
+            let (path, _) = all
+                .get(numbers.first().copied().unwrap_or(1).saturating_sub(1))
+                .ok_or("there is no such paragraph")?;
+            let at =
+                Pos { story, path: path.clone(), offset: numbers.get(1).copied().unwrap_or(0) };
+            let area = doc.view.pages_rect;
+            let (tops, _) = crate::components::word::page_view::page_tops(doc, area.width());
+            let (index, line) = doc.pages.find(&at).ok_or("that place is not on a page yet")?;
+            let zoom = doc.view.zoom;
+            let origin = area.min + egui::vec2(tops[index].x, tops[index].y - doc.view.scroll);
+            let x = origin.x + line.x_of(at.offset) * zoom;
+            let y = origin.y + (line.top + line.height / 2.0) * zoom;
+            let (x, y) = (x * doc.view.window_zoom, y * doc.view.window_zoom);
+            Ok(Answer::said(format!("{x:.0}, {y:.0}"))
+                .with(json!({ "x": x, "y": y, "page": index + 1 })))
+        }
+        "stories" => {
+            // Every story an agent can read: the body, each header and footer, each note, comment and text box.
+            let document = &session.document;
+            let mut out = vec![json!({ "story": "body" })];
+            for (n, header) in document.headers.iter().enumerate() {
+                out.push(json!({ "story": if header.footer { "footer" } else { "header" }, "n": n + 1, "id": header.id }));
+            }
+            for (kind, part) in [
+                ("footnote", &document.footnotes),
+                ("endnote", &document.endnotes),
+                ("comment", &document.comments),
+            ] {
+                if let Some(part) = part {
+                    for note in &part.notes {
+                        if let Some(id) = note.id().filter(|id| kind == "comment" || *id > 0) {
+                            out.push(json!({ "story": kind, "n": id }));
+                        }
+                    }
+                }
+            }
+            for (n, textbox) in document.textboxes.iter().enumerate() {
+                out.push(json!({ "story": "textbox", "n": n + 1, "id": textbox.id }));
+            }
+            Ok(Answer::said(format!("{} stories", out.len())).with(json!(out)))
+        }
         "read" => {
             let numbers: Vec<usize> = arguments.iter().filter_map(|a| a.parse().ok()).collect();
             let from = numbers.first().copied().unwrap_or(1);
@@ -155,6 +549,25 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
         "text" => {
             let text = unluminous_word::export::to_text(&session.document);
             Ok(Answer::said(format!("{} characters", text.chars().count())).with(json!(text)))
+        }
+        "outline" if !arguments.is_empty() => {
+            // outline promote|demote|move-up|move-down|expand|collapse|heading-1|body|level <n>
+            let id = match arguments[0].as_str() {
+                "promote" => "promote-heading",
+                "demote" => "demote-heading",
+                "move-up" => "outline-move-up",
+                "move-down" => "outline-move-down",
+                "expand" => "outline-expand",
+                "collapse" => "outline-collapse",
+                "heading-1" => "outline-to-heading-1",
+                "body" => "outline-to-body",
+                "level" => {
+                    doc.view.outline_level = arguments.get(1).and_then(|n| n.parse().ok()).unwrap_or(10).clamp(1, 10);
+                    return Ok(Answer::said(format!("Showing level {}", doc.view.outline_level)));
+                }
+                other => return Err(format!("outline takes promote, demote, move-up, move-down, expand, collapse, heading-1, body or level <n>, not {other}")),
+            };
+            (super::actions::find(id).expect("an outline action").run)(doc).map(Answer::said)
         }
         "outline" => {
             doc.ensure_pages();
@@ -218,6 +631,51 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
             }
             Ok(Answer::said("Deleted"))
         }
+        "find"
+            if flag(arguments, "--wildcards")
+                || flag(arguments, "--all-stories")
+                || arguments.iter().any(|a| a.starts_with("--format")) =>
+        {
+            let search = search_from(arguments)?;
+            let found = session.search(&search)?;
+            let hits: Vec<serde_json::Value> = found
+                .iter()
+                .map(|s| json!({ "story": super::story_name(&s.anchor.story), "path": s.anchor.path, "offset": s.anchor.offset, "length": s.head.offset - s.anchor.offset }))
+                .collect();
+            if let Some(first) = found.first() {
+                session.selection = first.clone();
+                doc.view.reveal = true;
+            }
+            Ok(Answer::said(format!("{} found", hits.len())).with(json!(hits)))
+        }
+        "replace"
+            if flag(arguments, "--wildcards")
+                || flag(arguments, "--all-stories")
+                || arguments
+                    .iter()
+                    .any(|a| a.starts_with("--format") || a.starts_with("--with-format")) =>
+        {
+            let plain = words(arguments);
+            let split = plain.iter().position(|a| a == "--").ok_or(
+                "replace takes the text to find, then --, then the text to put in its place",
+            )?;
+            let mut search = search_from(arguments)?;
+            search.query.text = plain[..split].join(" ");
+            let with = unescape(&plain[split + 1..].join(" "));
+            let format = format_from(arguments, "--with-format=")?;
+            let count = session.replace_matches(&search, &with, &format)?;
+            Ok(Answer::said(format!("{count} replaced")).with(json!({ "replaced": count })))
+        }
+        "goto" | "go-to" => {
+            doc.ensure_pages();
+            let what = arguments.first().ok_or("goto takes what to go to and which one")?;
+            let which = rest(arguments, 1);
+            let pages = doc.pages.clone();
+            let at = doc.session.go_to(what, &which, &pages)?;
+            doc.view.reveal = true;
+            Ok(Answer::said(format!("At {what} {which}"))
+                .with(json!({ "path": at.path, "offset": at.offset })))
+        }
         "find" => {
             let needle = rest(&words(arguments), 0);
             let found = session.find(&needle, flag(arguments, "--case"), flag(arguments, "--word"));
@@ -270,13 +728,53 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
                     .collect();
                 return Ok(Answer::said(format!("{} styles", styles.len())).with(json!(styles)));
             }
+            let style_id = |session: &unluminous_word::session::Session, wanted: &str| {
+                unluminous_word::styles::Resolver::new(&session.document)
+                    .find(wanted)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| wanted.replace(' ', ""))
+            };
+            match arguments.first().map(String::as_str) {
+                Some("modify") => {
+                    let id = style_id(
+                        session,
+                        arguments
+                            .get(1)
+                            .ok_or("style modify takes a style, a property and a value")?,
+                    );
+                    let property = arguments
+                        .get(2)
+                        .ok_or("style modify takes a style, a property and a value")?;
+                    session.modify_style(&id, property, &rest(arguments, 3))?;
+                    return Ok(Answer::said(format!("{id} changed")));
+                }
+                Some("new") => {
+                    let id = session.new_style_from_selection(&rest(arguments, 1))?;
+                    return Ok(Answer::said(format!("New style {id}")).with(json!({ "id": id })));
+                }
+                Some("update") => {
+                    let id = session.update_style_to_match()?;
+                    return Ok(Answer::said(format!("{id} updated to match the selection")));
+                }
+                Some("delete") => {
+                    let id = style_id(session, &rest(arguments, 1));
+                    session.delete_style(&id)?;
+                    return Ok(Answer::said(format!("{id} deleted")));
+                }
+                Some("revert") => {
+                    let id = style_id(session, &rest(arguments, 1));
+                    session.revert_style(&id)?;
+                    return Ok(Answer::said(format!("{id} is Word's own again")));
+                }
+                _ => {}
+            }
             let wanted = rest(arguments, 0);
             let id = {
                 let resolver = unluminous_word::styles::Resolver::new(&session.document);
                 resolver.find(&wanted).map(str::to_owned)
             }
             .unwrap_or_else(|| wanted.replace(' ', ""));
-            session.apply_style(&id)?;
+            session.apply_style_where_it_fits(&id)?;
             Ok(Answer::said(format!("Applied {wanted}")))
         }
         "list" => {
@@ -292,20 +790,63 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
                 Some("restart") => {
                     session.restart_list(arguments.get(1).and_then(|n| n.parse().ok()).unwrap_or(1))
                 }
+                Some("continue") => session.continue_numbering()?,
+                Some("value") => session.set_numbering_value(
+                    arguments.get(1).and_then(|n| n.parse().ok()).ok_or("list value takes a number")?,
+                )?,
+                Some("bullet-symbol" | "symbol") => {
+                    let symbol = arguments
+                        .get(1)
+                        .and_then(|s| s.chars().next())
+                        .ok_or("list symbol takes the character to use")?;
+                    session.define_bullet(symbol, arguments.get(2).map(String::as_str))?
+                }
+                Some("format") => session.define_number_format(
+                    arguments.get(1).ok_or("list format takes a number format, such as upperRoman")?,
+                    arguments.get(2).map_or("", String::as_str),
+                    arguments.get(3).map_or(".", String::as_str),
+                )?,
+                Some("indents") => session.set_list_indents(
+                    points(arguments.get(1))?,
+                    arguments.get(2).and_then(|h| h.parse().ok()).unwrap_or(18.0),
+                )?,
+                Some("define") => {
+                    // Each word after `define` is one level, `format:text`, such as decimal:%1.
+                    let levels: Vec<unluminous_word::lists::LevelDefinition> = arguments[1..]
+                        .iter()
+                        .enumerate()
+                        .map(|(i, spec)| {
+                            let (format, text) = spec.split_once(':').unwrap_or((spec.as_str(), "%1."));
+                            unluminous_word::lists::LevelDefinition {
+                                format: format.to_owned(),
+                                text: text.to_owned(),
+                                start: 1,
+                                indent: 36.0 * (i as f32 + 1.0),
+                                hanging: 18.0,
+                                font: None,
+                            }
+                        })
+                        .collect();
+                    session.define_multilevel(&levels)?
+                }
                 other => {
                     return Err(format!(
-                        "list takes bullet, number, deeper, shallower or restart, not {other:?}"
+                        "list takes bullet, number, deeper, shallower, restart, continue, value, symbol, format, indents or define, not {other:?}"
                     ))
                 }
             }
             Ok(Answer::said("Done"))
         }
         "table" => table(doc, arguments),
+        "picture" | "object" => picture(doc, arguments),
         "section" => section(doc, arguments),
         "comment" => comment(doc, arguments),
         "track" => {
             match arguments.first().map(String::as_str) {
                 Some("on") => session.set_tracking(true),
+                Some("off") if session.tracking_locked() => {
+                    return Err("Track Changes is locked on; track unlock <password> unlocks it".into())
+                }
                 Some("off") => session.set_tracking(false),
                 Some("accept") | Some("reject") => {
                     let accept = arguments[0] == "accept";
@@ -326,8 +867,40 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
                     ))
                     .with(json!({ "tracking": session.tracking, "changes": changes })));
                 }
+                Some("view") => {
+                    let mode = arguments
+                        .get(1)
+                        .and_then(|m| unluminous_word::review::Markup::parse(m))
+                        .ok_or("track view takes simple, all, none or original")?;
+                    doc.view.markup = mode;
+                    doc.laid = 0;
+                    return Ok(Answer::said(format!("Showing {} markup", mode.name())));
+                }
+                Some("next") | Some("previous") => {
+                    let forward = arguments[0] == "next";
+                    if !session.go_to_change(forward) {
+                        return Err("there are no tracked changes".into());
+                    }
+                    doc.view.reveal = true;
+                    return Ok(Answer::said("At the change"));
+                }
+                Some("lock") => {
+                    let password = rest(arguments, 1);
+                    if password.is_empty() {
+                        return Err("track lock takes a password".into());
+                    }
+                    session.lock_tracking(&password);
+                    return Ok(Answer::said("Track Changes is locked on"));
+                }
+                Some("unlock") => {
+                    if !session.protection_password_matches(&rest(arguments, 1)) {
+                        return Err("that is not the password Track Changes was locked with".into());
+                    }
+                    session.lock_tracking("");
+                    return Ok(Answer::said("Track Changes is unlocked"));
+                }
                 Some(other) => {
-                    return Err(format!("track takes on, off, list, accept or reject, not {other}"))
+                    return Err(format!("track takes on, off, list, accept, reject, view, next, previous, lock or unlock, not {other}"))
                 }
             }
             Ok(Answer::said(format!(
@@ -335,45 +908,186 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
                 if session.tracking { "on" } else { "off" }
             )))
         }
-        "fields" => {
+        "fields" => fields(doc, arguments),
+        "toc" => toc(doc, arguments),
+        "caption" => {
             doc.ensure_pages();
             let pages = doc.pages.clone();
-            let count = doc.session.update_fields(&pages);
-            Ok(Answer::said(format!("{count} fields updated")))
+            let label = arguments.get(1).cloned().unwrap_or_else(|| "Figure".into());
+            let below = !flag(arguments, "--above");
+            let text = words(arguments).get(2..).map(|w| w.join(" ")).unwrap_or_default();
+            doc.session.insert_caption(&label, &text, below, &pages);
+            Ok(Answer::said(format!("{label} caption added")))
+        }
+        "xref" | "cross-reference" => {
+            doc.ensure_pages();
+            let pages = doc.pages.clone();
+            let n: usize = arguments
+                .get(1)
+                .and_then(|n| n.parse().ok())
+                .ok_or("xref takes the number of the paragraph it refers to")?;
+            let what = arguments.get(2).map_or("text", String::as_str).to_owned();
+            let target = paragraph_path(doc, n)?;
+            doc.session.insert_cross_reference(&target, &what, &pages)?;
+            Ok(Answer::said(format!("Cross reference to paragraph {n} added")))
+        }
+        "link" => link(doc, arguments),
+        "thesaurus" | "synonyms" => {
+            let word = match arguments.first() {
+                Some(word) => word.clone(),
+                None => doc.session.selected_text(),
+            };
+            let meanings: Vec<serde_json::Value> =
+                unluminous_word::thesaurus::synonyms(word.trim())
+                    .into_iter()
+                    .map(|m| json!({ "partOfSpeech": m.part_of_speech, "synonyms": m.synonyms }))
+                    .collect();
+            Ok(Answer::said(format!("{} meanings of {}", meanings.len(), word.trim()))
+                .with(json!(meanings)))
+        }
+        "language" => {
+            let tag = arguments.first().ok_or("language takes a tag such as en-US or fr-FR")?;
+            session.set_language(tag);
+            Ok(Answer::said(format!("The selection is in {tag}")))
+        }
+        "accessibility" => {
+            let issues: Vec<serde_json::Value> = session
+                .accessibility()
+                .into_iter()
+                .map(|i| json!({ "kind": i.kind, "message": i.message, "path": i.at.path, "offset": i.at.offset }))
+                .collect();
+            Ok(Answer::said(format!("{} accessibility issues", issues.len())).with(json!(issues)))
+        }
+        "inspect" => match arguments.first().map(String::as_str) {
+            Some("remove") => {
+                let kind = arguments
+                    .get(1)
+                    .ok_or("inspect remove takes comments, revisions, hidden or personal")?;
+                let count = session.remove_inspected(kind)?;
+                Ok(Answer::said(format!("{count} removed")))
+            }
+            _ => {
+                let found = session.inspect();
+                Ok(Answer::said(format!(
+                    "{} comments, {} tracked changes, {} hidden runs, {} personal names",
+                    found.comments,
+                    found.revisions,
+                    found.hidden,
+                    found.personal.len()
+                ))
+                .with(json!({
+                    "comments": found.comments,
+                    "revisions": found.revisions,
+                    "hidden": found.hidden,
+                    "personal": found.personal.iter().map(|(k, v)| json!({ "property": k, "value": v })).collect::<Vec<_>>(),
+                })))
+            }
+        },
+        "paste" => {
+            // `paste --as source|merge|text` changes the last paste, as Paste Options does;
+            // `paste --html <html>` and `paste --rtf <rtf>` paste formatted text an agent has in hand.
+            let value = |name: &str| {
+                arguments.iter().position(|a| a == name).map(|i| arguments[i + 1..].join(" "))
+            };
+            if let Some(html) = value("--html") {
+                super::paste_from(
+                    doc,
+                    Some(&html),
+                    None,
+                    "",
+                    unluminous_word::clipboard::PasteAs::Source,
+                );
+                return Ok(Answer::said("Pasted"));
+            }
+            if let Some(rtf) = value("--rtf") {
+                super::paste_from(
+                    doc,
+                    None,
+                    Some(&rtf),
+                    "",
+                    unluminous_word::clipboard::PasteAs::Source,
+                );
+                return Ok(Answer::said("Pasted"));
+            }
+            let how = arguments
+                .iter()
+                .position(|a| a == "--as")
+                .and_then(|i| arguments.get(i + 1))
+                .and_then(|n| unluminous_word::clipboard::PasteAs::parse(n))
+                .ok_or("paste takes --as source|merge|text, --html <html> or --rtf <rtf>")?;
+            super::paste_again(doc, how)?;
+            Ok(Answer::said("Paste changed"))
+        }
+        "print" => {
+            // print [pages] [--copies n] [--odd|--even] [--per-sheet 2|4] [--to <file>]
+            let value = |name: &str| {
+                arguments.iter().position(|a| a == name).and_then(|i| arguments.get(i + 1)).cloned()
+            };
+            doc.ensure_pages();
+            let count = doc.pages.pages.len();
+            let range =
+                arguments.first().filter(|a| !a.starts_with("--")).cloned().unwrap_or_default();
+            let options = super::print::PrintOptions {
+                pages: super::print::parse_range(&range, count)?,
+                parity: if flag(arguments, "--odd") {
+                    super::print::Parity::Odd
+                } else if flag(arguments, "--even") {
+                    super::print::Parity::Even
+                } else {
+                    super::print::Parity::All
+                },
+                copies: value("--copies").and_then(|c| c.parse().ok()).unwrap_or(1),
+                per_sheet: value("--per-sheet").and_then(|c| c.parse().ok()).unwrap_or(1),
+            };
+            match value("--to") {
+                Some(to) => {
+                    let sheets = super::print::sheets(&doc.pages, &options);
+                    let bytes = pdf_bytes(doc, &sheets);
+                    crate::services::store::write_atomically(Path::new(&to), &bytes)
+                        .map_err(|e| format!("{to} could not be written: {e}"))?;
+                    Ok(Answer::said(format!("{} sheets written to {to}", sheets.pages.len()))
+                        .with(json!({ "sheets": sheets.pages.len(), "path": to })))
+                }
+                None => super::print::print(doc, &options).map(Answer::said),
+            }
         }
         "undo" => Ok(Answer::said(if session.undo() { "Undone" } else { "Nothing to undo" })),
         "redo" => Ok(Answer::said(if session.redo() { "Redone" } else { "Nothing to redo" })),
         "export" => {
             let kind =
                 arguments.first().map(String::as_str).ok_or("export takes pdf, html, md or txt")?;
-            let to = arguments.get(1).map(PathBuf::from);
-            let said = export_to(doc, kind, to.as_deref())?;
+            let to = arguments.iter().skip(1).find(|a| !a.starts_with("--")).map(PathBuf::from);
+            let how = PdfHow {
+                tagged: !flag(arguments, "--no-tags"),
+                outline: !flag(arguments, "--no-outline"),
+                pdfa: flag(arguments, "--pdfa"),
+            };
+            let said = export_with(doc, kind, to.as_deref(), how)?;
             Ok(Answer::said(said))
         }
-        "properties" => {
-            let names = [
-                ("title", "dc:title"),
-                ("subject", "dc:subject"),
-                ("author", "dc:creator"),
-                ("keywords", "cp:keywords"),
-                ("description", "dc:description"),
-            ];
-            if let (Some(name), true) = (arguments.first(), arguments.len() > 1) {
-                let el = names.iter().find(|(n, _)| n == name).map(|(_, el)| *el).ok_or_else(|| format!("{name} is not a property: title, subject, author, keywords or description"))?;
-                let value = rest(arguments, 1);
-                unluminous_word::new::set_property(&mut session.document, el, &value);
-                session.revision += 1;
-                session.modified = true;
-                return Ok(Answer::said(format!("{name} is {value}")));
-            }
-            let values: serde_json::Map<String, serde_json::Value> = names
-                .iter()
-                .map(|(n, el)| {
-                    (n.to_string(), json!(unluminous_word::new::property(&session.document, el)))
-                })
-                .collect();
-            Ok(Answer::said("Properties").with(serde_json::Value::Object(values)))
+        "properties" => properties(doc, arguments),
+        "unlock" => {
+            session.unlock_for_editing(&rest(arguments, 0))?;
+            Ok(Answer::said("The document can be changed"))
         }
+        "protect" => protect(doc, arguments),
+        "recover" => match arguments.first().map(String::as_str) {
+            Some("restore") => {
+                doc.restore_recovery()?;
+                Ok(Answer::said("Restored the recovered copy; save it to keep it"))
+            }
+            Some("discard") => {
+                doc.discard_recovery();
+                Ok(Answer::said("Kept the file and threw the recovered copy away"))
+            }
+            _ => Ok(Answer::said(match &doc.timing.offer {
+                Some((_, when)) => format!(
+                    "A recovered copy from {when} is offered: recover restore or recover discard"
+                ),
+                None => "There is no recovered copy".into(),
+            })
+            .with(json!({ "offered": doc.timing.offer.is_some() }))),
+        },
         "view" => {
             match arguments.first().map(String::as_str) {
                 Some("zoom") => {
@@ -386,9 +1100,40 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
                 Some("navigation") => {
                     doc.view.navigation = on(arguments.get(1)).unwrap_or(!doc.view.navigation)
                 }
-                _ => {}
+                Some("thumbnails") => {
+                    doc.view.navigation = on(arguments.get(1)).unwrap_or(true);
+                    doc.view.navigation_tab = 1;
+                }
+                Some("ruler") => doc.view.ruler = on(arguments.get(1)).unwrap_or(!doc.view.ruler),
+                Some("field-shading") => {
+                    let kind = arguments.get(1).map(String::as_str).unwrap_or("selected");
+                    doc.view.field_shading = super::shading_kind(kind)
+                        .ok_or_else(|| format!("field shading is always, selected or never, not {kind}"))?;
+                }
+                Some("gridlines") => doc.view.gridlines = on(arguments.get(1)).unwrap_or(!doc.view.gridlines),
+                Some("multiple") => doc.view.multiple = on(arguments.get(1)).unwrap_or(!doc.view.multiple),
+                Some(mode @ ("read" | "outline" | "print")) => {
+                    doc.view.mode = match mode {
+                        "read" => super::Mode::Read,
+                        "outline" => super::Mode::Outline,
+                        _ => super::Mode::Print,
+                    };
+                    doc.laid = u64::MAX;
+                }
+                Some(id @ ("fit-width" | "fit-page" | "new-window")) => {
+                    let id = id.to_owned();
+                    (super::actions::find(&id).expect("a view action").run)(doc)?;
+                }
+                Some("paper") => doc.view.dark = arguments.get(1).map(String::as_str) == Some("theme"),
+                Some(other) => return Err(format!("view takes zoom, marks, navigation, thumbnails, ruler, gridlines, multiple, read, outline, print, fit-width, fit-page, new-window or paper, not {other}")),
+                None => {}
             }
-            Ok(Answer::said("View").with(json!({ "zoom": doc.view.zoom, "marks": doc.view.marks, "navigation": doc.view.navigation })))
+            let mode = match doc.view.mode {
+                super::Mode::Print => "print",
+                super::Mode::Read => "read",
+                super::Mode::Outline => "outline",
+            };
+            Ok(Answer::said("View").with(json!({ "zoom": doc.view.zoom, "marks": doc.view.marks, "navigation": doc.view.navigation, "ruler": doc.view.ruler, "mode": mode, "multiple": doc.view.multiple, "gridlines": doc.view.gridlines, "fieldShading": doc.view.field_shading, "paper": if doc.view.dark { "theme" } else { "light" } })))
         }
         "panel" => {
             match arguments.first().map(String::as_str) {
@@ -404,10 +1149,10 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
                                 .join(", ")
                         )
                     })?;
-                    doc.view.panel = if level == Level::Root {
-                        vec![Level::Root]
-                    } else {
-                        vec![Level::Root, level]
+                    doc.view.panel = match (level, level.parent()) {
+                        (Level::Root, _) => vec![Level::Root],
+                        (_, Some(parent)) => vec![Level::Root, parent, level],
+                        _ => vec![Level::Root, level],
                     };
                 }
             }
@@ -443,6 +1188,28 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
 }
 
 fn select(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
+    // select --story <kind> [n] <paragraph> [offset] [to-offset]: a place in a header, a note, a comment
+    // or a text box, its paragraphs numbered from 1 as `read --story` numbers them.
+    if arguments.iter().any(|a| a == "--story") {
+        let (story, rest) = story_from(&doc.session.document, arguments)?;
+        let numbers: Vec<usize> = rest.iter().filter_map(|a| a.parse().ok()).collect();
+        let blocks =
+            position::story(&doc.session.document, &story).ok_or("there is no such story")?;
+        let all = position::paragraphs(blocks);
+        let n = numbers.first().copied().unwrap_or(1);
+        let (path, paragraph) = all
+            .get(n.saturating_sub(1))
+            .ok_or_else(|| format!("the story has {} paragraphs", all.len()))?;
+        let len = paragraph.len();
+        let from = numbers.get(1).copied().unwrap_or(0).min(len);
+        let to = numbers.get(2).copied().unwrap_or(from).min(len);
+        let anchor = Pos { story: story.clone(), path: path.clone(), offset: from };
+        let head = Pos { story, path: path.clone(), offset: to };
+        doc.session.select(anchor, head);
+        doc.view.reveal = true;
+        return Ok(Answer::said(doc.session.selected_text())
+            .with(json!({ "selection": selection_value(&doc.session.selection) })));
+    }
     match arguments.first().map(String::as_str) {
         Some("all") => doc.session.select_all(),
         Some("text") => {
@@ -487,6 +1254,85 @@ fn select(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
     Ok(Answer::said(doc.session.selected_text()).with(json!({ "selection": selection_value(&doc.session.selection), "text": doc.session.selected_text() })))
 }
 
+/// `picture [info]`, `picture size <w> [h]`, `picture wrap <kind>`, `picture position <relative> <x> <y>`,
+/// `picture crop <left> <top> <right> <bottom>` (percent), `picture alt <text>`, `picture reset`,
+/// `picture order forward|backward|front|back` and `picture select <paragraph> <offset>`, for the
+/// picture or shape the selection is on.
+fn picture(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
+    let chosen = match arguments.first().map(String::as_str) {
+        Some("select") => {
+            let paragraph: usize = arguments
+                .get(1)
+                .and_then(|n| n.parse().ok())
+                .ok_or("picture select takes a paragraph number and an offset")?;
+            Some(paragraph_path(doc, paragraph)?)
+        }
+        _ => None,
+    };
+    let session = &mut doc.session;
+    let number = |i: usize| -> Result<f32, String> {
+        arguments
+            .get(i)
+            .and_then(|n| n.trim_end_matches("pt").trim_end_matches('%').parse().ok())
+            .ok_or_else(|| format!("picture {} takes numbers", arguments[0]))
+    };
+    let said = match arguments.first().map_or("info", String::as_str) {
+        "info" => "",
+        "select" => {
+            let offset: usize = arguments.get(2).and_then(|n| n.parse().ok()).unwrap_or(0);
+            let path = chosen.expect("worked out above");
+            session.select_object(unluminous_word::position::Pos::new(path, offset));
+            if session.selected_object().is_none() {
+                return Err("there is no picture there".into());
+            }
+            "Selected"
+        }
+        "size" => {
+            let height = arguments.get(2).map(|_| number(2)).transpose()?;
+            session.set_object_size(number(1)?, height)?;
+            "Resized"
+        }
+        "wrap" => {
+            session.set_object_wrap(arguments.get(1).ok_or("picture wrap takes a kind")?)?;
+            "Wrapped"
+        }
+        "position" => {
+            session.set_object_position(arguments.get(1).ok_or("picture position takes what it is measured from")?, number(2)?, number(3)?)?;
+            "Moved"
+        }
+        "crop" => {
+            session.crop_object(number(1)?, number(2)?, number(3)?, number(4)?)?;
+            "Cropped"
+        }
+        "alt" => {
+            session.set_object_alt_text(&rest(arguments, 1))?;
+            "Alt text set"
+        }
+        "reset" => {
+            session.reset_object()?;
+            "Reset"
+        }
+        "order" => {
+            session.order_object(arguments.get(1).map_or("front", String::as_str))?;
+            "Reordered"
+        }
+        other => return Err(format!("picture takes info, select, size, wrap, position, crop, alt, reset or order, not {other}")),
+    };
+    let info = session.object_info().ok_or("the selection is not on a picture or shape")?;
+    let value = json!({
+        "kind": info.kind, "name": info.name, "width": info.width, "height": info.height, "wrap": info.wrap,
+        "horizontal": { "from": info.horizontal.0, "offset": info.horizontal.1 },
+        "vertical": { "from": info.vertical.0, "offset": info.vertical.1 },
+        "alt": info.alt, "crop": [info.crop.0, info.crop.1, info.crop.2, info.crop.3],
+    });
+    let said = if said.is_empty() {
+        format!("{} {} by {} points, {}", info.kind, info.width, info.height, info.wrap)
+    } else {
+        said.to_owned()
+    };
+    Ok(Answer::said(said).with(value))
+}
+
 fn insert(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
     let what = arguments.first().map(String::as_str).ok_or("insert takes what to insert first")?;
     let session = &mut doc.session;
@@ -517,7 +1363,14 @@ fn insert(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
         "toc" | "table-of-contents" => {
             doc.ensure_pages();
             let pages = doc.pages.clone();
-            doc.session.insert_toc(3, &pages);
+            let levels = arguments.get(1).and_then(|n| n.parse().ok()).unwrap_or(3);
+            doc.session.insert_toc(levels, &pages);
+        }
+        "caption" => {
+            doc.ensure_pages();
+            let pages = doc.pages.clone();
+            let label = arguments.get(1).cloned().unwrap_or_else(|| "Figure".into());
+            doc.session.insert_caption(&label, &rest(arguments, 2), true, &pages);
         }
         "field" => {
             let code = rest(arguments, 1);
@@ -532,7 +1385,18 @@ fn insert(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
         "date" => return (actions::find("date").expect("a date action").run)(doc).map(Answer::said),
         "page-number" => session.insert_field("PAGE", "1"),
         "symbol" => session.type_text(&rest(arguments, 1)),
-        other => return Err(format!("insert does not know `{other}`: paragraph, page-break, line-break, column-break, section-break, table, picture, footnote, endnote, toc, field, link, bookmark, date, page-number, symbol")),
+        "textbox" | "text-box" => {
+            let width = arguments.get(1).and_then(|n| n.parse().ok()).unwrap_or(144.0);
+            let height = arguments.get(2).and_then(|n| n.parse().ok()).unwrap_or(72.0);
+            session.insert_textbox(width, height)?;
+        }
+        "shape" => {
+            let preset = arguments.get(1).ok_or("insert shape takes a preset, such as rect or ellipse")?;
+            let width = arguments.get(2).and_then(|n| n.parse().ok()).unwrap_or(72.0);
+            let height = arguments.get(3).and_then(|n| n.parse().ok()).unwrap_or(width);
+            session.insert_shape(preset, width, height)?;
+        }
+        other => return Err(format!("insert does not know `{other}`: paragraph, page-break, line-break, column-break, section-break, table, picture, textbox, shape, footnote, endnote, toc, caption, field, link, bookmark, date, page-number, symbol")),
     }
     Ok(Answer::said(format!("Inserted {what}")))
 }
@@ -629,7 +1493,22 @@ fn format(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
 }
 
 fn paragraph(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
-    let what = arguments.first().map(String::as_str).ok_or("paragraph takes a property")?;
+    let what = arguments.first().map(String::as_str).unwrap_or("info");
+    // paragraph info: how the paragraph at the caret looks, its style's formatting and its own together.
+    if what == "info" {
+        let look = doc.session.paragraph_at_caret();
+        let tabs: Vec<serde_json::Value> = look
+            .tabs
+            .iter()
+            .map(|t| json!({ "position": t.position, "kind": format!("{:?}", t.kind).to_lowercase(), "leader": t.leader.map(|c| c.to_string()) }))
+            .collect();
+        return Ok(Answer::said(look.style.clone()).with(json!({
+            "style": look.style, "align": look.align.name(), "indentLeft": look.indent_left, "indentRight": look.indent_right,
+            "indentFirst": look.indent_first, "spaceBefore": look.space_before, "spaceAfter": look.space_after,
+            "line": format!("{:?}", look.line), "keepNext": look.keep_next, "keepLines": look.keep_lines,
+            "outlineLevel": look.outline_level.map(|l| l + 1), "tabs": tabs,
+        })));
+    }
     let session = &mut doc.session;
     let twips = |p: f32| ((p * 20.0).round() as i64).to_string();
     match what {
@@ -739,6 +1618,15 @@ fn table(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
     let what = arguments.first().map(String::as_str).ok_or("table takes an operation")?;
     let session = &mut doc.session;
     match what {
+        "width" if arguments.len() >= 3 => {
+            // table width <column> <pt>: the column from 1, the next column giving or taking the difference.
+            let column: usize =
+                arguments[1].parse().map_err(|_| "table width takes a column number and points")?;
+            let width = points(arguments.get(2))?;
+            let (table, _, _) = session.cell_at_caret().ok_or("the caret is not in a table")?;
+            let story = session.selection.head.story.clone();
+            session.drag_column_edge(&story, &table, column.saturating_sub(1), width)?
+        }
         "width" => session.set_column_width(points(arguments.get(1))?)?,
         "shade" => session.shade_cell(arguments.get(1).and_then(|c| props::Rgb::parse(c)))?,
         "cell" => {
@@ -759,9 +1647,254 @@ fn table(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
             }
             session.selection = Selection::caret(Pos::new(path, 0));
         }
+        "select" => session.select_in_table(arguments.get(1).map_or("cell", String::as_str))?,
+        "merge" => session.merge_cells()?,
+        "split-table" => session.split_table()?,
+        "convert" => match arguments.get(1).map(String::as_str) {
+            Some("to-text") => {
+                session.table_to_text(arguments.get(2).map_or("tab", String::as_str))?
+            }
+            Some("to-table") => {
+                session.text_to_table(arguments.get(2).map_or("tab", String::as_str))?
+            }
+            _ => {
+                return Err(
+                    "table convert takes to-text or to-table, then tab, comma or paragraph".into()
+                )
+            }
+        },
+        "sort" => {
+            let column: usize = arguments
+                .get(1)
+                .and_then(|c| c.parse::<usize>().ok())
+                .ok_or("table sort takes a column, from 1")?;
+            let by = match arguments.get(2).map(String::as_str) {
+                Some("number") => unluminous_word::tables::SortBy::Number,
+                Some("date") => unluminous_word::tables::SortBy::Date,
+                _ => unluminous_word::tables::SortBy::Text,
+            };
+            session.sort_table(
+                column.saturating_sub(1),
+                by,
+                flag(arguments, "--descending") || flag(arguments, "desc"),
+                flag(arguments, "--header"),
+            )?
+        }
+        "distribute" => {
+            doc.ensure_pages();
+            let rows = arguments.get(1).map(String::as_str) != Some("columns");
+            let heights = row_heights(doc);
+            doc.session.distribute(rows, &heights)?
+        }
+        "properties" | "property" => {
+            let name = arguments.get(1).ok_or("table properties takes a property and its value")?;
+            session.table_property(name, arguments.get(2..).unwrap_or(&[]))?
+        }
+        "style" => {
+            let id = arguments.get(1).ok_or("table style takes a style id, such as TableGrid")?;
+            let look = arguments.get(2).map(|flags| {
+                let on = |c: char| flags.contains(c);
+                // h header row, t total row, f first column, l last column, r banded rows, c banded columns
+                [on('h'), on('t'), on('f'), on('l'), on('r'), on('c')]
+            });
+            session.apply_table_style(id, look)?
+        }
+        "borders" => {
+            let which = arguments.get(1).map_or("all", String::as_str);
+            let width = arguments.get(2).and_then(|w| w.parse().ok()).unwrap_or(0.5);
+            let colour = arguments.get(3).and_then(|c| props::Rgb::parse(c));
+            session.set_table_borders(which, width, colour)?
+        }
         op => session.table_op(op)?,
     }
     Ok(Answer::said(format!("table {what}")))
+}
+
+/// `properties [<name> <value>]`, `properties statistics` and `properties custom [<name> <kind> <value> | remove
+/// <name>]`: Word's Properties dialog, its Summary, Statistics and Custom tabs.
+fn properties(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
+    use unluminous_word::properties as extra;
+    let core = [
+        ("title", "dc:title"),
+        ("subject", "dc:subject"),
+        ("author", "dc:creator"),
+        ("keywords", "cp:keywords"),
+        ("comments", "dc:description"),
+        ("description", "dc:description"),
+        ("category", "cp:category"),
+        ("status", "cp:contentStatus"),
+    ];
+    let app = [("manager", "Manager"), ("company", "Company")];
+    match arguments.first().map(String::as_str) {
+        Some("statistics") => {
+            doc.ensure_pages();
+            let document = &doc.session.document;
+            let text = unluminous_word::export::to_text(document);
+            let words = text.split_whitespace().count();
+            let characters = text.chars().filter(|c| *c != '\n' && *c != '\r').count();
+            let spaces = text.chars().filter(|c| *c == ' ').count();
+            let paragraphs = unluminous_word::position::paragraphs(&document.body)
+                .iter()
+                .filter(|(_, p)| !p.flat_text().trim().is_empty())
+                .count();
+            let lines: usize = doc
+                .pages
+                .pages
+                .iter()
+                .map(|p| p.carets.iter().filter(|l| l.story == StoryId::Body).count())
+                .sum();
+            let property = |name: &str| unluminous_word::new::property(document, name);
+            let value = json!({
+                "created": property("dcterms:created"),
+                "modified": property("dcterms:modified"),
+                "printed": property("cp:lastPrinted"),
+                "lastSavedBy": property("cp:lastModifiedBy"),
+                "revision": property("cp:revision"),
+                "editingMinutes": extra::extended(document, "TotalTime"),
+                "pages": doc.pages.pages.len(),
+                "words": words,
+                "characters": characters - spaces,
+                "charactersWithSpaces": characters,
+                "lines": lines,
+                "paragraphs": paragraphs,
+            });
+            Ok(Answer::said(format!("{} pages, {words} words", doc.pages.pages.len())).with(value))
+        }
+        Some("custom") => {
+            let document = &mut doc.session.document;
+            match (arguments.get(1).map(String::as_str), arguments.get(2)) {
+                (Some("remove"), Some(name)) => {
+                    extra::remove_custom(document, name)?;
+                    doc.session.revision += 1;
+                    doc.session.modified = true;
+                    Ok(Answer::said(format!("Removed {name}")))
+                }
+                (Some(name), Some(kind)) => {
+                    // A kind of two words, `yes or no`, is written yes-or-no or as the two words quoted.
+                    let kind = kind.replace('-', " ");
+                    let value = rest(arguments, 3);
+                    extra::set_custom(document, name, &kind, &value)?;
+                    doc.session.revision += 1;
+                    doc.session.modified = true;
+                    Ok(Answer::said(format!("{name} is {value}")))
+                }
+                _ => {
+                    let list: Vec<serde_json::Value> = extra::custom(document)
+                        .into_iter()
+                        .map(|c| json!({ "name": c.name, "kind": c.kind, "value": c.value }))
+                        .collect();
+                    Ok(Answer::said(format!("{} custom properties", list.len())).with(json!(list)))
+                }
+            }
+        }
+        Some(name) if arguments.len() > 1 => {
+            let value = rest(arguments, 1);
+            let document = &mut doc.session.document;
+            if let Some((_, el)) = core.iter().find(|(n, _)| *n == name) {
+                unluminous_word::new::set_property(document, el, &value);
+            } else if let Some((_, el)) = app.iter().find(|(n, _)| *n == name) {
+                extra::set_extended(document, el, &value);
+            } else {
+                return Err(format!("{name} is not a property: title, subject, author, manager, company, category, keywords, comments or status"));
+            }
+            doc.session.revision += 1;
+            doc.session.modified = true;
+            Ok(Answer::said(format!("{name} is {value}")))
+        }
+        _ => {
+            let document = &doc.session.document;
+            let mut values: serde_json::Map<String, serde_json::Value> = core
+                .iter()
+                .filter(|(n, _)| *n != "description")
+                .map(|(n, el)| (n.to_string(), json!(unluminous_word::new::property(document, el))))
+                .collect();
+            for (name, el) in app {
+                values.insert(name.to_owned(), json!(extra::extended(document, el)));
+            }
+            values.insert("description".into(), values["comments"].clone());
+            Ok(Answer::said("Properties").with(serde_json::Value::Object(values)))
+        }
+    }
+}
+
+/// `protect`: what protects the document; `protect password <password>|none` encrypts it when saved,
+/// `protect modify <password>|none` sets Password to Modify, `protect restrict <readOnly|comments|
+/// trackedChanges|forms> <password>` is Restrict Editing, and `protect stop <password>` ends it.
+pub(crate) fn protect(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
+    let session = &mut doc.session;
+    match arguments.first().map(String::as_str) {
+        Some("password") => {
+            let password = rest(arguments, 1);
+            let off = password.is_empty() || password == "none";
+            doc.password = (!off).then_some(password);
+            session.revision += 1;
+            session.modified = true;
+            Ok(Answer::said(if off {
+                "The document is not encrypted when it is saved"
+            } else {
+                "The document is encrypted with the password when it is saved"
+            }))
+        }
+        Some("modify") => {
+            let password = rest(arguments, 1);
+            let password = if password == "none" { String::new() } else { password };
+            session.set_password_to_modify(&password);
+            Ok(Answer::said(if password.is_empty() {
+                "Password to Modify is off"
+            } else {
+                "Opening the document to change it needs the password"
+            }))
+        }
+        Some("restrict") => {
+            let kind = arguments.get(1).ok_or("protect restrict takes readOnly, comments, trackedChanges or forms, and a password")?;
+            session.restrict_editing(kind, &rest(arguments, 2))?;
+            Ok(Answer::said(format!("Restrict Editing allows {kind}")))
+        }
+        Some("stop") => {
+            session.stop_protection(&rest(arguments, 1))?;
+            Ok(Answer::said("Restrict Editing is off"))
+        }
+        Some(other) => {
+            Err(format!("protect takes password, modify, restrict or stop, not {other}"))
+        }
+        None => {
+            let modify = session
+                .document
+                .settings
+                .as_ref()
+                .is_some_and(|s| s.root.child("w:writeProtection").is_some());
+            let value = json!({
+                "encrypted": doc.password.is_some(),
+                "passwordToModify": modify,
+                "readOnly": session.read_only,
+                "restrict": session.protection,
+            });
+            Ok(Answer::said("Protection").with(value))
+        }
+    }
+}
+
+/// The height of each row of the caret's table as the layout drew it, for Distribute Rows.
+pub(crate) fn row_heights(doc: &Doc) -> Vec<f32> {
+    let Some(range) = doc.session.selected_cells() else { return Vec::new() };
+    let mut tops: Vec<(u32, f32, f32)> = Vec::new();
+    for page in &doc.pages.pages {
+        for line in page.carets.iter().filter(|l| l.story == StoryId::Body) {
+            if line.path.len() > range.table.len() && line.path.starts_with(&range.table) {
+                let row = line.path[range.table.len()];
+                let bottom = line.top + line.height;
+                match tops.iter_mut().find(|(r, _, _)| *r == row) {
+                    Some(entry) => {
+                        entry.1 = entry.1.min(line.top);
+                        entry.2 = entry.2.max(bottom);
+                    }
+                    None => tops.push((row, line.top, bottom)),
+                }
+            }
+        }
+    }
+    tops.sort_by_key(|(r, _, _)| *r);
+    tops.iter().map(|(_, top, bottom)| bottom - top).collect()
 }
 
 fn section(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
@@ -833,16 +1966,29 @@ fn comment(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
             session.resolve_comment(id()?, false)?;
             Ok(Answer::said("Open again"))
         }
+        "delete" if arguments.get(1).map(String::as_str) == Some("all") => {
+            let count = session.delete_all_comments();
+            Ok(Answer::said(format!("{count} comments deleted")))
+        }
         "delete" => {
             session.delete_comment(id()?)?;
             Ok(Answer::said("Deleted"))
+        }
+        "edit" => {
+            session.edit_comment(id()?, &rest(arguments, 2))?;
+            Ok(Answer::said("Comment changed"))
+        }
+        "next" | "previous" => {
+            let found = session.go_to_comment(what == "next").ok_or("there are no comments")?;
+            doc.view.reveal = true;
+            Ok(Answer::said(format!("Comment {found}")).with(json!({ "id": found })))
         }
         "list" => {
             let comments = session.comments();
             Ok(Answer::said(format!("{} comments", comments.len())).with(json!(comments)))
         }
         other => {
-            Err(format!("comment takes add, reply, resolve, reopen, delete or list, not {other}"))
+            Err(format!("comment takes add, reply, edit, resolve, reopen, delete [all], next, previous or list, not {other}"))
         }
     }
 }
@@ -929,7 +2075,69 @@ pub fn insert_picture_file(
 }
 
 /// Export the document, beside itself or to `to`.
+/// The bytes of a PDF of `pages`, with the document's title and its fonts and pictures.
+pub(crate) fn pdf_bytes(doc: &Doc, pages: &unluminous_word::layout::Pages) -> Vec<u8> {
+    pdf_bytes_with(doc, pages, PdfHow { tagged: false, outline: false, pdfa: false })
+}
+
+/// What an exported PDF holds besides its pages.
+#[derive(Debug, Clone, Copy)]
+pub struct PdfHow {
+    pub tagged: bool,
+    pub outline: bool,
+    pub pdfa: bool,
+}
+
+/// The bytes of a PDF of `pages` with the document's information, and its outline, tags and PDF/A
+/// metadata as `how` asks (task-2359, TDD 5.6).
+pub(crate) fn pdf_bytes_with(
+    doc: &Doc,
+    pages: &unluminous_word::layout::Pages,
+    how: PdfHow,
+) -> Vec<u8> {
+    let document = &doc.session.document;
+    let property = |name: &str| unluminous_word::new::property(document, name).unwrap_or_default();
+    let title = unluminous_word::new::property(document, "dc:title")
+        .filter(|t| !t.is_empty())
+        .unwrap_or_else(|| doc.label());
+    let outline = if how.outline {
+        doc.session
+            .toc_entries(6, pages)
+            .into_iter()
+            .filter_map(|(level, text, _, path)| {
+                let (page, line) = pages.find(&Pos::new(path, 0))?;
+                Some((level, text, page, line.top))
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let options = unluminous_word::pdf::PdfOptions {
+        title,
+        author: property("dc:creator"),
+        subject: property("dc:subject"),
+        keywords: property("cp:keywords"),
+        lang: doc.session.language_tag(),
+        outline,
+        structure: (how.tagged || how.pdfa)
+            .then(|| unluminous_word::pdf::structure(document, pages)),
+        pdfa: how.pdfa,
+    };
+    unluminous_word::pdf::write_with(pages, &options, &|style| pdf_face(style), &|part| {
+        pdf_picture(document, part)
+    })
+}
+
 pub fn export_to(doc: &mut Doc, kind: &str, to: Option<&Path>) -> Result<String, String> {
+    export_with(doc, kind, to, PdfHow { tagged: true, outline: true, pdfa: false })
+}
+
+pub fn export_with(
+    doc: &mut Doc,
+    kind: &str,
+    to: Option<&Path>,
+    how: PdfHow,
+) -> Result<String, String> {
     let path = to
         .map(Path::to_path_buf)
         .or_else(|| Word::export_path(doc, kind))
@@ -942,12 +2150,8 @@ pub fn export_to(doc: &mut Doc, kind: &str, to: Option<&Path>) -> Result<String,
         "html" => unluminous_word::export::to_html(&doc.session.document).into_bytes(),
         "pdf" => {
             doc.ensure_pages();
-            let title = unluminous_word::new::property(&doc.session.document, "dc:title")
-                .unwrap_or_else(|| doc.label());
-            let document = &doc.session.document;
-            unluminous_word::pdf::write(&doc.pages, &title, &|style| pdf_face(style), &|part| {
-                pdf_picture(document, part)
-            })
+            let pages = doc.pages.clone();
+            pdf_bytes_with(doc, &pages, how)
         }
         other => return Err(format!("{other} is not a format: pdf, html, md or txt")),
     };
@@ -1033,6 +2237,21 @@ pub fn view(word: &Word) -> serde_json::Value {
             "navigation": d.view.navigation,
             "canUndo": d.session.can_undo(),
             "canRedo": d.session.can_redo(),
+            "mode": match d.view.mode { super::Mode::Print => "print", super::Mode::Read => "read", super::Mode::Outline => "outline" },
+            "ruler": d.view.ruler,
+            "rulerMarks": d.view.ruler_marks.map(|m| m.map(|v| v * d.view.window_zoom)),
+            "multiple": d.view.multiple,
+            "contextMenu": d.view.context_menu.as_ref().map(|m| m.entries.iter().map(|e| e.label.clone()).collect::<Vec<_>>()),
+            "object": d.session.object_info().map(|info| {
+                let screen = crate::components::word::objects::selected(d).and_then(|(page, rect)| {
+                    crate::components::word::objects::to_screen(d, d.view.pages_rect, page, rect)
+                });
+                json!({
+                    "kind": info.kind, "width": info.width, "height": info.height, "wrap": info.wrap, "alt": info.alt,
+                    "screen": screen.map(|r| { let z = d.view.window_zoom; [r.left() * z, r.top() * z, r.width() * z, r.height() * z] }),
+                })
+            }),
+            "cropping": d.view.cropping,
         })),
         "author": word.config.author,
     })
@@ -1086,5 +2305,6 @@ fn story_name(story: &StoryId) -> String {
         StoryId::Footnote(n) => format!("footnote:{n}"),
         StoryId::Endnote(n) => format!("endnote:{n}"),
         StoryId::Comment(n) => format!("comment:{n}"),
+        StoryId::TextBox(n) => format!("textbox:{n}"),
     }
 }

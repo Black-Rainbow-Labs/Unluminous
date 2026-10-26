@@ -1623,7 +1623,7 @@ fn the_wheel_over_two_overlapping_folder_nodes_goes_to_the_one_on_top() {
     use unluminous_app::services::realm::Kind;
     let mut harness = harness("");
     did(&mut harness, "realm show");
-    let many = std::env::temp_dir().join("unluminous-folder-node-overlap");
+    let many = fixtures_root().join("unluminous-folder-node-overlap");
     let _ = std::fs::create_dir_all(&many);
     for number in 0..60 {
         let _ = std::fs::write(many.join(format!("file-{number:02}.txt")), "x");
@@ -1681,7 +1681,7 @@ fn the_modifier_wheel_over_a_folder_node_zooms_it_without_also_scrolling_it() {
     use unluminous_app::services::realm::{Kind, State};
     let mut harness = harness("");
     did(&mut harness, "realm show");
-    let many = std::env::temp_dir().join("unluminous-folder-node-modifier");
+    let many = fixtures_root().join("unluminous-folder-node-modifier");
     let _ = std::fs::create_dir_all(&many);
     for number in 0..60 {
         let _ = std::fs::write(many.join(format!("file-{number:02}.txt")), "x");
@@ -2266,7 +2266,7 @@ fn a_folder_node_scrolls_with_the_wheel() {
     did(&mut harness, "realm show");
     // A folder with far more rows in it than the node is tall, so there is something to scroll. The
     // sample folder has seven, which fits.
-    let many = std::env::temp_dir().join("unluminous-folder-node-scroll");
+    let many = fixtures_root().join("unluminous-folder-node-scroll");
     let _ = std::fs::create_dir_all(&many);
     for number in 0..60 {
         let _ = std::fs::write(many.join(format!("file-{number:02}.txt")), "x");
@@ -2671,7 +2671,7 @@ fn a_canvas_comes_back_when_the_project_is_opened_again() {
     // `sample_folder()` is written once behind a `OnceLock` for exactly this reason, and adding to it
     // afterwards is the same fault from the other side. `git_folder(name)`'s rule — a fixture a test
     // writes to is named after that test — is what this follows.
-    let folder = std::env::temp_dir().join("unluminous-realm-round-trip");
+    let folder = fixtures_root().join("unluminous-realm-round-trip");
     std::fs::remove_dir_all(&folder).ok();
     std::fs::create_dir_all(&folder).expect("make the folder");
     let mut realm = unluminous_app::services::realm::Realm::default();
@@ -3742,7 +3742,7 @@ fn the_wheel_over_a_file_editor_node_moves_its_page() {
     let mut harness = harness("");
     did(&mut harness, "realm show");
     let long: String = (0..400).map(|line| format!("Line {line} of a long file.\n")).collect();
-    let file = std::env::temp_dir().join("unluminous-editor-node-scroll.txt");
+    let file = fixtures_root().join("unluminous-editor-node-scroll.txt");
     std::fs::write(&file, long).expect("a long file");
     let node = harness.state_mut().new_detached_realm_node(Kind::Editor, egui::pos2(20.0, 20.0));
     did(&mut harness, &format!("realm size {node} --width 460 --height 360"));
@@ -3787,7 +3787,7 @@ fn a_realm_project(
     name: &str,
     files: &[(&str, &[u8])],
 ) -> (std::path::PathBuf, Harness<'static, UnluminousApp>) {
-    let folder = std::env::temp_dir().join(format!("unluminous-realm-{name}"));
+    let folder = fixtures_root().join(format!("unluminous-realm-{name}"));
     std::fs::remove_dir_all(&folder).ok();
     std::fs::create_dir_all(&folder).expect("make the project");
     std::fs::write(folder.join("readme.md"), "# A project\n").expect("write the readme");
@@ -3975,7 +3975,7 @@ fn a_realm_tab_draws_the_canvas_and_the_panel_says_where_it_is() {
 #[test]
 fn a_picture_from_outside_the_project_is_copied_into_the_realm() {
     let picture = a_picture();
-    let outside = std::env::temp_dir().join("unluminous-realm-outside-picture");
+    let outside = fixtures_root().join("unluminous-realm-outside-picture");
     std::fs::create_dir_all(&outside).expect("make the outside folder");
     let source = outside.join("holiday.png");
     std::fs::write(&source, &picture).expect("write the outside picture");

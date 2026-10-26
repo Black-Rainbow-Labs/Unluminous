@@ -1,0 +1,3532 @@
+{
+  "file": "field-codes.docx",
+  "opened": true,
+  "error": null,
+  "pages": 3,
+  "words": 129,
+  "characters": 610,
+  "charactersWithSpaces": 682,
+  "paragraphCount": 59,
+  "lines": 59,
+  "paragraphs": [
+    {
+      "index": 1,
+      "text": "Field codes",
+      "style": "Heading 1",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 18.0,
+      "spaceAfter": 4.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": true,
+      "keepTogether": true,
+      "pageBreakBefore": false,
+      "outlineLevel": 1,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 90.0,
+      "left": 72.0,
+      "lastTop": 90.0,
+      "runs": [
+        {
+          "font": "Aptos Display",
+          "size": 20.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "#104862",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field codes"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field codes",
+          "top": 90.0,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "text": "1234.5",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 122.25,
+      "left": 72.0,
+      "lastTop": 122.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "1234.5"
+        }
+      ],
+      "lines": [
+        {
+          "text": "1234.5",
+          "top": 122.25,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "text": "mixed Case words",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 147.0,
+      "left": 72.0,
+      "lastTop": 147.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "mixed Case words"
+        }
+      ],
+      "lines": [
+        {
+          "text": "mixed Case words",
+          "top": 147.0,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "text": "Field: 1",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 172.5,
+      "left": 72.0,
+      "lastTop": 172.5,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: 1"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: 1",
+          "top": 172.5,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "text": "Field: I",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 197.25,
+      "left": 72.0,
+      "lastTop": 197.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: I"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: I",
+          "top": 197.25,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 6,
+      "text": "Field: first",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 222.0,
+      "left": 72.0,
+      "lastTop": 222.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: first"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: first",
+          "top": 222.0,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 7,
+      "text": "Field: 3",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 246.75,
+      "left": 72.0,
+      "lastTop": 246.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: 3"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: 3",
+          "top": 246.75,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 8,
+      "text": "Field: three",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 272.25,
+      "left": 72.0,
+      "lastTop": 272.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: three"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: three",
+          "top": 272.25,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 9,
+      "text": "Field: 1",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 297.0,
+      "left": 72.0,
+      "lastTop": 297.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: 1"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: 1",
+          "top": 297.0,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 10,
+      "text": "Field: 3",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 321.75,
+      "left": 72.0,
+      "lastTop": 321.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: 3"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: 3",
+          "top": 321.75,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 11,
+      "text": "Field: Oracle",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 347.25,
+      "left": 72.0,
+      "lastTop": 347.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: Oracle"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: Oracle",
+          "top": 347.25,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 12,
+      "text": "Field: ORACLE",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 372.0,
+      "left": 72.0,
+      "lastTop": 372.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: ORACLE"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: ORACLE",
+          "top": 372.0,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 13,
+      "text": "Field: Field codes",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 396.75,
+      "left": 72.0,
+      "lastTop": 396.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: Field codes"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: Field codes",
+          "top": 396.75,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 14,
+      "text": "Field: field codes",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 422.25,
+      "left": 72.0,
+      "lastTop": 422.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: field codes"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: field codes",
+          "top": 422.25,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 15,
+      "text": "Field: Every switch",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 447.0,
+      "left": 72.0,
+      "lastTop": 447.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: Every switch"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: Every switch",
+          "top": 447.0,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 16,
+      "text": "Field: Oracle Fields",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 471.75,
+      "left": 72.0,
+      "lastTop": 471.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: Oracle Fields"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: Oracle Fields",
+          "top": 471.75,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 17,
+      "text": "Field: Unluminous",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 496.5,
+      "left": 72.0,
+      "lastTop": 496.5,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: Unluminous"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: Unluminous",
+          "top": 496.5,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 18,
+      "text": "Field: Field codes",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 522.0,
+      "left": 72.0,
+      "lastTop": 522.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: Field codes"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: Field codes",
+          "top": 522.0,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 19,
+      "text": "Field: field-codes.docx",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 546.75,
+      "left": 72.0,
+      "lastTop": 546.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: field-codes.docx"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: field-codes.docx",
+          "top": 546.75,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 20,
+      "text": "Field: 1",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 571.5,
+      "left": 72.0,
+      "lastTop": 571.5,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: 1"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: 1",
+          "top": 571.5,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 21,
+      "text": "Field: 2",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 597.0,
+      "left": 72.0,
+      "lastTop": 597.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: 2"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: 2",
+          "top": 597.0,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 22,
+      "text": "Field: 2",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 621.75,
+      "left": 72.0,
+      "lastTop": 621.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: 2"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: 2",
+          "top": 621.75,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 23,
+      "text": "Field: III",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 646.5,
+      "left": 72.0,
+      "lastTop": 646.5,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: III"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: III",
+          "top": 646.5,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 24,
+      "text": "Field: iv",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 671.25,
+      "left": 72.0,
+      "lastTop": 671.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: iv"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: iv",
+          "top": 671.25,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 25,
+      "text": "Field: E",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 696.75,
+      "left": 72.0,
+      "lastTop": 696.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: E"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: E",
+          "top": 696.75,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 26,
+      "text": "Field: f",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 72.0,
+      "left": 72.0,
+      "lastTop": 72.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: f"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: f",
+          "top": 72.0,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 27,
+      "text": "Field: 7th",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 96.75,
+      "left": 72.0,
+      "lastTop": 96.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: 7th"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: 7th",
+          "top": 96.75,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 28,
+      "text": "Field: eight",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 122.25,
+      "left": 72.0,
+      "lastTop": 122.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: eight"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: eight",
+          "top": 122.25,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 29,
+      "text": "Field: ninth",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 147.0,
+      "left": 72.0,
+      "lastTop": 147.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: ninth"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: ninth",
+          "top": 147.0,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 30,
+      "text": "Field: A",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 171.75,
+      "left": 72.0,
+      "lastTop": 171.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: A"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: A",
+          "top": 171.75,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 31,
+      "text": "Field: 20",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 196.5,
+      "left": 72.0,
+      "lastTop": 196.5,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: 20"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: 20",
+          "top": 196.5,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 32,
+      "text": "Field: 1",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 222.0,
+      "left": 72.0,
+      "lastTop": 222.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: 1"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: 1",
+          "top": 222.0,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 33,
+      "text": "Field: 14",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 246.75,
+      "left": 72.0,
+      "lastTop": 246.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: 14"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: 14",
+          "top": 246.75,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 34,
+      "text": "Field: 2.50",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 271.5,
+      "left": 72.0,
+      "lastTop": 271.5,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: 2.50"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: 2.50",
+          "top": 271.5,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 35,
+      "text": "Field: 1,234.50",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 297.0,
+      "left": 72.0,
+      "lastTop": 297.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: 1,234.50"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: 1,234.50",
+          "top": 297.0,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 36,
+      "text": "Field: $   7.00",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 321.75,
+      "left": 72.0,
+      "lastTop": 321.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: $   7.00"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: $   7.00",
+          "top": 321.75,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 37,
+      "text": "Field: 2468",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 346.5,
+      "left": 72.0,
+      "lastTop": 346.5,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: 2468"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: 2468",
+          "top": 346.5,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 38,
+      "text": "Field: 1",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 371.25,
+      "left": 72.0,
+      "lastTop": 371.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: 1"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: 1",
+          "top": 371.25,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 39,
+      "text": "Field: yes",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 396.75,
+      "left": 72.0,
+      "lastTop": 396.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: yes"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: yes",
+          "top": 396.75,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 40,
+      "text": "Field: big",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 421.5,
+      "left": 72.0,
+      "lastTop": 421.5,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: big"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: big",
+          "top": 421.5,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 41,
+      "text": "Field: 1",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 446.25,
+      "left": 72.0,
+      "lastTop": 446.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: 1"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: 1",
+          "top": 446.25,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 42,
+      "text": "Field: mixed Case word",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 471.75,
+      "left": 72.0,
+      "lastTop": 471.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: mixed Case word"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: mixed Case word",
+          "top": 471.75,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 43,
+      "text": "Field: MIXED CASE WORD",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 496.5,
+      "left": 72.0,
+      "lastTop": 496.5,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: MIXED CASE WORD"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: MIXED CASE WORD",
+          "top": 496.5,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 44,
+      "text": "Field: Mixed Case word",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 521.25,
+      "left": 72.0,
+      "lastTop": 521.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: Mixed Case word"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: Mixed Case word",
+          "top": 521.25,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 45,
+      "text": "Field: Field codes",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 546.75,
+      "left": 72.0,
+      "lastTop": 546.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: Field codes"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: Field codes",
+          "top": 546.75,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 46,
+      "text": "Field: 2026",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 571.5,
+      "left": 72.0,
+      "lastTop": 571.5,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: 2026"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: 2026",
+          "top": 571.5,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 47,
+      "text": "Field: one thousand two hundred thirty-four and 00/100",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 596.25,
+      "left": 72.0,
+      "lastTop": 596.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: one thousand two hundred thirty-four and 00/100"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: one thousand two hundred thirty-four and 00/100",
+          "top": 596.25,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 48,
+      "text": "Field: forty-two",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 621.0,
+      "left": 72.0,
+      "lastTop": 621.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: forty-two"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: forty-two",
+          "top": 621.0,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 49,
+      "text": "Field: 3rd",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 646.5,
+      "left": 72.0,
+      "lastTop": 646.5,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Field: 3rd"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Field: 3rd",
+          "top": 646.5,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 50,
+      "text": "Table:",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 2,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 671.25,
+      "left": 72.0,
+      "lastTop": 671.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Table:"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Table:",
+          "top": 671.25,
+          "left": 72.0,
+          "page": 2
+        }
+      ]
+    },
+    {
+      "index": 51,
+      "text": "10\r",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 3,
+      "inTable": true,
+      "lineCount": 0,
+      "top": 72.75,
+      "left": 78.0,
+      "lastTop": 72.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "10"
+        }
+      ],
+      "lines": null
+    },
+    {
+      "index": 52,
+      "text": "1\r",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 3,
+      "inTable": true,
+      "lineCount": 0,
+      "top": 72.75,
+      "left": 312.0,
+      "lastTop": 72.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "1"
+        }
+      ],
+      "lines": null
+    },
+    {
+      "index": 53,
+      "text": "\r",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 3,
+      "inTable": true,
+      "lineCount": 0,
+      "top": 72.75,
+      "left": 540.75,
+      "lastTop": 72.75,
+      "runs": [],
+      "lines": null
+    },
+    {
+      "index": 54,
+      "text": "20\r",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 3,
+      "inTable": true,
+      "lineCount": 0,
+      "top": 98.25,
+      "left": 78.0,
+      "lastTop": 98.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "20"
+        }
+      ],
+      "lines": null
+    },
+    {
+      "index": 55,
+      "text": "2\r",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 3,
+      "inTable": true,
+      "lineCount": 0,
+      "top": 98.25,
+      "left": 312.0,
+      "lastTop": 98.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "2"
+        }
+      ],
+      "lines": null
+    },
+    {
+      "index": 56,
+      "text": "\r",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 3,
+      "inTable": true,
+      "lineCount": 0,
+      "top": 98.25,
+      "left": 540.75,
+      "lastTop": 98.25,
+      "runs": [],
+      "lines": null
+    },
+    {
+      "index": 57,
+      "text": "30\r",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 3,
+      "inTable": true,
+      "lineCount": 0,
+      "top": 123.75,
+      "left": 78.0,
+      "lastTop": 123.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "30"
+        }
+      ],
+      "lines": null
+    },
+    {
+      "index": 58,
+      "text": "3\r",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 3,
+      "inTable": true,
+      "lineCount": 0,
+      "top": 123.75,
+      "left": 312.0,
+      "lastTop": 123.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "3"
+        }
+      ],
+      "lines": null
+    },
+    {
+      "index": 59,
+      "text": "\r",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 3,
+      "inTable": true,
+      "lineCount": 0,
+      "top": 123.75,
+      "left": 540.75,
+      "lastTop": 123.75,
+      "runs": [],
+      "lines": null
+    },
+    {
+      "index": 60,
+      "text": "60\r",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 3,
+      "inTable": true,
+      "lineCount": 0,
+      "top": 149.25,
+      "left": 78.0,
+      "lastTop": 149.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "60"
+        }
+      ],
+      "lines": null
+    },
+    {
+      "index": 61,
+      "text": "2.0\r",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 3,
+      "inTable": true,
+      "lineCount": 0,
+      "top": 149.25,
+      "left": 312.0,
+      "lastTop": 149.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "2.0"
+        }
+      ],
+      "lines": null
+    },
+    {
+      "index": 62,
+      "text": "\r",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 3,
+      "inTable": true,
+      "lineCount": 0,
+      "top": 149.25,
+      "left": 540.75,
+      "lastTop": 149.25,
+      "runs": [],
+      "lines": null
+    },
+    {
+      "index": 63,
+      "text": "After the table.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 3,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 174.0,
+      "left": 72.0,
+      "lastTop": 174.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "After the table."
+        }
+      ],
+      "lines": [
+        {
+          "text": "After the table.",
+          "top": 174.0,
+          "left": 72.0,
+          "page": 3
+        }
+      ]
+    }
+  ],
+  "tables": [
+    {
+      "rows": 4,
+      "columns": 2,
+      "nested": 1,
+      "cells": [
+        {
+          "row": 1,
+          "column": 1,
+          "text": "10",
+          "width": 234.0
+        },
+        {
+          "row": 1,
+          "column": 2,
+          "text": "1",
+          "width": 234.0
+        },
+        {
+          "row": 2,
+          "column": 1,
+          "text": "20",
+          "width": 234.0
+        },
+        {
+          "row": 2,
+          "column": 2,
+          "text": "2",
+          "width": 234.0
+        },
+        {
+          "row": 3,
+          "column": 1,
+          "text": "30",
+          "width": 234.0
+        },
+        {
+          "row": 3,
+          "column": 2,
+          "text": "3",
+          "width": 234.0
+        },
+        {
+          "row": 4,
+          "column": 1,
+          "text": "60",
+          "width": 234.0
+        },
+        {
+          "row": 4,
+          "column": 2,
+          "text": "2.0",
+          "width": 234.0
+        }
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "pageWidth": 612.0,
+      "pageHeight": 792.0,
+      "orientation": 0,
+      "topMargin": 72.0,
+      "bottomMargin": 72.0,
+      "leftMargin": 72.0,
+      "rightMargin": 72.0,
+      "headerDistance": 36.0,
+      "footerDistance": 36.0,
+      "columns": 1,
+      "differentFirstPage": false,
+      "oddAndEvenPages": false,
+      "sectionStart": 2,
+      "headers": {
+        "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
+        "first": "",
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
+      },
+      "footers": {
+        "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
+        "first": "",
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
+      }
+    }
+  ],
+  "footnotes": [],
+  "endnotes": [],
+  "comments": [],
+  "revisions": [],
+  "inlineShapes": [],
+  "shapes": [],
+  "contentControls": [],
+  "oMaths": [],
+  "settings": {
+    "autoHyphenation": false,
+    "hyphenationZone": 9999999.0,
+    "consecutiveHyphensLimit": 0,
+    "compatibilityMode": 15
+  },
+  "footnoteOptions": {
+    "numberStyle": 0,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 0
+  },
+  "endnoteOptions": {
+    "numberStyle": 2,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 1
+  },
+  "footnotePages": [],
+  "fields": [
+    {
+      "type": 33,
+      "code": " PAGE ",
+      "result": "1"
+    },
+    {
+      "type": 33,
+      "code": " PAGE \\* ROMAN ",
+      "result": "I"
+    },
+    {
+      "type": 33,
+      "code": " PAGE \\* OrdText ",
+      "result": "first"
+    },
+    {
+      "type": 26,
+      "code": " NUMPAGES ",
+      "result": "3"
+    },
+    {
+      "type": 26,
+      "code": " NUMPAGES \\* CardText ",
+      "result": "three"
+    },
+    {
+      "type": 65,
+      "code": " SECTION ",
+      "result": "1"
+    },
+    {
+      "type": 66,
+      "code": " SECTIONPAGES ",
+      "result": "3"
+    },
+    {
+      "type": 17,
+      "code": " AUTHOR ",
+      "result": "Oracle"
+    },
+    {
+      "type": 17,
+      "code": " AUTHOR \\* Upper ",
+      "result": "ORACLE"
+    },
+    {
+      "type": 15,
+      "code": " TITLE ",
+      "result": "Field codes"
+    },
+    {
+      "type": 15,
+      "code": " TITLE \\* Lower ",
+      "result": "field codes"
+    },
+    {
+      "type": 16,
+      "code": " SUBJECT \\* FirstCap ",
+      "result": "Every switch"
+    },
+    {
+      "type": 18,
+      "code": " KEYWORDS \\* Caps ",
+      "result": "Oracle Fields"
+    },
+    {
+      "type": 85,
+      "code": " DOCPROPERTY Project ",
+      "result": "Unluminous"
+    },
+    {
+      "type": 85,
+      "code": " DOCPROPERTY Title ",
+      "result": "Field codes"
+    },
+    {
+      "type": 29,
+      "code": " FILENAME ",
+      "result": "field-codes.docx"
+    },
+    {
+      "type": 12,
+      "code": " SEQ Item ",
+      "result": "1"
+    },
+    {
+      "type": 12,
+      "code": " SEQ Item ",
+      "result": "2"
+    },
+    {
+      "type": 12,
+      "code": " SEQ Item \\c ",
+      "result": "2"
+    },
+    {
+      "type": 12,
+      "code": " SEQ Item \\* ROMAN ",
+      "result": "III"
+    },
+    {
+      "type": 12,
+      "code": " SEQ Item \\* roman ",
+      "result": "iv"
+    },
+    {
+      "type": 12,
+      "code": " SEQ Item \\* ALPHABETIC ",
+      "result": "E"
+    },
+    {
+      "type": 12,
+      "code": " SEQ Item \\* alphabetic ",
+      "result": "f"
+    },
+    {
+      "type": 12,
+      "code": " SEQ Item \\* Ordinal ",
+      "result": "7th"
+    },
+    {
+      "type": 12,
+      "code": " SEQ Item \\* CardText ",
+      "result": "eight"
+    },
+    {
+      "type": 12,
+      "code": " SEQ Item \\* OrdText ",
+      "result": "ninth"
+    },
+    {
+      "type": 12,
+      "code": " SEQ Item \\* Hex ",
+      "result": "A"
+    },
+    {
+      "type": 12,
+      "code": " SEQ Item \\r 20 ",
+      "result": "20"
+    },
+    {
+      "type": 12,
+      "code": " SEQ Other \\* Arabic ",
+      "result": "1"
+    },
+    {
+      "type": 34,
+      "code": " = 2+3*4 ",
+      "result": "14"
+    },
+    {
+      "type": 34,
+      "code": " = 10/4 \\# \"0.00\" ",
+      "result": "2.50"
+    },
+    {
+      "type": 34,
+      "code": " = 1234.5 \\# \"#,##0.00\" ",
+      "result": "1,234.50"
+    },
+    {
+      "type": 34,
+      "code": " = 7 \\# \"$#,##0.00\" ",
+      "result": "$   7.00"
+    },
+    {
+      "type": 34,
+      "code": " = Amount * 2 ",
+      "result": "2468"
+    },
+    {
+      "type": 34,
+      "code": " = 5 > 3 ",
+      "result": "1"
+    },
+    {
+      "type": 7,
+      "code": " IF 1 = 1 \"yes\" \"no\" ",
+      "result": "yes"
+    },
+    {
+      "type": 7,
+      "code": " IF Amount > 1000 \"big\" \"small\" ",
+      "result": "big"
+    },
+    {
+      "type": 80,
+      "code": " COMPARE 3 > 2 ",
+      "result": "1"
+    },
+    {
+      "type": 3,
+      "code": " REF Name ",
+      "result": "mixed Case word"
+    },
+    {
+      "type": 3,
+      "code": " REF Name \\* Upper ",
+      "result": "MIXED CASE WORD"
+    },
+    {
+      "type": 3,
+      "code": " REF Name \\* FirstCap ",
+      "result": "Mixed Case word"
+    },
+    {
+      "type": 10,
+      "code": " STYLEREF \"Heading 1\" ",
+      "result": "Field codes"
+    },
+    {
+      "type": 21,
+      "code": " CREATEDATE \\@ \"yyyy\" ",
+      "result": "2026"
+    },
+    {
+      "type": 34,
+      "code": " = 1234 \\* DollarText ",
+      "result": "one thousand two hundred thirty-four and 00/100"
+    },
+    {
+      "type": 34,
+      "code": " = 42 \\* CardText ",
+      "result": "forty-two"
+    },
+    {
+      "type": 34,
+      "code": " = 3 \\* Ordinal ",
+      "result": "3rd"
+    },
+    {
+      "type": 34,
+      "code": " = SUM(ABOVE) ",
+      "result": "60"
+    },
+    {
+      "type": 34,
+      "code": " = AVERAGE(ABOVE) \\# \"0.0\" ",
+      "result": "2.0"
+    }
+  ],
+  "tablesOfContents": 0,
+  "bookmarks": [
+    "Amount",
+    "Name"
+  ],
+  "hyperlinks": [],
+  "properties": {
+    "title": "Field codes",
+    "subject": "every switch",
+    "author": "Oracle",
+    "keywords": "oracle fields",
+    "company": "",
+    "manager": "",
+    "category": ""
+  },
+  "customProperties": [
+    {
+      "name": "Project",
+      "value": "Unluminous"
+    }
+  ],
+  "tableStyles": [
+    "Table Normal"
+  ],
+  "protection": {
+    "type": -1,
+    "trackRevisions": false,
+    "writeReserved": false,
+    "hasPassword": false
+  },
+  "heading1": {
+    "font": "Aptos Display",
+    "size": 20.0
+  }
+}

@@ -1,0 +1,497 @@
+{
+  "file": "hyphenation.docx",
+  "opened": true,
+  "error": null,
+  "pages": 1,
+  "words": 202,
+  "characters": 1605,
+  "charactersWithSpaces": 1801,
+  "paragraphCount": 6,
+  "lines": 22,
+  "paragraphs": [
+    {
+      "index": 1,
+      "text": "Internationalisation and telecommunications infrastructure demonstrate extraordinarily characteristic considerations, notwithstanding unquestionably comprehensive documentation requirements. The a shows with between the through plain wraps margin the. Each careful lines reader pages text at without editor.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 3,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 4,
+      "top": 72.0,
+      "left": 72.0,
+      "lastTop": 123.0,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Internationalisation and telecommunications infrastructure demonstrate extraordinarily characteristic considerations, notwithstanding unquestionably comprehensive documentation requirements. The a shows with between the through plain wraps margin the. Each careful lines reader pages text at without editor."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Internationalisation and telecommunications infrastructure demonstrate extraordinarily ",
+          "top": 72.0,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "characteristic considerations, notwithstanding unquestionably comprehensive documen",
+          "top": 89.25,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "tation requirements. The a shows with between the through plain wraps margin the. Each ",
+          "top": 105.75,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "careful lines reader pages text at without editor.",
+          "top": 123.0,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "text": "Internationalisation and telecommunications infrastructure demonstrate extraordinarily characteristic considerations, notwithstanding unquestionably comprehensive documentation requirements. Careful lines reader pages text at without editor document each careful lines. Scrolls of that the surprise opens and paragraph spacing while.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 3,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 4,
+      "top": 147.75,
+      "left": 72.0,
+      "lastTop": 198.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Internationalisation and telecommunications infrastructure demonstrate extraordinarily characteristic considerations, notwithstanding unquestionably comprehensive documentation requirements. Careful lines reader pages text at without editor document each careful lines. Scrolls of that the surprise opens and paragraph spacing while."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Internationalisation and telecommunications infrastructure demonstrate extraordinarily ",
+          "top": 147.75,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "characteristic considerations, notwithstanding unquestionably comprehensive documen",
+          "top": 165.0,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "tation requirements. Careful lines reader pages text at without editor document each careful ",
+          "top": 181.5,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "lines. Scrolls of that the surprise opens and paragraph spacing while.",
+          "top": 198.75,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "text": "Internationalisation and telecommunications infrastructure demonstrate extraordinarily characteristic considerations, notwithstanding unquestionably comprehensive documentation requirements. Of that the surprise opens and paragraph spacing while scrolls of that the. Margin the a shows with between the through plain wraps margin.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 3,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 4,
+      "top": 223.5,
+      "left": 72.0,
+      "lastTop": 274.5,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Internationalisation and telecommunications infrastructure demonstrate extraordinarily characteristic considerations, notwithstanding unquestionably comprehensive documentation requirements. Of that the surprise opens and paragraph spacing while scrolls of that the. Margin the a shows with between the through plain wraps margin."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Internationalisation and telecommunications infrastructure demonstrate extraordinarily ",
+          "top": 223.5,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "characteristic considerations, notwithstanding unquestionably comprehensive documen",
+          "top": 240.75,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "tation requirements. Of that the surprise opens and paragraph spacing while scrolls of that ",
+          "top": 257.25,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "the. Margin the a shows with between the through plain wraps margin.",
+          "top": 274.5,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "text": "Internationalisation and telecommunications infrastructure demonstrate extraordinarily characteristic considerations, notwithstanding unquestionably comprehensive documentation requirements. Spacing while scrolls of that the surprise opens and paragraph spacing while scrolls of. Through plain wraps margin the a shows with between the through plain.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 3,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 4,
+      "top": 299.25,
+      "left": 72.0,
+      "lastTop": 350.25,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "Internationalisation and telecommunications infrastructure demonstrate extraordinarily characteristic considerations, notwithstanding unquestionably comprehensive documentation requirements. Spacing while scrolls of that the surprise opens and paragraph spacing while scrolls of. Through plain wraps margin the a shows with between the through plain."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Internationalisation and telecommunications infrastructure demonstrate extraordinarily ",
+          "top": 299.25,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "characteristic considerations, notwithstanding unquestionably comprehensive documen",
+          "top": 316.5,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "tation requirements. Spacing while scrolls of that the surprise opens and paragraph spacing ",
+          "top": 333.0,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "while scrolls of. Through plain wraps margin the a shows with between the through plain.",
+          "top": 350.25,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "text": "A nonbreaking hyphen and a nonbreaking space: well‑known",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 0,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 1,
+      "top": 375.75,
+      "left": 72.0,
+      "lastTop": 375.75,
+      "runs": [
+        {
+          "font": "Aptos",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "A nonbreaking hyphen and a nonbreaking space: well"
+        },
+        {
+          "font": "Cambria Math",
+          "size": 12.0,
+          "bold": false,
+          "italic": false,
+          "underline": 0,
+          "color": "auto",
+          "highlight": 0,
+          "strike": false,
+          "doubleStrike": false,
+          "superscript": false,
+          "subscript": false,
+          "smallCaps": false,
+          "allCaps": false,
+          "hidden": false,
+          "text": "‑known"
+        }
+      ],
+      "lines": [
+        {
+          "text": "A nonbreaking hyphen and a nonbreaking space: well‑known",
+          "top": 375.75,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    },
+    {
+      "index": 6,
+      "text": "Two columns. Internationalisation and telecommunications infrastructure demonstrate extraordinarily characteristic considerations, notwithstanding unquestionably comprehensive documentation requirements. Editor document each careful lines reader pages text at. Paragraph spacing while scrolls of that the surprise opens and paragraph spacing while scrolls. The through plain wraps margin the a shows with between the through.",
+      "style": "Normal",
+      "listString": "",
+      "listLevel": 0,
+      "alignment": 3,
+      "leftIndent": 0.0,
+      "rightIndent": 0.0,
+      "firstLineIndent": 0.0,
+      "spaceBefore": 0.0,
+      "spaceAfter": 8.0,
+      "lineSpacing": 13.9,
+      "lineSpacingRule": 5,
+      "keepWithNext": false,
+      "keepTogether": false,
+      "pageBreakBefore": false,
+      "outlineLevel": 10,
+      "page": 1,
+      "inTable": false,
+      "lineCount": 5,
+      "top": 400.5,
+      "left": 72.0,
+      "lastTop": 468.0,
+      "runs": null,
+      "lines": [
+        {
+          "text": "Two columns. Internationalisation and telecommunications infrastructure demonstrate ex",
+          "top": 400.5,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "traordinarily characteristic considerations, notwithstanding unquestionably comprehensive ",
+          "top": 417.75,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "documentation requirements. Editor document each careful lines reader pages text at. Par",
+          "top": 434.25,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "agraph spacing while scrolls of that the surprise opens and paragraph spacing while scrolls. ",
+          "top": 451.5,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "The through plain wraps margin the a shows with between the through.",
+          "top": 468.0,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
+    }
+  ],
+  "tables": [],
+  "sections": [
+    {
+      "pageWidth": 612.0,
+      "pageHeight": 792.0,
+      "orientation": 0,
+      "topMargin": 72.0,
+      "bottomMargin": 72.0,
+      "leftMargin": 72.0,
+      "rightMargin": 72.0,
+      "headerDistance": 36.0,
+      "footerDistance": 36.0,
+      "columns": 1,
+      "differentFirstPage": false,
+      "oddAndEvenPages": false,
+      "sectionStart": 2,
+      "headers": {
+        "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
+        "first": "",
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
+      },
+      "footers": {
+        "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
+        "first": "",
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
+      }
+    }
+  ],
+  "footnotes": [],
+  "endnotes": [],
+  "comments": [],
+  "revisions": [],
+  "inlineShapes": [],
+  "shapes": [],
+  "contentControls": [],
+  "oMaths": [],
+  "settings": {
+    "autoHyphenation": true,
+    "hyphenationZone": 9999999.0,
+    "consecutiveHyphensLimit": 2,
+    "compatibilityMode": 15
+  },
+  "footnoteOptions": {
+    "numberStyle": 0,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 0
+  },
+  "endnoteOptions": {
+    "numberStyle": 2,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 1
+  },
+  "footnotePages": [],
+  "fields": [],
+  "tablesOfContents": 0,
+  "bookmarks": [],
+  "hyperlinks": [],
+  "properties": {
+    "title": "",
+    "subject": "",
+    "author": "Oracle",
+    "keywords": ""
+  }
+}

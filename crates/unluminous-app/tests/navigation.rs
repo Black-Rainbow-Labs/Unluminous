@@ -221,6 +221,48 @@ fn the_command_line_splits_the_editing_area_and_says_what_it_did() {
     assert_eq!(refused(&mut harness, "pane unsplit"), "not-applicable");
 }
 
+/// A file read again from the disk while it shows in the pane without the keyboard is laid out again.
+///
+/// `task-2364`. Every document counts its text revisions from one, and reading a file again replaced its
+/// document while forgetting the old layout only for the tab with the keyboard. A file in the other pane
+/// of a split, never edited and then made shorter on disk (which is what an agent does), kept the layout
+/// of its longer text under the same revision, and the next paint sliced past the end of the new text:
+/// a debug assertion here, and the rope's `assert!` in a release build, which ends the process. The every
+/// action walk found it under load.
+#[test]
+fn a_file_read_again_in_the_pane_without_the_keyboard_is_laid_out_again() {
+    let long: String =
+        (1..=60).map(|line| format!("line {line} of a file that is long\n")).collect();
+    let folder = fixture(
+        "unluminous-reread-in-the-other-pane",
+        &[("long.md", long.as_str()), ("short.md", "# Short\n")],
+    );
+    let mut harness = harness_in(&folder);
+    did(&mut harness, "tab open short.md --permanent");
+    did(&mut harness, "tab open long.md --permanent");
+    did(&mut harness, "pane split");
+    steady(&mut harness);
+    did(&mut harness, "pane focus 0");
+    steady(&mut harness);
+    let long_tab =
+        harness.state().files.index_of(&folder.join("long.md")).expect("long.md is open");
+    assert_ne!(
+        harness.state().files.active_index(),
+        long_tab,
+        "long.md shows in the pane that does not have the keyboard"
+    );
+
+    std::fs::write(folder.join("long.md"), "# Now short\n").expect("make the file short");
+    harness.state_mut().reload_from_disk(&folder.join("long.md"), false);
+    steady(&mut harness);
+    harness.render().expect("both panes paint");
+    assert_eq!(
+        harness.state().files.at(long_tab).document.text().to_string(),
+        "# Now short\n",
+        "the tab holds what is on the disk"
+    );
+}
+
 #[test]
 fn the_command_line_scrolls_the_explorer_to_the_file_that_is_showing() {
     let folder = sample_folder();
@@ -1874,7 +1916,7 @@ fn a_cut_row_is_pasted_into_a_subfolder() {
 #[test]
 fn a_file_dropped_from_another_program_lands_in_the_folder_under_the_pointer() {
     let folder = scratch_folder("dropped-in");
-    let outside = std::env::temp_dir().join("unluminous-2194-from-elsewhere");
+    let outside = fixtures_root().join("unluminous-2194-from-elsewhere");
     std::fs::create_dir_all(&outside).expect("make the outside folder");
     std::fs::write(outside.join("picture.txt"), "from another program\n").expect("write it");
     let mut harness = harness_in(&folder);
@@ -1903,7 +1945,7 @@ fn an_agent_chooses_rows_and_copies_a_file_in_from_outside() {
     );
     assert_eq!(chosen["chosen"].as_array().map(Vec::len), Some(2), "{chosen}");
 
-    let outside = std::env::temp_dir().join("unluminous-2194-agent-outside.md");
+    let outside = fixtures_root().join("unluminous-2194-agent-outside.md");
     std::fs::write(&outside, "# outside\n").expect("write it");
     did(
         &mut harness,
@@ -2472,7 +2514,7 @@ fn a_source_file_write_that_fails_leaves_the_file_as_it_was() {
 /// strip; the wheel over the strip moves along until it is drawn, and showing a tab does not pull the strip back.
 #[test]
 fn the_tab_strip_scrolls_sideways_under_the_wheel() {
-    let folder = std::env::temp_dir().join("unluminous-tab-strip-scroll");
+    let folder = fixtures_root().join("unluminous-tab-strip-scroll");
     std::fs::create_dir_all(&folder).expect("a folder of its own");
     let names: Vec<String> =
         (0..16).map(|at| format!("a-file-with-a-fairly-long-name-{at:02}.txt")).collect();

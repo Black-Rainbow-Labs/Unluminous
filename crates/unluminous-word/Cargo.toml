@@ -25,6 +25,21 @@ serde_json.workspace = true
 # Spell check (`spell.rs`): Hunspell dictionaries read in pure Rust. The English dictionary is SCOWL en_US,
 # kept deflated in `dictionaries/` and inflated only when a document is first checked.
 spellbook.workspace = true
+# Hyphenation when a document turns it on (`w:autoHyphenation`): Knuth-Liang with the en-US TeX patterns
+# embedded, the language spelling also checks. The code is MIT or Apache 2.0 and the pattern data is
+# under the patterns' own permissive notice, shipped as data (task-2359).
+hyphenation.workspace = true
+# Pasting HTML (task-2359, TDD 5.4).
+dom_query.workspace = true
+# The password hash Word writes for Lock Tracking and Restrict Editing (task-2359). Already in the tree.
+sha2.workspace = true
+# Opening and saving a document encrypted with a password (`crypto.rs`, task-2359).
+aes.workspace = true
+cbc.workspace = true
+cfb.workspace = true
+hmac.workspace = true
+getrandom.workspace = true
+base64.workspace = true
 
 [dev-dependencies]
 # A small picture for the test that has Word open a document Unluminous wrote.

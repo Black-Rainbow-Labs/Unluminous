@@ -51,6 +51,14 @@
           "hidden": false,
           "text": "Inline PNG, 200 by 120 points as inserted:"
         }
+      ],
+      "lines": [
+        {
+          "text": "Inline PNG, 200 by 120 points as inserted:",
+          "top": 72.0,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -94,6 +102,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "/"
+        }
+      ],
+      "lines": [
+        {
+          "text": "/",
+          "top": 96.75,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -139,6 +155,14 @@
           "hidden": false,
           "text": "Same PNG resized to 100 by 60 points:"
         }
+      ],
+      "lines": [
+        {
+          "text": "Same PNG resized to 100 by 60 points:",
+          "top": 197.25,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -182,6 +206,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "/"
+        }
+      ],
+      "lines": [
+        {
+          "text": "/",
+          "top": 222.0,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -227,6 +259,14 @@
           "hidden": false,
           "text": "JPEG, 300 by 180 points as inserted:"
         }
+      ],
+      "lines": [
+        {
+          "text": "JPEG, 300 by 180 points as inserted:",
+          "top": 292.5,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -271,6 +311,14 @@
           "hidden": false,
           "text": "/"
         }
+      ],
+      "lines": [
+        {
+          "text": "/",
+          "top": 317.25,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -297,7 +345,57 @@
       "top": 462.75,
       "left": 72.0,
       "lastTop": 582.0,
-      "runs": null
+      "runs": null,
+      "lines": [
+        {
+          "text": "A floating picture with square wrapping sits to the right of this ",
+          "top": 462.75,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "paragraph. Of that the surprise opens and paragraph spacing ",
+          "top": 480.0,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "while scrolls. Margin the a shows with between the through. ",
+          "top": 496.5,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "Document each careful lines reader pages text at without ",
+          "top": 513.75,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "editor document each careful. Spacing while scrolls of that ",
+          "top": 530.25,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "the surprise opens and paragraph spacing. Through plain ",
+          "top": 547.5,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "wraps margin the a shows with between. At without editor document each careful lines ",
+          "top": 564.75,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "reader pages text at without editor document.",
+          "top": 582.0,
+          "left": 72.0,
+          "page": 1
+        }
+      ]
     },
     {
       "index": 8,
@@ -341,6 +439,38 @@
           "hidden": false,
           "text": "The a shows with between the through plain wraps margin the. Each careful lines reader pages text at without editor. While scrolls of that the surprise opens and paragraph spacing while scrolls of that. Plain wraps margin the a shows with between the through plain wraps. Without editor document each careful lines reader pages text at. And paragraph spacing while scrolls of that the."
         }
+      ],
+      "lines": [
+        {
+          "text": "The a shows with between the through plain wraps margin the. Each careful lines reader ",
+          "top": 606.75,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "pages text at without editor. While scrolls of that the surprise opens and paragraph spacing ",
+          "top": 624.0,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "while scrolls of that. Plain wraps margin the a shows with between the through plain wraps. ",
+          "top": 640.5,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "Without editor document each careful lines reader pages text at. And paragraph spacing ",
+          "top": 657.75,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "while scrolls of that the.",
+          "top": 674.25,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     }
   ],
@@ -362,13 +492,25 @@
       "sectionStart": 2,
       "headers": {
         "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
         "first": "",
-        "even": ""
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
       },
       "footers": {
         "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
         "first": "",
-        "even": ""
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
       }
     }
   ],
@@ -399,9 +541,35 @@
       "width": 140.0,
       "height": 84.0,
       "left": 330.0,
-      "top": 399.75
+      "top": 399.75,
+      "wrap": 0,
+      "side": 0,
+      "text": "",
+      "page": 1,
+      "autoShape": -2
     }
   ],
+  "contentControls": [],
+  "oMaths": [],
+  "settings": {
+    "autoHyphenation": false,
+    "hyphenationZone": 9999999.0,
+    "consecutiveHyphensLimit": 0,
+    "compatibilityMode": 15
+  },
+  "footnoteOptions": {
+    "numberStyle": 0,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 0
+  },
+  "endnoteOptions": {
+    "numberStyle": 2,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 1
+  },
+  "footnotePages": [],
   "fields": [],
   "tablesOfContents": 0,
   "bookmarks": [],

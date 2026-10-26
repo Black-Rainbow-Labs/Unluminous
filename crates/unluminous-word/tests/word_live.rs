@@ -37,22 +37,20 @@ fn scratch(name: &str) -> PathBuf {
 
 /// Word's report on a file.
 fn inspect(path: &Path) -> Value {
-    let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/word-oracle/inspect.ps1");
-    let out = path.with_extension("word.json");
-    let _ = std::fs::remove_file(&out);
-    let status = std::process::Command::new("pwsh")
-        .args(["-NoProfile", "-NonInteractive", "-File"])
-        .arg(&script)
-        .arg("-Path")
-        .arg(path)
-        .arg("-Out")
-        .arg(&out)
-        .status()
-        .expect("pwsh runs");
-    assert!(status.success(), "inspect.ps1 failed on {}", path.display());
-    serde_json::from_str(std::fs::read_to_string(&out).unwrap().trim_start_matches('\u{feff}'))
-        .unwrap()
+    inspect_with_password(path, "")
 }
+
+/// One Word for the whole binary, used by one test at a time. The tests run on several threads, and with a
+/// Word started for each, one of them now and then stopped answering while it opened its file, until its
+/// watchdog stopped it fifteen minutes later and left `inspect.ps1` waiting on nothing (task-2359,
+/// measured in three release runs). Starting and quitting Word was also most of each report's time: 15 s
+/// for an empty document, against 0.2 s from a Word already running (task-2368). So the first report
+/// starts `inspect.ps1 -Serve`, and every later one is a request to it. `None` until then, and again after
+/// a report that took too long, so the next test starts a fresh Word.
+static ONE_WORD: std::sync::Mutex<Option<WordServer>> = std::sync::Mutex::new(None);
+
+/// How long one report may take before the test says so rather than waiting on a Word that has stopped.
+const INSPECT_LIMIT: std::time::Duration = std::time::Duration::from_secs(600);
 
 fn texts(report: &Value) -> Vec<String> {
     report["paragraphs"]
@@ -103,8 +101,10 @@ fn png() -> Vec<u8> {
     png
 }
 
-/// Select the text `words` in the body.
+/// Select the text `words` in the body. The caret may be in a note it just added, so the search is
+/// started from the body.
 fn select(session: &mut Session, words: &str) {
+    session.selection = Selection::caret(Pos::new(vec![0], 0));
     let found = session.find(words, true, false);
     session.selection =
         found.first().cloned().unwrap_or_else(|| panic!("{words} is in the document"));
@@ -262,17 +262,19 @@ fn every_fixture_saved_by_unluminous_opens_in_word_unrepaired() {
     let mut files: Vec<PathBuf> = std::fs::read_dir(&folder)
         .unwrap()
         .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.extension().is_some_and(|e| e == "docx"))
+        .filter(|p| p.extension().is_some_and(|e| e == "docx" || e == "dotx" || e == "docm"))
         .collect();
     files.sort();
     for file in files {
         let name = file.file_stem().unwrap().to_string_lossy().into_owned();
+        let extension = file.extension().unwrap().to_string_lossy().into_owned();
         let original = inspect_copy(&file, &name);
         let mut session =
             Session::new(unluminous_word::read::open(&std::fs::read(&file).unwrap()).unwrap());
         // An edit at the start of the body, so the main part is written from the model.
         session.type_text("Edited by Unluminous. ");
-        let path = scratch(&format!("{name}-edited.docx"));
+        unluminous_word::write::prepare_for(&mut session.document, &extension);
+        let path = scratch(&format!("{name}-edited.{extension}"));
         std::fs::write(&path, unluminous_word::write::save(&session.document).unwrap()).unwrap();
         let report = inspect(&path);
         assert_eq!(report["opened"], true, "{name}: Word did not open it: {}", report["error"]);
@@ -302,6 +304,10 @@ fn every_fixture_saved_by_unluminous_opens_in_word_unrepaired() {
             original["sections"].as_array().unwrap().len(),
             "{name}: the sections"
         );
+        for key in ["oMaths", "shapes", "contentControls", "bookmarks", "endnotes"] {
+            let count = |r: &Value| r[key].as_array().map_or(0, Vec::len);
+            assert_eq!(count(&report), count(&original), "{name}: the {key}");
+        }
         let first = texts(&report).into_iter().find(|t| !t.is_empty()).unwrap_or_default();
         assert!(
             first.starts_with("Edited by Unluminous."),
@@ -316,4 +322,471 @@ fn inspect_copy(file: &Path, name: &str) -> Value {
     let _ = name;
     serde_json::from_str(std::fs::read_to_string(report).unwrap().trim_start_matches('\u{feff}'))
         .unwrap()
+}
+
+fn fixture(name: &str) -> PathBuf {
+    let folder = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    ["docx", "dotx", "docm"]
+        .iter()
+        .map(|e| folder.join(format!("{name}.{e}")))
+        .find(|p| p.is_file())
+        .unwrap_or_else(|| panic!("no fixture {name}"))
+}
+
+fn open_fixture(name: &str) -> Session {
+    Session::new(unluminous_word::read::open(&std::fs::read(fixture(name)).unwrap()).unwrap())
+}
+
+/// Save a session as `name`, have Word open it, and answer Word's report.
+fn saved_and_inspected(session: &mut Session, name: &str) -> Value {
+    let path = scratch(name);
+    let extension = path.extension().unwrap().to_string_lossy().into_owned();
+    unluminous_word::write::prepare_for(&mut session.document, &extension);
+    std::fs::write(&path, unluminous_word::write::save(&session.document).unwrap()).unwrap();
+    let report = inspect(&path);
+    assert_eq!(report["opened"], true, "{name}: Word did not open it: {}", report["error"]);
+    report
+}
+
+/// The text of one part of a saved document.
+fn saved_part(session: &Session, name: &str) -> String {
+    let bytes = unluminous_word::write::save(&session.document).unwrap();
+    let parts = unluminous_word::zip::read(&bytes).unwrap();
+    let part = parts.into_iter().find(|e| e.name == name).unwrap_or_else(|| panic!("no {name}"));
+    String::from_utf8(part.data).unwrap()
+}
+
+/// D1: an equation is written back as a child of the paragraph, and Word opens the file after an edit
+/// with every equation still an equation.
+#[test]
+fn an_edited_document_keeps_its_equations() {
+    if !word_is_installed() {
+        return;
+    }
+    let mut session = open_fixture("equations");
+    session.type_text("Edited. ");
+    let xml = saved_part(&session, "word/document.xml");
+    assert!(!xml.contains("<w:r><m:oMath"), "no equation inside a run");
+    let report = saved_and_inspected(&mut session, "equations-edited.docx");
+    assert_eq!(report["oMaths"].as_array().unwrap().len(), 3, "the three equations");
+}
+
+/// D2: setting a letterhead's text keeps its picture and its table.
+#[test]
+fn setting_header_text_keeps_the_letterheads_picture_and_table() {
+    if !word_is_installed() {
+        return;
+    }
+    let mut session = open_fixture("letterhead");
+    session.set_header_text(false, "default", "Black Rainbow Laboratories");
+    let report = saved_and_inspected(&mut session, "letterhead-edited.docx");
+    let header = &report["sections"][0]["headers"];
+    assert!(header["primary"].as_str().unwrap().contains("Black Rainbow Laboratories"));
+    assert_eq!(header["primaryPictures"], 1, "the logo");
+    assert_eq!(header["primaryTables"], 1, "the table");
+}
+
+/// D3: a template and a document saved as each of the four kinds open in Word as that kind, and a macro
+/// project is dropped when the file cannot hold one.
+#[test]
+fn a_document_saved_as_each_kind_opens_in_word() {
+    if !word_is_installed() {
+        return;
+    }
+    let saves = [
+        ("template", "template-as.docx"),
+        ("template", "template-as.dotx"),
+        ("kitchen-sink", "kitchen-as.docm"),
+        ("kitchen-sink", "kitchen-as.dotm"),
+        ("macros", "macros-as.docx"),
+    ];
+    for (from, to) in saves {
+        let mut session = open_fixture(from);
+        session.type_text("Saved again. ");
+        let report = saved_and_inspected(&mut session, to);
+        assert!(texts(&report).iter().any(|t| t.starts_with("Saved again.")), "{to}");
+    }
+    let mut session = open_fixture("kitchen-sink");
+    let main = session.document.main.clone();
+    session.document.package.set_part("word/vbaProject.bin", vec![0xD0, 0xCF, 0x11, 0xE0]);
+    session.document.package.rels_mut(&main).rels.push(unluminous_word::package::Rel {
+        id: "rIdVba".into(),
+        kind: "http://schemas.microsoft.com/office/2006/relationships/vbaProject".into(),
+        target: "vbaProject.bin".into(),
+        external: false,
+    });
+    unluminous_word::write::prepare_for(&mut session.document, "docx");
+    assert!(session.document.package.part("word/vbaProject.bin").is_none());
+    assert!(session.document.package.rels[&main].by_id("rIdVba").is_none());
+    saved_and_inspected(&mut session, "no-macros.docx");
+}
+
+/// D4: deleting across paragraphs that hold a bookmark and a comment range leaves both whole.
+#[test]
+fn deleting_across_marked_paragraphs_keeps_the_marks_whole() {
+    if !word_is_installed() {
+        return;
+    }
+    let mut session = open_fixture("marks");
+    let paragraphs = unluminous_word::position::paragraphs(&session.document.body);
+    let second = paragraphs[1].0.clone();
+    let fourth = paragraphs[3].0.clone();
+    session.select(Pos::new(second, 12), Pos::new(fourth, 3));
+    session.delete(unluminous_word::edit::Unit::Character);
+    let report = saved_and_inspected(&mut session, "marks-edited.docx");
+    assert!(report["bookmarks"].as_array().unwrap().iter().any(|b| b == "Span"));
+    assert_eq!(report["comments"].as_array().unwrap().len(), 1);
+    assert_eq!(report["paragraphs"].as_array().unwrap().len(), 3);
+}
+
+/// D5: twenty tracked Enters give twenty distinct revision ids, and Word opens the file.
+#[test]
+fn tracked_enters_have_ids_of_their_own() {
+    if !word_is_installed() {
+        return;
+    }
+    let mut session = Session::new(unluminous_word::new::blank());
+    session.author = "Unluminous Test".into();
+    session.set_tracking(true);
+    for n in 0..20 {
+        session.type_text(&format!("Line {n}"));
+        session.enter();
+    }
+    let mut ids = Vec::new();
+    for (_, p) in unluminous_word::position::paragraphs(&session.document.body) {
+        if let Some(ins) = p.props.child("w:rPr").and_then(|r| r.child("w:ins")) {
+            ids.push(ins.attr("w:id").unwrap().to_owned());
+        }
+    }
+    let distinct: std::collections::HashSet<&String> = ids.iter().collect();
+    assert_eq!(ids.len(), 20);
+    assert_eq!(distinct.len(), 20, "{ids:?}");
+    let report = saved_and_inspected(&mut session, "tracked-enters.docx");
+    assert!(!report["revisions"].as_array().unwrap().is_empty());
+}
+
+/// D6: a Strict file is written back in its own namespaces and opens after an edit.
+#[test]
+fn a_strict_document_opens_after_an_edit() {
+    if !word_is_installed() {
+        return;
+    }
+    let mut session = open_fixture("strict");
+    session.type_text("Edited. ");
+    let xml = saved_part(&session, "word/document.xml");
+    assert!(xml.contains("xmlns:w=\"http://purl.oclc.org/ooxml/wordprocessingml/main\""));
+    let report = saved_and_inspected(&mut session, "strict-edited.docx");
+    assert_eq!(report["tables"].as_array().unwrap().len(), 1);
+}
+
+/// D8: adding and deleting comments keeps the parts Word keeps beside them consistent.
+#[test]
+fn comments_added_and_deleted_keep_their_side_parts_consistent() {
+    if !word_is_installed() {
+        return;
+    }
+    let mut session = open_fixture("comments");
+    let before = session.comments().len();
+    select(&mut session, "Commented paragraph 2");
+    let added = session.add_comment("A new comment.");
+    let first = session.comments()[0]["id"].as_i64().unwrap();
+    session.delete_comment(first).unwrap();
+    assert!(session.comments().iter().any(|c| c["id"].as_i64() == Some(added)));
+    let count = |xml: String, tag: &str| xml.matches(tag).count();
+    let comments = count(saved_part(&session, "word/comments.xml"), "<w:comment ");
+    assert_eq!(comments, before);
+    let ids = count(saved_part(&session, "word/commentsIds.xml"), "<w16cid:commentId ");
+    let extensible =
+        count(saved_part(&session, "word/commentsExtensible.xml"), "<w16cex:commentExtensible ");
+    let extended = count(saved_part(&session, "word/commentsExtended.xml"), "<w15:commentEx ");
+    assert_eq!((ids, extensible, extended), (comments, comments, comments));
+    let report = saved_and_inspected(&mut session, "comments-edited.docx");
+    assert_eq!(report["comments"].as_array().unwrap().len(), before);
+}
+
+/// Word's report on a file opened with a password, an empty one for a file with none.
+fn inspect_with_password(path: &Path, password: &str) -> Value {
+    let mut held = ONE_WORD.lock().unwrap_or_else(|held| held.into_inner());
+    let out = path.with_extension("word.json");
+    let _ = std::fs::remove_file(&out);
+    if held.is_none() {
+        *held = Some(WordServer::start());
+    }
+    let request = serde_json::json!({
+        "path": path,
+        "out": out,
+        "password": password,
+        // No test here reads where Word broke the lines, which is half of a long document's report.
+        "lines": false,
+    });
+    let answer = match held.as_mut().unwrap().ask(&request.to_string()) {
+        Ok(answer) => answer,
+        Err(problem) => {
+            // The server and its Word go, so the next test starts a fresh one rather than waiting
+            // behind a Word that has stopped answering.
+            held.take().unwrap().stop();
+            panic!("Word gave no report on {}: {problem}", path.display());
+        }
+    };
+    assert_eq!(answer["ok"], true, "inspect.ps1 failed on {}: {}", path.display(), answer["error"]);
+    serde_json::from_str(std::fs::read_to_string(&out).unwrap().trim_start_matches('\u{feff}'))
+        .unwrap()
+}
+
+/// `inspect.ps1 -Serve`: one PowerShell holding one Word, asked for one report a line.
+///
+/// It is never dropped, because a static outlives every test, and it does not have to be: when the
+/// binary ends, its end of the pipe to the server closes, the server reads the end of its input and quits
+/// Word, and Word's watchdog stops Word as well once the server's PowerShell has gone.
+struct WordServer {
+    child: std::process::Child,
+    stdin: std::process::ChildStdin,
+    answers: std::sync::mpsc::Receiver<String>,
+    pid_file: PathBuf,
+}
+
+impl WordServer {
+    /// Start the server and wait for it to say its Word is running.
+    fn start() -> WordServer {
+        let script =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/word-oracle/inspect.ps1");
+        let pid_file = scratch(&format!("word-{}.pid", std::process::id()));
+        let _ = std::fs::remove_file(&pid_file);
+        let mut child = std::process::Command::new("pwsh")
+            .args(["-NoProfile", "-NonInteractive", "-File"])
+            .arg(&script)
+            .arg("-Serve")
+            .arg("-PidFile")
+            .arg(&pid_file)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("pwsh runs");
+        let stdin = child.stdin.take().unwrap();
+        let (send, answers) = std::sync::mpsc::channel();
+        let stdout = child.stdout.take().unwrap();
+        std::thread::spawn(move || {
+            use std::io::BufRead;
+            for line in std::io::BufReader::new(stdout).lines().map_while(Result::ok) {
+                match line.strip_prefix("WORD-ORACLE ") {
+                    Some(answer) => {
+                        if send.send(answer.to_owned()).is_err() {
+                            break;
+                        }
+                    }
+                    None => println!("inspect.ps1: {line}"),
+                }
+            }
+        });
+        // Standard error is read here rather than inherited, so the server's PowerShell, still quitting
+        // Word after the binary has ended, does not hold the test runner's own output open.
+        let stderr = child.stderr.take().unwrap();
+        std::thread::spawn(move || {
+            use std::io::BufRead;
+            for line in std::io::BufReader::new(stderr).lines().map_while(Result::ok) {
+                eprintln!("inspect.ps1: {line}");
+            }
+        });
+        let mut server = WordServer { child, stdin, answers, pid_file };
+        let ready = server.answer();
+        match ready {
+            Ok(ready) if ready["ready"] == true => {
+                println!("Word started for this binary in {} ms", ready["start"]);
+                server
+            }
+            other => {
+                server.stop();
+                panic!("inspect.ps1 -Serve did not start Word: {other:?}");
+            }
+        }
+    }
+
+    /// Send one request line and wait for its answer.
+    fn ask(&mut self, request: &str) -> Result<Value, String> {
+        use std::io::Write;
+        writeln!(self.stdin, "{request}")
+            .and_then(|()| self.stdin.flush())
+            .map_err(|e| format!("the server is gone: {e}"))?;
+        self.answer()
+    }
+
+    /// The next answer, or why there is none within `INSPECT_LIMIT`.
+    fn answer(&mut self) -> Result<Value, String> {
+        match self.answers.recv_timeout(INSPECT_LIMIT) {
+            Ok(line) => serde_json::from_str(&line).map_err(|e| format!("{e}: {line}")),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                Err(format!("no answer in {} seconds", INSPECT_LIMIT.as_secs()))
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                Err(format!("the server ended: {:?}", self.child.try_wait()))
+            }
+        }
+    }
+
+    /// Stop the server's PowerShell and its Word. The Word is not a child of `pwsh`: COM starts it, so
+    /// it is named by the process id the server wrote to its pid file and stopped here, rather than left
+    /// to its watchdog (task-2364).
+    fn stop(mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        if let Ok(text) = std::fs::read_to_string(&self.pid_file) {
+            let id = text.trim();
+            if !id.is_empty() && id.chars().all(|c| c.is_ascii_digit()) {
+                let _ = std::process::Command::new("taskkill").args(["/PID", id, "/F"]).output();
+            }
+        }
+        let _ = std::fs::remove_file(&self.pid_file);
+    }
+}
+
+/// Round 2 (task-2359): a text box, a table style, a split table, a wrapped picture, a cross reference,
+/// a caption, a custom table of contents, a modified style, an equation, a tracked formatting change, a
+/// locked tracking password and a custom property, written by Unluminous and each found by Word.
+#[test]
+fn a_document_using_round_two_features_opens_in_word_as_written() {
+    if !word_is_installed() {
+        return;
+    }
+    let mut s = Session::new(unluminous_word::new::blank());
+    s.author = "Unluminous Test".into();
+    s.type_text("Report\nSummary\nA paragraph that refers to the summary.\nFirst\nLast paragraph.");
+    select(&mut s, "Summary");
+    s.apply_style("Heading1").unwrap();
+    s.modify_style("Heading1", "font", "Arial").unwrap();
+    s.modify_style("Heading1", "size", "20").unwrap();
+    // A table with a style, split after its first row.
+    select(&mut s, "First");
+    s.selection = Selection::caret(s.selection.anchor.clone());
+    s.insert_table(3, 2);
+    s.type_text("Top");
+    s.apply_table_style("GridTable4-Accent1", None).unwrap();
+    let rows = unluminous_word::position::paragraphs(&s.document.body);
+    let in_table =
+        rows.iter().find(|(path, _)| path.len() > 1).map(|(path, _)| path.clone()).unwrap();
+    let mut second_row = in_table.clone();
+    second_row[1] = 1;
+    s.selection = Selection::caret(Pos::new(second_row, 0));
+    s.split_table().unwrap();
+    // A picture wrapped square, and a text box with words in it.
+    select(&mut s, "A paragraph");
+    s.selection = Selection::caret(s.selection.anchor.clone());
+    unluminous_word::media::insert_picture(&mut s, &png(), "png", 60.0, 30.0, "wrapped.png")
+        .unwrap();
+    let at = s.selection.head.clone();
+    s.select_object(Pos::new(at.path.clone(), at.offset.saturating_sub('\u{FFFC}'.len_utf8())));
+    s.set_object_wrap("square").unwrap();
+    select(&mut s, "Last paragraph.");
+    s.selection = Selection::caret(s.selection.anchor.clone());
+    s.insert_textbox(144.0, 72.0).unwrap();
+    s.type_text("Words in a box");
+    // A cross reference to the heading, a caption, and a table of contents with hyphen leaders.
+    let pages = unluminous_word::layout::lay_out(
+        &s.document,
+        &unluminous_core::FixedMetrics::default(),
+        Default::default(),
+    );
+    select(&mut s, "refers to the summary");
+    s.selection = Selection::caret(s.selection.head.clone());
+    let heading = s.find("Summary", true, true)[0].anchor.path.clone();
+    s.insert_cross_reference(&heading, "text", &pages).unwrap();
+    select(&mut s, "Report");
+    s.insert_caption("Figure", " The report", true, &pages);
+    select(&mut s, "Report");
+    s.selection = Selection::caret(s.selection.anchor.clone());
+    let options = unluminous_word::references::TocOptions {
+        levels: 2,
+        leader: "hyphen".into(),
+        ..Default::default()
+    };
+    s.insert_toc_with(&options, &pages);
+    // An equation, copied from the equations fixture.
+    let equations =
+        unluminous_word::read::open(&std::fs::read(fixture("equations")).unwrap()).unwrap();
+    let equation = equations
+        .body
+        .iter()
+        .find(|b| matches!(b, unluminous_word::model::Block::Paragraph(p) if p.runs.iter().any(|r| matches!(&r.content, unluminous_word::model::Content::ParagraphObject(el) if el.name.starts_with("m:")))))
+        .cloned()
+        .expect("the fixture has an equation paragraph");
+    s.document.body.push(equation);
+    // A custom property, then tracked formatting under locked tracking.
+    unluminous_word::properties::set_custom(&mut s.document, "Reviewer", "text", "Jason").unwrap();
+    unluminous_word::properties::set_extended(&mut s.document, "Company", "Black Rainbow Labs");
+    s.set_tracking(true);
+    select(&mut s, "Last");
+    s.toggle("w:b");
+    s.lock_tracking("tracked");
+
+    let path = scratch("round-two.docx");
+    std::fs::write(&path, unluminous_word::write::save(&s.document).unwrap()).unwrap();
+    let report = inspect(&path);
+    assert_eq!(report["opened"], true, "Word did not open it: {}", report["error"]);
+    let shapes = report["shapes"].as_array().unwrap();
+    assert!(
+        shapes.iter().any(|sh| sh["text"].as_str().unwrap_or("").contains("Words in a box")),
+        "the text box: {shapes:?}"
+    );
+    assert!(shapes.iter().any(|sh| sh["wrap"] == 0), "the picture is wrapped square: {shapes:?}");
+    let tables = report["tableStyles"].as_array().unwrap();
+    assert_eq!(tables.len(), 2, "the table was split in two: {tables:?}");
+    assert!(
+        tables.iter().all(|t| t.as_str().unwrap_or("").starts_with("Grid Table 4")),
+        "{tables:?}"
+    );
+    let fields = report["fields"].as_array().unwrap();
+    let has_code = |code: &str| {
+        fields.iter().any(|f| f["code"].as_str().unwrap_or("").trim_start().starts_with(code))
+    };
+    assert!(has_code("REF _Ref"), "the cross reference: {fields:?}");
+    assert!(has_code("SEQ Figure"), "the caption: {fields:?}");
+    assert!(
+        fields.iter().any(|f| f["code"].as_str().unwrap_or("").contains("TOC")
+            && f["code"].as_str().unwrap_or("").contains("\\o \"1-2\"")),
+        "the custom contents: {fields:?}"
+    );
+    assert_eq!(report["tablesOfContents"], 1);
+    assert_eq!(report["oMaths"].as_array().unwrap().len(), 1, "the equation");
+    assert_eq!(report["heading1"]["font"], "Arial");
+    assert_eq!(report["heading1"]["size"], 20.0);
+    assert!(
+        report["revisions"].as_array().unwrap().iter().any(|r| r["type"] == 3),
+        "the formatting change is a property revision: {}",
+        report["revisions"]
+    );
+    assert_eq!(
+        report["protection"]["type"], 0,
+        "Word sees tracked changes locked (wdAllowOnlyRevisions)"
+    );
+    assert_eq!(report["protection"]["trackRevisions"], true);
+    assert!(report["customProperties"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|p| p["name"] == "Reviewer" && p["value"] == "Jason"));
+    assert_eq!(report["properties"]["company"], "Black Rainbow Labs");
+}
+
+/// An encrypted document and one with a password to modify, written by Unluminous: Word opens the first
+/// with the password and reads its words, and opens the second unrepaired. That Word asks for the
+/// password to modify, and takes Unluminous's hash for it, was checked by hand against Word 16 with
+/// `Documents.Open` for writing, which `inspect.ps1` does not do because it opens every file read only.
+#[test]
+fn encrypted_and_write_reserved_documents_open_in_word() {
+    if !word_is_installed() {
+        return;
+    }
+    let mut session = open_fixture("paragraphs");
+    let plain = unluminous_word::write::save(&session.document).unwrap();
+    let encrypted = unluminous_word::crypto::encrypt(&plain, "s3cret").unwrap();
+    let path = scratch("encrypted.docx");
+    std::fs::write(&path, &encrypted).unwrap();
+    let report = inspect_with_password(&path, "s3cret");
+    assert_eq!(report["opened"], true, "Word did not open it: {}", report["error"]);
+    assert_eq!(report["paragraphs"].as_array().unwrap().len(), 22);
+    assert_eq!(report["protection"]["hasPassword"], true);
+    session.set_password_to_modify("modify");
+    saved_and_inspected(&mut session, "write-reserved.docx");
+    let settings = saved_part(&session, "word/settings.xml");
+    assert!(settings.contains("<w:writeProtection") && settings.contains("w:hash="), "{settings}");
 }

@@ -7,7 +7,7 @@
   "characters": 1204,
   "charactersWithSpaces": 1436,
   "paragraphCount": 4,
-  "lines": 17,
+  "lines": 18,
   "paragraphs": [
     {
       "index": 1,
@@ -50,6 +50,32 @@
           "allCaps": false,
           "hidden": false,
           "text": "Through plain wraps margin the a shows with between the through plain wraps. At without editor document each careful lines reader pages text at. Opens and paragraph spacing while scrolls of that the. With between the through plain wraps margin the a shows with between the through. Reader pages text at without editor document each careful lines reader pages."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Through plain wraps margin the a shows with between the through plain wraps. At without ",
+          "top": 72.0,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "editor document each careful lines reader pages text at. Opens and paragraph spacing while ",
+          "top": 89.25,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "scrolls of that the. With between the through plain wraps margin the a shows with between the ",
+          "top": 105.75,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "through. Reader pages text at without editor document each careful lines reader pages.",
+          "top": 123.0,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -95,6 +121,32 @@
           "hidden": false,
           "text": "Through plain wraps margin the a shows with between the through plain wraps. At without editor document each careful lines reader pages text at. Opens and paragraph spacing while scrolls of that the. With between the through plain wraps margin the a shows with between the through. Reader pages text at without editor document each careful lines reader pages."
         }
+      ],
+      "lines": [
+        {
+          "text": "Through plain wraps margin the a shows with between the through plain wraps. At without editor ",
+          "top": 147.75,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "document each careful lines reader pages text at. Opens and paragraph spacing while scrolls of ",
+          "top": 163.5,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "that the. With between the through plain wraps margin the a shows with between the through. ",
+          "top": 180.0,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "Reader pages text at without editor document each careful lines reader pages.",
+          "top": 195.75,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -139,6 +191,38 @@
           "hidden": false,
           "text": "Through plain wraps margin the a shows with between the through plain wraps. At without editor document each careful lines reader pages text at. Opens and paragraph spacing while scrolls of that the. With between the through plain wraps margin the a shows with between the through. Reader pages text at without editor document each careful lines reader pages."
         }
+      ],
+      "lines": [
+        {
+          "text": "Through plain wraps margin the a shows with between the through plain wraps. At ",
+          "top": 219.75,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "without editor document each careful lines reader pages text at. Opens and paragraph ",
+          "top": 235.5,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "spacing while scrolls of that the. With between the through plain wraps margin the a ",
+          "top": 252.0,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "shows with between the through. Reader pages text at without editor document each ",
+          "top": 267.75,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "careful lines reader pages.",
+          "top": 283.5,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -161,10 +245,10 @@
       "outlineLevel": 10,
       "page": 1,
       "inTable": false,
-      "lineCount": 4,
+      "lineCount": 5,
       "top": 307.5,
       "left": 72.0,
-      "lastTop": 358.5,
+      "lastTop": 375.0,
       "runs": [
         {
           "font": "Aptos",
@@ -182,6 +266,38 @@
           "allCaps": false,
           "hidden": false,
           "text": "Through plain wraps margin the a shows with between the through plain wraps. At without editor document each careful lines reader pages text at. Opens and paragraph spacing while scrolls of that the. With between the through plain wraps margin the a shows with between the through. Reader pages text at without editor document each careful lines reader pages."
+        }
+      ],
+      "lines": [
+        {
+          "text": "Through plain wraps margin the a shows with between the through plain wraps. At without ",
+          "top": 307.5,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "editor document each careful lines reader pages text at. Opens and paragraph spacing ",
+          "top": 324.75,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "while scrolls of that the. With between the through plain wraps margin the a shows with ",
+          "top": 341.25,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "between the through. Reader pages text at without editor document each careful lines ",
+          "top": 358.5,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "reader pages.",
+          "top": 375.0,
+          "left": 72.0,
+          "page": 1
         }
       ]
     }
@@ -204,13 +320,25 @@
       "sectionStart": 2,
       "headers": {
         "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
         "first": "",
-        "even": ""
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
       },
       "footers": {
         "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
         "first": "",
-        "even": ""
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
       }
     }
   ],
@@ -220,6 +348,27 @@
   "revisions": [],
   "inlineShapes": [],
   "shapes": [],
+  "contentControls": [],
+  "oMaths": [],
+  "settings": {
+    "autoHyphenation": false,
+    "hyphenationZone": 9999999.0,
+    "consecutiveHyphensLimit": 0,
+    "compatibilityMode": 15
+  },
+  "footnoteOptions": {
+    "numberStyle": 0,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 0
+  },
+  "endnoteOptions": {
+    "numberStyle": 2,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 1
+  },
+  "footnotePages": [],
   "fields": [],
   "tablesOfContents": 0,
   "bookmarks": [],

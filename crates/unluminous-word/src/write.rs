@@ -12,8 +12,23 @@ use crate::xml::{self, El, Node, CANONICAL};
 
 const DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r\n";
 
+thread_local! {
+    /// The text boxes whose content changed, by `wp:docPr` id, while a document is being written.
+    static TEXTBOXES: std::cell::RefCell<Vec<(i64, Vec<Block>)>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
 /// Write the document as the bytes of a `.docx` file.
 pub fn save(document: &Document) -> Result<Vec<u8>, String> {
+    let changed: Vec<(i64, Vec<Block>)> =
+        document.textboxes.iter().filter(|t| t.dirty).map(|t| (t.id, t.blocks.clone())).collect();
+    let any_changed = !changed.is_empty();
+    TEXTBOXES.with(|t| *t.borrow_mut() = changed);
+    let result = save_parts(document, any_changed);
+    TEXTBOXES.with(|t| t.borrow_mut().clear());
+    result
+}
+
+fn save_parts(document: &Document, textboxes_changed: bool) -> Result<Vec<u8>, String> {
     let mut package = document.package.clone();
     package.set_part(&document.main, main_part(document).into_bytes());
     for part in [&document.styles, &document.numbering, &document.settings, &document.core]
@@ -24,7 +39,10 @@ pub fn save(document: &Document) -> Result<Vec<u8>, String> {
             package.set_part(&part.name, whole_part(&part.root).into_bytes());
         }
     }
-    for header in document.headers.iter().filter(|header| header.dirty) {
+    // A header holding a text box that changed is written again too.
+    for header in document.headers.iter().filter(|header| {
+        header.dirty || (textboxes_changed && holds_a_changed_textbox(&header.story.blocks))
+    }) {
         package.set_part(
             &header.name,
             story_part(&header.story.el, &header.story.blocks).into_bytes(),
@@ -43,6 +61,44 @@ pub fn save(document: &Document) -> Result<Vec<u8>, String> {
         .map(|part| crate::zip::Entry { name: part.name.clone(), data: part.data.as_ref().clone() })
         .collect();
     crate::zip::write(&entries)
+}
+
+/// The content type of the main part of a file with `extension`: a document, a template, and each
+/// with macros.
+pub fn main_content_type(extension: &str) -> &'static str {
+    match extension.to_lowercase().as_str() {
+        "dotx" => {
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml"
+        }
+        "docm" => "application/vnd.ms-word.document.macroEnabled.main+xml",
+        "dotm" => "application/vnd.ms-word.template.macroEnabledTemplate.main+xml",
+        _ => "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
+    }
+}
+
+/// Make the document right for saving as a file with `extension` (`docx`, `dotx`, `docm`, `dotm`): the
+/// main part's content type says which (task-2359, D3), and a file that cannot hold macros loses the
+/// macro project, as Word drops it when a `.docm` is saved as a `.docx`.
+pub fn prepare_for(document: &mut Document, extension: &str) {
+    let main = document.main.clone();
+    document.package.set_override(&main, main_content_type(extension));
+    let macros = matches!(extension.to_lowercase().as_str(), "docm" | "dotm");
+    if !macros {
+        let project: Vec<String> = document
+            .package
+            .parts
+            .iter()
+            .map(|part| part.name.clone())
+            .filter(|name| {
+                let file = name.rsplit('/').next().unwrap_or(name).to_lowercase();
+                file.starts_with("vbaproject") || file.starts_with("vbadata")
+            })
+            .filter(|name| !name.ends_with(".rels"))
+            .collect();
+        for name in project {
+            document.package.remove_part(&name);
+        }
+    }
 }
 
 /// `word/document.xml`.
@@ -121,9 +177,13 @@ pub fn root_start(root: &El, out: &mut String) {
     let default = root.name.contains(':');
     for (prefix, uri) in CANONICAL {
         // A part whose elements have no prefix at all (core properties use their own) still only needs
-        // the declarations it had, which `declares` holds.
+        // the declarations it had, which `declares` holds. A Strict file declares Word's own prefixes
+        // with the Strict namespaces, and it is written back in them (task-2359, D6).
+        let uri = root.declares.iter().find(|(p, _)| p == prefix).map_or(*uri, |(_, u)| u.as_str());
         if default {
-            out.push_str(&format!(" xmlns:{prefix}=\"{uri}\""));
+            out.push_str(&format!(" xmlns:{prefix}=\""));
+            xml::escape_attr(uri, out);
+            out.push('"');
         }
     }
     for (prefix, uri) in &root.declares {
@@ -265,6 +325,13 @@ pub fn write_paragraph(paragraph: &Paragraph, out: &mut String) {
             open_wrap(wrap, out);
             open.push(Arc::clone(wrap));
         }
+        if let Content::ParagraphObject(el) = &run.content {
+            // An equation or a sub document is a child of the paragraph, not of a run.
+            el.write(out);
+            offset += run.len();
+            index += 1;
+            continue;
+        }
         // Runs from one `w:r` (one properties value, one set of attributes, nothing between them) are
         // written as one `w:r` again, the way Word wrote them.
         let mut last = index + 1;
@@ -341,10 +408,81 @@ fn write_runs(runs: &[Run], out: &mut String) {
                 text_element(if deleted { "w:delInstrText" } else { "w:instrText" }, text, out)
             }
             Content::Tab => out.push_str("<w:tab/>"),
-            Content::Break(el) | Content::FieldChar(el) | Content::Object(el) => el.write(out),
+            Content::Object(el) => match with_changed_textboxes(el) {
+                Some(changed) => changed.write(out),
+                None => el.write(out),
+            },
+            Content::Break(el) | Content::FieldChar(el) | Content::ParagraphObject(el) => {
+                el.write(out)
+            }
         }
     }
     out.push_str("</w:r>");
+}
+
+/// Whether some blocks hold a drawing whose text box changed.
+fn holds_a_changed_textbox(blocks: &[Block]) -> bool {
+    crate::position::paragraphs(blocks).iter().any(|(_, p)| {
+        p.runs.iter().any(|run| match &run.content {
+            Content::Object(el) => with_changed_textboxes(el).is_some(),
+            _ => false,
+        })
+    })
+}
+
+/// A drawing with the content of each of its text boxes that changed written into it, in the DrawingML
+/// shape and in its VML fallback both, or `None` when none of its text boxes changed.
+fn with_changed_textboxes(el: &El) -> Option<El> {
+    let changed = TEXTBOXES.with(|t| t.borrow().clone());
+    if changed.is_empty() || crate::read::descendant(el, "w:txbxContent").is_none() {
+        return None;
+    }
+    let mut copy = el.clone();
+    let mut any = false;
+    replace_textboxes(&mut copy, &changed, &mut any);
+    any.then_some(copy)
+}
+
+fn replace_textboxes(el: &mut El, changed: &[(i64, Vec<Block>)], any: &mut bool) {
+    if matches!(el.name.as_str(), "mc:AlternateContent" | "wp:anchor" | "wp:inline") {
+        let id = crate::read::descendant(el, "wp:docPr")
+            .and_then(|d| d.attr("id"))
+            .and_then(|i| i.parse::<i64>().ok());
+        if let Some((_, blocks)) = id.and_then(|id| changed.iter().find(|(i, _)| *i == id)) {
+            let content = textbox_content(blocks);
+            set_every(el, "w:txbxContent", &content);
+            *any = true;
+            return;
+        }
+    }
+    for child in el.elements_mut() {
+        replace_textboxes(child, changed, any);
+    }
+}
+
+/// `w:txbxContent` holding `blocks`.
+fn textbox_content(blocks: &[Block]) -> El {
+    let mut text = String::from("<w:txbxContent");
+    for (prefix, uri) in CANONICAL {
+        text.push_str(&format!(" xmlns:{prefix}=\"{uri}\""));
+    }
+    text.push('>');
+    write_blocks(blocks, &mut text);
+    text.push_str("</w:txbxContent>");
+    let mut el = xml::parse(&text).unwrap_or_else(|_| El::new("w:txbxContent"));
+    el.declares.clear();
+    el
+}
+
+/// Put `content`'s children into every element named `name` under `el`.
+fn set_every(el: &mut El, name: &str, content: &El) {
+    for child in el.elements_mut() {
+        if child.name == name {
+            child.children = content.children.clone();
+        } else {
+            set_every(child, name, content);
+        }
+    }
 }
 
 /// `<w:t>`, with `xml:space="preserve"` when the text starts or ends with a space, which is the only time

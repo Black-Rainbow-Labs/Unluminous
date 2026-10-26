@@ -103,7 +103,100 @@ pub fn builder_on<State>(render_state: RenderState) -> egui_kittest::HarnessBuil
     turn::take_the_machines_turn();
     receipt::note_this_binary_started();
     egui_kittest::HarnessBuilder::default()
-        .renderer(WgpuTestRenderer::from_render_state(render_state))
+        .renderer(PatientRenderer(WgpuTestRenderer::from_render_state(render_state)))
+}
+
+/// How many pictures a test binary renders at once.
+///
+/// `task-2364`. Under load, `egui_kittest` gave up on a picture with `PollError: The requested Wait
+/// timed out before the submission was completed`: a render waits ten seconds for the graphics card,
+/// and with every test thread of a binary submitting to the [`DEVICES`] it shares, beside a loaded
+/// processor, a submission waited longer than that. Measured in `canvas_realm` beside 12 load threads,
+/// two tests in one run. Four at a time keeps the card busy without a queue that long.
+const RENDERS_AT_ONCE: usize = 4;
+
+/// How many times a render that timed out is tried again before the test is told.
+const RENDER_TRIES: usize = 3;
+
+/// The renderer every harness draws with: `egui_kittest`'s own, with at most [`RENDERS_AT_ONCE`]
+/// renders in flight in the process and a render that timed out tried again.
+///
+/// It is the renderer rather than a helper around `snapshot`, so the 330 snapshots, the renders a test
+/// reads pixels from and the screenshots a window asks for all go through it with nothing at the call
+/// sites. Only a render that failed is tried again, whether kittest returned an error or panicked: a
+/// picture that differs from the accepted one is still a failure the first time.
+struct PatientRenderer(WgpuTestRenderer);
+
+impl egui_kittest::TestRenderer for PatientRenderer {
+    fn setup_eframe(&self, cc: &mut eframe::CreationContext<'_>, frame: &mut eframe::Frame) {
+        self.0.setup_eframe(cc, frame);
+    }
+
+    fn handle_delta(&mut self, delta: &mut egui::TexturesDelta) {
+        self.0.handle_delta(delta);
+    }
+
+    fn render(
+        &mut self,
+        ctx: &egui::Context,
+        output: &egui::FullOutput,
+    ) -> Result<image::RgbaImage, String> {
+        let _turn = RenderTurn::take();
+        let mut last = String::new();
+        for _ in 0..RENDER_TRIES {
+            // kittest reports some failures as an error and panics on others: a texture read back
+            // after a ten second wait is `Failed to poll device: Timeout`, an `expect`. Both are tried
+            // again, and the receipt is told the panic is being caught.
+            let attempt = receipt::while_a_panic_is_expected(|| {
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    self.0.render(ctx, output)
+                }))
+            });
+            match attempt {
+                Ok(Ok(picture)) => return Ok(picture),
+                Ok(Err(error)) => last = error,
+                Err(panic) => {
+                    last = panic
+                        .downcast_ref::<String>()
+                        .cloned()
+                        .or_else(|| panic.downcast_ref::<&str>().map(|said| (*said).to_owned()))
+                        .unwrap_or_else(|| "the render panicked".to_owned())
+                }
+            }
+        }
+        Err(last)
+    }
+}
+
+/// One of the [`RENDERS_AT_ONCE`] places to render, held while a render is in flight.
+struct RenderTurn;
+
+/// How many renders are in flight, and the condition a waiting render sleeps on.
+fn render_turns() -> &'static (std::sync::Mutex<usize>, std::sync::Condvar) {
+    static TURNS: OnceLock<(std::sync::Mutex<usize>, std::sync::Condvar)> = OnceLock::new();
+    TURNS.get_or_init(|| (std::sync::Mutex::new(0), std::sync::Condvar::new()))
+}
+
+impl RenderTurn {
+    /// Wait until fewer than [`RENDERS_AT_ONCE`] renders are in flight, and count this one.
+    fn take() -> Self {
+        let (count, freed) = render_turns();
+        let mut held = count.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        while *held >= RENDERS_AT_ONCE {
+            held = freed.wait(held).unwrap_or_else(|poisoned| poisoned.into_inner());
+        }
+        *held += 1;
+        RenderTurn
+    }
+}
+
+impl Drop for RenderTurn {
+    fn drop(&mut self) {
+        let (count, freed) = render_turns();
+        let mut held = count.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        *held = held.saturating_sub(1);
+        freed.notify_one();
+    }
 }
 
 /// A folder with a nested structure, for the explorer screenshots. Written once and left in place, so
@@ -125,8 +218,91 @@ pub fn builder_on<State>(render_state: RenderState) -> egui_kittest::HarnessBuil
 /// the folder once and everyone else waits for it and then reads a file nobody is writing.
 pub fn sample_folder() -> std::path::PathBuf {
     turn::take_the_machines_turn();
-    static FOLDER: OnceLock<std::path::PathBuf> = OnceLock::new();
-    FOLDER.get_or_init(build_sample_folder).clone()
+    static FOLDER: OnceLock<(std::path::PathBuf, Vec<String>)> = OnceLock::new();
+    let (folder, built) = FOLDER.get_or_init(|| {
+        let folder = build_sample_folder();
+        let listing = listing_of(&folder);
+        (folder, listing)
+    });
+    // **The sample folder is read only, and this is what says so (`task-2364`).** Every test in a binary
+    // shares it, so a test that writes into it changes what every other test reads: one counted 8
+    // entries against 7 and another failed to copy a file that had gone mid copy, each depending on
+    // when a test beside it wrote. A test that changes a project copies this first, with
+    // `copy_out_of_the_repository`, and a test that broke the rule is named here by its file.
+    let now = listing_of(folder);
+    if &now != built {
+        let added: Vec<&String> = now.iter().filter(|entry| !built.contains(entry)).collect();
+        let gone: Vec<&String> = built.iter().filter(|entry| !now.contains(entry)).collect();
+        panic!(
+            "a test changed the shared sample folder {}, which every test in this binary reads: added \
+             {added:?}, removed {gone:?}. A test that writes into a project works on a copy of it \
+             (`copy_out_of_the_repository`).",
+            folder.display()
+        );
+    }
+    folder.clone()
+}
+
+/// Whether a file is the code index's fence, which the index wrote into a project that is not a git
+/// repository and removed a quarter of a second later (`atrius_index::freshness`). Since Atrius 0.3.2 it
+/// is written in the index's own folder (`task-2370`), and in the project only when that folder cannot be
+/// made or watched. The explorer hides it (`services::file_tree`, `task-2247`), and so does every test
+/// that lists or copies a project.
+///
+/// `task-2364`: it was the file `a_contributed_tab_opens_in_the_editing_area_beside_the_file_tabs` counted
+/// 8 against 7, and the file that was gone by the time `copy_out_of_the_repository` copied it.
+pub fn is_the_code_index_fence(name: &str) -> bool {
+    name.starts_with("atrius-index-fence-")
+}
+
+/// Every file and folder under `root`, as paths relative to it, sorted, without the code index's fence.
+fn listing_of(root: &std::path::Path) -> Vec<String> {
+    fn walk(root: &std::path::Path, at: &std::path::Path, into: &mut Vec<String>) {
+        let Ok(entries) = std::fs::read_dir(at) else { return };
+        for entry in entries.flatten() {
+            if is_the_code_index_fence(&entry.file_name().to_string_lossy()) {
+                continue;
+            }
+            let path = entry.path();
+            if let Ok(relative) = path.strip_prefix(root) {
+                into.push(relative.to_string_lossy().replace('\\', "/"));
+            }
+            if path.is_dir() {
+                walk(root, &path, into);
+            }
+        }
+    }
+    let mut listing = Vec::new();
+    walk(root, root, &mut listing);
+    listing.sort();
+    listing
+}
+
+/// The folder every fixture this binary builds is in: `%TEMP%\unluminous-window\<binary>`.
+///
+/// `task-2364`. The fixtures were folders with fixed names straight under the temporary folder, and their
+/// paths are drawn: the chat pane, the run dialog, the new file prompt and the project tabs' list show the
+/// project's folder. So the folder they are in has to be the same on every run, and it has to be one
+/// binary's own, or two binaries cannot run side by side (`tools/window-suite.mjs --run --jobs`). It is
+/// worked out from the temporary folder the machine has, `UNLUMINOUS_MACHINE_TEMP` when a runner has given
+/// the run a temporary folder of its own (`tools/test-runs.mjs`), so a test run by hand and one run by the
+/// runner draw the same path.
+///
+/// **Asking for it takes this binary's turn** (`turn::take_the_machines_turn`), and the turn empties the
+/// folder once when it is taken, so a run starts from nothing, a fixture named with a process id does not
+/// pile up, and no test can be handed the path before the folder is emptied under it.
+pub fn fixtures_root() -> std::path::PathBuf {
+    turn::take_the_machines_turn();
+    fixtures_folder()
+}
+
+/// Where [`fixtures_root`] is, without taking the turn: what the turn itself is kept in.
+fn fixtures_folder() -> std::path::PathBuf {
+    std::env::var_os("UNLUMINOUS_MACHINE_TEMP")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("unluminous-window")
+        .join(receipt::binary_name())
 }
 
 /// Write the sample folder out. Called once, through [`sample_folder`].
@@ -149,7 +325,7 @@ pub fn sample_folder() -> std::path::PathBuf {
 /// **Not [`fixture`], because two of these are not text**: `picture.png` is drawn pixel by pixel
 /// and `bundle.zip` is written as bytes.
 pub fn build_sample_folder() -> std::path::PathBuf {
-    let root = std::env::temp_dir().join("unluminous-screenshot-folder");
+    let root = fixtures_root().join("unluminous-screenshot-folder");
     std::fs::remove_dir_all(&root).ok();
     std::fs::create_dir_all(root.join("chapters/appendix")).expect("make the nested folders");
     std::fs::create_dir_all(root.join("drafts")).expect("make the drafts folder");
@@ -218,6 +394,11 @@ pub fn harness(text: &str) -> Harness<'static, UnluminousApp> {
 
 /// Build the application on a folder of its own, for a test that needs a second window.
 pub fn harness_in(folder: &std::path::Path) -> Harness<'static, UnluminousApp> {
+    // What a window before this one remembered about the project is written on a thread
+    // (`project_state::save_later`), so a second window opened at once could read the folder before
+    // the first one's state reached it. `a_split_project_opens_split_again` came back with one pane on
+    // a busy machine (`task-2353`). Closing a real window waits the same way.
+    unluminous_app::services::project_state::wait_for_the_writes();
     let folder = folder.to_path_buf();
     let mut harness = builder().with_size(vec2(WINDOW[0], WINDOW[1])).build_eframe(move |cc| {
         let mut app = UnluminousApp::new(folder);
@@ -346,17 +527,21 @@ pub fn report(results: SnapshotResults) {
 /// Unluminous.
 pub fn copy_out_of_the_repository(source: &std::path::Path, name: &str) -> std::path::PathBuf {
     turn::take_the_machines_turn();
-    let target = std::env::temp_dir().join(name);
+    let target = fixtures_root().join(name);
     std::fs::remove_dir_all(&target).ok();
     fn walk(from: &std::path::Path, to: &std::path::Path) {
         std::fs::create_dir_all(to).expect("make the folder");
         for entry in std::fs::read_dir(from).expect("read the folder").flatten() {
+            if is_the_code_index_fence(&entry.file_name().to_string_lossy()) {
+                continue;
+            }
             let path = entry.path();
             let into = to.join(entry.file_name());
             if path.is_dir() {
                 walk(&path, &into);
             } else {
-                std::fs::copy(&path, &into).expect("copy the file");
+                std::fs::copy(&path, &into)
+                    .unwrap_or_else(|error| panic!("copy {}: {error}", path.display()));
             }
         }
     }
@@ -374,7 +559,7 @@ pub fn copy_out_of_the_repository(source: &std::path::Path, name: &str) -> std::
 /// to make the commits, the second author and the two dates blame colours by.
 pub fn git_folder(name: &str) -> std::path::PathBuf {
     turn::take_the_machines_turn();
-    let root = std::env::temp_dir().join("unluminous-screenshot-repository").join(name);
+    let root = fixtures_root().join("unluminous-screenshot-repository").join(name);
     std::fs::remove_dir_all(&root).ok();
     std::fs::create_dir_all(&root).expect("make the folder");
     let git = |arguments: &[&str]| {
@@ -476,6 +661,17 @@ pub fn steady(harness: &mut Harness<'static, UnluminousApp>) {
         if harness.try_run().is_ok() {
             return;
         }
+    }
+    // **A window that never went quiet costs every try (`task-2364`)**: about a hundred frames, each a whole
+    // layout, every time this is called. `UNLUMINOUS_STEADY_TRACE=1` names the test, which is how a test that
+    // spends most of its time here is found. It is written to the stream itself, past libtest's capture.
+    if std::env::var_os("UNLUMINOUS_STEADY_TRACE").is_some() {
+        use std::io::Write;
+        let _ = writeln!(
+            std::io::stderr(),
+            "steady gave up after {STEADY_TRIES} tries: {}",
+            std::thread::current().name().unwrap_or("a test")
+        );
     }
 }
 
@@ -692,7 +888,11 @@ pub fn settle(
     what: &str,
     ready: impl Fn(&UnluminousApp) -> bool,
 ) {
-    for _ in 0..600 {
+    // A deadline rather than 600 turns: under load a turn takes longer and the count ran out first,
+    // and an update test that gave up left its scripted address set for the tests after it
+    // (`task-2353`).
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    while std::time::Instant::now() < deadline {
         pump(harness);
         if ready(harness.state()) {
             pump(harness);
@@ -811,10 +1011,13 @@ pub fn run(
     line: &str,
 ) -> unluminous_cli::protocol::Reply {
     let ctx = harness.ctx.clone();
-    let reply = harness
-        .state_mut()
-        .run_command_line(line, &ctx)
-        .unwrap_or_else(|| panic!("`{line}` was not answered on the frame it was asked"));
+    // **Answered the way a request over the wire is (`task-2364`).** A command that holds its answer
+    // until a thread replies used to have to answer on the frame it was asked, so
+    // `editor signature --wait 3000` failed whenever the language server was a frame slower than the
+    // test. The window keeps a held request and its frames answer it when it is ready or when the
+    // command's own deadline passes, so this draws frames until the answer arrives.
+    let answer = harness.state_mut().start_command_line(line, &ctx);
+    let reply = until_answered(harness, line, &answer);
     // The reply's own name rather than the line's, because the reply is what the window dispatched
     // on: a line that would not parse answers with an empty name, which [`note_a_drive`] drops.
     note_a_drive(&reply.command, reply.ok);
@@ -826,6 +1029,70 @@ pub fn run(
     // rather than at each call site, and is why [`did_while_waiting`] is now the same function.
     pump(harness);
     reply
+}
+
+/// The longest a test waits for a held command beyond the command's own deadline, which the window
+/// answers with a timeout of its own. This only catches a window that stopped drawing altogether.
+const LONGEST_ANSWER: std::time::Duration = std::time::Duration::from_secs(180);
+
+/// Draw frames until the window answers a command started with `start_command_line`.
+fn until_answered(
+    harness: &mut Harness<'static, UnluminousApp>,
+    line: &str,
+    answer: &std::sync::mpsc::Receiver<unluminous_cli::protocol::Reply>,
+) -> unluminous_cli::protocol::Reply {
+    let deadline = std::time::Instant::now() + LONGEST_ANSWER;
+    loop {
+        match answer.try_recv() {
+            Ok(reply) => return reply,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                panic!("`{line}` was dropped by the window without an answer")
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {}
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "`{line}` was not answered in {} seconds",
+            LONGEST_ANSWER.as_secs()
+        );
+        harness.step();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+/// How long [`wait_until`] waits for something a thread or another process is doing.
+///
+/// A minute, because it is a deadline rather than a delay: a condition that holds returns on the
+/// frame it holds, so a generous figure costs nothing on a quiet machine and is what keeps a loaded
+/// one from failing a test that was only slow.
+pub const LONGEST_WAIT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Draw frames until `done` holds, with a short sleep between them, and panic naming `what` once
+/// [`LONGEST_WAIT`] has passed.
+///
+/// `task-2364`. The loops that waited for a thread counted frames or tries, such as `for _ in 0..800`
+/// with ten milliseconds between, which is a deadline of about eight seconds on a quiet machine and
+/// whatever the scheduler allows on a busy one. A wait is a deadline in time and a condition, and this
+/// is the one every test that waits on a thread, a language server, a kernel or a folder watch uses.
+pub fn wait_until(
+    harness: &mut Harness<'static, UnluminousApp>,
+    what: &str,
+    mut done: impl FnMut(&UnluminousApp) -> bool,
+) {
+    let deadline = std::time::Instant::now() + LONGEST_WAIT;
+    loop {
+        if done(harness.state()) {
+            steady(harness);
+            return;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "{what} did not happen in {} seconds",
+            LONGEST_WAIT.as_secs()
+        );
+        pump(harness);
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
 }
 
 /// The same, insisting it worked.
@@ -1092,7 +1359,7 @@ pub fn fixture(name: &str, files: &[(&str, &str)]) -> std::path::PathBuf {
     turn::take_the_machines_turn();
     static BUILT: OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = OnceLock::new();
     let built = BUILT.get_or_init(Default::default);
-    let root = std::env::temp_dir().join(name);
+    let root = fixtures_root().join(name);
     let mut names = built.lock().expect("the fixture registry");
     if names.insert(name.to_owned()) {
         std::fs::remove_dir_all(&root).ok();

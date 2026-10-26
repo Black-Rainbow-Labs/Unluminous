@@ -11,11 +11,20 @@
 //! **No user interface dependency**, for the reason `unluminous-core` has none: the tests run with no
 //! window, no graphics card and no fonts. Text is measured through `unluminous_core::FontMetrics`.
 
+pub mod autocorrect;
 pub mod builtin;
+pub mod clipboard;
+pub mod convert;
+pub mod crypto;
 pub mod edit;
 pub mod export;
+pub mod fields;
+pub mod find;
+pub mod import;
 pub mod kern;
 pub mod layout;
+pub mod lists;
+pub mod math;
 pub mod media;
 pub mod model;
 pub mod new;
@@ -23,13 +32,24 @@ pub mod numbering;
 pub mod ops;
 pub mod order;
 pub mod package;
+pub mod page_setup;
 pub mod pdf;
+pub mod pictures;
 pub mod position;
+pub mod properties;
 pub mod props;
 pub mod read;
+pub mod references;
+pub mod restyle;
+pub mod review;
+pub mod ruler;
+pub mod search;
 pub mod session;
+pub mod shortcuts;
 pub mod spell;
 pub mod styles;
+pub mod tables;
+pub mod thesaurus;
 pub mod write;
 pub mod xml;
 pub mod zip;

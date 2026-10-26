@@ -11,8 +11,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use unluminous_core::{CharStyle, Color, LineMetrics};
 
 use super::{
-    fields, Anchor, BreakAfter, CaretLine, Chunk, Ctx, Float, Item, LaidParagraph, Rect, RuleKind,
-    TextItem,
+    fields, BreakAfter, CaretLine, Chunk, Ctx, Float, Item, LaidParagraph, Rect, RuleKind, TextItem,
 };
 use crate::model::{Content, Paragraph, Run};
 use crate::numbering::{Counters, Suffix};
@@ -34,6 +33,8 @@ struct Look {
     /// Drawn struck through as a tracked deletion, or underlined as an insertion.
     deleted: bool,
     inserted: bool,
+    /// Part of a tracked change, whether or not it is drawn as one, for Simple Markup's margin bar.
+    revised: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -44,15 +45,20 @@ enum Kind {
     Line,
     Page,
     Column,
-    Picture {
-        w: f32,
-        h: f32,
-        part: String,
-    },
-    Float(Float),
+    /// A picture or a shape in the line, drawn as `drawing::items` draws it.
+    Picture(Box<Float>),
+    Float(Box<Float>),
     Label(String),
-    /// A footnote or endnote reference mark.
-    NoteMark(String),
+    /// A footnote or endnote reference mark, with the footnote's id when it is a reference to one in the
+    /// body, whose note goes at the foot of the page the line lands on.
+    NoteMark(String, Option<i64>),
+    /// An absolute position tab (`w:ptab`): to the left, centre or right of the margins or the indents,
+    /// with what lies after it aligned there (task-2359, D7).
+    PositionTab {
+        align: TabKind,
+        to_indent: bool,
+        leader: Option<char>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -74,7 +80,10 @@ impl Atom {
     }
 
     fn is_special(&self) -> bool {
-        matches!(self.kind, Kind::Tab | Kind::Line | Kind::Page | Kind::Column)
+        matches!(
+            self.kind,
+            Kind::Tab | Kind::Line | Kind::Page | Kind::Column | Kind::PositionTab { .. }
+        )
     }
 }
 
@@ -92,6 +101,12 @@ fn char_style(run: &RunLook, size: f32, color: Option<Rgb>) -> CharStyle {
 }
 
 fn make_look(ctx: &Ctx, run: RunLook, deleted: bool, inserted: bool) -> Look {
+    let revised = deleted || inserted;
+    // Only All Markup draws a change as a change; the other views draw the text as it is or was.
+    let (deleted, inserted) = match ctx.markup {
+        crate::review::Markup::All => (deleted, inserted),
+        _ => (false, false),
+    };
     let tracked = (deleted || inserted).then_some(REVISION);
     let style = char_style(&run, run.drawn_size(), tracked);
     let metrics = ctx.metrics.line_metrics(&style);
@@ -100,7 +115,7 @@ fn make_look(ctx: &Ctx, run: RunLook, deleted: bool, inserted: bool) -> Look {
         let metrics = ctx.metrics.line_metrics(&small);
         (small, metrics)
     });
-    Look { run, style, metrics, small, deleted, inserted }
+    Look { run, style, metrics, small, deleted, inserted, revised }
 }
 
 /// Lay a paragraph out at `width`, the width of the column or cell it is in.
@@ -113,7 +128,37 @@ pub fn lay_out(
     width: f32,
     table_style: Option<&str>,
 ) -> LaidParagraph {
-    let look = ctx.resolver.paragraph(&paragraph.props, table_style);
+    prepare(ctx, counters, paragraph, story, path, width, table_style).laid(ctx)
+}
+
+/// A paragraph measured and ready to be broken into lines: its look, the looks of its runs and its atoms.
+/// The page flow breaks it one line at a time when the room a line has depends on where on the page it
+/// lands, beside a floating picture (task-2359, C2).
+#[derive(Debug, Clone)]
+pub struct Prepared {
+    pub look: ParaLook,
+    looks: Vec<Look>,
+    atoms: Vec<Atom>,
+    story: StoryId,
+    path: Vec<u32>,
+    pub width: f32,
+    length: usize,
+}
+
+/// Measure a paragraph into atoms, its list label first.
+pub fn prepare(
+    ctx: &Ctx,
+    counters: &mut Counters,
+    paragraph: &Paragraph,
+    story: &StoryId,
+    path: &[u32],
+    width: f32,
+    table_style: Option<&str>,
+) -> Prepared {
+    let mut look = ctx.resolver.paragraph(&paragraph.props, table_style);
+    if let Some(align) = display_equation_alignment(paragraph) {
+        look.align = align;
+    }
     let empty = El::new("w:rPr");
     let mark_rpr = paragraph.props.child("w:rPr").unwrap_or(&empty);
     let mark =
@@ -131,18 +176,37 @@ pub fn lay_out(
             }
             let mut run = ctx.resolver.run(&paragraph.props, &label_rpr, table_style);
             run.underline = Underline::None;
+            let size = run.drawn_size();
             looks.push(make_look(ctx, run, false, false));
             let index = looks.len() - 1;
-            let width = measure(ctx, &looks[index], &label.text, false);
-            atoms.push(Atom {
-                start: 0,
-                end: 0,
-                kind: Kind::Label(label.text.clone()),
-                width,
-                look: index,
-                small: false,
-                opportunity: false,
-            });
+            // A picture bullet is drawn at the height of the text, in place of the label's characters.
+            let bullet = label
+                .picture
+                .as_deref()
+                .and_then(|id| super::drawing::picture_bullet(ctx, id, size));
+            match bullet {
+                Some(picture) => atoms.push(Atom {
+                    start: 0,
+                    end: 0,
+                    width: picture.width,
+                    kind: Kind::Picture(Box::new(picture)),
+                    look: index,
+                    small: false,
+                    opportunity: false,
+                }),
+                None => {
+                    let width = measure(ctx, &looks[index], &label.text, false);
+                    atoms.push(Atom {
+                        start: 0,
+                        end: 0,
+                        kind: Kind::Label(label.text.clone()),
+                        width,
+                        look: index,
+                        small: false,
+                        opportunity: false,
+                    });
+                }
+            }
             match label.suffix {
                 Suffix::Tab => atoms.push(Atom {
                     start: 0,
@@ -169,40 +233,189 @@ pub fn lay_out(
             }
         }
     }
-    collect_atoms(ctx, paragraph, table_style, &mut looks, &mut atoms);
-    let lines = break_lines(ctx, &look, &atoms, width);
-    let mut chunks: Vec<Chunk> = Vec::with_capacity(lines.len());
-    let count = lines.len();
-    for (index, line) in lines.into_iter().enumerate() {
-        let first = index == 0;
-        let last = index + 1 == count;
-        chunks.push(place_line(
+    let page = ctx.page.or_else(|| {
+        // A page field in the body shows the page its paragraph landed on in the pass before.
+        (*story == StoryId::Body).then(|| ctx.body_pages.get(path).copied()).flatten()
+    });
+    collect_atoms(ctx, paragraph, table_style, page, &mut looks, &mut atoms);
+    for atom in &mut atoms {
+        let float = match &mut atom.kind {
+            Kind::Picture(float) => Some(&mut **float),
+            Kind::Float(float) => Some(&mut **float),
+            _ => None,
+        };
+        if let (Some(float), true) = (float, atom.end > atom.start) {
+            float.source = Some((story.clone(), path.to_vec(), atom.start));
+        }
+    }
+    Prepared {
+        look,
+        looks,
+        atoms,
+        story: story.clone(),
+        path: path.to_vec(),
+        width,
+        length: paragraph.len(),
+    }
+}
+
+impl Prepared {
+    /// Every line, each at the paragraph's own indents, as one piece the flow places.
+    pub fn laid(self, ctx: &Ctx) -> LaidParagraph {
+        let hyphen_width = measure(ctx, &self.looks[0], "-", false);
+        let lines = break_lines(ctx, &self.look, &self.atoms, self.width, hyphen_width);
+        let mut chunks: Vec<Chunk> = Vec::with_capacity(lines.len());
+        let count = lines.len();
+        for (index, line) in lines.into_iter().enumerate() {
+            let first = index == 0;
+            let bounds = self.bounds(first, None);
+            chunks.push(self.place(ctx, &line, first, index + 1 == count, bounds));
+        }
+        decorate_paragraph(&self.look, &mut chunks, self.width);
+        self.spacing(chunks)
+    }
+
+    /// The paragraph's spacing and keep rules around some placed lines.
+    pub fn spacing(&self, lines: Vec<Chunk>) -> LaidParagraph {
+        let look = &self.look;
+        let auto = 14.0;
+        LaidParagraph {
+            lines,
+            space_before: if look.before_auto { auto } else { look.space_before },
+            space_after: if look.after_auto { auto } else { look.space_after },
+            keep_next: look.keep_next,
+            keep_lines: look.keep_lines,
+            page_break_before: look.page_break_before,
+            widow_control: look.widow_control,
+            contextual: look.contextual,
+            style: look.style.clone(),
+        }
+    }
+
+    /// The pictures anchored in this paragraph that float.
+    pub fn floats(&self) -> Vec<Float> {
+        self.atoms
+            .iter()
+            .filter_map(|atom| match &atom.kind {
+                Kind::Float(float) => Some((**float).clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// How tall a line of this paragraph is, near enough to ask where it fits beside a picture.
+    pub fn line_height(&self) -> f32 {
+        let metrics = self.looks.get(1).unwrap_or(&self.looks[0]).metrics;
+        let natural = metrics.ascent + metrics.line_gap + metrics.descent;
+        match self.look.line {
+            LineRule::Auto(multiple) => natural * multiple.max(0.06),
+            LineRule::AtLeast(at_least) => natural.max(at_least),
+            LineRule::Exact(exact) => exact,
+        }
+    }
+
+    /// The left and right edge a line has: the paragraph's indents, narrowed to `room` (the part of the
+    /// column a floating picture leaves free) when there is one.
+    /// The width of the word that starts at atom `from`: the atoms up to the first a line may break
+    /// after, without a space at its start or its end.
+    pub fn word_width(&self, from: usize) -> f32 {
+        let mut width = 0.0;
+        for atom in self.atoms.iter().skip(from).skip_while(|a| matches!(a.kind, Kind::Space(_))) {
+            if matches!(atom.kind, Kind::Space(_)) {
+                break;
+            }
+            width += atom.width;
+            if atom.opportunity {
+                break;
+            }
+        }
+        width
+    }
+
+    pub fn bounds(&self, first: bool, room: Option<(f32, f32)>) -> (f32, f32) {
+        let left = line_left(&self.look, first);
+        let right = self.width - self.look.indent_right;
+        match room {
+            Some((from, to)) => (left.max(from), right.min(to)),
+            None => (left, right),
+        }
+    }
+
+    /// The next line, from atom `from`, within `bounds`: its atoms, the atom after it, and whether it is
+    /// the paragraph's last.
+    pub fn next_line(
+        &self,
+        ctx: &Ctx,
+        from: usize,
+        first: bool,
+        bounds: (f32, f32),
+        hyphens: u32,
+    ) -> (LineBuild, usize, bool) {
+        let hyphen_width = measure(ctx, &self.looks[0], "-", false);
+        let (line, next) = next_line(
             ctx,
-            &look,
-            &looks,
-            &atoms,
-            &line,
-            width,
+            &self.look,
+            &self.atoms,
+            from,
+            first,
+            bounds,
+            self.width,
+            (hyphens, hyphen_width),
+        );
+        // A paragraph that ends in a line break has one more, empty line after it.
+        let last = next >= self.atoms.len() && !line.forced;
+        (line, next, last)
+    }
+
+    /// Whether every atom has been put on a line.
+    pub fn done(&self, next: usize) -> bool {
+        next >= self.atoms.len()
+    }
+
+    /// Place a line within `bounds`.
+    pub fn place(
+        &self,
+        ctx: &Ctx,
+        line: &LineBuild,
+        first: bool,
+        last: bool,
+        bounds: (f32, f32),
+    ) -> Chunk {
+        place_line(
+            ctx,
+            &self.look,
+            &self.looks,
+            &self.atoms,
+            line,
+            self.width,
             first,
             last,
-            story,
-            path,
-            paragraph.len(),
-        ));
+            &self.story,
+            &self.path,
+            self.length,
+            bounds,
+        )
     }
-    decorate_paragraph(&look, &mut chunks, width);
-    let auto = 14.0;
-    LaidParagraph {
-        lines: chunks,
-        space_before: if look.before_auto { auto } else { look.space_before },
-        space_after: if look.after_auto { auto } else { look.space_after },
-        keep_next: look.keep_next,
-        keep_lines: look.keep_lines,
-        page_break_before: look.page_break_before,
-        widow_control: look.widow_control,
-        contextual: look.contextual,
-        style: look.style.clone(),
+}
+
+/// The alignment of a paragraph that holds a display equation (`m:oMathPara`) and nothing else: its
+/// `m:jc`, which is centred as a group when it says nothing, as Word draws it.
+fn display_equation_alignment(paragraph: &Paragraph) -> Option<Align> {
+    let mut display = None;
+    for run in &paragraph.runs {
+        match &run.content {
+            Content::ParagraphObject(el) if el.name == "m:oMathPara" => display = Some(el),
+            Content::Text(text) if text.trim().is_empty() => {}
+            _ => return None,
+        }
     }
+    let jc =
+        display?.child("m:oMathParaPr").and_then(|p| p.child("m:jc")).and_then(|j| j.attr("m:val"));
+    Some(match jc {
+        Some("left") => Align::Left,
+        Some("right") => Align::Right,
+        _ => Align::Center,
+    })
 }
 
 /// The width of `text` in a look, grapheme by grapheme.
@@ -227,6 +440,7 @@ fn collect_atoms(
     ctx: &Ctx,
     paragraph: &Paragraph,
     table_style: Option<&str>,
+    page: Option<(u32, u32)>,
     looks: &mut Vec<Look>,
     atoms: &mut Vec<Atom>,
 ) {
@@ -239,13 +453,29 @@ fn collect_atoms(
         let len = run.len();
         let start = offset;
         offset += len;
+        if ctx.show_codes {
+            let shown = show_code(
+                ctx,
+                paragraph,
+                run,
+                table_style,
+                looks,
+                atoms,
+                start,
+                &mut fields,
+                &mut simple_done,
+            );
+            if shown.is_some() {
+                continue;
+            }
+        }
         if let Content::FieldChar(el) = &run.content {
             match el.attr("w:fldCharType") {
                 Some("begin") => fields.open.push((String::new(), true, None, false)),
                 Some("separate") => {
                     if let Some(field) = fields.open.last_mut() {
                         field.1 = false;
-                        field.2 = fields::page_result(&field.0, ctx.page);
+                        field.2 = fields::page_result(&field.0, page);
                     }
                 }
                 _ => {
@@ -261,6 +491,15 @@ fn collect_atoms(
             continue;
         }
         if fields.open.iter().any(|field| field.1) {
+            continue;
+        }
+        // No Markup and Simple Markup show the text as it will be, Original as it was.
+        let hidden_by_markup = match ctx.markup {
+            crate::review::Markup::All => false,
+            crate::review::Markup::Original => run.is_inserted(),
+            _ => run.is_deleted(),
+        };
+        if hidden_by_markup {
             continue;
         }
         let look = {
@@ -301,7 +540,7 @@ fn collect_atoms(
         }
         if let Some(simple) = run.wraps.iter().find(|w| w.el.name == "w:fldSimple") {
             if let Some(value) =
-                simple.el.attr("w:instr").and_then(|code| fields::page_result(code, ctx.page))
+                simple.el.attr("w:instr").and_then(|code| fields::page_result(code, page))
             {
                 if simple_done == Some(simple.id) {
                     continue;
@@ -346,7 +585,95 @@ fn collect_atoms(
             Content::Object(el) => {
                 object_atom(ctx, run, el, &looks[look], look, start, start + len, atoms)
             }
+            Content::ParagraphObject(el) if el.name.starts_with("m:") => {
+                // An equation, drawn as its linear text in the equation font at the run's size.
+                let mut run_look = looks[look].run.clone();
+                run_look.font = crate::math::FONT.into();
+                looks.push(make_look(ctx, run_look, run.is_deleted(), run.is_inserted()));
+                let index = looks.len() - 1;
+                let text = crate::math::linear_text(el).replace('\u{000B}', " ");
+                push_text(ctx, &looks[index], index, &text, start, start + len, atoms, true);
+            }
+            Content::ParagraphObject(_) => atoms.push(Atom {
+                start,
+                end: start + len,
+                kind: Kind::Glyph(String::new()),
+                width: 0.0,
+                look,
+                small: false,
+                opportunity: true,
+            }),
             Content::FieldChar(_) | Content::Instr(_) => {}
+        }
+    }
+}
+
+/// With field codes showing: a field's begin draws `{ `, its code is drawn as text, its result is left
+/// out and its end draws ` }`; a simple field draws its whole code in braces once. Answers `Some` when the
+/// run was dealt with here, `None` for a run that is drawn as usual.
+#[allow(clippy::too_many_arguments)]
+fn show_code(
+    ctx: &Ctx,
+    paragraph: &Paragraph,
+    run: &crate::model::Run,
+    table_style: Option<&str>,
+    looks: &mut Vec<Look>,
+    atoms: &mut Vec<Atom>,
+    start: usize,
+    fields: &mut FieldState,
+    simple_done: &mut Option<u64>,
+) -> Option<()> {
+    let look = |looks: &mut Vec<Look>| {
+        let resolved = ctx.resolver.run(&paragraph.props, &run.props, table_style);
+        looks.push(make_look(ctx, resolved, false, false));
+        looks.len() - 1
+    };
+    match &run.content {
+        Content::FieldChar(el) => {
+            let index = look(looks);
+            match el.attr("w:fldCharType") {
+                Some("begin") => {
+                    fields.open.push((String::new(), true, None, false));
+                    push_text(ctx, &looks[index], index, "{ ", start, start, atoms, true);
+                }
+                Some("separate") => {
+                    if let Some(field) = fields.open.last_mut() {
+                        field.1 = false;
+                    }
+                }
+                _ => {
+                    if fields.open.pop().is_some() {
+                        push_text(ctx, &looks[index], index, " }", start, start, atoms, true);
+                    }
+                }
+            }
+            Some(())
+        }
+        Content::Instr(code) => {
+            let index = look(looks);
+            push_text(
+                ctx,
+                &looks[index],
+                index,
+                code.trim(),
+                start,
+                start + run.len(),
+                atoms,
+                true,
+            );
+            Some(())
+        }
+        // A result is not drawn while its code is.
+        _ if fields.open.iter().any(|field| !field.1) => Some(()),
+        _ => {
+            let simple = run.wraps.iter().find(|w| w.el.name == "w:fldSimple")?;
+            if *simple_done != Some(simple.id) {
+                *simple_done = Some(simple.id);
+                let index = look(looks);
+                let code = format!("{{ {} }}", simple.el.attr("w:instr").unwrap_or("").trim());
+                push_text(ctx, &looks[index], index, &code, start, start, atoms, true);
+            }
+            Some(())
         }
     }
 }
@@ -428,24 +755,19 @@ fn object_atom(
     match el.name.as_str() {
         "w:footnoteReference" | "w:endnoteReference" => {
             let id = el.attr("w:id").and_then(|id| id.parse::<i64>().ok());
-            let numbers = if el.name == "w:footnoteReference" {
-                &ctx.footnote_numbers
+            let marks = if el.name == "w:footnoteReference" {
+                &ctx.footnote_marks
             } else {
-                &ctx.endnote_numbers
+                &ctx.endnote_marks
             };
-            let mark = id.and_then(|id| numbers.get(&id)).map_or(String::new(), |n| {
-                match el.name.as_str() {
-                    "w:endnoteReference" => {
-                        crate::numbering::format_number(i64::from(*n), "lowerRoman")
-                    }
-                    _ => n.to_string(),
-                }
-            });
+            // A custom mark is the text typed after the reference, so the reference shows nothing.
+            let mark = id.and_then(|id| marks.get(&id)).cloned().unwrap_or_default();
             let width = measure(ctx, look, &mark, false);
+            let footnote = id.filter(|_| el.name == "w:footnoteReference");
             atoms.push(Atom {
                 start,
                 end,
-                kind: Kind::NoteMark(mark),
+                kind: Kind::NoteMark(mark, footnote),
                 width,
                 look: index,
                 small: false,
@@ -459,7 +781,7 @@ fn object_atom(
             atoms.push(Atom {
                 start,
                 end,
-                kind: Kind::NoteMark(mark),
+                kind: Kind::NoteMark(mark, None),
                 width,
                 look: index,
                 small: false,
@@ -476,6 +798,45 @@ fn object_atom(
                 small: false,
                 opportunity: false,
             });
+        }
+        "w:ptab" => {
+            let align = match el.attr("w:alignment") {
+                Some("center") => TabKind::Center,
+                Some("right") => TabKind::Right,
+                _ => TabKind::Left,
+            };
+            let leader = match el.attr("w:leader") {
+                Some("dot") => Some('.'),
+                Some("hyphen") => Some('-'),
+                Some("underscore") => Some('_'),
+                Some("middleDot") => Some('·'),
+                _ => None,
+            };
+            atoms.push(Atom {
+                start,
+                end,
+                kind: Kind::PositionTab {
+                    align,
+                    to_indent: el.attr("w:relativeTo") == Some("indent"),
+                    leader,
+                },
+                width: 0.0,
+                look: index,
+                small: false,
+                opportunity: false,
+            });
+        }
+        "w:ruby" => {
+            // Phonetic guide text: the base is the text a reader sees; the guide above it is left out.
+            let mut base = String::new();
+            if let Some(el) = el.child("w:rubyBase") {
+                el.walk(&mut |node| {
+                    if node.name == "w:t" {
+                        base.push_str(&node.text());
+                    }
+                });
+            }
+            push_text(ctx, look, index, &base, start, end, atoms, true);
         }
         "w:noBreakHyphen" => {
             let width = measure(ctx, look, "-", false);
@@ -514,41 +875,27 @@ fn object_atom(
             });
         }
         _ => {
-            let Some(picture) = run.content.picture() else {
-                atoms.push(Atom {
+            let drawing =
+                run.content.picture().map(|_| el).and_then(|el| super::drawing::read(ctx, el));
+            match drawing {
+                Some(drawing) if drawing.inline => atoms.push(Atom {
                     start,
                     end,
-                    kind: Kind::Glyph(String::new()),
-                    width: 0.0,
+                    kind: Kind::Picture(Box::new(drawing.float.clone())),
+                    width: drawing.float.width,
                     look: index,
                     small: false,
                     opportunity: true,
-                });
-                return;
-            };
-            match read_picture(ctx, picture) {
-                Some(PictureKind::Inline { w, h, part }) => {
-                    atoms.push(Atom {
-                        start,
-                        end,
-                        kind: Kind::Picture { w, h, part },
-                        width: w,
-                        look: index,
-                        small: false,
-                        opportunity: true,
-                    });
-                }
-                Some(PictureKind::Float(float)) => {
-                    atoms.push(Atom {
-                        start,
-                        end,
-                        kind: Kind::Float(float),
-                        width: 0.0,
-                        look: index,
-                        small: false,
-                        opportunity: false,
-                    });
-                }
+                }),
+                Some(drawing) => atoms.push(Atom {
+                    start,
+                    end,
+                    kind: Kind::Float(Box::new(drawing.float)),
+                    width: 0.0,
+                    look: index,
+                    small: false,
+                    opportunity: false,
+                }),
                 None => atoms.push(Atom {
                     start,
                     end,
@@ -566,12 +913,8 @@ fn object_atom(
 /// The number of the note being laid out, which a note's own `w:footnoteRef` shows.
 fn note_number_for_ref(ctx: &Ctx, endnote: bool) -> String {
     let id = CURRENT_NOTE.with(|current| current.get());
-    let numbers = if endnote { &ctx.endnote_numbers } else { &ctx.footnote_numbers };
-    match id.and_then(|id| numbers.get(&id)) {
-        Some(n) if endnote => crate::numbering::format_number(i64::from(*n), "lowerRoman"),
-        Some(n) => n.to_string(),
-        None => String::new(),
-    }
+    let marks = if endnote { &ctx.endnote_marks } else { &ctx.footnote_marks };
+    id.and_then(|id| marks.get(&id)).cloned().unwrap_or_default()
 }
 
 thread_local! {
@@ -579,99 +922,62 @@ thread_local! {
     pub static CURRENT_NOTE: std::cell::Cell<Option<i64>> = const { std::cell::Cell::new(None) };
 }
 
-enum PictureKind {
-    Inline { w: f32, h: f32, part: String },
-    Float(Float),
+/// How a document hyphenates: `w:autoHyphenation` with its zone, the most lines in a row that may end
+/// in a hyphen, and whether words in capitals are left whole.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Hyphenation {
+    /// Words are hyphenated only when the space a line would otherwise leave is wider than this.
+    pub zone: f32,
+    /// The most lines in a row ending in a hyphen; 0 for no limit.
+    pub limit: u32,
+    pub capitals: bool,
 }
 
-/// A picture's size and the part its pixels are in, from a `w:drawing` or a `w:pict`.
-fn read_picture(ctx: &Ctx, el: &El) -> Option<PictureKind> {
-    let mut embed: Option<String> = None;
-    el.walk(&mut |node| {
-        if embed.is_none() {
-            if node.name == "a:blip" {
-                embed = node.attr("r:embed").or(node.attr("r:link")).map(str::to_owned);
-            } else if node.name == "v:imagedata" {
-                embed = node.attr("r:id").map(str::to_owned);
-            }
+impl Hyphenation {
+    /// The document's hyphenation settings, `None` when it does not hyphenate.
+    pub fn of(document: &crate::model::Document) -> Option<Hyphenation> {
+        let settings = &document.settings.as_ref()?.root;
+        if props::on_off(settings, "w:autoHyphenation") != Some(true) {
+            return None;
         }
-    });
-    let part = embed
-        .and_then(|id| {
-            let rel = ctx.document.package.rels.get(&ctx.part)?.by_id(&id)?.clone();
-            (!rel.external).then(|| crate::package::Package::resolve(&ctx.part, &rel.target))
-        })
-        .unwrap_or_default();
-    if el.name == "w:pict" {
-        let mut size = None;
-        el.walk(&mut |node| {
-            if size.is_none() && matches!(node.name.as_str(), "v:shape" | "v:rect" | "v:image") {
-                size = node.attr("style").map(vml_size);
-            }
-        });
-        let (w, h) = size.unwrap_or((72.0, 72.0));
-        return Some(PictureKind::Inline { w, h, part });
-    }
-    let frame = el.elements().next()?;
-    let extent = frame.child("wp:extent")?;
-    let w = props::emu(extent.attr("cx").and_then(props::number).unwrap_or(0.0));
-    let h = props::emu(extent.attr("cy").and_then(props::number).unwrap_or(0.0));
-    if frame.name == "wp:inline" {
-        return Some(PictureKind::Inline { w, h, part });
-    }
-    let position = |name: &str| -> (String, Anchor) {
-        let Some(axis) = frame.child(name) else { return ("column".into(), Anchor::Offset(0.0)) };
-        let relative = axis.attr("relativeFrom").unwrap_or("column").to_owned();
-        let anchor = match (axis.child("wp:posOffset"), axis.child("wp:align")) {
-            (Some(offset), _) => {
-                Anchor::Offset(props::emu(props::number(&offset.text()).unwrap_or(0.0)))
-            }
-            (None, Some(align)) => Anchor::Align(align.text()),
-            _ => Anchor::Offset(0.0),
+        // Word 2013 and later (compatibility mode 15) has no hyphenation zone: it hyphenates a word
+        // whenever part of it fits, and reports the zone as undefined. Older documents keep theirs.
+        let zone = if super::compatibility_mode(document) >= 15 {
+            0.0
+        } else {
+            settings.val_of("w:hyphenationZone").and_then(props::number).map_or(18.0, props::twips)
         };
-        (relative, anchor)
-    };
-    let wrap = frame
-        .elements()
-        .find_map(|child| child.local().strip_prefix("wrap").map(|kind| kind.to_owned()))
-        .unwrap_or_else(|| {
-            if frame.attr("behindDoc") == Some("1") {
-                "behind".into()
-            } else {
-                "none".into()
-            }
-        });
-    Some(PictureKind::Float(Float {
-        width: w,
-        height: h,
-        horizontal: position("wp:positionH"),
-        vertical: position("wp:positionV"),
-        part,
-        wrap: wrap.to_lowercase(),
-    }))
+        Some(Hyphenation {
+            zone,
+            limit: settings
+                .val_of("w:consecutiveHyphenLimit")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0),
+            capitals: props::on_off(settings, "w:doNotHyphenateCaps") != Some(true),
+        })
+    }
 }
 
-/// `width:100pt;height:50pt` from a VML shape's style.
-fn vml_size(style: &str) -> (f32, f32) {
-    let mut size = (72.0, 72.0);
-    for declaration in style.split(';') {
-        let Some((key, value)) = declaration.split_once(':') else { continue };
-        let points = props::number(value.trim()).map(|twips| (twips / 20.0) as f32);
-        match (key.trim(), points) {
-            ("width", Some(w)) => size.0 = w,
-            ("height", Some(h)) => size.1 = h,
-            _ => {}
-        }
-    }
-    size
+/// The places a word may be hyphenated, by the en-US patterns, as byte offsets into it.
+fn hyphenation_points(word: &str) -> Vec<usize> {
+    use hyphenation::{Hyphenator, Language, Load, Standard};
+    static DICTIONARY: std::sync::OnceLock<Option<Standard>> = std::sync::OnceLock::new();
+    let Some(dictionary) =
+        DICTIONARY.get_or_init(|| Standard::from_embedded(Language::EnglishUS).ok())
+    else {
+        return Vec::new();
+    };
+    dictionary.hyphenate(word).breaks
 }
 
 /// A line before it is placed: which atoms it holds and why it ended.
 #[derive(Debug, Clone, Default)]
-struct LineBuild {
+pub struct LineBuild {
     atoms: Vec<usize>,
     /// It ended with a line break the person typed, so a justified line is not stretched.
     forced: bool,
+    /// It ends inside a word that was hyphenated, so a hyphen is drawn after its last letter.
+    pub hyphen: bool,
 }
 
 /// The left edge of a line, from the paragraph's indents.
@@ -699,44 +1005,159 @@ fn next_tab(ctx: &Ctx, look: &ParaLook, x: f32, first: bool) -> (f32, TabKind, O
     (next, TabKind::Left, None)
 }
 
-/// Fill lines greedily from segments.
-fn break_lines(ctx: &Ctx, look: &ParaLook, atoms: &[Atom], width: f32) -> Vec<LineBuild> {
-    let mut lines: Vec<LineBuild> = Vec::new();
-    let mut line = LineBuild::default();
-    let right = width - look.indent_right;
-    let mut pen = line_left(look, true);
-    let mut has_content = false;
-    let mut index = 0;
-    let finish = |lines: &mut Vec<LineBuild>, line: &mut LineBuild, forced: bool| {
-        line.forced = forced;
-        lines.push(std::mem::take(line));
+/// Where an absolute position tab stops and how it aligns what follows: the left edge, the middle or the
+/// right edge of the margins (the column) or of the paragraph's indents.
+fn position_tab(look: &ParaLook, align: TabKind, to_indent: bool, width: f32) -> (f32, TabKind) {
+    let (left, right) =
+        if to_indent { (look.indent_left, width - look.indent_right) } else { (0.0, width) };
+    let stop = match align {
+        TabKind::Center => (left + right) / 2.0,
+        TabKind::Right => right,
+        _ => left,
     };
+    (stop, align)
+}
+
+/// Where to hyphenate the word a segment holds so its first part and a hyphen fit before `right`: the
+/// atom the line ends before, or `None` when the word is not hyphenated (the document does not hyphenate,
+/// the gap at the end of the line is inside the zone, too many lines in a row end in a hyphen, it is in
+/// capitals and those are left whole, or no break point fits).
+#[allow(clippy::too_many_arguments)]
+fn hyphenate(
+    ctx: &Ctx,
+    look: &ParaLook,
+    atoms: &[Atom],
+    index: usize,
+    end: usize,
+    pen: f32,
+    right: f32,
+    (hyphens, hyphen_width): (u32, f32),
+) -> Option<usize> {
+    let rules = ctx.hyphenation?;
+    if look.suppress_hyphens
+        || right - pen <= rules.zone
+        || (rules.limit > 0 && hyphens >= rules.limit)
+    {
+        return None;
+    }
+    // The word is the segment's letters, without the space or punctuation after it.
+    let mut word = String::new();
+    let mut offsets = Vec::new();
+    for (at, atom) in atoms.iter().enumerate().take(end).skip(index) {
+        match &atom.kind {
+            Kind::Glyph(text) if text.chars().all(char::is_alphabetic) && !text.is_empty() => {
+                offsets.push((word.len(), at));
+                word.push_str(text);
+            }
+            _ => break,
+        }
+    }
+    if word.chars().count() < 5 || (!rules.capitals && word.chars().all(char::is_uppercase)) {
+        return None;
+    }
+    let mut best = None;
+    for point in hyphenation_points(&word.to_lowercase()) {
+        let Some(&(_, at)) = offsets.iter().find(|(offset, _)| *offset == point) else { continue };
+        let used: f32 = atoms[index..at].iter().map(|a| a.width).sum();
+        if pen + used + hyphen_width <= right + 0.01 {
+            best = Some(at);
+        }
+    }
+    best
+}
+
+/// Fill lines greedily from segments, each line at the paragraph's indents.
+fn break_lines(
+    ctx: &Ctx,
+    look: &ParaLook,
+    atoms: &[Atom],
+    width: f32,
+    hyphen_width: f32,
+) -> Vec<LineBuild> {
+    let mut lines: Vec<LineBuild> = Vec::new();
+    let mut index = 0;
+    let mut hyphens = 0;
+    loop {
+        let first = lines.is_empty();
+        let bounds = (line_left(look, first), width - look.indent_right);
+        let (line, next) =
+            next_line(ctx, look, atoms, index, first, bounds, width, (hyphens, hyphen_width));
+        hyphens = if line.hyphen { hyphens + 1 } else { 0 };
+        let forced = line.forced;
+        lines.push(line);
+        index = next;
+        if index >= atoms.len() {
+            // A paragraph that ends in a line break has one more, empty line after it.
+            if forced {
+                lines.push(LineBuild::default());
+            }
+            return lines;
+        }
+    }
+}
+
+/// One line filled greedily from segments, from atom `from`, between `left` and `right`: the line and the
+/// atom the next line starts at. A segment is the atoms up to and including the next place a line may
+/// break; one wider than a whole line is broken between graphemes.
+#[allow(clippy::too_many_arguments)]
+fn next_line(
+    ctx: &Ctx,
+    look: &ParaLook,
+    atoms: &[Atom],
+    from: usize,
+    first: bool,
+    (left, right): (f32, f32),
+    width: f32,
+    hyphens: (u32, f32),
+) -> (LineBuild, usize) {
+    let mut line = LineBuild::default();
+    let mut pen = left;
+    let mut has_content = false;
+    let mut index = from;
+    // The width of the spaces since the last tab, which a justified line may shrink.
+    let shrinks = ctx.shrink_justified && look.align == Align::Justify;
+    let mut spaces = 0.0f32;
+    // After a right, centre or decimal tab the text that follows ends at (or centres on) the stop, so it
+    // fits the line as long as it fits between the text before the tab and the right edge; the pen stays
+    // where the tab started, and the stop is where the next tab is measured from.
+    let mut aligned_to: Option<f32> = None;
     while index < atoms.len() {
         let atom = &atoms[index];
         if atom.is_special() {
             match atom.kind {
                 Kind::Tab => {
-                    let (stop, _, _) = next_tab(ctx, look, pen, lines.is_empty());
-                    if stop > right + 0.01 && has_content {
-                        finish(&mut lines, &mut line, false);
-                        pen = line_left(look, false);
-                        has_content = false;
+                    spaces = 0.0;
+                    if let Some(stop) = aligned_to.take() {
+                        pen = pen.max(stop);
                     }
-                    let (stop, _, _) = next_tab(ctx, look, pen, lines.is_empty());
+                    let (stop, kind, _) = next_tab(ctx, look, pen, first);
+                    if stop > right + 0.01 && has_content {
+                        return (line, index);
+                    }
                     line.atoms.push(index);
-                    pen = stop.max(pen);
+                    match kind {
+                        TabKind::Right | TabKind::Center | TabKind::Decimal => {
+                            aligned_to = Some(stop)
+                        }
+                        _ => pen = stop.max(pen),
+                    }
                 }
-                Kind::Line => {
+                Kind::PositionTab { align, to_indent, .. } => {
+                    spaces = 0.0;
+                    if let Some(stop) = aligned_to.take() {
+                        pen = pen.max(stop);
+                    }
                     line.atoms.push(index);
-                    finish(&mut lines, &mut line, true);
-                    pen = line_left(look, false);
-                    has_content = false;
+                    let (stop, kind) = position_tab(look, align, to_indent, width);
+                    match kind {
+                        TabKind::Right | TabKind::Center => aligned_to = Some(stop),
+                        _ => pen = stop.max(pen),
+                    }
                 }
                 _ => {
                     line.atoms.push(index);
-                    finish(&mut lines, &mut line, true);
-                    pen = line_left(look, false);
-                    has_content = false;
+                    line.forced = true;
+                    return (line, index + 1);
                 }
             }
             index += 1;
@@ -758,22 +1179,34 @@ fn break_lines(ctx: &Ctx, look: &ParaLook, atoms: &[Atom], width: f32) -> Vec<Li
             .take_while(|a| matches!(a.kind, Kind::Space(_)))
             .map(|a| a.width)
             .sum();
-        let fits = pen + total - trailing <= right + 0.01;
+        let inner: f32 = segment
+            .iter()
+            .filter(|a| matches!(a.kind, Kind::Space(_)))
+            .map(|a| a.width)
+            .sum::<f32>()
+            - trailing;
+        // The space after the word counts too, as it does in Word: measured on the paragraphs fixture,
+        // a line Word fits needs its thirteen inner spaces 20.1% narrower.
+        let room = if shrinks { right + SHRINK * (spaces + inner + trailing) } else { right };
+        let fits = pen + total - trailing <= room + 0.01;
         if !fits && has_content {
-            finish(&mut lines, &mut line, false);
-            pen = line_left(look, false);
-            has_content = false;
+            // The part of a hyphenated word fits the line its spaces may shrink to, as a whole word does.
+            let room = if shrinks { right + SHRINK * (spaces + inner + trailing) } else { right };
+            if let Some(cut) = hyphenate(ctx, look, atoms, index, end, pen, room, hyphens) {
+                line.atoms.extend(index..cut);
+                line.hyphen = true;
+                return (line, cut);
+            }
+            return (line, index);
         }
-        if pen + total - trailing > right + 0.01 && !has_content {
+        if !fits {
             // Wider than a whole line: break between graphemes, at least one on each line.
             for (at, atom) in atoms.iter().enumerate().take(end).skip(index) {
                 if has_content
                     && pen + atom.width > right + 0.01
                     && !matches!(atom.kind, Kind::Space(_))
                 {
-                    finish(&mut lines, &mut line, false);
-                    pen = line_left(look, false);
-                    has_content = false;
+                    return (line, at);
                 }
                 line.atoms.push(at);
                 pen += atom.width;
@@ -783,16 +1216,21 @@ fn break_lines(ctx: &Ctx, look: &ParaLook, atoms: &[Atom], width: f32) -> Vec<Li
             for (at, atom) in atoms.iter().enumerate().take(end).skip(index) {
                 line.atoms.push(at);
                 has_content |= atom.addressable();
+                if matches!(atom.kind, Kind::Space(_)) {
+                    spaces += atom.width;
+                }
             }
             pen += total;
         }
         index = end;
     }
-    if !line.atoms.is_empty() || lines.is_empty() || lines.last().is_some_and(|l| l.forced) {
-        lines.push(line);
-    }
-    lines
+    (line, index)
 }
+
+/// How much of its spaces' width a justified line may give up to take another word, in Word's 2013
+/// layout. Measured on the hyphenation and paragraphs fixtures, Word fits lines whose spaces had to
+/// shrink by 16 and 17 percent; a fifth is the limit LibreOffice found for the same behaviour.
+const SHRINK: f32 = 0.2;
 
 /// Place one line: tabs, alignment, height, and what is drawn.
 #[allow(clippy::too_many_arguments)]
@@ -808,27 +1246,33 @@ fn place_line(
     story: &StoryId,
     path: &[u32],
     paragraph_len: usize,
+    (left, right): (f32, f32),
 ) -> Chunk {
-    let left = line_left(look, first);
-    let right = width - look.indent_right;
     // x of each atom on the line and its width, with tabs resolved.
     let mut xs: Vec<(f32, f32)> = Vec::with_capacity(line.atoms.len());
     let mut leaders: Vec<(f32, f32, char, usize)> = Vec::new();
     let mut pen = left;
     for (position, &index) in line.atoms.iter().enumerate() {
         let atom = &atoms[index];
-        if atom.kind == Kind::Tab {
-            let (stop, kind, leader) = next_tab(ctx, look, pen, first);
+        let tab = match &atom.kind {
+            Kind::Tab => Some(next_tab(ctx, look, pen, first)),
+            Kind::PositionTab { align, to_indent, leader } => {
+                let (stop, _) = position_tab(look, *align, *to_indent, width);
+                Some((stop, *align, *leader))
+            }
+            _ => None,
+        };
+        if let Some((stop, kind, leader)) = tab {
+            let is_tab = |i: usize| matches!(atoms[i].kind, Kind::Tab | Kind::PositionTab { .. });
             let following: f32 = line.atoms[position + 1..]
                 .iter()
-                .take_while(|&&i| atoms[i].kind != Kind::Tab)
+                .take_while(|&&i| !is_tab(i))
                 .map(|&i| atoms[i].width)
                 .sum();
             let decimal: f32 = line.atoms[position + 1..]
                 .iter()
                 .take_while(|&&i| {
-                    atoms[i].kind != Kind::Tab
-                        && !matches!(&atoms[i].kind, Kind::Glyph(g) if g == "." || g == ",")
+                    !is_tab(i) && !matches!(&atoms[i].kind, Kind::Glyph(g) if g == "." || g == ",")
                 })
                 .map(|&i| atoms[i].width)
                 .sum();
@@ -859,8 +1303,23 @@ fn place_line(
             !matches!(atoms[i].kind, Kind::Space(_) | Kind::Line | Kind::Page | Kind::Column)
         })
         .map_or(left, |(_, (x, w))| x + w);
-    let last_tab = line.atoms.iter().rposition(|&i| atoms[i].kind == Kind::Tab);
-    let extra = (right - content_end).max(0.0);
+    let last_tab = line
+        .atoms
+        .iter()
+        .rposition(|&i| matches!(atoms[i].kind, Kind::Tab | Kind::PositionTab { .. }));
+    // A hyphenated line ends with a hyphen after its last letter, which takes room like a letter.
+    let hyphen = line
+        .hyphen
+        .then(|| {
+            line.atoms
+                .last()
+                .map(|&i| (atoms[i].look, measure(ctx, &looks[atoms[i].look], "-", false)))
+        })
+        .flatten();
+    // A justified line may be wider than the column by what its spaces shrink, so its own extra can be
+    // below nothing; every other alignment only ever moves text right.
+    let raw = right - content_end - hyphen.map_or(0.0, |(_, w)| w);
+    let extra = raw.max(0.0);
     match look.align {
         Align::Center => xs.iter_mut().for_each(|(x, _)| *x += extra / 2.0),
         Align::Right => xs.iter_mut().for_each(|(x, _)| *x += extra),
@@ -880,7 +1339,7 @@ fn place_line(
                 .filter(|&p| matches!(atoms[line.atoms[p]].kind, Kind::Space(_)))
                 .collect();
             if !spaces.is_empty() {
-                let per = extra / spaces.len() as f32;
+                let per = raw / spaces.len() as f32;
                 let mut shift = 0.0;
                 for (position, slot) in xs.iter_mut().enumerate() {
                     slot.0 += shift;
@@ -905,13 +1364,16 @@ fn place_line(
     let mut above: f32 = 0.0;
     let mut below: f32 = 0.0;
     let mut measured = false;
+    // An inline picture stands on the baseline at its own height. Word does not scale it by the line
+    // spacing: measured on the pictures fixture, a line holding only a 90, 60 or 135 point picture is
+    // the picture's height and the paragraph mark's descent, at 1.16 line spacing.
+    let mut picture: f32 = 0.0;
     for &index in &line.atoms {
         let atom = &atoms[index];
         let look_of = &looks[atom.look];
         match &atom.kind {
-            Kind::Picture { h, .. } => {
-                above = above.max(*h);
-                measured = true;
+            Kind::Picture(float) => {
+                picture = picture.max(float.height);
             }
             Kind::Float(_) | Kind::Line | Kind::Page | Kind::Column => {}
             _ => {
@@ -930,18 +1392,50 @@ fn place_line(
     }
     let natural = above + below;
     let (height, baseline) = match look.line {
+        LineRule::Auto(multiple) if picture + below > natural * multiple.max(0.06) => {
+            (picture + below, picture)
+        }
         LineRule::Auto(multiple) => {
             let height = natural * multiple.max(0.06);
             (height, height - below * multiple.clamp(0.06, 1.0))
         }
         LineRule::AtLeast(at_least) => {
-            let height = natural.max(at_least);
+            let height = natural.max(picture + below).max(at_least);
             (height, height - below)
         }
         LineRule::Exact(exact) => (exact, exact - below.min(exact * 0.25)),
     };
-    let mut chunk = Chunk { height, ..Chunk::default() };
+    let slack = match look.line {
+        LineRule::Auto(multiple) if multiple > 1.0 && picture + below <= natural * multiple => {
+            height - natural
+        }
+        _ => 0.0,
+    };
+    let mut chunk = Chunk { height, slack, ..Chunk::default() };
     emit(ctx, looks, atoms, line, &xs, baseline, height, &mut chunk);
+    // Simple Markup marks a changed line with a bar in the left margin.
+    if ctx.markup == crate::review::Markup::Simple
+        && line.atoms.iter().any(|&i| looks[atoms[i].look].revised)
+    {
+        chunk.items.push(Item::Rule {
+            x0: -10.0,
+            y0: 0.0,
+            x1: -10.0,
+            y1: height,
+            width: 1.0,
+            color: REVISION,
+            kind: RuleKind::Solid,
+        });
+    }
+    if let (Some((look_index, _)), Some((x, w))) = (hyphen, xs.last()) {
+        let look_of = &looks[look_index];
+        chunk.items.push(Item::Text(TextItem {
+            baseline: baseline - raise_of(&look_of.run),
+            style: look_of.style.clone(),
+            text: "-".into(),
+            xs: vec![x + w],
+        }));
+    }
     for (x, w, leader, look_index) in leaders {
         let look_of = &looks[look_index];
         let dot = measure(ctx, look_of, &leader.to_string(), false).max(1.0);
@@ -1015,8 +1509,10 @@ fn place_line(
         };
     }
     for &index in &line.atoms {
-        if let Kind::Float(float) = &atoms[index].kind {
-            chunk.floats.push(float.clone());
+        match &atoms[index].kind {
+            Kind::Float(float) => chunk.floats.push((**float).clone()),
+            Kind::NoteMark(_, Some(id)) if *story == StoryId::Body => chunk.notes.push(*id),
+            _ => {}
         }
     }
     chunk
@@ -1030,6 +1526,39 @@ fn raise_of(run: &RunLook) -> f32 {
             VertAlign::Subscript => -run.size * 0.14,
             VertAlign::Baseline => 0.0,
         }
+}
+
+/// A run of text with Word's text effects drawn round it (TDD 5.5): a grey copy under and to the right
+/// for a shadow, the letters in white over copies of themselves a little each way for an outline, and a
+/// light or a dark copy beside them for emboss and engrave.
+fn push_with_effects(texts: &mut Vec<Item>, item: TextItem, run: &RunLook) {
+    let copy = |dx: f32, dy: f32, color: unluminous_core::Color| {
+        let mut c = item.clone();
+        c.baseline += dy;
+        for x in &mut c.xs {
+            *x += dx;
+        }
+        c.style.color = color;
+        Item::Text(c)
+    };
+    let size = item.style.size;
+    if run.shadow {
+        texts.push(copy(size * 0.06, size * 0.06, unluminous_core::Color::rgb(150, 150, 150)));
+    }
+    if run.emboss || run.imprint {
+        let (dx, shade) = if run.emboss { (-0.6, 200) } else { (0.6, 90) };
+        texts.push(copy(dx, dx, unluminous_core::Color::rgb(shade, shade, shade)));
+    }
+    if run.outline {
+        let ink = item.style.color;
+        let d = (size * 0.035).max(0.3);
+        for (dx, dy) in [(-d, 0.0), (d, 0.0), (0.0, -d), (0.0, d)] {
+            texts.push(copy(dx, dy, ink));
+        }
+        texts.push(copy(0.0, 0.0, unluminous_core::Color::rgb(255, 255, 255)));
+        return;
+    }
+    texts.push(Item::Text(item));
 }
 
 /// The items a placed line draws: text grouped by look, rules, fills and pictures.
@@ -1051,9 +1580,9 @@ fn emit(
     // Text runs, one item per look and small caps state.
     let mut current: Option<(usize, bool, TextItem)> = None;
     let flush = |current: &mut Option<(usize, bool, TextItem)>, texts: &mut Vec<Item>| {
-        if let Some((_, _, item)) = current.take() {
+        if let Some((look, _, item)) = current.take() {
             if !item.text.is_empty() {
-                texts.push(Item::Text(item));
+                push_with_effects(texts, item, &looks[look].run);
             }
         }
     };
@@ -1070,16 +1599,12 @@ fn emit(
         let look = &looks[atom.look];
         let raise = raise_of(&look.run);
         let text = match &atom.kind {
-            Kind::Glyph(text) | Kind::Space(text) | Kind::Label(text) | Kind::NoteMark(text) => {
+            Kind::Glyph(text) | Kind::Space(text) | Kind::Label(text) | Kind::NoteMark(text, _) => {
                 Some(text)
             }
-            Kind::Picture { w, h, part } => {
-                let rect = Rect::new(x, baseline - h, *w, *h);
-                if part.is_empty() {
-                    pictures.push(Item::Placeholder { rect, label: "picture".into() });
-                } else {
-                    pictures.push(Item::Picture { rect, part: part.clone() });
-                }
+            Kind::Picture(float) => {
+                let rect = Rect::new(x, baseline - float.height, float.width, float.height);
+                pictures.extend(super::drawing::items(float, rect));
                 None
             }
             _ => None,
@@ -1203,6 +1728,17 @@ fn decorate_paragraph(look: &ParaLook, chunks: &mut [Chunk], width: f32) {
     let left = look.indent_left - borders.left.map_or(0.0, |b| b.space + b.width);
     let right = width - look.indent_right + borders.right.map_or(0.0, |b| b.space + b.width);
     let count = chunks.len();
+    // A top or bottom border takes room of its own: its width and the space between it and the text,
+    // which Word adds outside the paragraph's lines (task-2359, measured on builtin-styles.docx, where an
+    // Intense Quote's two borders 10 points out make it 21 points taller than its line).
+    if let (Some(b), Some(first)) = (borders.top, chunks.first_mut()) {
+        let room = b.space + b.width;
+        first.shift(0.0, room);
+        first.height += room;
+    }
+    if let (Some(b), Some(last)) = (borders.bottom, chunks.last_mut()) {
+        last.height += b.space + b.width;
+    }
     for (index, chunk) in chunks.iter_mut().enumerate() {
         let h = chunk.height;
         if let Some(color) = look.shading {
@@ -1221,12 +1757,12 @@ fn decorate_paragraph(look: &ParaLook, chunks: &mut [Chunk], width: f32) {
         };
         if index == 0 {
             if let Some(b) = borders.top {
-                chunk.items.push(rule(left, 0.0, right, 0.0, b));
+                chunk.items.push(rule(left, b.width / 2.0, right, b.width / 2.0, b));
             }
         }
         if index + 1 == count {
             if let Some(b) = borders.bottom {
-                chunk.items.push(rule(left, h, right, h, b));
+                chunk.items.push(rule(left, h - b.width / 2.0, right, h - b.width / 2.0, b));
             }
         }
         if let Some(b) = borders.left {

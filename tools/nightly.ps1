@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  The six end-to-end agent tests, on this machine, once.
+  The six end-to-end agent tests, every crate's tests and the window suite under load, on this machine, once.
 
 .DESCRIPTION
   `task-1804` §2.2 asks for a scheduled run of `crates/unluminous-app/tests/agent_board.rs` — the
@@ -101,7 +101,24 @@ try {
     if ($hadCc) { $env:CC = $wasCc }
 }
 
-$passed = $LASTEXITCODE -eq 0
+$agentsPassed = $LASTEXITCODE -eq 0
+
+# **The whole suite and the window suite under load, every night (`task-2364`).** The gate skips a crate whose
+# inputs have passed before, and a ticket runs the window suite once, on a quiet machine. Neither of those finds
+# a test that fails one time in ten under load, and that is the test that costs a release an hour. This runs
+# every crate whatever has passed (`--all`), then the window suite beside 12 load threads, and both retry a
+# failed test once and record it in `_agent_output/test-runs/flakes.jsonl`. `node tools/flakes.mjs` is the report.
+Write-Host ''
+Write-Host '==> Every crate, whatever has passed before' -ForegroundColor Cyan
+& node (Join-Path $Repo 'tools\test.mjs') --all 2>&1 | Tee-Object -FilePath (Join-Path $out "gate-$stamp.log")
+$gatePassed = $LASTEXITCODE -eq 0
+Write-Host ''
+Write-Host '==> The window suite, beside 12 load threads' -ForegroundColor Cyan
+& node (Join-Path $Repo 'tools\window-suite.mjs') --run --load 12 2>&1 | Tee-Object -FilePath (Join-Path $out "window-$stamp.log")
+$windowPassed = $LASTEXITCODE -eq 0
+Write-Host ''
+& node (Join-Path $Repo 'tools\flakes.mjs') --runs 6
+$passed = $agentsPassed -and $gatePassed -and $windowPassed
 
 # The run above builds a test binary, and cargo leaves the previous one behind for ever (task-2011).
 # This runs nightly, so it is one of the steady producers of the build output that took target to
@@ -117,8 +134,8 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host ''
 if ($passed) {
-    Write-Host "The end-to-end agent tests passed. Log: $log" -ForegroundColor Green
+    Write-Host "The nightly passed: the agent tests, every crate and the window suite. Logs: $out" -ForegroundColor Green
 } else {
-    Write-Host "The end-to-end agent tests FAILED. Log: $log" -ForegroundColor Red
+    Write-Host "The nightly FAILED. Agent tests passed: $agentsPassed. Every crate: $gatePassed. Window suite: $windowPassed. Logs: $out" -ForegroundColor Red
     exit 1
 }

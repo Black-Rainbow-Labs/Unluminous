@@ -19,6 +19,11 @@ fn template_styles() -> El {
     document.styles.expect("the template has styles").root
 }
 
+/// Word's own definition of a built in style, from the template, as a `w:style` element.
+pub fn definition(id: &str) -> Option<El> {
+    template_styles().children_named("w:style").find(|s| s.attr("w:styleId") == Some(id)).cloned()
+}
+
 /// Make sure the style with this id is defined, copying it from Word's own definition when it is not.
 pub fn ensure_style(document: &mut Document, id: &str) -> Result<(), String> {
     if document.styles.as_ref().is_some_and(|part| {
@@ -44,10 +49,25 @@ pub fn ensure_style(document: &mut Document, id: &str) -> Result<(), String> {
         if present {
             continue;
         }
-        let Some(style) = find(&next) else { continue };
+        let Some(mut style) = find(&next) else { continue };
         for link in ["w:basedOn", "w:link", "w:next"] {
             if let Some(other) = style.val_of(link) {
                 wanted.push(other.to_owned());
+            }
+        }
+        // A list style (List Bullet, List Number) names a numbering definition in the template's own
+        // numbering part; that definition comes with it, under a number this document has free.
+        let template_num = style
+            .child("w:pPr")
+            .and_then(|p| p.child("w:numPr"))
+            .and_then(|n| n.val_of("w:numId"))
+            .and_then(|v| v.parse::<i64>().ok());
+        if let Some(num) = template_num {
+            if let Some(new_num) = copy_numbering(document, num) {
+                if let Some(num_pr) = style.child_mut("w:pPr").and_then(|p| p.child_mut("w:numPr"))
+                {
+                    num_pr.put(El::new("w:numId").with("w:val", new_num.to_string()));
+                }
             }
         }
         let part = document.styles.as_mut().expect("made above");
@@ -55,6 +75,52 @@ pub fn ensure_style(document: &mut Document, id: &str) -> Result<(), String> {
         part.dirty = true;
     }
     Ok(())
+}
+
+/// Copy the template's numbering definition `num` (its `w:num` and the `w:abstractNum` it points at)
+/// into the document, numbered after the document's own. Answers the new `w:numId`.
+fn copy_numbering(document: &mut Document, num: i64) -> Option<i64> {
+    let template = crate::read::open(BUILTIN).ok()?;
+    let source = template.numbering.as_ref()?;
+    let num_el = source
+        .root
+        .children_named("w:num")
+        .find(|n| n.attr("w:numId") == Some(&num.to_string()))?
+        .clone();
+    let abstract_id = num_el.val_of("w:abstractNumId")?.to_owned();
+    let mut abstract_el = source
+        .root
+        .children_named("w:abstractNum")
+        .find(|a| a.attr("w:abstractNumId") == Some(abstract_id.as_str()))?
+        .clone();
+    let part = numbering(document);
+    let next_abstract = part
+        .root
+        .children_named("w:abstractNum")
+        .filter_map(|a| a.attr("w:abstractNumId").and_then(|v| v.parse::<i64>().ok()))
+        .max()
+        .map_or(0, |n| n + 1);
+    let next_num = part
+        .root
+        .children_named("w:num")
+        .filter_map(|n| n.attr("w:numId").and_then(|v| v.parse::<i64>().ok()))
+        .max()
+        .map_or(1, |n| n + 1);
+    abstract_el.set_attr("w:abstractNumId", next_abstract.to_string());
+    let mut new_num = El::new("w:num").with("w:numId", next_num.to_string());
+    new_num
+        .children
+        .push(Node::El(El::new("w:abstractNumId").with("w:val", next_abstract.to_string())));
+    // Every w:abstractNum comes before every w:num in numbering.xml.
+    let first_num =
+        part.root.children.iter().position(|n| matches!(n, Node::El(el) if el.name == "w:num"));
+    match first_num {
+        Some(at) => part.root.children.insert(at, Node::El(abstract_el)),
+        None => part.root.children.push(Node::El(abstract_el)),
+    }
+    part.root.children.push(Node::El(new_num));
+    part.dirty = true;
+    Some(next_num)
 }
 
 /// A styles part, made from the template's when the document has none.
@@ -222,6 +288,20 @@ pub fn kind_of(document: &Document, num: i64) -> Option<ListKind> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_list_style_brings_its_numbering() {
+        let mut document = crate::new::blank();
+        ensure_style(&mut document, "ListBullet").unwrap();
+        let resolver = crate::styles::Resolver::new(&document);
+        let ppr = El::new("w:pPr").with_child(El::new("w:pStyle").with("w:val", "ListBullet"));
+        let look = resolver.paragraph(&ppr, None);
+        let (num, level) = look.numbering.expect("List Bullet is a list");
+        assert!(
+            resolver.numbering.level(num, level).is_some(),
+            "its numbering definition is in the document"
+        );
+    }
 
     #[test]
     fn a_style_the_document_lacks_comes_with_the_styles_it_needs() {

@@ -7,7 +7,7 @@
   "characters": 176,
   "charactersWithSpaces": 212,
   "paragraphCount": 3,
-  "lines": 3,
+  "lines": 4,
   "paragraphs": [
     {
       "index": 1,
@@ -29,10 +29,10 @@
       "outlineLevel": 10,
       "page": 1,
       "inTable": false,
-      "lineCount": 1,
+      "lineCount": 2,
       "top": 72.0,
       "left": 72.0,
-      "lastTop": 72.0,
+      "lastTop": 89.25,
       "runs": [
         {
           "font": "Aptos",
@@ -50,6 +50,20 @@
           "allCaps": false,
           "hidden": false,
           "text": "This sentence will receive an insertion at the marker: HERE [inserted words] and then it ends."
+        }
+      ],
+      "lines": [
+        {
+          "text": "This sentence will receive an insertion at the marker: HERE [inserted words] and then it ",
+          "top": 72.0,
+          "left": 72.0,
+          "page": 1
+        },
+        {
+          "text": "ends.",
+          "top": 89.25,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -74,9 +88,9 @@
       "page": 1,
       "inTable": false,
       "lineCount": 1,
-      "top": 96.75,
+      "top": 114.0,
       "left": 72.0,
-      "lastTop": 96.75,
+      "lastTop": 114.0,
       "runs": [
         {
           "font": "Aptos",
@@ -94,6 +108,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "This sentence has some words that will be deleted from the middle of it."
+        }
+      ],
+      "lines": [
+        {
+          "text": "This sentence has some words that will be deleted from the middle of it.",
+          "top": 114.0,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -118,9 +140,9 @@
       "page": 1,
       "inTable": false,
       "lineCount": 1,
-      "top": 122.25,
+      "top": 138.75,
       "left": 72.0,
-      "lastTop": 122.25,
+      "lastTop": 138.75,
       "runs": [
         {
           "font": "Aptos",
@@ -173,6 +195,14 @@
           "hidden": false,
           "text": " made bold by a tracked format change."
         }
+      ],
+      "lines": [
+        {
+          "text": "This sentence will have part of its text made bold by a tracked format change.",
+          "top": 138.75,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     }
   ],
@@ -194,13 +224,25 @@
       "sectionStart": 2,
       "headers": {
         "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
         "first": "",
-        "even": ""
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
       },
       "footers": {
         "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
         "first": "",
-        "even": ""
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
       }
     }
   ],
@@ -226,6 +268,27 @@
   ],
   "inlineShapes": [],
   "shapes": [],
+  "contentControls": [],
+  "oMaths": [],
+  "settings": {
+    "autoHyphenation": false,
+    "hyphenationZone": 9999999.0,
+    "consecutiveHyphensLimit": 0,
+    "compatibilityMode": 15
+  },
+  "footnoteOptions": {
+    "numberStyle": 0,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 0
+  },
+  "endnoteOptions": {
+    "numberStyle": 2,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 1
+  },
+  "footnotePages": [],
   "fields": [],
   "tablesOfContents": 0,
   "bookmarks": [],

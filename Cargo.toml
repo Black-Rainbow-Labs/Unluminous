@@ -6,7 +6,7 @@ members = ["crates/unluminous-core", "crates/unluminous-chat", "crates/unluminou
 exclude = ["vendor"]
 
 [workspace.package]
-version = "1.14.2"
+version = "1.16.4"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
@@ -37,13 +37,27 @@ roxmltree = "0.20"
 fancy-regex = "0.14"
 ttf-parser = "0.25"
 spellbook = "0.4.2"
+# Knuth-Liang hyphenation with the en-US TeX patterns embedded, for the Word plugin (task-2359, M9).
+hyphenation = { version = "0.8.4", default-features = false, features = ["embed_en-us"] }
+# HTML on the clipboard, read the way a browser reads it: html5ever's tree builder. Already in the tree.
+dom_query = { version = "0.28", default-features = false }
+# Pictures in a Word document that are not bitmaps (task-2359, TDD 5.3): an EMF or WMF is turned into
+# SVG by emf-core, and an SVG is drawn by resvg at the size the page shows it. No network, no fonts
+# beyond the machine's own.
+emf-core = { version = "0.1.1", default-features = false, features = ["svg"] }
+# A Word document encrypted with a password (task-2359, TDD 5.6): ECMA-376 agile encryption, AES-256 in
+# CBC mode inside an OLE compound file. The RustCrypto crates match the `sha2` and `hmac` already here.
+aes = "0.8.4"
+cbc = "0.1.2"
+cfb = "0.10.0"
+resvg = { version = "0.45.1", default-features = false, features = ["text", "system-fonts", "memmap-fonts"] }
 # Speech to text for the Agent-Chat prompt: the microphone, the "Sable" wake word, the local Moonshine model
 # and an OpenAI compatible endpoint. `task-2290`.
 unluminous-voice = { path = "crates/unluminous-voice" }
 # The code index is Atrius, its own product since task-2172: the engine, the index host and the wire
 # protocol. `unluminous-cli/src/search.rs` is the seam. `crates/unluminous-index` is the copy it was
 # made from and is no longer built.
-atrius-index = "0.3.1"
+atrius-index = "0.3.2"
 # The command catalogue and the wire format the CLI and the window share. It lives beside the client
 # it belongs to rather than under `crates`, because `unluminous-cli/` holds the CLI's documentation as
 # well as its code and the two are read together.
@@ -208,6 +222,9 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_SystemInformation",
     # `RegGetValueW`, the Windows version a reported issue names. See `services/issue_report.rs`.
     "Win32_System_Registry",
+    # `GetUserDefaultLocaleName`, which decides whether a new Word document is Letter or A4. See
+    # `services/word/files.rs`.
+    "Win32_Globalization",
     # `CryptProtectData`, which encrypts the browser's session cookies for the current user the way
     # Chromium encrypts its own. See `services/browser_session.rs`.
     "Win32_Security_Cryptography",
@@ -251,6 +268,16 @@ dispatch2 = { version = "0.3", default-features = false, features = ["std"] }
 [profile.test]
 debug = "line-tables-only"
 
+# **Dependencies are optimized in a test build; this workspace's own crates are not (`task-2364`).** A window
+# test spends its time in code that is not ours: egui laying a frame out, `vello_cpu` and `rux` rasterizing
+# the decoration, `image` reading and comparing pictures. Unoptimized, one frame of the forty-card AI
+# Configuration page took seconds, and `the_acp_registry_is_cards_that_add_and_remove_an_agent` took 157 s
+# alone. Rust does not reorder floating point arithmetic at any optimization level and `vello_cpu`'s SIMD
+# level is pinned in a test window (`draw_deterministically`), so the accepted pictures do not move. A panic
+# in our code still names its file and line, because our crates keep `opt-level = 0`.
+[profile.test.package."*"]
+opt-level = 2
+
 [profile.release]
 opt-level = 3
 # Thin rather than fat, and the default number of codegen units rather than one, because `task-1805`
@@ -272,3 +299,8 @@ lto = "thin"
 # changed and how to carry it to the next egui.
 [patch.crates-io]
 egui-wgpu = { path = "vendor/egui-wgpu" }
+# wgpu-hal 30.0.1 with one change (`task-2369`): DX12 copies a shader compiled by FXC out of its `ID3DBlob`
+# before caching it. That blob does not count its references atomically, and the per-device shader cache
+# handed clones of one blob to every thread making the same pipeline, so the blob was freed while still
+# cached and a window test binary aborted reading it. `vendor/wgpu-hal/UNLUMINOUS.md` has the measurement.
+wgpu-hal = { path = "vendor/wgpu-hal" }

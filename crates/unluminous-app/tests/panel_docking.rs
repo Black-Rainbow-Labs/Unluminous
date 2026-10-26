@@ -1847,105 +1847,156 @@ fn a_pane_that_is_put_away_does_not_change_where_a_panel_lands() {
     );
 }
 
+/// The arrangements every drop is checked in.
+const ARRANGEMENTS: [(&str, &[&str]); 7] = [
+    ("default", &[]),
+    ("canvas inside the chat", &["panel dock realm right --position 0"]),
+    ("chat inside the canvas", &["panel dock realm right --position 9"]),
+    ("canvas along the bottom", &["panel dock realm bottom"]),
+    ("canvas on top, right fills", &["panel dock realm top", "panel fill right"]),
+    ("explorer right, left fills", &["panel dock explorer right --position 0", "panel fill left"]),
+    (
+        "canvas left beside the explorer",
+        &["panel dock realm left --position 9", "panel fill bottom"],
+    ),
+];
+
 /// Every panel, several arrangements, every side, and the inner and outer part of each band: the drop does what
 /// the strong rectangle showed, and what it showed is what the pointer was over.
-#[test]
-fn every_drop_lands_where_the_preview_said_it_would() {
-    let arrangements: [(&str, &[&str]); 7] = [
-        ("default", &[]),
-        ("canvas inside the chat", &["panel dock realm right --position 0"]),
-        ("chat inside the canvas", &["panel dock realm right --position 9"]),
-        ("canvas along the bottom", &["panel dock realm bottom"]),
-        ("canvas on top, right fills", &["panel dock realm top", "panel fill right"]),
-        (
-            "explorer right, left fills",
-            &["panel dock explorer right --position 0", "panel fill left"],
-        ),
-        (
-            "canvas left beside the explorer",
-            &["panel dock realm left --position 9", "panel fill bottom"],
-        ),
-    ];
+///
+/// **One test per arrangement, with the editing area showing and hidden (`task-2364`).** It was one test that
+/// checked more than two hundred drops one after another, which was most of the 331 s `panel_docking` took:
+/// a binary takes as long as its longest test. Each arrangement opens a window of its own, so libtest runs the
+/// fourteen side by side.
+fn every_drop_in_one_arrangement_lands_where_the_preview_said_it_would(
+    arrangement: usize,
+    editor: bool,
+) {
     let mut checked = 0;
-    for editor in [true, false] {
-        for (name, commands) in arrangements {
-            let mut harness = harness("");
-            harness.state_mut().new_detached_terminal_tab(8, 60);
-            feed(&mut harness, b"$ ");
-            did(&mut harness, "terminal show");
-            did(&mut harness, "realm show");
-            did(&mut harness, "plugins pane agent-chat/chat --show");
-            for command in commands {
-                did(&mut harness, command);
-            }
-            if !editor {
-                did(&mut harness, "action run toggle-editor");
-            }
-            steady(&mut harness);
-            let chat = the_chat(&harness);
-            let start = harness.state().panes.dock;
-            let showing: Vec<Panel> = [Panel::Explorer, Panel::Terminal, Panel::Realm, chat]
-                .into_iter()
-                .filter(|panel| harness.state().panel_is_showing(*panel))
-                .collect();
-            assert_eq!(showing.len(), 4, "editor {editor}, {name}: every panel is showing");
-            for carried in showing {
-                harness.state_mut().panes.dock = start;
-                steady(&mut harness);
-                let zones = harness.state().drop_zones();
-                for zone in zones {
-                    for (part, outer) in [(zone.whole, true), (inner_part(&zone), false)] {
-                        if part.width() < 4.0 || part.height() < 4.0 {
-                            continue;
-                        }
-                        // Two points across the inner part of a column band, where which middles the pointer
-                        // has passed decides the order, and one point everywhere else.
-                        let points: &[(f32, f32)] = match !outer && zone.side.is_a_column() {
-                            true => &[(0.25, 0.3), (0.75, 0.7)],
-                            false => &[(0.5, 0.5)],
-                        };
-                        for &(across, along) in points {
-                            let at = match zone.side.is_a_column() {
-                                true => egui::pos2(
-                                    part.left() + part.width() * across,
-                                    part.top() + part.height() * along,
-                                ),
-                                false => egui::pos2(
-                                    part.left() + part.width() * along,
-                                    part.top() + part.height() * across,
-                                ),
-                            };
-                            // A corner where two bands overlap goes to the edge it is nearest, which
-                            // `a_corner_goes_to_the_edge_it_is_nearest` checks. Here each point is in one band.
-                            if zones
-                                .iter()
-                                .any(|other| other.side != zone.side && other.band.contains(at))
-                            {
-                                continue;
-                            }
-                            let case = format!(
-                                "editor {editor}, {name}, {carried:?} to {:?} {} at {at:?}",
-                                zone.side,
-                                if outer { "outer" } else { "inner" }
-                            );
-                            check_one_drop(
-                                &mut harness,
-                                start,
-                                carried,
-                                zone.side,
-                                outer,
-                                at,
-                                &case,
-                            );
-                            checked += 1;
-                        }
+    let (name, commands) = ARRANGEMENTS[arrangement];
+    let mut harness = harness("");
+    harness.state_mut().new_detached_terminal_tab(8, 60);
+    feed(&mut harness, b"$ ");
+    did(&mut harness, "terminal show");
+    did(&mut harness, "realm show");
+    did(&mut harness, "plugins pane agent-chat/chat --show");
+    for command in commands {
+        did(&mut harness, command);
+    }
+    if !editor {
+        did(&mut harness, "action run toggle-editor");
+    }
+    steady(&mut harness);
+    let chat = the_chat(&harness);
+    let start = harness.state().panes.dock;
+    let showing: Vec<Panel> = [Panel::Explorer, Panel::Terminal, Panel::Realm, chat]
+        .into_iter()
+        .filter(|panel| harness.state().panel_is_showing(*panel))
+        .collect();
+    assert_eq!(showing.len(), 4, "editor {editor}, {name}: every panel is showing");
+    for carried in showing {
+        harness.state_mut().panes.dock = start;
+        steady(&mut harness);
+        let zones = harness.state().drop_zones();
+        for zone in zones {
+            for (part, outer) in [(zone.whole, true), (inner_part(&zone), false)] {
+                if part.width() < 4.0 || part.height() < 4.0 {
+                    continue;
+                }
+                // Two points across the inner part of a column band, where which middles the pointer
+                // has passed decides the order, and one point everywhere else.
+                let points: &[(f32, f32)] = match !outer && zone.side.is_a_column() {
+                    true => &[(0.25, 0.3), (0.75, 0.7)],
+                    false => &[(0.5, 0.5)],
+                };
+                for &(across, along) in points {
+                    let at = match zone.side.is_a_column() {
+                        true => egui::pos2(
+                            part.left() + part.width() * across,
+                            part.top() + part.height() * along,
+                        ),
+                        false => egui::pos2(
+                            part.left() + part.width() * along,
+                            part.top() + part.height() * across,
+                        ),
+                    };
+                    // A corner where two bands overlap goes to the edge it is nearest, which
+                    // `a_corner_goes_to_the_edge_it_is_nearest` checks. Here each point is in one band.
+                    if zones.iter().any(|other| other.side != zone.side && other.band.contains(at))
+                    {
+                        continue;
                     }
+                    let case = format!(
+                        "editor {editor}, {name}, {carried:?} to {:?} {} at {at:?}",
+                        zone.side,
+                        if outer { "outer" } else { "inner" }
+                    );
+                    check_one_drop(&mut harness, start, carried, zone.side, outer, at, &case);
+                    checked += 1;
                 }
             }
         }
     }
     eprintln!("{checked} drops checked");
-    assert!(checked > 200, "{checked}");
+    // More than two hundred across the fourteen, as there were in one test before they were split.
+    assert!(checked > 6, "{checked}");
+}
+
+#[test]
+fn every_drop_lands_where_the_preview_said_it_would_0_with_the_editor() {
+    every_drop_in_one_arrangement_lands_where_the_preview_said_it_would(0, true);
+}
+#[test]
+fn every_drop_lands_where_the_preview_said_it_would_0_without_the_editor() {
+    every_drop_in_one_arrangement_lands_where_the_preview_said_it_would(0, false);
+}
+#[test]
+fn every_drop_lands_where_the_preview_said_it_would_1_with_the_editor() {
+    every_drop_in_one_arrangement_lands_where_the_preview_said_it_would(1, true);
+}
+#[test]
+fn every_drop_lands_where_the_preview_said_it_would_1_without_the_editor() {
+    every_drop_in_one_arrangement_lands_where_the_preview_said_it_would(1, false);
+}
+#[test]
+fn every_drop_lands_where_the_preview_said_it_would_2_with_the_editor() {
+    every_drop_in_one_arrangement_lands_where_the_preview_said_it_would(2, true);
+}
+#[test]
+fn every_drop_lands_where_the_preview_said_it_would_2_without_the_editor() {
+    every_drop_in_one_arrangement_lands_where_the_preview_said_it_would(2, false);
+}
+#[test]
+fn every_drop_lands_where_the_preview_said_it_would_3_with_the_editor() {
+    every_drop_in_one_arrangement_lands_where_the_preview_said_it_would(3, true);
+}
+#[test]
+fn every_drop_lands_where_the_preview_said_it_would_3_without_the_editor() {
+    every_drop_in_one_arrangement_lands_where_the_preview_said_it_would(3, false);
+}
+#[test]
+fn every_drop_lands_where_the_preview_said_it_would_4_with_the_editor() {
+    every_drop_in_one_arrangement_lands_where_the_preview_said_it_would(4, true);
+}
+#[test]
+fn every_drop_lands_where_the_preview_said_it_would_4_without_the_editor() {
+    every_drop_in_one_arrangement_lands_where_the_preview_said_it_would(4, false);
+}
+#[test]
+fn every_drop_lands_where_the_preview_said_it_would_5_with_the_editor() {
+    every_drop_in_one_arrangement_lands_where_the_preview_said_it_would(5, true);
+}
+#[test]
+fn every_drop_lands_where_the_preview_said_it_would_5_without_the_editor() {
+    every_drop_in_one_arrangement_lands_where_the_preview_said_it_would(5, false);
+}
+#[test]
+fn every_drop_lands_where_the_preview_said_it_would_6_with_the_editor() {
+    every_drop_in_one_arrangement_lands_where_the_preview_said_it_would(6, true);
+}
+#[test]
+fn every_drop_lands_where_the_preview_said_it_would_6_without_the_editor() {
+    every_drop_in_one_arrangement_lands_where_the_preview_said_it_would(6, false);
 }
 
 /// The part of a band nearest the document, which moves a panel to the side without filling it.
@@ -2046,59 +2097,91 @@ fn check_one_drop(
 /// resize panes in all the various configurations."* The divider is grabbed near its left end, in its middle
 /// and near its right end, because "sometimes" is what a divider that only some of its length answers on
 /// looks like.
-#[test]
-fn the_board_along_the_bottom_resizes_under_a_row_of_columns() {
+///
+/// **One test per arrangement of the corners (`task-2364`).** It was one test that opened thirty windows one
+/// after another; split, libtest runs the five side by side.
+fn the_board_along_the_bottom_resizes_under_a_row_of_columns_when(
+    case: &str,
+    fills: &[unluminous_app::app::dock::Side],
+) {
     use unluminous_app::app::dock::{self, Side};
-    let corners: [(&str, &[Side]); 5] = [
-        ("no side fills", &[]),
-        ("the left fills", &[Side::Left]),
-        ("the right fills", &[Side::Right]),
-        ("both columns fill", &[Side::Left, Side::Right]),
-        ("the bottom fills", &[Side::Bottom]),
-    ];
-    for (case, fills) in corners {
-        for along in [0.04f32, 0.5, 0.96] {
-            for grow in [true, false] {
-                let mut harness = harness("");
-                let board =
-                    harness.state().plugin_ui.slot_of("agent-tasks/board").expect("the board")
-                        as u8;
-                let chat =
-                    harness.state().plugin_ui.slot_of("agent-chat/chat").expect("the chat") as u8;
-                did(&mut harness, "plugins pane agent-tasks/board --show");
-                did(&mut harness, "plugins pane agent-chat/chat --show");
-                harness.state_mut().dock_the_panel(Panel::Plugin(board), Side::Bottom, None);
-                harness.state_mut().dock_the_panel(Panel::Plugin(chat), Side::Right, None);
-                harness.state_mut().dock_the_panel(Panel::Explorer, Side::Left, None);
-                for side in fills {
-                    harness.state_mut().fill_a_side(*side, true);
-                }
-                steady(&mut harness);
-                let divider = format!("Resize {}", Panel::Plugin(board).name());
-                let before = harness.state().panel_area(Panel::Plugin(board)).height();
-                let handle = harness.get_by_label(&divider).rect();
-                let from = egui::pos2(handle.left() + handle.width() * along, handle.center().y);
-                let distance = if grow { -150.0 } else { 90.0 };
-                drag(&mut harness, from, egui::pos2(from.x, from.y + distance));
-                let after = harness.state().panel_area(Panel::Plugin(board)).height();
-                let editor = harness.state().editor_region().height();
-                if grow {
-                    assert!(
-                        after - before > 150.0 * FOLLOWED
-                            || editor <= dock::EDITOR_MIN_HEIGHT + 1.0,
-                        "the board should grow when {case}, grabbed {along} along: {before} then \
-                         {after}, the editing area {editor}"
-                    );
-                } else {
-                    assert!(
-                        before - after > 90.0 * FOLLOWED,
-                        "the board should shrink when {case}, grabbed {along} along: {before} then \
-                         {after}"
-                    );
-                }
+    for along in [0.04f32, 0.5, 0.96] {
+        for grow in [true, false] {
+            let mut harness = harness("");
+            let board =
+                harness.state().plugin_ui.slot_of("agent-tasks/board").expect("the board") as u8;
+            let chat =
+                harness.state().plugin_ui.slot_of("agent-chat/chat").expect("the chat") as u8;
+            did(&mut harness, "plugins pane agent-tasks/board --show");
+            did(&mut harness, "plugins pane agent-chat/chat --show");
+            harness.state_mut().dock_the_panel(Panel::Plugin(board), Side::Bottom, None);
+            harness.state_mut().dock_the_panel(Panel::Plugin(chat), Side::Right, None);
+            harness.state_mut().dock_the_panel(Panel::Explorer, Side::Left, None);
+            for side in fills {
+                harness.state_mut().fill_a_side(*side, true);
+            }
+            steady(&mut harness);
+            let divider = format!("Resize {}", Panel::Plugin(board).name());
+            let before = harness.state().panel_area(Panel::Plugin(board)).height();
+            let handle = harness.get_by_label(&divider).rect();
+            let from = egui::pos2(handle.left() + handle.width() * along, handle.center().y);
+            let distance = if grow { -150.0 } else { 90.0 };
+            drag(&mut harness, from, egui::pos2(from.x, from.y + distance));
+            let after = harness.state().panel_area(Panel::Plugin(board)).height();
+            let editor = harness.state().editor_region().height();
+            if grow {
+                assert!(
+                    after - before > 150.0 * FOLLOWED || editor <= dock::EDITOR_MIN_HEIGHT + 1.0,
+                    "the board should grow when {case}, grabbed {along} along: {before} then \
+                     {after}, the editing area {editor}"
+                );
+            } else {
+                assert!(
+                    before - after > 90.0 * FOLLOWED,
+                    "the board should shrink when {case}, grabbed {along} along: {before} then \
+                     {after}"
+                );
             }
         }
     }
+}
+
+#[test]
+fn the_board_along_the_bottom_resizes_under_a_row_of_columns_when_no_side_fills() {
+    the_board_along_the_bottom_resizes_under_a_row_of_columns_when("no side fills", &[]);
+}
+
+#[test]
+fn the_board_along_the_bottom_resizes_under_a_row_of_columns_when_the_left_fills() {
+    use unluminous_app::app::dock::Side;
+    the_board_along_the_bottom_resizes_under_a_row_of_columns_when("the left fills", &[Side::Left]);
+}
+
+#[test]
+fn the_board_along_the_bottom_resizes_under_a_row_of_columns_when_the_right_fills() {
+    use unluminous_app::app::dock::Side;
+    the_board_along_the_bottom_resizes_under_a_row_of_columns_when(
+        "the right fills",
+        &[Side::Right],
+    );
+}
+
+#[test]
+fn the_board_along_the_bottom_resizes_under_a_row_of_columns_when_both_columns_fill() {
+    use unluminous_app::app::dock::Side;
+    the_board_along_the_bottom_resizes_under_a_row_of_columns_when(
+        "both columns fill",
+        &[Side::Left, Side::Right],
+    );
+}
+
+#[test]
+fn the_board_along_the_bottom_resizes_under_a_row_of_columns_when_the_bottom_fills() {
+    use unluminous_app::app::dock::Side;
+    the_board_along_the_bottom_resizes_under_a_row_of_columns_when(
+        "the bottom fills",
+        &[Side::Bottom],
+    );
 }
 
 /// A project that was opened before keeps its layout in `.unluminous/layout.conf`, and a plugin pane switched on

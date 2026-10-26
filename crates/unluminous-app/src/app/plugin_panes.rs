@@ -728,6 +728,34 @@ impl UnluminousApp {
             Request::Repaint => self.plugin_wants_a_repaint = true,
             // The window owns the one handle to the platform's clipboard, which is why a provider asks.
             Request::Copy(text) => self.plugin_wants_copied = Some(text),
+            // Formatted text goes on the system clipboard directly, because egui's copy is text only and
+            // would replace it at the end of the frame. A test's window has no system clipboard.
+            Request::CopyRich { text, html, rtf } => {
+                if !(self.system_clipboard
+                    && crate::services::rich_clipboard::write(&text, &html, &rtf))
+                {
+                    self.plugin_wants_copied = Some(text);
+                }
+            }
+            Request::ClipboardRich { id } => {
+                let (html, rtf, text) = match self.system_clipboard {
+                    true => crate::services::rich_clipboard::read(),
+                    false => (None, None, None),
+                };
+                // A picture, PNG encoded, when the clipboard holds one (task-2359, TDD 5.3).
+                let picture = match self.system_clipboard {
+                    true => {
+                        crate::services::picture::from_the_clipboard().ok().filter(|p| !p.is_null())
+                    }
+                    false => None,
+                };
+                if let Some(provider) = self.plugin_ui.provider(plugin) {
+                    provider.answered(
+                        &id,
+                        Ok(serde_json::json!({ "html": html, "rtf": rtf, "text": text, "picture": picture })),
+                    );
+                }
+            }
             // The keyboard, through the one value that owns it. `Focus::Plugin` is a fifth thing that can hold the
             // keys, beside the editing area, the explorer, the terminal tile and the run tile, and naming it is
             // what stops a key press reaching two of them.

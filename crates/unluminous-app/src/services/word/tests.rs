@@ -118,6 +118,9 @@ fn an_agent_types_formats_and_undoes() {
     run(&mut word, "select 1 0 1 5");
     run(&mut word, "format bold on");
     run(&mut word, "paragraph align center");
+    // A linked style applied to part of a paragraph formats only that part, as Word does, so the caret
+    // goes into the paragraph first.
+    run(&mut word, "select 1 2 1 2");
     run(&mut word, "style Heading 1");
     let read = run(&mut word, "read --runs");
     let first = &read.value[0];
@@ -305,8 +308,8 @@ fn a_double_press_on_the_margin_edits_the_header() {
         Default::default(),
     );
     let top = doc.pages.pages[0].body.y / 2.0;
-    assert_eq!(clickable(doc, 0, top, false), [StoryId::Body]);
-    let stories = clickable(doc, 0, top, true);
+    assert_eq!(clickable(doc, 0, 100.0, top, false), [StoryId::Body]);
+    let stories = clickable(doc, 0, 100.0, top, true);
     assert!(
         !stories.is_empty() && stories.iter().all(|s| matches!(s, StoryId::Header(_))),
         "{stories:?}"
@@ -317,7 +320,7 @@ fn a_double_press_on_the_margin_edits_the_header() {
         Pos { story: header, path: vec![0], offset: 0 },
     );
     let middle = doc.pages.pages[0].body.y + 100.0;
-    assert_eq!(clickable(doc, 0, middle, false), [StoryId::Body]);
+    assert_eq!(clickable(doc, 0, 100.0, middle, false), [StoryId::Body]);
 }
 
 /// **An agent lists the spelling errors with suggestions**, steps to the next one as F7 does, and a
@@ -387,4 +390,269 @@ fn a_right_click_on_a_misspelled_word_opens_its_card() {
     assert!(doc.view.spell_menu.is_none());
     assert!(doc.session.selection.is_empty());
     assert_eq!(doc.session.selection.head.offset, 2);
+}
+
+/// A folder of its own for one test, under the temporary folder.
+fn scratch_folder(name: &str) -> PathBuf {
+    let folder =
+        std::env::temp_dir().join(format!("unluminous-word-files-{name}-{}", std::process::id()));
+    std::fs::create_dir_all(&folder).unwrap();
+    folder
+}
+
+/// Encrypt with Password: the file is written encrypted, opening it waits for the password, a wrong one
+/// is refused, and the right one opens it and keeps it encrypted when it is saved again.
+#[test]
+fn an_encrypted_document_waits_for_its_password() {
+    let folder = scratch_folder("encrypted");
+    let (mut word, _) = word_with("blank.docx");
+    run(&mut word, "type Secret words");
+    run(&mut word, "protect password s3cret");
+    let path = folder.join("secret.docx");
+    run(&mut word, &format!("save {}", path.display()));
+    assert!(unluminous_word::crypto::is_encrypted(&std::fs::read(&path).unwrap()));
+    let mut word = Word::new();
+    word.open(&crate::services::plugin_ui::Context::default()).unwrap();
+    let key = tab_key(&path);
+    word.command("load", &[key.clone(), path.display().to_string()]).unwrap();
+    let docs = run(&mut word, "docs");
+    assert!(docs.value[0]["waiting"].as_str().unwrap().contains("encrypted"), "{}", docs.value);
+    assert!(word.command("password", &["wrong".into()]).unwrap_err().contains("not right"));
+    run(&mut word, "password s3cret");
+    assert_eq!(run(&mut word, "read").value[0]["text"], "Secret words");
+    run(&mut word, "type !");
+    run(&mut word, "save");
+    assert!(unluminous_word::crypto::is_encrypted(&std::fs::read(&path).unwrap()));
+    std::fs::remove_file(&path).unwrap();
+    std::fs::remove_dir(&folder).unwrap();
+}
+
+/// Open as Document: Markdown becomes headings and lists, Save asks for a .docx name, and Save As .docx
+/// makes it a document; Save As .txt is a copy.
+#[test]
+fn markdown_opens_as_a_document_and_saves_as_docx() {
+    let folder = scratch_folder("markdown");
+    let source = folder.join("notes.md");
+    crate::services::store::write_atomically(&source, b"# Notes\n\n- one\n- two\n").unwrap();
+    let mut word = Word::new();
+    word.open(&crate::services::plugin_ui::Context::default()).unwrap();
+    run(&mut word, &format!("open --as-document {}", source.display()));
+    let read = run(&mut word, "read");
+    assert_eq!(read.value[0]["style"], "Heading 1");
+    assert_eq!(read.value[1]["text"], "one");
+    assert!(word.command("save", &[]).unwrap_err().contains(".docx name"));
+    let copy = folder.join("notes.txt");
+    run(&mut word, &format!("save {}", copy.display()));
+    assert!(std::fs::read_to_string(&copy).unwrap().contains("Notes"));
+    assert!(word.command("save", &[]).is_err(), "a copy does not give the document a file");
+    let docx = folder.join("notes.docx");
+    run(&mut word, &format!("save {}", docx.display()));
+    run(&mut word, "save");
+    assert!(unluminous_word::read::open(&std::fs::read(&docx).unwrap()).is_ok());
+    for path in [&source, &copy, &docx] {
+        std::fs::remove_file(path).unwrap();
+    }
+    std::fs::remove_dir(&folder).unwrap();
+}
+
+/// Password to Modify opens the document read only until the password is given, and Restrict Editing
+/// refuses typing until it is stopped with its password.
+#[test]
+fn password_to_modify_and_restrict_editing_refuse_changes() {
+    let folder = scratch_folder("modify");
+    let (mut word, _) = word_with("blank.docx");
+    run(&mut word, "type Kept");
+    run(&mut word, "protect modify pw");
+    let path = folder.join("modify.docx");
+    run(&mut word, &format!("save {}", path.display()));
+    let mut word = Word::new();
+    word.open(&crate::services::plugin_ui::Context::default()).unwrap();
+    word.command("load", &[tab_key(&path), path.display().to_string()]).unwrap();
+    run(&mut word, "type Changed ");
+    assert_eq!(run(&mut word, "read").value[0]["text"], "Kept");
+    assert_eq!(run(&mut word, "protect").value["readOnly"], true);
+    assert!(word.command("unlock", &["no".into()]).is_err());
+    run(&mut word, "unlock pw");
+    run(&mut word, "type Changed ");
+    assert_eq!(run(&mut word, "read").value[0]["text"], "Changed Kept");
+    run(&mut word, "protect restrict readOnly lock");
+    run(&mut word, "type More ");
+    assert_eq!(run(&mut word, "read").value[0]["text"], "Changed Kept");
+    assert!(word.command("protect", &["stop".into(), "wrong".into()]).is_err());
+    run(&mut word, "protect stop lock");
+    run(&mut word, "type More ");
+    assert_eq!(run(&mut word, "read").value[0]["text"], "Changed More Kept");
+    std::fs::remove_file(&path).unwrap();
+    std::fs::remove_dir(&folder).unwrap();
+}
+
+/// Properties: the Summary with the manager and company, the Statistics, and a custom property, all kept
+/// when the document is saved and read again.
+#[test]
+fn properties_summary_statistics_and_custom() {
+    let folder = scratch_folder("properties");
+    let (mut word, _) = word_with("blank.docx");
+    run(&mut word, "type Three short words");
+    run(&mut word, "properties company Black Rainbow Labs");
+    run(&mut word, "properties category Notes");
+    run(&mut word, "properties custom Reviewed yes-or-no yes");
+    run(&mut word, "properties custom Copies number 3");
+    let stats = run(&mut word, "properties statistics");
+    assert_eq!(stats.value["words"], 3);
+    assert_eq!(stats.value["paragraphs"], 1);
+    let path = folder.join("properties.docx");
+    run(&mut word, &format!("save {}", path.display()));
+    let mut word = Word::new();
+    word.open(&crate::services::plugin_ui::Context::default()).unwrap();
+    word.command("load", &[tab_key(&path), path.display().to_string()]).unwrap();
+    let summary = run(&mut word, "properties");
+    assert_eq!(summary.value["company"], "Black Rainbow Labs");
+    assert_eq!(summary.value["category"], "Notes");
+    let custom = run(&mut word, "properties custom");
+    assert_eq!(custom.value[0]["name"], "Reviewed");
+    assert_eq!(custom.value[0]["value"], "true");
+    assert_eq!(custom.value[1]["value"], "3");
+    std::fs::remove_file(&path).unwrap();
+    std::fs::remove_dir(&folder).unwrap();
+}
+
+/// AutoRecover writes a copy of a changed document ten minutes after it changed and takes it away once
+/// the document is saved; a copy newer than the file is offered when the document is opened again.
+/// AutoSave saves five seconds after the last change.
+#[test]
+fn autorecover_and_autosave_keep_a_changed_document() {
+    let folder = scratch_folder("recover");
+    let settings = folder.join("settings");
+    let path = folder.join("draft.docx");
+    std::fs::copy(fixture("blank.docx"), &path).unwrap();
+    let context = crate::services::plugin_ui::Context {
+        folder: Some(settings.clone()),
+        ..Default::default()
+    };
+    let mut word = Word::new();
+    word.open(&context).unwrap();
+    let key = tab_key(&path);
+    word.command("load", &[key.clone(), path.display().to_string()]).unwrap();
+    run(&mut word, "type Draft");
+    let start = std::time::Instant::now();
+    word.keep_the_files(start);
+    let copy = files::recovery_path(&settings, &key);
+    assert!(!copy.exists());
+    word.keep_the_files(start + files::RECOVER_EVERY + std::time::Duration::from_secs(1));
+    assert!(copy.exists(), "a copy is written after ten minutes");
+    // Opened again before it was saved, as after a crash: the copy is offered and restores the words.
+    let mut again = Word::new();
+    again.open(&context).unwrap();
+    again.command("load", &[key.clone(), path.display().to_string()]).unwrap();
+    assert_eq!(run(&mut again, "recover").value["offered"], true);
+    run(&mut again, "recover restore");
+    assert_eq!(run(&mut again, "read").value[0]["text"], "Draft");
+    // Saving takes the copy away on the next frame.
+    run(&mut word, "save");
+    word.keep_the_files(start + files::RECOVER_EVERY * 2);
+    assert!(!copy.exists(), "saving takes the copy away");
+    // AutoSave.
+    run(&mut word, "autosave on");
+    run(&mut word, "type More ");
+    let now = std::time::Instant::now();
+    word.keep_the_files(now);
+    assert!(word.modified(&key));
+    word.keep_the_files(now + files::AUTOSAVE_AFTER + std::time::Duration::from_millis(10));
+    assert!(!word.modified(&key), "AutoSave saved it");
+    std::fs::remove_file(&path).unwrap();
+    std::fs::remove_file(settings.join("word.conf")).unwrap();
+    std::fs::remove_dir(settings.join("recovery")).unwrap();
+    std::fs::remove_dir(&settings).unwrap();
+    std::fs::remove_dir(&folder).unwrap();
+}
+
+/// A document made from a template is a document: its body is the template's, it keeps no macros, and
+/// saving it writes a .docx.
+#[test]
+fn a_new_document_from_a_template_is_a_document() {
+    let folder = scratch_folder("template");
+    let mut word = Word::new();
+    word.open(&crate::services::plugin_ui::Context::default()).unwrap();
+    let answer = run(&mut word, &format!("new --template {}", fixture("template.dotx").display()));
+    assert!(answer.value["key"].as_str().unwrap().starts_with("word:Untitled"));
+    let template =
+        unluminous_word::read::open(&std::fs::read(fixture("template.dotx")).unwrap()).unwrap();
+    let read = run(&mut word, "read");
+    assert_eq!(
+        read.value.as_array().unwrap().len(),
+        unluminous_word::position::paragraphs(&template.body).len()
+    );
+    let path = folder.join("from-template.docx");
+    run(&mut word, &format!("save {}", path.display()));
+    let saved = unluminous_word::read::open(&std::fs::read(&path).unwrap()).unwrap();
+    assert!(saved.package.content_type(&saved.main).unwrap().contains("document.main"));
+    std::fs::remove_file(&path).unwrap();
+    std::fs::remove_dir(&folder).unwrap();
+}
+
+/// **Promote, Demote and Outline view's tools are offered only where they would do something**, so none of
+/// them answers with an error such as `body text is already the lowest level`. `task-2366`.
+#[test]
+fn the_outline_tools_are_offered_only_where_they_work() {
+    let (mut word, key) = word_with("blank.docx");
+    run(&mut word, "type Title\nBody text\nSection");
+    run(&mut word, "select 1 0");
+    run(&mut word, "style Heading 1");
+    run(&mut word, "select 3 0");
+    run(&mut word, "style Heading 2");
+    let applies = |word: &mut Word, id: &str| actions::applies(id, word.doc(&key).unwrap());
+    // On body text: nothing demotes it, and it can be promoted and moved both ways.
+    run(&mut word, "select 2 0");
+    assert!(!applies(&mut word, "demote-heading"));
+    assert!(!applies(&mut word, "outline-to-body"));
+    assert!(applies(&mut word, "promote-heading"));
+    assert!(applies(&mut word, "outline-to-heading-1"));
+    assert!(applies(&mut word, "outline-move-up"));
+    assert!(applies(&mut word, "outline-move-down"));
+    // On Heading 1 at the top: it cannot be promoted or moved up, and it can be demoted and folded.
+    run(&mut word, "select 1 0");
+    assert!(!applies(&mut word, "promote-heading"));
+    assert!(!applies(&mut word, "outline-to-heading-1"));
+    assert!(!applies(&mut word, "outline-move-up"));
+    assert!(!applies(&mut word, "move-paragraph-up"));
+    assert!(applies(&mut word, "demote-heading"));
+    assert!(applies(&mut word, "outline-collapse"));
+    assert!(!applies(&mut word, "outline-expand"));
+    // On the last paragraph it cannot move down, and a heading with nothing under it does not fold.
+    run(&mut word, "select 3 0");
+    assert!(!applies(&mut word, "outline-move-down"));
+    assert!(!applies(&mut word, "outline-collapse"));
+    // And the command search, which lists only what applies, does not offer Demote on body text.
+    run(&mut word, "select 2 0");
+    let offered: Vec<&str> = actions::search("demote", false)
+        .into_iter()
+        .filter(|a| actions::applies(a.id, word.doc(&key).unwrap()))
+        .map(|a| a.id)
+        .collect();
+    assert!(
+        !offered.contains(&"demote-heading") && !offered.contains(&"outline-to-body"),
+        "{offered:?}"
+    );
+}
+
+/// **The window's status bar says the page, the words, tracking and spelling for a Word tab, and each fact
+/// runs a Word command when pressed.** `task-2366`.
+#[test]
+fn the_status_bar_says_the_page_and_the_words_and_each_runs_a_command() {
+    let (mut word, key) = word_with("blank.docx");
+    run(&mut word, "type One two three");
+    let status = word.tab_status(&key).expect("a Word tab has a status");
+    assert_eq!(status.kind, "Word document");
+    let texts: Vec<&str> = status.items.iter().map(|i| i.text.as_str()).collect();
+    assert_eq!(texts, ["Page 1 of 1", "3 words"]);
+    run(&mut word, "track on");
+    let status = word.tab_status(&key).unwrap();
+    assert!(status.items.iter().any(|i| i.text == "Tracking changes"));
+    for item in &status.items {
+        let words = item.press.clone().expect("each fact can be pressed");
+        word.command(&words[0], &words[1..]).unwrap_or_else(|e| panic!("{}: {e}", item.name));
+    }
+    let doc = word.doc(&key).unwrap();
+    assert_eq!(doc.view.goto.as_deref(), Some(""), "the page opened Go To");
+    assert!(!doc.session.tracking, "the tracking fact turned it off");
 }

@@ -51,6 +51,14 @@
           "hidden": false,
           "text": "Bullets with three levels"
         }
+      ],
+      "lines": [
+        {
+          "text": "Bullets with three levels",
+          "top": 80.25,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -94,6 +102,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Bullet level one"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Bullet level one",
+          "top": 106.5,
+          "left": 90.0,
+          "page": 1
         }
       ]
     },
@@ -139,6 +155,14 @@
           "hidden": false,
           "text": "Bullet level two"
         }
+      ],
+      "lines": [
+        {
+          "text": "Bullet level two",
+          "top": 124.5,
+          "left": 90.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -182,6 +206,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Bullet level three"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Bullet level three",
+          "top": 141.0,
+          "left": 90.0,
+          "page": 1
         }
       ]
     },
@@ -227,6 +259,14 @@
           "hidden": false,
           "text": "Back to level two"
         }
+      ],
+      "lines": [
+        {
+          "text": "Back to level two",
+          "top": 158.25,
+          "left": 90.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -270,6 +310,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Back to level one"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Back to level one",
+          "top": 175.5,
+          "left": 90.0,
+          "page": 1
         }
       ]
     },
@@ -315,6 +363,14 @@
           "hidden": false,
           "text": "Numbered list"
         }
+      ],
+      "lines": [
+        {
+          "text": "Numbered list",
+          "top": 201.0,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -338,9 +394,9 @@
       "page": 1,
       "inTable": false,
       "lineCount": 1,
-      "top": 227.25,
+      "top": 228.0,
       "left": 90.0,
-      "lastTop": 227.25,
+      "lastTop": 228.0,
       "runs": [
         {
           "font": "Aptos",
@@ -358,6 +414,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "First item"
+        }
+      ],
+      "lines": [
+        {
+          "text": "First item",
+          "top": 228.0,
+          "left": 90.0,
+          "page": 1
         }
       ]
     },
@@ -403,6 +467,14 @@
           "hidden": false,
           "text": "Second item"
         }
+      ],
+      "lines": [
+        {
+          "text": "Second item",
+          "top": 244.5,
+          "left": 90.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -426,9 +498,9 @@
       "page": 1,
       "inTable": false,
       "lineCount": 1,
-      "top": 261.0,
+      "top": 261.75,
       "left": 90.0,
-      "lastTop": 261.0,
+      "lastTop": 261.75,
       "runs": [
         {
           "font": "Aptos",
@@ -446,6 +518,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Third item"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Third item",
+          "top": 261.75,
+          "left": 90.0,
+          "page": 1
         }
       ]
     },
@@ -491,6 +571,14 @@
           "hidden": false,
           "text": "Multilevel outline"
         }
+      ],
+      "lines": [
+        {
+          "text": "Multilevel outline",
+          "top": 286.5,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -514,9 +602,9 @@
       "page": 1,
       "inTable": false,
       "lineCount": 1,
-      "top": 312.75,
+      "top": 313.5,
       "left": 90.0,
-      "lastTop": 312.75,
+      "lastTop": 313.5,
       "runs": [
         {
           "font": "Aptos",
@@ -534,6 +622,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Outline one"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Outline one",
+          "top": 313.5,
+          "left": 90.0,
+          "page": 1
         }
       ]
     },
@@ -579,6 +675,14 @@
           "hidden": false,
           "text": "Outline one point one"
         }
+      ],
+      "lines": [
+        {
+          "text": "Outline one point one",
+          "top": 330.0,
+          "left": 90.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -602,9 +706,9 @@
       "page": 1,
       "inTable": false,
       "lineCount": 1,
-      "top": 346.5,
+      "top": 347.25,
       "left": 126.0,
-      "lastTop": 346.5,
+      "lastTop": 347.25,
       "runs": [
         {
           "font": "Aptos",
@@ -622,6 +726,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Outline one point one point one"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Outline one point one point one",
+          "top": 347.25,
+          "left": 126.0,
+          "page": 1
         }
       ]
     },
@@ -667,6 +779,14 @@
           "hidden": false,
           "text": "Outline one point two"
         }
+      ],
+      "lines": [
+        {
+          "text": "Outline one point two",
+          "top": 363.75,
+          "left": 90.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -710,6 +830,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Outline two"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Outline two",
+          "top": 381.0,
+          "left": 90.0,
+          "page": 1
         }
       ]
     },
@@ -755,6 +883,14 @@
           "hidden": false,
           "text": "Lower letter and roman"
         }
+      ],
+      "lines": [
+        {
+          "text": "Lower letter and roman",
+          "top": 405.75,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -778,9 +914,9 @@
       "page": 1,
       "inTable": false,
       "lineCount": 1,
-      "top": 432.0,
+      "top": 432.75,
       "left": 90.0,
-      "lastTop": 432.0,
+      "lastTop": 432.75,
       "runs": [
         {
           "font": "Aptos",
@@ -798,6 +934,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Letter a"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Letter a",
+          "top": 432.75,
+          "left": 90.0,
+          "page": 1
         }
       ]
     },
@@ -822,9 +966,9 @@
       "page": 1,
       "inTable": false,
       "lineCount": 1,
-      "top": 449.25,
+      "top": 450.0,
       "left": 90.0,
-      "lastTop": 449.25,
+      "lastTop": 450.0,
       "runs": [
         {
           "font": "Aptos",
@@ -842,6 +986,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Letter b"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Letter b",
+          "top": 450.0,
+          "left": 90.0,
+          "page": 1
         }
       ]
     },
@@ -887,6 +1039,14 @@
           "hidden": false,
           "text": "Letter c"
         }
+      ],
+      "lines": [
+        {
+          "text": "Letter c",
+          "top": 466.5,
+          "left": 90.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -910,9 +1070,9 @@
       "page": 1,
       "inTable": false,
       "lineCount": 1,
-      "top": 483.0,
+      "top": 483.75,
       "left": 90.0,
-      "lastTop": 483.0,
+      "lastTop": 483.75,
       "runs": [
         {
           "font": "Aptos",
@@ -930,6 +1090,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Roman one"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Roman one",
+          "top": 483.75,
+          "left": 90.0,
+          "page": 1
         }
       ]
     },
@@ -975,6 +1143,14 @@
           "hidden": false,
           "text": "Roman two"
         }
+      ],
+      "lines": [
+        {
+          "text": "Roman two",
+          "top": 500.25,
+          "left": 90.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -1018,6 +1194,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Roman three"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Roman three",
+          "top": 517.5,
+          "left": 90.0,
+          "page": 1
         }
       ]
     },
@@ -1063,6 +1247,14 @@
           "hidden": false,
           "text": "Restarted at 1"
         }
+      ],
+      "lines": [
+        {
+          "text": "Restarted at 1",
+          "top": 542.25,
+          "left": 72.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -1086,9 +1278,9 @@
       "page": 1,
       "inTable": false,
       "lineCount": 1,
-      "top": 568.5,
+      "top": 569.25,
       "left": 90.0,
-      "lastTop": 568.5,
+      "lastTop": 569.25,
       "runs": [
         {
           "font": "Aptos",
@@ -1106,6 +1298,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Restarted first"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Restarted first",
+          "top": 569.25,
+          "left": 90.0,
+          "page": 1
         }
       ]
     },
@@ -1151,6 +1351,14 @@
           "hidden": false,
           "text": "Restarted second"
         }
+      ],
+      "lines": [
+        {
+          "text": "Restarted second",
+          "top": 585.75,
+          "left": 90.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -1174,9 +1382,9 @@
       "page": 1,
       "inTable": false,
       "lineCount": 1,
-      "top": 610.5,
+      "top": 611.25,
       "left": 72.0,
-      "lastTop": 610.5,
+      "lastTop": 611.25,
       "runs": [
         {
           "font": "Aptos",
@@ -1194,6 +1402,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "A normal paragraph between the two parts of one list."
+        }
+      ],
+      "lines": [
+        {
+          "text": "A normal paragraph between the two parts of one list.",
+          "top": 611.25,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -1239,6 +1455,14 @@
           "hidden": false,
           "text": "Continued after the paragraph"
         }
+      ],
+      "lines": [
+        {
+          "text": "Continued after the paragraph",
+          "top": 636.0,
+          "left": 90.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -1262,9 +1486,9 @@
       "page": 1,
       "inTable": false,
       "lineCount": 1,
-      "top": 652.5,
+      "top": 653.25,
       "left": 90.0,
-      "lastTop": 652.5,
+      "lastTop": 653.25,
       "runs": [
         {
           "font": "Aptos",
@@ -1282,6 +1506,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Continued again"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Continued again",
+          "top": 653.25,
+          "left": 90.0,
+          "page": 1
         }
       ]
     },
@@ -1306,9 +1538,9 @@
       "page": 1,
       "inTable": false,
       "lineCount": 1,
-      "top": 677.25,
+      "top": 678.0,
       "left": 72.0,
-      "lastTop": 677.25,
+      "lastTop": 678.0,
       "runs": [
         {
           "font": "Aptos Display",
@@ -1326,6 +1558,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "List starting at 5"
+        }
+      ],
+      "lines": [
+        {
+          "text": "List starting at 5",
+          "top": 678.0,
+          "left": 72.0,
+          "page": 1
         }
       ]
     },
@@ -1371,6 +1611,14 @@
           "hidden": false,
           "text": "Starts at five"
         }
+      ],
+      "lines": [
+        {
+          "text": "Starts at five",
+          "top": 704.25,
+          "left": 90.0,
+          "page": 1
+        }
       ]
     },
     {
@@ -1414,6 +1662,14 @@
           "allCaps": false,
           "hidden": false,
           "text": "Then six"
+        }
+      ],
+      "lines": [
+        {
+          "text": "Then six",
+          "top": 72.0,
+          "left": 90.0,
+          "page": 2
         }
       ]
     },
@@ -1459,6 +1715,14 @@
           "hidden": false,
           "text": "Then seven"
         }
+      ],
+      "lines": [
+        {
+          "text": "Then seven",
+          "top": 89.25,
+          "left": 90.0,
+          "page": 2
+        }
       ]
     }
   ],
@@ -1480,13 +1744,25 @@
       "sectionStart": 2,
       "headers": {
         "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
         "first": "",
-        "even": ""
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
       },
       "footers": {
         "primary": "",
+        "primaryPictures": 0,
+        "primaryTables": 0,
         "first": "",
-        "even": ""
+        "firstPictures": 0,
+        "firstTables": 0,
+        "even": "",
+        "evenPictures": 0,
+        "evenTables": 0
       }
     }
   ],
@@ -1496,6 +1772,27 @@
   "revisions": [],
   "inlineShapes": [],
   "shapes": [],
+  "contentControls": [],
+  "oMaths": [],
+  "settings": {
+    "autoHyphenation": false,
+    "hyphenationZone": 9999999.0,
+    "consecutiveHyphensLimit": 0,
+    "compatibilityMode": 15
+  },
+  "footnoteOptions": {
+    "numberStyle": 0,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 0
+  },
+  "endnoteOptions": {
+    "numberStyle": 2,
+    "numberingRule": 0,
+    "startingNumber": 1,
+    "location": 1
+  },
+  "footnotePages": [],
   "fields": [],
   "tablesOfContents": 0,
   "bookmarks": [],

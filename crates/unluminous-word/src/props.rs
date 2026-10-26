@@ -211,6 +211,11 @@ pub struct RunLook {
     pub scale: f32,
     /// `w:kern`: the size in points from which pairs of letters are kerned, or `None` for no kerning.
     pub kern: Option<f32>,
+    /// `w:outline`, `w:shadow`, `w:emboss` and `w:imprint`: the text effects Word draws.
+    pub outline: bool,
+    pub shadow: bool,
+    pub emboss: bool,
+    pub imprint: bool,
 }
 
 impl Default for RunLook {
@@ -234,6 +239,10 @@ impl Default for RunLook {
             spacing: 0.0,
             scale: 1.0,
             kern: None,
+            outline: false,
+            shadow: false,
+            emboss: false,
+            imprint: false,
         }
     }
 }
@@ -369,6 +378,8 @@ pub struct ParaLook {
     pub borders: Borders,
     pub shading: Option<Rgb>,
     pub bidi: bool,
+    /// `w:suppressAutoHyphens`: this paragraph is not hyphenated when the document is.
+    pub suppress_hyphens: bool,
 }
 
 impl Default for ParaLook {
@@ -395,6 +406,7 @@ impl Default for ParaLook {
             borders: Borders::default(),
             shading: None,
             bidi: false,
+            suppress_hyphens: false,
         }
     }
 }
@@ -447,6 +459,7 @@ pub fn apply_paragraph(look: &mut ParaLook, el: &El) {
         ("w:widowControl", &mut look.widow_control),
         ("w:contextualSpacing", &mut look.contextual),
         ("w:bidi", &mut look.bidi),
+        ("w:suppressAutoHyphens", &mut look.suppress_hyphens),
     ] {
         if let Some(value) = on_off(el, name) {
             *slot = value;
@@ -565,6 +578,16 @@ pub fn apply_run(look: &mut RunLook, el: &El, theme: &crate::styles::Theme) {
     }
     if let Some(kern) = el.val_of("w:kern").and_then(number) {
         look.kern = (kern > 0.0).then_some((kern / 2.0) as f32);
+    }
+    for (name, slot) in [
+        ("w:outline", &mut look.outline),
+        ("w:shadow", &mut look.shadow),
+        ("w:emboss", &mut look.emboss),
+        ("w:imprint", &mut look.imprint),
+    ] {
+        if let Some(on) = on_off(el, name) {
+            *slot = on;
+        }
     }
 }
 

@@ -43,6 +43,16 @@ pub struct Geometry {
     /// `w:pgNumType w:fmt`.
     pub page_number_format: String,
     pub vertical_center: bool,
+    /// `w:vAlign`: `top`, `center`, `both` or `bottom`.
+    pub vertical_align: String,
+    /// `w:pgBorders`: the line width in points, its colour, its distance in points, and whether the
+    /// distance is from the text rather than from the page's edge.
+    pub page_border: Option<(f32, crate::props::Rgb, f32, bool)>,
+    /// `w:lnNumType`: count by, the first number, restart (`newPage`, `newSection`, `continuous`) and the
+    /// distance from the text in points.
+    pub line_numbers: Option<(u32, u32, String, f32)>,
+    /// `w:cols w:sep`: a line between the columns.
+    pub separator: bool,
 }
 
 impl Geometry {
@@ -97,6 +107,32 @@ impl Geometry {
                 .unwrap_or("decimal")
                 .to_owned(),
             vertical_center: sect.val_of("w:vAlign") == Some("center"),
+            vertical_align: sect.val_of("w:vAlign").unwrap_or("top").to_owned(),
+            page_border: sect.child("w:pgBorders").and_then(|b| {
+                let top = b.child("w:top").or_else(|| b.child("w:left"))?;
+                if top.attr("w:val").is_some_and(|v| v == "nil" || v == "none") {
+                    return None;
+                }
+                let width = top.attr("w:sz").and_then(number).map_or(0.5, |s| s as f32 / 8.0);
+                let colour = top
+                    .attr("w:color")
+                    .and_then(crate::props::Rgb::parse)
+                    .unwrap_or(crate::props::Rgb::BLACK);
+                let space = top.attr("w:space").and_then(number).map_or(24.0, |s| s as f32);
+                Some((width, colour, space, b.attr("w:offsetFrom") == Some("text")))
+            }),
+            line_numbers: sect.child("w:lnNumType").map(|l| {
+                let read = |name: &str| l.attr(name).and_then(number);
+                (
+                    read("w:countBy").map_or(1, |n| n as u32).max(1),
+                    read("w:start").map_or(1, |n| n as u32 + 1),
+                    l.attr("w:restart").unwrap_or("newPage").to_owned(),
+                    read("w:distance").map_or(18.0, twips),
+                )
+            }),
+            separator: sect
+                .child("w:cols")
+                .is_some_and(|c| crate::props::on_off_attr(c.attr("w:sep"))),
         };
         geometry.columns = columns(sect, geometry.text_width());
         geometry

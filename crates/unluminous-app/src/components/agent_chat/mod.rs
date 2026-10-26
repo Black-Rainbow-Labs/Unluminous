@@ -1336,10 +1336,9 @@ fn history_list(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
     let title_size = look.font_size * 0.85;
     let detail_size = look.font_size * 0.72;
     let row = (title_size * 1.3 + detail_size * 1.35 + 16.0 * scale).max(look.row_height * scale);
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_secs())
-        .unwrap_or_default();
+    // The clock a test's window holds still, so `just now` stays `just now` however long the test takes
+    // (`task-2364`); the real clock everywhere else.
+    let now = crate::services::agent_tasks::clock::seconds_for_drawing();
     let mut body = ui.new_child(egui::UiBuilder::new().max_rect(area));
     body.set_clip_rect(area.intersect(ui.clip_rect()));
     let mut scroller =

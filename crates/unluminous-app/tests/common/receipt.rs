@@ -83,7 +83,7 @@ fn head() -> Option<String> {
 ///
 /// `std::env::current_exe` is `…/deps/window_and_chrome-<hash>.exe`, so the hash comes off. The
 /// binary name is what `cargo test --test <name>` takes and what the release script's list holds.
-fn binary_name() -> String {
+pub fn binary_name() -> String {
     let path = std::env::current_exe().expect("the test binary's own path");
     let stem = path.file_stem().map(|stem| stem.to_string_lossy().into_owned()).unwrap_or_default();
     match stem.rsplit_once('-') {
@@ -128,6 +128,55 @@ fn forget_old_receipts(folder: &std::path::Path) {
     }
 }
 
+/// Whether libtest was asked to run every test in the binary: no name to filter by, no `--skip`, and
+/// not only the ignored tests or a listing.
+///
+/// `task-2364`. A receipt says the whole binary passed, and it was written by any run of the binary,
+/// so `cargo test --test word -- one_test` left a receipt for all of `word.rs`. A filtered run writes
+/// none now. `tools/window-suite.mjs --run` runs a failed test again on its own and sets
+/// `UNLUMINOUS_RECEIPT_RETRY`, because the rest of that binary has just passed in the same run.
+fn runs_the_whole_binary(mut args: impl Iterator<Item = String>) -> bool {
+    // The options libtest reads a value after.
+    const TAKES_A_VALUE: &[&str] =
+        &["--test-threads", "--format", "--color", "--logfile", "-Z", "--shuffle-seed"];
+    while let Some(arg) = args.next() {
+        if TAKES_A_VALUE.contains(&arg.as_str()) {
+            args.next();
+            continue;
+        }
+        if arg == "--skip" || arg.starts_with("--skip=") {
+            return false;
+        }
+        if matches!(arg.as_str(), "--ignored" | "--list" | "--exact") {
+            return false;
+        }
+        if !arg.starts_with('-') {
+            return false;
+        }
+    }
+    true
+}
+
+thread_local! {
+    /// Set while this thread runs work that may panic and is caught on purpose, so the hook leaves the
+    /// receipt alone. See [`while_a_panic_is_expected`].
+    static A_PANIC_IS_EXPECTED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Run `work`, during which a panic on this thread is caught by the caller and does not mean a test
+/// failed, so the receipt is not taken away for it.
+///
+/// `task-2364`. `egui_kittest` panics rather than returning an error when the graphics card does not
+/// finish a render in ten seconds (`Failed to poll device: Timeout`), which a loaded machine does.
+/// `common::PatientRenderer` catches that and renders again; without this, the panic it caught took
+/// the binary's receipt away although every test in it passed.
+pub fn while_a_panic_is_expected<T>(work: impl FnOnce() -> T) -> T {
+    A_PANIC_IS_EXPECTED.with(|expected| expected.set(true));
+    let answer = work();
+    A_PANIC_IS_EXPECTED.with(|expected| expected.set(false));
+    answer
+}
+
 /// Write this binary's receipt and arrange for it to be taken away again if anything panics.
 ///
 /// Called from `common::builder`, which every harness in the suite is built through, so a test file
@@ -136,6 +185,11 @@ fn forget_old_receipts(folder: &std::path::Path) {
 pub fn note_this_binary_started() {
     static ONCE: OnceLock<()> = OnceLock::new();
     ONCE.get_or_init(|| {
+        if !runs_the_whole_binary(std::env::args().skip(1))
+            && std::env::var_os("UNLUMINOUS_RECEIPT_RETRY").is_none()
+        {
+            return;
+        }
         let Some(commit) = head() else { return };
         let folder = folder();
         if std::fs::create_dir_all(&folder).is_err() {
@@ -150,7 +204,9 @@ pub fn note_this_binary_started() {
         let taken_away = receipt.clone();
         std::panic::set_hook(Box::new(move |info| {
             previous(info);
-            let _ = std::fs::remove_file(&taken_away);
+            if !A_PANIC_IS_EXPECTED.with(std::cell::Cell::get) {
+                let _ = std::fs::remove_file(&taken_away);
+            }
         }));
         let when = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

@@ -98,10 +98,13 @@ fn kerning_probe() {
 #[ignore]
 fn lines_probe() {
     let fonts = common::RealFonts::new();
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/headers.docx");
+    let name = std::env::var("PROBE_FIXTURE").unwrap_or_else(|_| "headers".into());
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/fixtures/{name}.docx"));
     let document = unluminous_word::read::open(&std::fs::read(&path).unwrap()).unwrap();
     let pages = unluminous_word::layout::lay_out(&document, &fonts, Default::default());
-    let target = vec![4u32];
+    let target: Vec<u32> = std::env::var("PROBE_PATH")
+        .map(|p| p.split(',').filter_map(|n| n.parse().ok()).collect())
+        .unwrap_or_else(|_| vec![4]);
     let p = unluminous_word::position::paragraph(
         &document,
         &unluminous_word::position::StoryId::Body,
@@ -144,4 +147,164 @@ fn fonts_probe() {
             }
         }
     }
+}
+
+/// Our advance for each printable character in `PROBE_FAMILY` at `PROBE_SIZE`, as JSON, to compare with
+/// `tools/word-oracle/advances.ps1`.
+#[test]
+#[ignore]
+fn advances_probe() {
+    let fonts = common::RealFonts::new();
+    let family = std::env::var("PROBE_FAMILY").unwrap_or_else(|_| "Aptos".into());
+    let size: f32 = std::env::var("PROBE_SIZE").ok().and_then(|s| s.parse().ok()).unwrap_or(12.0);
+    let style =
+        unluminous_core::CharStyle { family: family.as_str().into(), size, ..Default::default() };
+    let mut map = serde_json::Map::new();
+    for code in (32u32..=126).chain([0x2019, 0x201C, 0x201D, 0x2013, 0x2014, 0x2026]) {
+        let c = char::from_u32(code).unwrap();
+        map.insert(c.to_string(), serde_json::json!(fonts.advance(&c.to_string(), &style)));
+    }
+    println!("ADVANCES {}", serde_json::Value::Object(map));
+}
+
+/// How wide each of `PROBE_TEXT`'s `|` separated pieces is in Aptos 12 with the real fonts, laid out as
+/// a paragraph of its own on a Letter page with Word's one inch margins.
+#[test]
+#[ignore]
+fn width_probe() {
+    let fonts = common::RealFonts::new();
+    for text in std::env::var("PROBE_TEXT").unwrap().split('|') {
+        let mut session = unluminous_word::session::Session::new(unluminous_word::new::blank());
+        session.type_text(text);
+        let pages = unluminous_word::layout::lay_out(&session.document, &fonts, Default::default());
+        for line in &pages.pages[0].carets {
+            let first = line.stops.first().map_or(0.0, |s| s.1);
+            let last = line.stops.last().map_or(0.0, |s| s.1);
+            println!("{:.2} {:?}", last - first, &text[line.start..line.end.min(text.len())]);
+        }
+    }
+}
+
+/// The footnote lines on each page of `PROBE_FIXTURE`: where each starts and how tall it is.
+#[test]
+#[ignore]
+fn notes_probe() {
+    let fonts = common::RealFonts::new();
+    let name = std::env::var("PROBE_FIXTURE").unwrap_or_else(|_| "notes".into());
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/fixtures/{name}.docx"));
+    let document = unluminous_word::read::open(&std::fs::read(&path).unwrap()).unwrap();
+    let pages = unluminous_word::layout::lay_out(&document, &fonts, Default::default());
+    for (n, page) in pages.pages.iter().enumerate() {
+        println!("page {} notes {:?}", n + 1, page.notes);
+        for line in &page.carets {
+            if matches!(line.story, unluminous_word::position::StoryId::Footnote(_)) {
+                println!("  {:.2} +{:.2}", line.top, line.height);
+            }
+        }
+    }
+}
+
+/// Where each body paragraph's first line starts, page and top, beside Word's report.
+#[test]
+#[ignore]
+fn tops_probe() {
+    let fonts = common::RealFonts::new();
+    let name = std::env::var("PROBE_FIXTURE").unwrap_or_else(|_| "builtin-styles".into());
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/fixtures/{name}.docx"));
+    let document = unluminous_word::read::open(&std::fs::read(&path).unwrap()).unwrap();
+    let pages = unluminous_word::layout::lay_out(&document, &fonts, Default::default());
+    let report: serde_json::Value = serde_json::from_str(
+        std::fs::read_to_string(path.with_extension("word.json"))
+            .unwrap()
+            .trim_start_matches('\u{feff}'),
+    )
+    .unwrap();
+    let words = report["paragraphs"].as_array().unwrap();
+    for (index, (path, p)) in
+        unluminous_word::position::paragraphs(&document.body).iter().enumerate()
+    {
+        let found = pages.pages.iter().enumerate().find_map(|(n, page)| {
+            page.carets.iter().find(|l| &l.path == path).map(|l| (n + 1, l.top))
+        });
+        let word = words.get(index);
+        println!(
+            "{:3} ours {:?} word {:?} {:?} {}",
+            index + 1,
+            found,
+            word.map(|w| w["page"].clone()),
+            word.map(|w| w["top"].clone()),
+            p.flat_text().chars().take(30).collect::<String>()
+        );
+    }
+}
+
+/// How long laying out a fixture takes with the real fonts, for the performance work.
+#[test]
+#[ignore]
+fn layout_time_probe() {
+    let fonts = common::RealFonts::new();
+    let name = std::env::var("PROBE_FIXTURE").unwrap_or_else(|_| "long".into());
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/fixtures/{name}.docx"));
+    let document = unluminous_word::read::open(&std::fs::read(&path).unwrap()).unwrap();
+    for _ in 0..3 {
+        let started = std::time::Instant::now();
+        let pages = unluminous_word::layout::lay_out(&document, &fonts, Default::default());
+        println!("{} pages in {:?}", pages.pages.len(), started.elapsed());
+    }
+}
+
+/// Write `PROBE_OUT` as a fixture encrypted with the password `s3cret`, or decrypt `PROBE_IN` with it.
+#[test]
+#[ignore]
+fn crypto_probe() {
+    if let Ok(out) = std::env::var("PROBE_OUT") {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/kitchen-sink.docx");
+        let package = std::fs::read(path).unwrap();
+        std::fs::write(&out, unluminous_word::crypto::encrypt(&package, "s3cret").unwrap())
+            .unwrap();
+        println!("wrote {out}");
+    }
+    if let Ok(input) = std::env::var("PROBE_IN") {
+        let bytes = std::fs::read(&input).unwrap();
+        let package = unluminous_word::crypto::decrypt(&bytes, "s3cret").unwrap();
+        let document = unluminous_word::read::open(&package).unwrap();
+        println!(
+            "decrypted {} paragraphs",
+            unluminous_word::position::paragraphs(&document.body).len()
+        );
+    }
+}
+
+/// Write `PROBE_OUT` with Restrict Editing set to read only with the password `s3cret`.
+#[test]
+#[ignore]
+fn protection_probe() {
+    let out = std::env::var("PROBE_OUT").unwrap();
+    let mut session = unluminous_word::session::Session::new(unluminous_word::new::blank());
+    session.type_text("Protected text");
+    session.lock_tracking("s3cret");
+    std::fs::write(&out, unluminous_word::write::save(&session.document).unwrap()).unwrap();
+    println!("wrote {out}");
+}
+
+/// Write `PROBE_OUT` with a password to modify, `s3cret`, and `PROBE_OUT2` restricted to read only.
+#[test]
+#[ignore]
+fn modify_probe() {
+    let mut session = unluminous_word::session::Session::new(unluminous_word::new::blank());
+    session.type_text("Text");
+    session.set_password_to_modify("s3cret");
+    std::fs::write(
+        std::env::var("PROBE_OUT").unwrap(),
+        unluminous_word::write::save(&session.document).unwrap(),
+    )
+    .unwrap();
+    let mut session = unluminous_word::session::Session::new(unluminous_word::new::blank());
+    session.type_text("Text");
+    session.restrict_editing("readOnly", "s3cret").unwrap();
+    std::fs::write(
+        std::env::var("PROBE_OUT2").unwrap(),
+        unluminous_word::write::save(&session.document).unwrap(),
+    )
+    .unwrap();
 }

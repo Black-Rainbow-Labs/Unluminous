@@ -83,6 +83,9 @@ arboard.workspace = true
 muda.workspace = true
 # Only the PNG decoder, for the pictures plugins put in front of their files.
 image.workspace = true
+# EMF, WMF and SVG pictures in Word documents.
+emf-core.workspace = true
+resvg.workspace = true
 # The Realm's sound nodes. See the workspace manifest for which formats and why.
 rodio.workspace = true
 # The Agent-Tasks plugin's board. One file on disk, with SQLite compiled in.

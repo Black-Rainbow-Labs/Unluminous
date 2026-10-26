@@ -20,6 +20,11 @@
 // So a binary takes the machine's turn before it builds a fixture or a window, and holds it until the
 // process ends, when the operating system lets go of the lock whether the binary passed, failed or was
 // killed. A second binary waits, and says which process it is waiting for.
+//
+// **The lock is in the folder this binary's fixtures are built in (`task-2364`)**, `common::fixtures_root`,
+// which is `%TEMP%\unluminous-window\<binary>`. Two different binaries build different fixtures there and
+// never wait on each other, so `tools/window-suite.mjs --run --jobs` can run several at once. The same
+// binary in two checkouts still takes turns, because it builds the same fixtures in the same folder.
 
 use std::io::Write;
 use std::sync::OnceLock;
@@ -51,7 +56,9 @@ pub fn take_the_machines_turn() {
 /// calls this. The shipped crates still keep to 1.85.
 #[allow(clippy::incompatible_msrv)]
 fn wait_for_the_turn() -> std::fs::File {
-    let lock = std::env::temp_dir().join("unluminous-window-tests.lock");
+    let root = super::fixtures_folder();
+    let _ = std::fs::create_dir_all(&root);
+    let lock = root.join("unluminous-window-tests.lock");
     let file = std::fs::OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -86,14 +93,35 @@ fn wait_for_the_turn() -> std::fs::File {
         }
     }
     note_the_holder();
+    empty_the_fixtures_folder(&root);
     file
+}
+
+/// Remove everything an earlier run of this binary built in its fixtures folder, apart from the lock and
+/// the holder file. Run once, with the turn held, before any test is handed a path in the folder.
+///
+/// `task-2364`. Some fixtures are named with the process id, and every run left another; the folder is
+/// one binary's, and this binary holds its turn, so nothing else is using what is removed.
+fn empty_the_fixtures_folder(root: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(root) else { return };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        if name == "unluminous-window-tests.lock" || name == "unluminous-window-tests.holder" {
+            continue;
+        }
+        let path = entry.path();
+        let _ = match path.is_dir() {
+            true => std::fs::remove_dir_all(&path),
+            false => std::fs::remove_file(&path),
+        };
+    }
 }
 
 /// The file naming the process that holds the turn.
 ///
 /// A file of its own, because on Windows a locked file cannot be read by anybody else.
 fn holder_file() -> std::path::PathBuf {
-    std::env::temp_dir().join("unluminous-window-tests.holder")
+    super::fixtures_folder().join("unluminous-window-tests.holder")
 }
 
 /// Write down which process holds the turn, so a waiting binary can say what it is waiting for.
