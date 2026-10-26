@@ -5,12 +5,14 @@
 // open any image that changed, and a script must not be allowed to satisfy the second on its own --
 // so a release could be cut from a commit whose window suite had never been run, and several were.
 //
-// This does not run the suite. It reads the receipts the suite leaves in
-// `_agent_output/window-suite/` (see `crates/unluminous-app/tests/common/receipt.rs`) and says
-// whether every window test binary has run, and run against a commit this one is built on.
+// It reads the receipts the suite leaves in `_agent_output/window-suite/` (see
+// `crates/unluminous-app/tests/common/receipt.rs`) and says whether every window test binary has run,
+// and run against a commit this one is built on. Since `task-2364` it also runs the suite (`--run`, see
+// the section on running it below).
 //
 //   node tools/window-suite.mjs --check     exit 0 when every binary has a current receipt
 //   node tools/window-suite.mjs             print what there is and what is missing
+//   pwsh tools/capped.ps1 node tools/window-suite.mjs --run      run the suite
 //
 // A receipt names a commit and the time that binary started. It is written when the binary starts
 // and deleted the instant anything in it panics, so a receipt present means that binary ran and
@@ -417,6 +419,34 @@ async function runSideBySide(only, jobs, temp, log) {
 }
 
 /**
+ * Copy the pictures a failed attempt wrote, `*.new.png` and `*.diff.png`, beside the run's log, and answer
+ * the folder, or null when there were none.
+ *
+ * `task-2364`. kittest removes a test's diff picture when the test passes, so a picture that differed once
+ * and matched on the retry left nothing to look at, and a flaky picture could not be told from a real
+ * change. The copies are what a person opens to tell which it was.
+ * @param since - when the run started, in milliseconds; only pictures written since then are kept
+ * @param log - the run's log, which the folder is named after
+ */
+function keepThePictures(since, log) {
+  const snapshots = path.join(repo, 'crates', 'unluminous-app', 'tests', 'snapshots');
+  const found = [];
+  const walk = (folder) => {
+    for (const entry of fs.readdirSync(folder, { withFileTypes: true })) {
+      const full = path.join(folder, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.(new|diff)\.png$/.test(entry.name) && fs.statSync(full).mtimeMs >= since) found.push(full);
+    }
+  };
+  if (fs.existsSync(snapshots)) walk(snapshots);
+  if (found.length === 0) return null;
+  const into = log.replace(/\.log$/, '-pictures');
+  fs.mkdirSync(into, { recursive: true });
+  for (const file of found) fs.copyFileSync(file, path.join(into, path.basename(file)));
+  return into;
+}
+
+/**
  * One run of the window suite, or of the binaries `only` names. Answers what the record says.
  * @param only - binary names, or an empty list for all of them
  * @param load - how many load threads to run beside it, or 0
@@ -442,6 +472,8 @@ async function runOnce(only, load, jobs) {
     code = result.code;
     binaries = readLibtest(result.output).filter((binary) => !binary.doc);
     if (code !== 0) {
+      const kept = keepThePictures(started, log);
+      if (kept) console.log(`\n  The pictures of the failed attempt, kept before the retry can pass and remove them: ${kept}`);
       retried = await retryFailures({
         repo,
         crate: 'unluminous-app',
@@ -492,7 +524,7 @@ async function runSuite() {
   const only = option('only', '').split(',').filter(Boolean);
   const repeat = Number(option('repeat', '1'));
   const load = Number(option('load', '0'));
-  const jobs = Number(option('jobs', '1'));
+  const jobs = Number(option('jobs', '2'));
   const records = [];
   for (let index = 0; index < repeat; index++) {
     if (repeat > 1) console.log(`\n==> Run ${index + 1} of ${repeat}`);
@@ -581,7 +613,7 @@ function checkReceipts() {
   }
   console.error('');
   console.error('Run it and look at any image that changed:');
-  console.error('  pwsh tools/capped.ps1 node tools/window-suite.mjs --run --jobs 3');
+  console.error('  pwsh tools/capped.ps1 node tools/window-suite.mjs --run');
   process.exit(1);
 }
 

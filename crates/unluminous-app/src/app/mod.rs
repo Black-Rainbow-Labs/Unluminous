@@ -1858,6 +1858,9 @@ impl UnluminousApp {
         // And egui's own double click interval rather than this machine's mouse setting, so a test that
         // clicks once and then twice means the same thing on every machine. Given to egui on the first frame.
         self.double_click_interval = Some(crate::services::double_click::EGUI_INTERVAL);
+        // And the clock relative times are drawn from held at this moment, so a ticket made during a test
+        // says `just now` however long the test took to photograph it (`task-2364`).
+        crate::services::agent_tasks::clock::hold_the_drawing_clock();
     }
 
     /// Set the window's look up before the first frame is drawn.

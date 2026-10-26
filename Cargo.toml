@@ -264,6 +264,16 @@ dispatch2 = { version = "0.3", default-features = false, features = ["std"] }
 [profile.test]
 debug = "line-tables-only"
 
+# **Dependencies are optimized in a test build; this workspace's own crates are not (`task-2364`).** A window
+# test spends its time in code that is not ours: egui laying a frame out, `vello_cpu` and `rux` rasterizing
+# the decoration, `image` reading and comparing pictures. Unoptimized, one frame of the forty-card AI
+# Configuration page took seconds, and `the_acp_registry_is_cards_that_add_and_remove_an_agent` took 157 s
+# alone. Rust does not reorder floating point arithmetic at any optimization level and `vello_cpu`'s SIMD
+# level is pinned in a test window (`draw_deterministically`), so the accepted pictures do not move. A panic
+# in our code still names its file and line, because our crates keep `opt-level = 0`.
+[profile.test.package."*"]
+opt-level = 2
+
 [profile.release]
 opt-level = 3
 # Thin rather than fat, and the default number of codegen units rather than one, because `task-1805`

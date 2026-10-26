@@ -81,7 +81,67 @@ were made, and what is left, ranked by the hours each one saves.
 
 ## 2. Measurements
 
-(Filled in section 9 as the runs finished.)
+All on this machine (24 logical processors, the window suite on 19 of them through
+`tools/capped.ps1`), on 2026-10-25. "Under load" is `tools/perf-smooth/load.mjs --threads 12`
+beside the suite, which is about what a release's build or a second ticket's suite puts on the
+machine. The raw logs are in `_agent_output/task-2364-tests/` of this ticket's worktree and the run
+records in `_agent_output/test-runs/` of the main checkout.
+
+### `%TEMP%`
+
+| | entries |
+|---|---:|
+| everything at the top of `%TEMP%` | 169,221 |
+| `inillucent-*`, from Inillucent's suites | 105,562 |
+| `unluminous-*`, from this repository's suites | 54,925 |
+| what one gate run with the new runner left behind | 0 (279 entries at the top of its run folder, removed at the end) |
+
+A lib test run of `unluminous-app` alone left about 100 uniquely named folders (`unluminous-db-*`,
+`unluminous-chat-plugin-*`, `unluminous-browser-*`, ...), and there had been about 550 of them.
+
+### The window suite
+
+| run | code | wall time | failures |
+|---|---|---:|---|
+| alone, `cargo test --test '*'` | before | 24.5 min | none |
+| under load, `cargo test --test '*'` | before | 36.4 min | `canvas_realm the_realm_manager` (modal backdrop missing from both pictures) |
+| `canvas_realm` 5 times under load, runner | partial | 76 to 152 s a run | 9 in 2 of 5 runs: 7 the code index's fence file, 2 `PollError` render timeouts |
+| alone, runner, one binary at a time | after | 14.5 min | 10 pictures that draw the fixture path (accepted again), 1 abort in `notebooks` |
+| alone, runner, `--jobs 3`, 19 threads each | after | 11.3 min | the same pictures; three heaviest binaries 3 to 4 times slower than alone |
+| alone, runner, `--jobs 2`, 10 threads each | after | 11.7 min | the walk's ordering race, `Untitled.ipynb` written into the shared folder (both fixed) |
+| alone, runner, `--jobs 2` | final | RUN5 | RUN5F |
+| under load, runner, `--jobs 2` | final | RUN6 | RUN6F |
+
+The three longest binaries before and after splitting their longest tests, alone, one binary at a
+time:
+
+| binary | before | after |
+|---|---:|---:|
+| `window_and_chrome` | 405 s | 99 s |
+| `panel_docking` | 331 s | 78 s |
+| `plugins_board_and_chat` | 289 s | 208 s |
+| `command_line` | 94 s | 48 s (the walk's drives side by side) |
+
+Eleven tests ran for more than a minute each before; libtest says so with `has been running for over
+60 seconds`, and each held its binary open after every other test in it had finished.
+
+### The gate
+
+| run | wall time | what ran | failures |
+|---|---:|---|---|
+| `tools/test.mjs --all`, cold `clippy` and `waiting` targets | 22.4 min | all 26 units | clippy's `type_complexity` on a new test (fixed), and `unluminous-terminal`'s verbatim path test, which wrapped a longer path across the grid (fixed) |
+| `tools/test.mjs` after those two fixes | 78 s | 6 of 26 units | none |
+
+In the `--all` run, `unluminous-word` took 835 s in the late lane, 745 s of it `word_live`: 11 tests,
+one Word at a time, about 68 s each. `unluminous-jupyter`'s kernel tests took 54 s, against 387 s
+when task-2359 measured them with `%TEMP%` as their folder.
+
+### What task-2359's receipts show
+
+Every crate's test receipt at HEAD has the same second, `d146db21 2026-10-25T16:09:10`: one cargo
+command ran them all, and before that, attempts in which one crate failed recorded none.
+`inillucent-driver` stayed at 2.8.1 from 1.14.0 to 1.15.1, so the release's
+`cargo update -p inillucent-driver` changed no hash.
 
 ## 3. Rules every test keeps
 
@@ -151,7 +211,7 @@ things the bare `cargo test` left to whoever typed it:
 failed in which runs, and `--load N` runs `tools/perf-smooth/load.mjs` beside it with N threads,
 which is how a release's load is reproduced.
 
-`--jobs N` builds the suite once and runs N test executables at a time, each with its own run folder
+`--jobs N` (two by default) builds the suite once and runs N test executables at a time, each with its own run folder
 and `RUST_TEST_THREADS` set to its share of the processors. Giving each of three binaries all 19 test
 threads made each take three to four times as long as it took alone.
 
@@ -208,12 +268,41 @@ Receipts:
   and Word records naming the temporary folder, and `--delete` removes them. It never touches the
   folders the shipped program uses there (`unluminous-python`, `unluminous-update-*`,
   `unluminous-report-*`).
-- The `inillucent-*` folders are Inillucent's suites'. A ticket is filed for that repository.
+- The `inillucent-*` folders are Inillucent's suites', and task-2367 asks that repository to remove them.
 
-## 9. Measurements
+## 9. The changes, ranked by the hours they save
 
-(Filled in from the runs.)
+Hours are per ticket that changes code, estimated from task-2359 and the runs above. A ticket
+typically runs the gate twice and the window suite twice, and the release runs the gate again.
 
-## 10. Ranked by hours saved
+| # | Change | Saves | How |
+|---|---|---|---|
+| 1 | Flake retry and record (gate and runner) | 0.5 to 2 h when a flake happens | A test that fails under load is run again on its own instead of sending the person round the whole suite. task-2359 saw five unrelated failures in one afternoon, each a 40 minute rerun. |
+| 2 | One `cargo test` per crate in the gate | up to the whole gate per failure | One crate's failure no longer leaves the others unrecorded, so the next attempt runs only the crate that failed. task-2359's release reran every crate after `word_live` hung. |
+| 3 | Run folders for every test command | the 19 kernel failures, and every later dependence on `%TEMP%` | Nothing lists 169,000 entries; nothing a run writes is left behind; lib tests with fixed folder names in two worktrees stop colliding. |
+| 4 | Split the eleven longest tests, run the walk's drives side by side | about 10 min per window suite run | 24.5 to 14.5 min one binary at a time. |
+| 5 | `--jobs 2` | about 3 min per window suite run | 14.5 to 11.7 min. |
+| 6 | Receipts that ignore other crates' test code | a 40 min window run each time a test file elsewhere changes | `word_live.rs` alone sent all 19 binaries round again in task-2359. |
+| 7 | The read only guard on `sample_folder()`, the fence left out | the plugin tab count, the vanishing file, `Untitled.ipynb` | Found three writers in its first runs, none of them a fault in the product. |
+| 8 | `PatientRenderer` | render timeouts under load | Two `PollError` failures in five loaded `canvas_realm` runs, none since. |
+| 9 | Word: pid file, stop on timeout, Resiliency records cleared, late lane | the two one hour hangs | A Word that stops answering is stopped at the test's limit and leaves nothing that makes the next open wait. |
+| 10 | `did()` answers held commands through frames | `editor signature --wait` and its kind | A command that holds its answer is waited for the way the control channel waits, which also found the dictation caret fault. |
 
-(Filled in from the runs.)
+## 10. What is left
+
+Filed as tickets:
+
+- **`word_live` takes 745 s** (task-2368). Each test starts a Word, and `inspect.ps1` asks for every line of
+  every paragraph. One Word for the whole binary, reused by every inspect, would cut most of it.
+- **`notebooks` aborted once** (task-2369) in a `windows-core` COM call ("misaligned pointer dereference", a
+  non unwinding panic, so the process ended). Not reproduced in six more runs. The runner now runs a
+  binary that ends without a result again whole and records the line it died on, so the next one
+  arrives with a backtrace.
+- **Inillucent's suites leave about 105,000 folders in `%TEMP%`** (task-2367, in that repository).
+- **The code index writes its fence into the root of a project that is not a git repository** (task-2370). The
+  explorer hides it and the tests now leave it out, but any other program watching that folder sees
+  a file come and go every time the index checks it is fresh. Worth asking Atrius to put it in a
+  folder of its own.
+- **`canvas_realm the_realm_manager`** lost its modal backdrop once, in the loaded baseline before
+  any change. Not seen in the runs since. The most likely cause is the render timeout above, which
+  makes kittest drop the screenshot the backdrop is made from.

@@ -3230,6 +3230,22 @@ fn agents_on_the_path() {
                 std::fs::write(&at, b"").expect("a file that stands in for an agent");
             }
         }
+        // **A stand-in `npm` as well (`task-2364`).** Adding an npx agent from the ACP registry asks npm which
+        // version it can fetch (`acp_registry::npm_version_to_pin`), and with the machine's own npm first on the
+        // path that was `npm view` reaching the registry over the network from a window test: most of the 157 s
+        // `the_acp_registry_is_cards_that_add_and_remove_an_agent` took, and a different answer offline. This one
+        // answers at once that the version can be fetched.
+        let (npm, said): (&str, &[u8]) = match cfg!(windows) {
+            true => ("npm.cmd", b"@echo 1.0.0\r\n"),
+            false => ("npm", b"#!/bin/sh\necho 1.0.0\n"),
+        };
+        std::fs::write(folder.join(npm), said).expect("a stand-in npm");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ =
+                std::fs::set_permissions(folder.join(npm), std::fs::Permissions::from_mode(0o755));
+        }
         let path = std::env::var_os("PATH").unwrap_or_default();
         let mut folders = vec![folder];
         folders.extend(std::env::split_paths(&path));

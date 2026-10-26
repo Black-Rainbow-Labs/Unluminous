@@ -2490,7 +2490,11 @@ Start-Sleep -Seconds 900"
                 !screen.contains("unc paths are not supported"),
                 "the shell refused the folder it was given: {screen}"
             );
-            if screen.contains(&wanted) {
+            // **Read with the line breaks the screen added taken out (`task-2364`).** A path longer than
+            // the grid is wide wraps onto the next row, and `tools/test.mjs` gives every run a temporary
+            // folder of its own, a few dozen characters deeper than `%TEMP%`, so the answer the shell
+            // gave was on the screen split across two rows and the test waited out its thirty seconds.
+            if screen.contains(&wanted) || screen.replace('\n', "").contains(&wanted) {
                 break;
             }
             assert!(

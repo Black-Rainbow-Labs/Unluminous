@@ -22,6 +22,46 @@ pub fn now() -> String {
     from_unix(seconds as i64)
 }
 
+thread_local! {
+    /// The instant this thread's drawing measures relative times from, when it is held. See
+    /// [`hold_the_drawing_clock`].
+    static DRAWING_HELD_AT: std::cell::Cell<Option<i64>> = const { std::cell::Cell::new(None) };
+}
+
+/// The instant a relative time on the screen, `just now` or `4m ago`, is measured from: [`now`], unless this
+/// thread's window holds its drawing clock still.
+pub fn now_for_drawing() -> String {
+    match DRAWING_HELD_AT.with(std::cell::Cell::get) {
+        Some(seconds) => from_unix(seconds),
+        None => now(),
+    }
+}
+
+/// [`now_for_drawing`] as seconds since 1970, for a drawing that measures in seconds.
+pub fn seconds_for_drawing() -> u64 {
+    match DRAWING_HELD_AT.with(std::cell::Cell::get) {
+        Some(seconds) => seconds.max(0) as u64,
+        None => {
+            SystemTime::now().duration_since(UNIX_EPOCH).map(|since| since.as_secs()).unwrap_or(0)
+        }
+    }
+}
+
+/// Hold the instant [`now_for_drawing`] answers on this thread at this moment, for a window drawn for a
+/// picture (`UnluminousApp::draw_deterministically`).
+///
+/// `task-2364`. The ticket modal says when a ticket was made, `just now` for one made a moment ago. A window
+/// test that made a ticket and photographed it more than a minute later, which a loaded machine does, drew
+/// `1m ago` and differed from the accepted picture by 160 pixels. Held at the moment the window was built,
+/// everything the test makes is `just now` (a later instant reads as no time ago) and an older timestamp a
+/// test wrote is measured from when the test began. Only what is drawn is held: the timestamps the board
+/// writes still come from [`now`]. It is the test's own thread, so other tests are not affected.
+pub fn hold_the_drawing_clock() {
+    let seconds =
+        SystemTime::now().duration_since(UNIX_EPOCH).map(|since| since.as_secs()).unwrap_or(0);
+    DRAWING_HELD_AT.with(|held| held.set(Some(seconds as i64)));
+}
+
 /// An instant from a count of seconds since 1970, as ISO 8601 in UTC.
 pub fn from_unix(seconds: i64) -> String {
     let days = seconds.div_euclid(86_400);

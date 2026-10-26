@@ -6901,7 +6901,8 @@ release again. The rules:
 
 - **Run the window suite with the runner**: `pwsh tools/capped.ps1 node tools/window-suite.mjs --run`. It
   gives the run a temporary folder of its own (removed at the end), runs a failed test once more on its own,
-  and records the run. `--jobs 3` builds once and runs three binaries at a time, each in a folder of its own.
+  and records the run. It builds once and runs two binaries at a time (`--jobs N` changes that), each with its
+  share of the test threads; `--jobs 1` is `cargo test --test '*'`.
   `--only word,git`, `--repeat N` and `--load N` (that many busy threads beside it) are for measuring.
 - **Every test writes only in a folder of its own.** `sample_folder()` is read only, and it panics naming the
   file when a test has added or removed one. A test that changes a project copies it first

@@ -19,7 +19,7 @@ use rux::{Rux, Style};
 
 use super::{kit, Act};
 use crate::components::markdown_text::{self, Cache, CodeColors, Colors};
-use crate::services::designer::notes::{time_ago, unix_now, NoteState};
+use crate::services::designer::notes::{time_ago, NoteState};
 use crate::services::designer::{Designer, Filter};
 use crate::services::plugin_ui::Look;
 
@@ -99,7 +99,9 @@ enum Block {
 fn facts_of(designer: &Designer, design: &Path) -> Option<Facts> {
     let view = designer.design_view(design)?;
     let (open, resolved) = view.notes.counts();
-    let now = unix_now();
+    // The clock a test's window holds still, so `just now` stays `just now` however long the test takes
+    // (`task-2364`); the real clock everywhere else.
+    let now = crate::services::agent_tasks::clock::seconds_for_drawing();
     let threads = view
         .listed()
         .into_iter()

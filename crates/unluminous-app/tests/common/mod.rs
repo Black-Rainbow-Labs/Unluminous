@@ -645,6 +645,17 @@ pub fn steady(harness: &mut Harness<'static, UnluminousApp>) {
             return;
         }
     }
+    // **A window that never went quiet costs every try (`task-2364`)**: about a hundred frames, each a whole
+    // layout, every time this is called. `UNLUMINOUS_STEADY_TRACE=1` names the test, which is how a test that
+    // spends most of its time here is found. It is written to the stream itself, past libtest's capture.
+    if std::env::var_os("UNLUMINOUS_STEADY_TRACE").is_some() {
+        use std::io::Write;
+        let _ = writeln!(
+            std::io::stderr(),
+            "steady gave up after {STEADY_TRIES} tries: {}",
+            std::thread::current().name().unwrap_or("a test")
+        );
+    }
 }
 
 /// A window on a real repository, with the repository already read.

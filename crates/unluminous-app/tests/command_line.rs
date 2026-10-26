@@ -1327,7 +1327,12 @@ fn every_command_in_the_catalogue_is_one_the_window_knows() {
     // The catalogue is shared, so the client will accept every command in it. This is the other half:
     // the window must not answer any of them with "there is no such command". Each is run with no
     // arguments at all, so most are refused — what is being checked is *how*.
-    let mut harness = harness_in(&sample_folder());
+    //
+    // **On a copy of the sample folder (`task-2364`).** Some commands succeed with no arguments and write
+    // into the project: `notebook new` makes `Untitled.ipynb`. On the shared folder that file appeared in
+    // the middle of every other test in this binary, which the read only guard on `sample_folder()` found.
+    let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-every-command-known");
+    let mut harness = harness_in(&folder);
     for command in unluminous_cli::catalogue::COMMANDS {
         if command.local {
             continue; // answered by the client; the window never sees it
@@ -1826,6 +1831,9 @@ const CANNOT_BE_MADE_TO_SUCCEED: &[(&str, &str)] = &[
     ("notebook.input", "it answers an input() a running cell is waiting on, and this walk runs no cell"),
 ];
 
+/// One part of the walk: what it drives, named for a failure, and the function that drives it.
+type Drive = (&'static str, fn(&mut Coverage));
+
 /// Every command in the catalogue is driven to a success and to a refusal.
 ///
 /// **The drives run side by side, each on a thread of its own (`task-2364`).** Each opens a window of its own,
@@ -1839,7 +1847,7 @@ const CANNOT_BE_MADE_TO_SUCCEED: &[(&str, &str)] = &[
 /// driven. It calls those tests itself now, so it gives the same answer run alone or with the whole binary.
 #[test]
 fn every_catalogue_command_is_driven_both_ways() {
-    let drives: [(&str, fn(&mut Coverage)); 16] = [
+    let drives: [Drive; 16] = [
         ("refuse a value no command has a name for", refuse_a_value_no_command_has_a_name_for),
         (
             "refuse a word where a command takes a number",

@@ -88,10 +88,9 @@ pub fn show(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
         .take(3)
         .map(|one| (one.id.clone(), one.name.clone(), one.changed))
         .collect();
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+    // The clock a test's window holds still, so `just now` stays `just now` however long the test takes
+    // (`task-2364`); the real clock everywhere else.
+    let now = crate::services::agent_tasks::clock::seconds_for_drawing();
     let project = parts.project.map(|path| path.to_path_buf());
     let showing = parts.showing.map(|path| path.to_path_buf());
     let permission = parts.configuration.permission;
