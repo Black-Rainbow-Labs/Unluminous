@@ -968,7 +968,7 @@ pub fn presses_in_a_row(ctx: &egui::Context) -> u8 {
             .collect();
         (pressed, input.time)
     });
-    let options = ctx.options(|options| options.input_options.clone());
+    let options = ctx.options(|options| options.input_options);
     presses.pass = pass;
     if !pressed.is_empty() {
         // A new press: whichever words it lands on say so while they are drawn this frame.
