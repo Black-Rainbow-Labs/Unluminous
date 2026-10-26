@@ -6,7 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.16.3 — 2026-10-26
+## 1.16.4 — 2026-10-26
+
+- Atrius 0.3.2, whose fence is no longer written into a project that is not a git repository (`task-2370`)
+
+## 1.16.3 — 2026-10-25
 
 - Word_live keeps one Word for the whole binary through inspect.ps1 -Serve (`task-2368`)
 - Start-WordApp names its own Word by caption; docs and measurements (`task-2368`)
