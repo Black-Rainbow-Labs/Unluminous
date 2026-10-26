@@ -6906,9 +6906,11 @@ release again. The rules:
   `--only word,git`, `--repeat N` and `--load N` (that many busy threads beside it) are for measuring.
 - **Every test writes only in a folder of its own.** `sample_folder()` is read only, and it panics naming the
   file when a test has added or removed one. A test that changes a project copies it first
-  (`copy_out_of_the_repository`, `fixture(name)`). The code index writes `atrius-index-fence-<n>` into the root
-  of a project that is not a git repository for 250 ms; a test that lists or copies a project leaves it out, as
-  the explorer does (`common::is_the_code_index_fence`).
+  (`copy_out_of_the_repository`, `fixture(name)`). Before Atrius 0.3.2 the code index wrote
+  `atrius-index-fence-<n>` into the root of a project that is not a git repository for 250 ms; it now writes it
+  in its own index folder (`task-2370`) and falls back to the root only when that folder cannot be made or
+  watched. A test that lists or copies a project still leaves it out, as the explorer does
+  (`common::is_the_code_index_fence`).
 - **No single test holds a binary open.** A binary takes as long as its longest test, so a sweep over cases that
   each open a window is one test per case (`every_action_changes_the_window_or_says_why_it_cannot_<n>`,
   `every_drop_lands_where_the_preview_said_it_would_<n>_...`). libtest prints `has been running for over 60

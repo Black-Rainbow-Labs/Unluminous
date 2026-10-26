@@ -243,9 +243,11 @@ pub fn sample_folder() -> std::path::PathBuf {
     folder.clone()
 }
 
-/// Whether a file is the code index's fence, which the index writes into a project that is not a git
-/// repository and removes a quarter of a second later (`atrius_index::freshness`). The explorer hides it
-/// (`services::file_tree`, `task-2247`), and so does every test that lists or copies a project.
+/// Whether a file is the code index's fence, which the index wrote into a project that is not a git
+/// repository and removed a quarter of a second later (`atrius_index::freshness`). Since Atrius 0.3.2 it
+/// is written in the index's own folder (`task-2370`), and in the project only when that folder cannot be
+/// made or watched. The explorer hides it (`services::file_tree`, `task-2247`), and so does every test
+/// that lists or copies a project.
 ///
 /// `task-2364`: it was the file `a_contributed_tab_opens_in_the_editing_area_beside_the_file_tabs` counted
 /// 8 against 7, and the file that was gone by the time `copy_out_of_the_repository` copied it.
