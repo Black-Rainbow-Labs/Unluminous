@@ -6,6 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.17.1 — 2026-10-26
+
+- Register the nightly with pwsh's full path so Task Scheduler can start it (`task-2356`)
+- Run dialog rename, copying selected words, double click by press, no frame waits on the login shell (`task-2374`)
+- Input options are Copy (`task-2374`)
+
 ## 1.17.0 — 2026-10-26
 
 - The oracle reads every corpus file in tests/oracle, so each family can add its own (`task-2360`)
