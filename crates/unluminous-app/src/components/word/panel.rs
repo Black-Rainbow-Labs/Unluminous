@@ -1,9 +1,18 @@
-//! The drill down panel: one column at the right of the pages with a back arrow, a breadcrumb, and the
-//! controls of one level. The root level lists the others, each with a line saying what is in it, so a
-//! setting is two presses from the page and never more than three.
+//! The drill down panel: one column at the right of the pages with a back chip, the level's name under
+//! its path, a close chip, and the controls of one level. The root level lists the others as raised rows,
+//! each with its mark and a line saying what is in it, so a setting is two presses from the page and never
+//! more than three.
+//!
+//! `task-2366` redrew it in the design system: the head's marks are drawn (a close button drawn as the
+//! character `✕` was an empty box in a face without it), a group of controls is a section with a small
+//! spaced heading, a command is a pill, an on and off setting a switch, a colour a circle, and the egui
+//! widgets the deep levels still use (a number to drag, a list, a field) are set in the design's style by
+//! `kit::style_the_panel`. Every size is the design's times the tab's zoom.
 
+use super::kit::{self, Mark};
 use crate::components::controls::WithHint;
-use egui::{Align2, FontId, Rect, RichText, Stroke, Vec2};
+use crate::theme::svg_icon;
+use egui::{Pos2, Rect, RichText, Sense, Vec2};
 use unluminous_word::props::{self, LineRule, Rgb};
 
 use crate::services::plugin_ui::{Look, Request};
@@ -23,6 +32,9 @@ const COLOURS: &[(&str, &str)] = &[
     ("Grey", "7F7F7F"),
 ];
 
+/// How tall the panel's head is, before the tab's zoom.
+const HEAD: f32 = 58.0;
+
 /// Draw the panel.
 pub fn show(
     ui: &mut egui::Ui,
@@ -31,40 +43,26 @@ pub fn show(
     rect: Rect,
     requests: &mut Vec<Request>,
 ) {
+    let z = kit::zoom(ui.ctx());
     ui.painter().rect_filled(rect, 0.0, look.ground(look.palette.panel));
-    ui.painter().line_segment(
-        [rect.left_top(), rect.left_bottom()],
-        Stroke::new(1.0, look.palette.divider),
-    );
+    crate::components::chrome_kit::groove(ui.painter(), rect.left_top(), rect.left_bottom());
     let level = *doc.view.panel.last().unwrap_or(&Level::Root);
-    let mut inner =
-        ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(Vec2::new(14.0, 10.0))));
-    inner.set_clip_rect(rect);
-    // The head: back, the breadcrumb, close.
-    inner.horizontal(|ui| {
-        if doc.view.panel.len() > 1 && ui.button("‹").with_hint("Back").clicked() {
-            doc.view.panel.pop();
-        }
-        let crumbs: Vec<&str> = doc.view.panel.iter().map(|l| l.name()).collect();
-        ui.label(
-            RichText::new(crumbs.join("  ›  "))
-                .color(look.palette.text_strong)
-                .size(look.font_size * 1.05),
-        );
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("✕").with_hint("Close the panel").clicked() {
-                doc.view.panel.clear();
-            }
-        });
-    });
-    inner.add_space(6.0);
+    let head = Rect::from_min_size(rect.min, Vec2::new(rect.width(), HEAD * z));
+    show_head(ui, doc, head, level);
+    let body = Rect::from_min_max(
+        Pos2::new(rect.left() + 14.0 * z, head.bottom()),
+        Pos2::new(rect.right() - 12.0 * z, rect.bottom()),
+    );
+    let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(body));
+    inner.set_clip_rect(body.intersect(ui.clip_rect()));
+    kit::style_the_panel(&mut inner);
     egui::ScrollArea::vertical()
         .id_salt(("word-panel", level as u8))
         .auto_shrink([false, false])
         .show(&mut inner, |ui| {
-            ui.spacing_mut().item_spacing.y = 6.0;
+            ui.set_width(body.width() - 10.0 * z);
             match level {
-                Level::Root => root(ui, look, doc),
+                Level::Root => root(ui, doc),
                 Level::Text => text(ui, look, doc, requests),
                 Level::Paragraph => paragraph(ui, look, doc, requests),
                 Level::Styles => styles(ui, look, doc, requests),
@@ -84,54 +82,161 @@ pub fn show(
                 Level::Symbol => super::panel_setup::symbols(ui, look, doc, requests),
                 Level::NoteOptions => super::panel_setup::note_options(ui, doc, requests),
             }
+            ui.add_space(16.0 * z);
         });
 }
 
-/// One row of the root level: the level's name over what it holds, the whole row a button.
-fn root(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc) {
-    for level in Level::ALL {
-        let height = 44.0 * look.scale();
-        let (rect, response) =
-            ui.allocate_exact_size(Vec2::new(ui.available_width(), height), egui::Sense::click());
-        if response.hovered() {
-            ui.painter().rect_filled(rect, 6.0, look.palette.selected_row);
+/// The head: a back chip when the level is deeper than the root, the level's name under its path, and a
+/// close chip.
+fn show_head(ui: &mut egui::Ui, doc: &mut Doc, head: Rect, level: Level) {
+    let z = kit::zoom(ui.ctx());
+    let ink = kit::ink();
+    let chip = 28.0 * z;
+    let middle = head.center().y;
+    let mut left = head.left() + 14.0 * z;
+    if doc.view.panel.len() > 1 {
+        let back = Rect::from_min_size(Pos2::new(left, middle - chip / 2.0), Vec2::splat(chip));
+        let back_mark = Mark::Rux(rux::Icon::ChevLeft);
+        if kit::round_chip(ui, back, "Back", "Back", back_mark, false).clicked() {
+            doc.view.panel.pop();
         }
-        ui.painter().text(
-            rect.left_top() + Vec2::new(10.0, 8.0),
-            Align2::LEFT_TOP,
-            level.name(),
-            FontId::proportional(look.font_size),
-            look.palette.text_strong,
-        );
-        ui.painter().text(
-            rect.left_bottom() + Vec2::new(10.0, -8.0),
-            Align2::LEFT_BOTTOM,
-            level.summary(),
-            FontId::proportional(look.font_size * 0.82),
-            look.palette.text_dim,
-        );
-        ui.painter().text(
-            rect.right_center() - Vec2::new(10.0, 0.0),
-            Align2::RIGHT_CENTER,
-            "›",
-            FontId::proportional(look.font_size * 1.3),
-            look.palette.text_dim,
-        );
-        response.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, level.name())
-        });
-        if response.clicked() {
-            doc.view.panel.push(*level);
+        left = back.right() + 10.0 * z;
+    }
+    let close = Rect::from_min_size(
+        Pos2::new(head.right() - 14.0 * z - chip, middle - chip / 2.0),
+        Vec2::splat(chip),
+    );
+    let cross = Mark::Rux(rux::Icon::Cross);
+    if kit::round_chip(ui, close, "Close the panel", "Close the panel", cross, false).clicked() {
+        doc.view.panel.clear();
+    }
+    let room = close.left() - 10.0 * z - left;
+    let path: Vec<&str> = doc.view.panel.iter().rev().skip(1).rev().map(|l| l.name()).collect();
+    let title_size = 15.0 * z;
+    let title = kit::words(ui, level.name(), title_size, ink.i900, room);
+    match path.is_empty() {
+        true => kit::draw_by_capitals(ui.painter(), left, middle, title, title_size, ink.i900),
+        false => {
+            let crumb_size = 10.5 * z;
+            let crumbs = kit::words(ui, &path.join("  /  "), crumb_size, ink.i400, room);
+            kit::draw_by_capitals(
+                ui.painter(),
+                left,
+                middle - 9.0 * z,
+                crumbs,
+                crumb_size,
+                ink.i400,
+            );
+            kit::draw_by_capitals(
+                ui.painter(),
+                left,
+                middle + 7.0 * z,
+                title,
+                title_size,
+                ink.i900,
+            );
         }
+    }
+    // The interface face may have no semibold, so the title is drawn a second time half a point over.
+    let named = level.name().to_owned();
+    let response = ui.interact(
+        Rect::from_min_max(Pos2::new(left, head.top()), Pos2::new(close.left(), head.bottom())),
+        ui.id().with("word-panel-title"),
+        Sense::hover(),
+    );
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, &named));
+}
+
+/// The mark each level of the root list carries.
+fn mark_of(level: Level) -> Mark {
+    match level {
+        Level::Text => Mark::Svg(&svg_icon::TYPE),
+        Level::Paragraph => Mark::Svg(&svg_icon::PILCROW),
+        Level::Styles => Mark::Svg(&svg_icon::HEADING),
+        Level::Lists => Mark::Svg(&svg_icon::LIST),
+        Level::Insert => Mark::Rux(rux::Icon::Plus),
+        Level::Page => Mark::Rux(rux::Icon::Document),
+        Level::References => Mark::Svg(&svg_icon::BOOK_OPEN),
+        Level::Review => Mark::Rux(rux::Icon::Chat),
+        _ => Mark::Rux(rux::Icon::Settings),
     }
 }
 
-pub(super) fn heading(ui: &mut egui::Ui, text: &str) {
-    ui.add_space(4.0);
-    ui.label(RichText::new(text).strong());
+/// The root level: one raised row a level, its mark in a carved disc, its name over what it holds, and a
+/// chevron. The whole row is a button.
+fn root(ui: &mut egui::Ui, doc: &mut Doc) {
+    let z = kit::zoom(ui.ctx());
+    ui.add_space(2.0 * z);
+    for level in Level::ALL {
+        if level_row(ui, level.name(), level.summary(), mark_of(*level)) {
+            doc.view.panel.push(*level);
+        }
+        ui.add_space(2.0 * z);
+    }
 }
 
-/// A row of buttons that each run an action from the shared list.
+/// A raised row that opens a level: a mark in a carved disc, a name, a line under it, and a chevron.
+/// Answers whether it was pressed.
+fn level_row(ui: &mut egui::Ui, name: &str, summary: &str, mark: Mark) -> bool {
+    let z = kit::zoom(ui.ctx());
+    let height = if summary.is_empty() { 44.0 } else { 58.0 } * z;
+    let (rect, response) =
+        ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click());
+    let rect = rect.shrink2(Vec2::new(2.0 * z, 2.0 * z));
+    let hovered = response.hovered();
+    let held = response.is_pointer_button_down_on();
+    if hovered {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    let ink = kit::ink();
+    let disc = Rect::from_center_size(
+        Pos2::new(rect.left() + 12.0 * z + 16.0 * z, rect.center().y),
+        Vec2::splat(32.0 * z),
+    );
+    kit::layer(ui, ("level-row", name), rect, |rux| {
+        match held {
+            true => kit::well_surface(rux, rect, 16.0 * z),
+            false => kit::card_surface(rux, rect, 16.0 * z),
+        }
+        kit::well_surface(rux, disc, disc.width() / 2.0);
+        let chat = rux.theme().chat;
+        let tint = if hovered { chat.sky } else { ink.i700 };
+        kit::paint_mark(rux, mark, disc.center(), 16.0 * z, tint);
+        let chevron = Pos2::new(rect.right() - 16.0 * z, rect.center().y);
+        rux.mark(
+            rux::Mark::new(rux::Icon::ChevRight, 11.0 * z),
+            chevron,
+            if hovered { chat.sky } else { ink.i400 },
+        );
+    });
+    let left = disc.right() + 12.0 * z;
+    let room = rect.right() - 34.0 * z - left;
+    let name_size = 13.0 * z;
+    let title = kit::words(ui, name, name_size, ink.i900, room);
+    match summary.is_empty() {
+        true => {
+            kit::draw_by_capitals(ui.painter(), left, rect.center().y, title, name_size, ink.i900)
+        }
+        false => {
+            let small = 11.0 * z;
+            let line = kit::words(ui, summary, small, ink.i400, room);
+            let middle = rect.center().y;
+            kit::draw_by_capitals(ui.painter(), left, middle - 8.0 * z, title, name_size, ink.i900);
+            kit::draw_by_capitals(ui.painter(), left, middle + 9.0 * z, line, small, ink.i400);
+        }
+    }
+    let named = name.to_owned();
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &named));
+    response.with_hint(if summary.is_empty() { name } else { summary }).clicked()
+}
+
+/// A section heading: small spaced capitals in the quiet ink.
+pub(super) fn heading(ui: &mut egui::Ui, text: &str) {
+    kit::section(ui, text);
+}
+
+/// A row of pills that each run an action from the shared list. A pill whose action cannot run here is
+/// drawn quiet and takes no press, so nothing in the panel answers with an error (`task-2366`).
 pub(super) fn actions_row(
     ui: &mut egui::Ui,
     doc: &mut Doc,
@@ -141,11 +246,25 @@ pub(super) fn actions_row(
     ui.horizontal_wrapped(|ui| {
         for id in ids {
             let Some(action) = crate::services::word::actions::find(id) else { continue };
-            if ui.button(action.label).clicked() {
+            let enabled = crate::services::word::actions::applies(id, doc);
+            if kit::pill(ui, action.label, false, enabled).clicked() {
                 super::run_action(doc, id, requests);
             }
         }
     });
+}
+
+/// Colours as swatches, each named. Answers the index of the one pressed.
+fn colour_swatches(ui: &mut egui::Ui, colours: &[(&str, egui::Color32)]) -> Option<usize> {
+    let named: Vec<(String, egui::Color32)> =
+        colours.iter().map(|(name, colour)| ((*name).to_owned(), *colour)).collect();
+    kit::swatches(ui, &named, None)
+}
+
+/// A colour from six hex digits.
+fn hex_colour(hex: &str) -> egui::Color32 {
+    Rgb::parse(hex)
+        .map_or(crate::theme::color::word_ink(), |c| egui::Color32::from_rgb(c.0, c.1, c.2))
 }
 
 fn text(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<Request>) {
@@ -182,7 +301,7 @@ fn text(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<Re
             doc.session.format(move |rpr| props::set_val(rpr, "w:sz", Some(&half)));
         }
         for id in ["shrink-font", "grow-font"] {
-            if ui.button(if id == "grow-font" { "A+" } else { "A−" }).clicked() {
+            if kit::button(ui, if id == "grow-font" { "Larger" } else { "Smaller" }).clicked() {
                 super::run_action(doc, id, requests);
             }
         }
@@ -217,19 +336,12 @@ fn text(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<Re
         &["superscript", "subscript", "small-caps", "all-caps", "hidden"],
     );
     heading(ui, "Colour");
-    ui.horizontal_wrapped(|ui| {
-        for (name, hex) in COLOURS {
-            let colour = Rgb::parse(hex).map_or(crate::theme::color::word_ink(), |c| {
-                egui::Color32::from_rgb(c.0, c.1, c.2)
-            });
-            let button =
-                egui::Button::new(RichText::new("■").color(colour).size(18.0)).frame(false);
-            if ui.add(button).with_hint(*name).clicked() {
-                let hex = hex.to_string();
-                doc.session.format(move |rpr| props::set_val(rpr, "w:color", Some(&hex)));
-            }
-        }
-    });
+    let colours: Vec<(&str, egui::Color32)> =
+        COLOURS.iter().map(|(name, hex)| (*name, hex_colour(hex))).collect();
+    if let Some(index) = colour_swatches(ui, &colours) {
+        let hex = COLOURS[index].1.to_string();
+        doc.session.format(move |rpr| props::set_val(rpr, "w:color", Some(&hex)));
+    }
     ui.horizontal(|ui| {
         let mut colour = run
             .color
@@ -239,28 +351,37 @@ fn text(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<Re
             let hex = format!("{:02X}{:02X}{:02X}", colour.r(), colour.g(), colour.b());
             doc.session.format(move |rpr| props::set_val(rpr, "w:color", Some(&hex)));
         }
-        if ui.button("Automatic").clicked() {
+        if kit::button(ui, "Automatic").clicked() {
             doc.session.format(|rpr| props::set_val(rpr, "w:color", Some("auto")));
         }
     });
-    ui.horizontal_wrapped(|ui| {
-        ui.label("Theme");
-        for theme in
-            ["text1", "text2", "accent1", "accent2", "accent3", "accent4", "accent5", "accent6"]
-        {
-            let rgb =
-                unluminous_word::styles::Resolver::new(&doc.session.document).theme.colour(theme);
+    kit::label(ui, "Theme colours");
+    let themes =
+        ["text1", "text2", "accent1", "accent2", "accent3", "accent4", "accent5", "accent6"];
+    let theme_rgb: Vec<Option<Rgb>> = themes
+        .iter()
+        .map(|t| unluminous_word::styles::Resolver::new(&doc.session.document).theme.colour(t))
+        .collect();
+    let theme_colours: Vec<(&str, egui::Color32)> = themes
+        .iter()
+        .zip(&theme_rgb)
+        .map(|(t, rgb)| {
             let colour = rgb.map_or(crate::theme::color::word_ink(), |c| {
                 egui::Color32::from_rgb(c.0, c.1, c.2)
             });
-            let button =
-                egui::Button::new(RichText::new("■").color(colour).size(18.0)).frame(false);
-            if ui.add(button).with_hint(theme).clicked() {
+            (*t, colour)
+        })
+        .collect();
+    let pressed = colour_swatches(ui, &theme_colours);
+    {
+        for (index, theme) in themes.iter().enumerate() {
+            let rgb = theme_rgb[index];
+            if pressed == Some(index) {
                 let hex = rgb.map_or_else(
                     || "000000".to_owned(),
                     |c| format!("{:02X}{:02X}{:02X}", c.0, c.1, c.2),
                 );
-                let theme = theme.to_owned();
+                let theme = theme.to_string();
                 doc.session.format(move |rpr| {
                     rpr.put(
                         unluminous_word::xml::El::new("w:color")
@@ -270,24 +391,19 @@ fn text(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<Re
                 });
             }
         }
-    });
+    }
     heading(ui, "Highlight");
-    ui.horizontal_wrapped(|ui| {
-        if ui.button("None").clicked() {
-            doc.session.format(|rpr| props::set_val(rpr, "w:highlight", None));
-        }
-        for (name, rgb) in props::HIGHLIGHTS.iter() {
-            let colour = egui::Color32::from_rgb(rgb.0, rgb.1, rgb.2);
-            if ui
-                .add(egui::Button::new(RichText::new("■").color(colour).size(18.0)).frame(false))
-                .with_hint(*name)
-                .clicked()
-            {
-                let name = name.to_string();
-                doc.session.format(move |rpr| props::set_val(rpr, "w:highlight", Some(&name)));
-            }
-        }
-    });
+    let highlights: Vec<(&str, egui::Color32)> = props::HIGHLIGHTS
+        .iter()
+        .map(|(name, rgb)| (*name, egui::Color32::from_rgb(rgb.0, rgb.1, rgb.2)))
+        .collect();
+    if let Some(index) = colour_swatches(ui, &highlights) {
+        let name = highlights[index].0.to_string();
+        doc.session.format(move |rpr| props::set_val(rpr, "w:highlight", Some(&name)));
+    }
+    if kit::button(ui, "No highlight").clicked() {
+        doc.session.format(|rpr| props::set_val(rpr, "w:highlight", None));
+    }
     heading(ui, "Character spacing");
     ui.horizontal(|ui| {
         let mut spacing = run.spacing;
@@ -330,12 +446,12 @@ fn text(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<Re
     });
     ui.horizontal(|ui| {
         let mut kern = run.kern.is_some();
-        if ui.checkbox(&mut kern, "Kerning").changed() {
+        if kit::check(ui, &mut kern, "Kerning").changed() {
             doc.session.format(move |rpr| props::set_val(rpr, "w:kern", kern.then_some("2")));
         }
         let ligatures = doc.session.look_at_caret_rpr_has("w14:ligatures");
         let mut on = ligatures;
-        if ui.checkbox(&mut on, "Ligatures").changed() {
+        if kit::check(ui, &mut on, "Ligatures").changed() {
             doc.session.format(move |rpr| {
                 if on {
                     rpr.put(
@@ -356,7 +472,7 @@ fn text(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<Re
             ("Emboss", "w:emboss", run.emboss),
             ("Engrave", "w:imprint", run.imprint),
         ] {
-            if ui.selectable_label(on, label).clicked() {
+            if kit::toggle(ui, on, label).clicked() {
                 doc.session
                     .format(move |rpr| props::set_on_off(rpr, element, (!on).then_some(true)));
             }
@@ -511,14 +627,14 @@ fn paragraph(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut V
         ("Page break before", &mut break_before, "w:pageBreakBefore"),
         ("Widow and orphan control", &mut widow, "w:widowControl"),
     ] {
-        if ui.checkbox(value, label).changed() {
+        if kit::check(ui, value, label).changed() {
             let on = *value;
             doc.session.format_paragraphs(move |ppr| props::set_on_off(ppr, element, Some(on)));
         }
     }
     heading(ui, "Borders and shading");
     ui.horizontal_wrapped(|ui| {
-        if ui.button("Box").clicked() {
+        if kit::button(ui, "Box").clicked() {
             doc.session.format_paragraphs(|ppr| {
                 let mut borders = unluminous_word::xml::El::new("w:pBdr");
                 for side in ["top", "left", "bottom", "right"] {
@@ -533,13 +649,13 @@ fn paragraph(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut V
                 ppr.put(borders);
             });
         }
-        if ui.button("Line below").clicked() {
+        if kit::button(ui, "Line below").clicked() {
             super::run_action(doc, "horizontal-line", requests);
         }
-        if ui.button("No border").clicked() {
+        if kit::button(ui, "No border").clicked() {
             doc.session.format_paragraphs(|ppr| ppr.remove_children("w:pBdr"));
         }
-        if ui.button("Shade").clicked() {
+        if kit::button(ui, "Shade").clicked() {
             doc.session.format_paragraphs(|ppr| {
                 ppr.put(
                     unluminous_word::xml::El::new("w:shd")
@@ -549,14 +665,14 @@ fn paragraph(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut V
                 )
             });
         }
-        if ui.button("No shading").clicked() {
+        if kit::button(ui, "No shading").clicked() {
             doc.session.format_paragraphs(|ppr| ppr.remove_children("w:shd"));
         }
     });
     ui.horizontal_wrapped(|ui| {
         ui.label("Border on");
         for side in ["top", "bottom", "left", "right", "between"] {
-            if ui.button(side).clicked() {
+            if kit::button(ui, side).clicked() {
                 let style =
                     doc.view.fields.get("border-style").cloned().unwrap_or_else(|| "single".into());
                 let size =
@@ -627,7 +743,7 @@ fn paragraph(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut V
     heading(ui, "Sort");
     ui.horizontal(|ui| {
         for (label, ascending) in [("A to Z", true), ("Z to A", false)] {
-            if ui.button(label).clicked() {
+            if kit::button(ui, label).clicked() {
                 if let Err(problem) = doc.session.sort_paragraphs(ascending) {
                     requests.push(Request::Message(problem));
                 }
@@ -654,7 +770,7 @@ fn paragraph(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut V
             ("Decimal", "decimal"),
             ("Bar", "bar"),
         ] {
-            if ui.button(label).clicked() {
+            if kit::button(ui, label).clicked() {
                 add = field.trim().parse::<f32>().ok().map(|p| (p, kind));
             }
         }
@@ -665,7 +781,7 @@ fn paragraph(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut V
         for (label, value) in
             [("None", "none"), ("....", "dot"), ("----", "hyphen"), ("____", "underscore")]
         {
-            if ui.selectable_label(leader == value, label).clicked() {
+            if kit::toggle(ui, leader == value, label).clicked() {
                 leader = value.to_owned();
             }
         }
@@ -687,19 +803,23 @@ fn paragraph(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut V
     for stop in &p.tabs {
         ui.label(format!("{:?} at {} pt", stop.kind, stop.position));
     }
-    if !p.tabs.is_empty() && ui.button("Clear tab stops").clicked() {
+    if !p.tabs.is_empty() && kit::button(ui, "Clear tab stops").clicked() {
         doc.session.format_paragraphs(|ppr| ppr.remove_children("w:tabs"));
     }
 }
 
 fn styles(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<Request>) {
+    let _ = look;
     let current = doc.session.paragraph_at_caret().style;
     heading(ui, "Paragraph styles");
     let listed = unluminous_word::styles::Resolver::new(&doc.session.document).listed("paragraph");
     for (id, name) in listed {
         ui.horizontal(|ui| {
             if ui
-                .selectable_label(current == id, RichText::new(&name).size(look.font_size))
+                .selectable_label(
+                    current == id,
+                    RichText::new(&name).size(12.5 * kit::zoom(ui.ctx())),
+                )
                 .clicked()
             {
                 if let Err(problem) = doc.session.apply_style(&id) {
@@ -739,7 +859,7 @@ fn styles(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<
         unluminous_word::styles::Resolver::new(&doc.session.document).listed("character");
     ui.horizontal_wrapped(|ui| {
         for (id, name) in characters {
-            if ui.button(&name).clicked() {
+            if kit::button(ui, &name).clicked() {
                 let _ = doc.session.apply_style(&id);
             }
         }
@@ -757,7 +877,7 @@ fn styles(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<
                 ))
                 .desired_width(160.0),
         );
-        if ui.button("Create").clicked() && !field.trim().is_empty() {
+        if kit::button(ui, "Create").clicked() && !field.trim().is_empty() {
             make = Some(field.trim().to_owned());
         }
     });
@@ -820,7 +940,7 @@ fn lists(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
     ui.horizontal(|ui| {
         ui.label("Start at");
         ui.add(egui::TextEdit::singleline(field).desired_width(50.0));
-        if ui.button("Restart here").clicked() {
+        if kit::button(ui, "Restart here").clicked() {
             restart = field.trim().parse::<i64>().ok();
         }
     });
@@ -842,7 +962,7 @@ fn insert(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
         ui.label("rows by");
         ui.add(egui::TextEdit::singleline(&mut c).desired_width(36.0));
         ui.label("columns");
-        make = ui.button("Insert").clicked();
+        make = kit::button(ui, "Insert").clicked();
         doc.view.fields.insert("rows", r);
         doc.view.fields.insert("columns", c);
     });
@@ -868,7 +988,7 @@ fn insert(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
                 ("Header row", "header-row"),
                 ("Delete table", "delete-table"),
             ] {
-                if ui.button(label).clicked() {
+                if kit::button(ui, label).clicked() {
                     if let Err(problem) = doc.session.table_op(op) {
                         requests.push(Request::Message(problem));
                     }
@@ -892,28 +1012,17 @@ fn insert(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
             ],
         );
         deeper(ui, doc, Level::TableProperties);
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Shade cell");
-            for hex in ["D9E2F3", "FBE4D5", "E2EFD9", "FFF2CC", "EDEDED"] {
-                let rgb = Rgb::parse(hex).expect("a fixed colour");
-                if ui
-                    .add(
-                        egui::Button::new(
-                            RichText::new("■")
-                                .color(egui::Color32::from_rgb(rgb.0, rgb.1, rgb.2))
-                                .size(18.0),
-                        )
-                        .frame(false),
-                    )
-                    .clicked()
-                {
-                    let _ = doc.session.shade_cell(Some(rgb));
-                }
-            }
-            if ui.button("None").clicked() {
-                let _ = doc.session.shade_cell(None);
-            }
-        });
+        heading(ui, "Shade cell");
+        let shades = ["D9E2F3", "FBE4D5", "E2EFD9", "FFF2CC", "EDEDED"];
+        let names = ["Blue", "Orange", "Green", "Gold", "Grey"];
+        let colours: Vec<(&str, egui::Color32)> =
+            names.iter().zip(shades).map(|(name, hex)| (*name, hex_colour(hex))).collect();
+        if let Some(index) = colour_swatches(ui, &colours) {
+            let _ = doc.session.shade_cell(Rgb::parse(shades[index]));
+        }
+        if kit::button(ui, "No shading").clicked() {
+            let _ = doc.session.shade_cell(None);
+        }
     }
     heading(ui, "Picture");
     actions_row(ui, doc, requests, &["picture"]);
@@ -953,7 +1062,7 @@ fn insert(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
             "h:mm am/pm",
             "M/d/yyyy h:mm am/pm",
         ] {
-            if ui.button(format).clicked() {
+            if kit::button(ui, format).clicked() {
                 let code = format!("DATE \\@ \"{format}\"");
                 let shown = unluminous_word::fields::format_date(
                     &unluminous_word::session::now_iso(),
@@ -975,7 +1084,7 @@ fn insert(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
             ("Pages", "NUMPAGES"),
             ("Words", "NUMWORDS"),
         ] {
-            if ui.button(label).clicked() {
+            if kit::button(ui, label).clicked() {
                 doc.session.insert_field(code, "");
                 let pages = doc.pages.clone();
                 doc.session.update_selected_fields(&pages);
@@ -995,7 +1104,7 @@ fn insert(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
                 ))
                 .desired_width(170.0),
         );
-        if ui.button("Insert").clicked() && !file.trim().is_empty() {
+        if kit::button(ui, "Insert").clicked() && !file.trim().is_empty() {
             from_file = Some(file.trim().to_owned());
         }
     });
@@ -1025,7 +1134,7 @@ fn insert(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
                 ))
                 .desired_width(190.0),
         );
-        if (ui.button("Link").clicked()
+        if (kit::button(ui, "Link").clicked()
             || field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
             && !link.trim().is_empty()
         {
@@ -1050,7 +1159,7 @@ fn insert(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
                 ))
                 .desired_width(190.0),
         );
-        if (ui.button("Insert").clicked()
+        if (kit::button(ui, "Insert").clicked()
             || field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
             && !code.trim().is_empty()
         {
@@ -1077,7 +1186,7 @@ fn insert(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
                 ))
                 .desired_width(150.0),
         );
-        if ui.button("Add").clicked() && !mark.trim().is_empty() {
+        if kit::button(ui, "Add").clicked() && !mark.trim().is_empty() {
             add_mark = Some(mark.trim().replace(' ', "_"));
         }
     });
@@ -1092,7 +1201,7 @@ fn insert(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
             "©", "®", "™", "§", "¶", "†", "‡", "•", "…", "—", "–", "€", "£", "¥", "°", "±", "×",
             "÷", "≠", "≤", "≥", "→", "←", "✓",
         ] {
-            if ui.button(symbol).clicked() {
+            if kit::button(ui, symbol).clicked() {
                 doc.session.type_text(symbol);
             }
         }
@@ -1108,7 +1217,7 @@ fn page(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
     heading(ui, "Size");
     ui.horizontal_wrapped(|ui| {
         for (name, _, _) in unluminous_word::ops::PAGE_SIZES {
-            if ui.button(name.to_uppercase()).clicked() {
+            if kit::button(ui, name.to_uppercase()).clicked() {
                 let _ = doc.session.set_page_size(name);
             }
         }
@@ -1121,11 +1230,16 @@ fn page(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
     let mut margins = [geometry.top, geometry.bottom, geometry.left, geometry.right];
     let mut changed = false;
     egui::Grid::new("word-margins").num_columns(4).show(ui, |ui| {
-        for (label, value) in ["Top", "Bottom", "Left", "Right"].iter().zip(margins.iter_mut()) {
+        let sides = ["Top", "Bottom", "Left", "Right"];
+        for (index, (label, value)) in sides.iter().zip(margins.iter_mut()).enumerate() {
             ui.label(*label);
             changed |= ui
                 .add(egui::DragValue::new(value).range(0.0..=400.0).speed(0.5).suffix(" pt"))
                 .changed();
+            // Two sides a row, so the grid fits the panel's width.
+            if index % 2 == 1 {
+                ui.end_row();
+            }
         }
     });
     if changed {
@@ -1149,7 +1263,7 @@ fn page(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
                     ))
                     .desired_width(170.0),
             );
-            if ui.button("Set").clicked() {
+            if kit::button(ui, "Set").clicked() {
                 set = Some(field.clone());
             }
         });
@@ -1159,22 +1273,16 @@ fn page(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
     }
     actions_row(ui, doc, requests, &["page-numbers"]);
     heading(ui, "Page colour");
-    ui.horizontal_wrapped(|ui| {
-        for hex in ["FFFFFF", "FFF8E7", "F2F2F2", "EAF1FB", "EEF7EE"] {
-            let rgb = Rgb::parse(hex).expect("a fixed colour");
-            if ui
-                .add(
-                    egui::Button::new(
-                        RichText::new("■")
-                            .color(egui::Color32::from_rgb(rgb.0, rgb.1, rgb.2))
-                            .size(18.0),
-                    )
-                    .frame(false),
-                )
-                .clicked()
-            {
-                let white = hex == "FFFFFF";
-                let hex = hex.to_owned();
+    let pages = ["FFFFFF", "FFF8E7", "F2F2F2", "EAF1FB", "EEF7EE"];
+    let names = ["White", "Cream", "Grey", "Blue", "Green"];
+    let colours: Vec<(&str, egui::Color32)> =
+        names.iter().zip(pages).map(|(name, hex)| (*name, hex_colour(hex))).collect();
+    let pressed = colour_swatches(ui, &colours);
+    {
+        for (index, hex) in pages.iter().enumerate() {
+            if pressed == Some(index) {
+                let white = *hex == "FFFFFF";
+                let hex = hex.to_string();
                 doc.session.change(
                     unluminous_word::session::Scope::Whole,
                     move |document, selection, _| {
@@ -1195,13 +1303,14 @@ fn page(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
                 );
             }
         }
-    });
+    }
 }
 
 /// A row that opens a third level.
 fn deeper(ui: &mut egui::Ui, doc: &mut Doc, level: Level) {
-    let response = ui.button(format!("{} ›", level.name()));
-    if response.clicked() {
+    let z = kit::zoom(ui.ctx());
+    ui.add_space(2.0 * z);
+    if level_row(ui, level.name(), "", mark_of(level)) {
         doc.view.panel.push(level);
     }
 }
@@ -1248,7 +1357,7 @@ fn references(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
             ("Its page number", "page"),
             ("Above or below", "above-below"),
         ] {
-            if ui.button(label).clicked() {
+            if kit::button(ui, label).clicked() {
                 if let Some((path, _)) = targets.get(target) {
                     let pages = doc.pages.clone();
                     if let Err(problem) = doc.session.insert_cross_reference(path, what, &pages) {
@@ -1310,7 +1419,7 @@ fn print(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
     ui.horizontal(|ui| {
         for (label, value) in [("All pages", "all"), ("Odd pages", "odd"), ("Even pages", "even")] {
             let chosen = doc.view.fields.get("print-parity").map_or("all", String::as_str) == value;
-            if ui.selectable_label(chosen, label).clicked() {
+            if kit::toggle(ui, chosen, label).clicked() {
                 doc.view.fields.insert("print-parity", value.to_owned());
             }
         }
@@ -1326,7 +1435,7 @@ fn print(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
         for value in ["1", "2", "4"] {
             let chosen =
                 doc.view.fields.get("print-per-sheet").map_or("1", String::as_str) == value;
-            if ui.selectable_label(chosen, value).clicked() {
+            if kit::toggle(ui, chosen, value).clicked() {
                 doc.view.fields.insert("print-per-sheet", value.to_owned());
             }
         }
@@ -1334,8 +1443,8 @@ fn print(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
     ui.add_space(6.0);
     let (mut print_now, mut preview) = (false, false);
     ui.horizontal(|ui| {
-        print_now = ui.button("Print").clicked();
-        preview = ui.button("Preview").clicked();
+        print_now = kit::button(ui, "Print").clicked();
+        preview = kit::button(ui, "Preview").clicked();
     });
     if print_now || preview {
         let result = print_options(doc).and_then(|options| {
@@ -1390,9 +1499,9 @@ fn picture(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
         ui.label("Height");
         let h = doc.view.fields.entry("picture-height").or_default();
         ui.add(egui::TextEdit::singleline(h).desired_width(48.0));
-        apply = ui.button("Set").clicked();
+        apply = kit::button(ui, "Set").clicked();
     });
-    if ui.checkbox(&mut locked, "Lock the ratio").changed() {
+    if kit::check(ui, &mut locked, "Lock the ratio").changed() {
         doc.view.fields.insert("picture-free", if locked { "0" } else { "1" }.to_owned());
     }
     if apply {
@@ -1455,7 +1564,7 @@ fn picture(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
             ui.label("Down");
             let y = doc.view.fields.entry("picture-y").or_default();
             ui.add(egui::TextEdit::singleline(y).desired_width(48.0));
-            place = ui.button("Set").clicked();
+            place = kit::button(ui, "Set").clicked();
         });
         ui.label(
             RichText::new(format!("From {} and {}", info.horizontal.0, info.vertical.0)).weak(),
@@ -1506,8 +1615,8 @@ fn picture(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
         );
     }
     ui.horizontal(|ui| {
-        set_alt = ui.button("Set alt text").clicked();
-        if ui.button("Mark as decorative").clicked() {
+        set_alt = kit::button(ui, "Set alt text").clicked();
+        if kit::button(ui, "Mark as decorative").clicked() {
             doc.view.fields.insert("picture-alt", String::new());
             set_alt = true;
         }
@@ -1536,7 +1645,7 @@ fn table_properties(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request
     ui.horizontal(|ui| {
         ui.label("Alignment");
         for (label, value) in [("Left", "left"), ("Center", "center"), ("Right", "right")] {
-            if ui.button(label).clicked() {
+            if kit::button(ui, label).clicked() {
                 set(doc, "align", &[value]);
             }
         }
@@ -1544,7 +1653,7 @@ fn table_properties(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request
     ui.horizontal(|ui| {
         ui.label("Width");
         for (label, value) in [("Auto", "auto"), ("50%", "50%"), ("75%", "75%"), ("100%", "100%")] {
-            if ui.button(label).clicked() {
+            if kit::button(ui, label).clicked() {
                 set(doc, "width", &[value]);
             }
         }
@@ -1555,20 +1664,20 @@ fn table_properties(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request
     ui.horizontal(|ui| {
         ui.label("Height (pt, 0 for auto)");
         ui.add(egui::TextEdit::singleline(height).desired_width(44.0));
-        apply_height = ui.button("Set").clicked();
+        apply_height = kit::button(ui, "Set").clicked();
     });
     if apply_height {
         let value = doc.view.fields.get("row-height").cloned().unwrap_or_default();
         set(doc, "row-height", &[value.as_str()]);
     }
     ui.horizontal(|ui| {
-        if ui.button("Repeat as header row").clicked() {
+        if kit::button(ui, "Repeat as header row").clicked() {
             set(doc, "repeat-header", &["on"]);
         }
-        if ui.button("Keep row on one page").clicked() {
+        if kit::button(ui, "Keep row on one page").clicked() {
             set(doc, "allow-break", &["off"]);
         }
-        if ui.button("Allow row to break").clicked() {
+        if kit::button(ui, "Allow row to break").clicked() {
             set(doc, "allow-break", &["on"]);
         }
     });
@@ -1576,7 +1685,7 @@ fn table_properties(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request
     ui.horizontal(|ui| {
         ui.label("Vertical alignment");
         for (label, value) in [("Top", "top"), ("Center", "center"), ("Bottom", "bottom")] {
-            if ui.button(label).clicked() {
+            if kit::button(ui, label).clicked() {
                 set(doc, "valign", &[value]);
             }
         }
@@ -1584,7 +1693,7 @@ fn table_properties(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request
     heading(ui, "Style");
     ui.horizontal_wrapped(|ui| {
         for (label, id) in [("Table Grid", "TableGrid"), ("Plain", "TableNormal")] {
-            if ui.button(label).clicked() {
+            if kit::button(ui, label).clicked() {
                 if let Err(problem) = doc.session.apply_table_style(id, None) {
                     requests.push(Request::Message(problem));
                 }
@@ -1596,7 +1705,7 @@ fn table_properties(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request
         for (label, which) in
             [("All", "all"), ("Outside", "outside"), ("Inside", "inside"), ("None", "none")]
         {
-            if ui.button(label).clicked() {
+            if kit::button(ui, label).clicked() {
                 if let Err(problem) = doc.session.set_table_borders(which, 0.5, None) {
                     requests.push(Request::Message(problem));
                 }
@@ -1610,7 +1719,7 @@ fn proofing(ui: &mut egui::Ui, doc: &mut Doc) {
     heading(ui, "AutoCorrect as you type");
     for (name, label) in unluminous_word::autocorrect::RULES {
         let Some(slot) = doc.session.autocorrect_rules.slot(name) else { continue };
-        ui.checkbox(slot, *label);
+        kit::check(ui, slot, *label);
     }
     ui.label(RichText::new("Ctrl+Z straight after a correction gives back what was typed.").weak());
 }
@@ -1631,7 +1740,7 @@ fn contents(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
         ui.label("Show levels");
         ui.add(egui::DragValue::new(&mut levels).range(1..=9));
     });
-    ui.checkbox(&mut pages, "Show page numbers");
+    kit::check(ui, &mut pages, "Show page numbers");
     ui.add_enabled(pages, egui::Checkbox::new(&mut right, "Right align page numbers"));
     ui.horizontal(|ui| {
         ui.label("Tab leader");
@@ -1641,7 +1750,7 @@ fn contents(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
             ui.radio_value(&mut leader, value.to_owned(), label);
         }
     });
-    ui.checkbox(&mut links, "Use hyperlinks instead of page numbers on the web");
+    kit::check(ui, &mut links, "Use hyperlinks instead of page numbers on the web");
     doc.view.fields.insert("toc-levels", levels.to_string());
     doc.view.fields.insert("toc-pages", pages.to_string());
     doc.view.fields.insert("toc-right", right.to_string());
@@ -1656,12 +1765,12 @@ fn contents(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
         caption: None,
     };
     ui.horizontal(|ui| {
-        if ui.button("Insert").clicked() {
+        if kit::button(ui, "Insert").clicked() {
             let laid = doc.pages.clone();
             doc.session.insert_toc_with(&options, &laid);
             requests.push(Request::TakeTheKeyboard(true));
         }
-        if ui.button("Replace the table").clicked() {
+        if kit::button(ui, "Replace the table").clicked() {
             let laid = doc.pages.clone();
             if doc.session.remove_toc() {
                 doc.session.insert_toc_with(&options, &laid);
@@ -1674,7 +1783,7 @@ fn review(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<
     deeper(ui, doc, Level::Proofing);
     heading(ui, "Spelling");
     let mut spelling = doc.view.spelling;
-    if ui.checkbox(&mut spelling, "Check spelling as you type").changed() {
+    if kit::check(ui, &mut spelling, "Check spelling as you type").changed() {
         super::run_action(doc, "check-spelling", requests);
     }
     if doc.view.spelling {
@@ -1685,14 +1794,14 @@ fn review(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<
             n => format!("{n} spelling errors"),
         };
         ui.label(RichText::new(said).color(look.palette.text_dim));
-        if count > 0 && ui.button("Next error (F7)").clicked() {
+        if count > 0 && kit::button(ui, "Next error (F7)").clicked() {
             super::run_action(doc, "spelling", requests);
             requests.push(Request::TakeTheKeyboard(true));
         }
     }
     heading(ui, "Track changes");
     let mut tracking = doc.session.tracking;
-    if ui.checkbox(&mut tracking, "Track changes").changed() {
+    if kit::check(ui, &mut tracking, "Track changes").changed() {
         doc.session.set_tracking(tracking);
     }
     actions_row(ui, doc, requests, &["accept-change", "reject-change", "accept-all", "reject-all"]);
@@ -1709,7 +1818,7 @@ fn review(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<
             .desired_rows(2)
             .desired_width(f32::INFINITY),
     );
-    if ui.button("Comment").clicked() && !field.trim().is_empty() {
+    if kit::button(ui, "Comment").clicked() && !field.trim().is_empty() {
         add = Some(field.trim().to_owned());
     }
     if let Some(text) = add {
@@ -1719,15 +1828,15 @@ fn review(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<
     let comments = doc.session.comments();
     if !comments.is_empty() {
         ui.horizontal(|ui| {
-            if ui.button("Previous").clicked() {
+            if kit::button(ui, "Previous").clicked() {
                 doc.session.go_to_comment(false);
                 doc.view.reveal = true;
             }
-            if ui.button("Next").clicked() {
+            if kit::button(ui, "Next").clicked() {
                 doc.session.go_to_comment(true);
                 doc.view.reveal = true;
             }
-            if ui.button("Delete all").clicked() {
+            if kit::button(ui, "Delete all").clicked() {
                 doc.session.delete_all_comments();
             }
         });
@@ -1743,7 +1852,7 @@ fn review(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<
                     comment["date"].as_str().unwrap_or("").get(..10).unwrap_or("")
                 ))
                 .color(look.palette.text_dim)
-                .size(look.font_size * 0.85),
+                .size(11.0 * kit::zoom(ui.ctx())),
             );
             if let Some(on) = comment["on"].as_str().filter(|s| !s.is_empty()) {
                 ui.label(RichText::new(format!("“{on}”")).italics().color(look.palette.text_dim));
@@ -1763,24 +1872,24 @@ fn review(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<
             }
             ui.horizontal(|ui| {
                 if editing {
-                    if ui.button("Save").clicked() {
+                    if kit::button(ui, "Save").clicked() {
                         let text = doc.view.fields.remove(key).unwrap_or_default();
                         doc.view.fields.remove("comment-edit-id");
                         let _ = doc.session.edit_comment(id, text.trim());
                     }
-                    if ui.button("Cancel").clicked() {
+                    if kit::button(ui, "Cancel").clicked() {
                         doc.view.fields.remove(key);
                         doc.view.fields.remove("comment-edit-id");
                     }
-                } else if ui.button("Edit").clicked() {
+                } else if kit::button(ui, "Edit").clicked() {
                     doc.view.fields.insert("comment-edit-id", id.to_string());
                     doc.view.fields.insert(key, comment["text"].as_str().unwrap_or("").to_owned());
                 }
                 let resolved = comment["resolved"].as_bool().unwrap_or(false);
-                if ui.button(if resolved { "Reopen" } else { "Resolve" }).clicked() {
+                if kit::button(ui, if resolved { "Reopen" } else { "Resolve" }).clicked() {
                     let _ = doc.session.resolve_comment(id, !resolved);
                 }
-                if ui.button("Delete").clicked() {
+                if kit::button(ui, "Delete").clicked() {
                     let _ = doc.session.delete_comment(id);
                 }
             });
@@ -1795,19 +1904,19 @@ fn review(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<
             ("No Markup", Markup::None),
             ("Original", Markup::Original),
         ] {
-            if ui.selectable_label(doc.view.markup == mode, label).clicked() {
+            if kit::toggle(ui, doc.view.markup == mode, label).clicked() {
                 doc.view.markup = mode;
                 doc.laid = 0;
             }
         }
     });
-    ui.checkbox(&mut doc.view.show_comments, "Show comments");
+    kit::check(ui, &mut doc.view.show_comments, "Show comments");
     ui.horizontal(|ui| {
-        if ui.button("Previous change").clicked() {
+        if kit::button(ui, "Previous change").clicked() {
             doc.session.go_to_change(false);
             doc.view.reveal = true;
         }
-        if ui.button("Next change").clicked() {
+        if kit::button(ui, "Next change").clicked() {
             doc.session.go_to_change(true);
             doc.view.reveal = true;
         }
@@ -1818,7 +1927,7 @@ fn review(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<
     ui.horizontal(|ui| {
         ui.add(egui::TextEdit::singleline(password).password(true).desired_width(140.0));
         let locked = doc.session.tracking_locked();
-        if ui.button(if locked { "Unlock" } else { "Lock" }).clicked() {
+        if kit::button(ui, if locked { "Unlock" } else { "Lock" }).clicked() {
             lock = Some((locked, password.clone()));
         }
     });
@@ -1839,7 +1948,7 @@ fn review(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<
     let mut set_language = None;
     ui.horizontal(|ui| {
         ui.add(egui::TextEdit::singleline(tag).desired_width(80.0));
-        if ui.button("Set for the selection").clicked() {
+        if kit::button(ui, "Set for the selection").clicked() {
             set_language = Some(tag.clone());
         }
     });
@@ -1867,7 +1976,7 @@ fn review(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<
     ] {
         ui.horizontal(|ui| {
             ui.label(format!("{label}: {count}"));
-            if count > 0 && ui.button("Remove all").clicked() {
+            if count > 0 && kit::button(ui, "Remove all").clicked() {
                 if let Err(problem) = doc.session.remove_inspected(kind) {
                     requests.push(Request::Message(problem));
                 }
@@ -1875,7 +1984,7 @@ fn review(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<
         });
     }
     heading(ui, "Word count");
-    ui.checkbox(&mut doc.view.count_notes, "Include text boxes, footnotes and endnotes");
+    kit::check(ui, &mut doc.view.count_notes, "Include text boxes, footnotes and endnotes");
     let mut stats = doc.session.stats(Some(&doc.pages));
     if doc.view.count_notes {
         let (words, characters) = doc.session.word_count_with_notes();
@@ -1912,11 +2021,11 @@ fn protect_document(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request
     let password = password.clone();
     ui.horizontal_wrapped(|ui| {
         let encrypt = if encrypted { "Stop encrypting" } else { "Encrypt with password" };
-        if ui.button(encrypt).clicked() {
+        if kit::button(ui, encrypt).clicked() {
             let value = if encrypted { "none".to_owned() } else { password.clone() };
             asked = Some(vec!["password".into(), value]);
         }
-        if ui.button("Password to modify").clicked() {
+        if kit::button(ui, "Password to modify").clicked() {
             asked = Some(vec![
                 "modify".into(),
                 if password.is_empty() { "none".into() } else { password.clone() },
@@ -1926,7 +2035,7 @@ fn protect_document(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request
     match doc.session.protection.clone() {
         Some(kind) => {
             ui.label(format!("Restrict Editing allows {kind}"));
-            if ui.button("Stop protection").clicked() {
+            if kit::button(ui, "Stop protection").clicked() {
                 asked = Some(vec!["stop".into(), password.clone()]);
             }
         }
@@ -1939,7 +2048,7 @@ fn protect_document(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request
                     ("Tracked changes", "trackedChanges"),
                     ("Filling in forms", "forms"),
                 ] {
-                    if ui.button(label).clicked() {
+                    if kit::button(ui, label).clicked() {
                         asked = Some(vec!["restrict".into(), kind.into(), password.clone()]);
                     }
                 }
@@ -2012,7 +2121,7 @@ fn document(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
     ui.horizontal(|ui| {
         ui.label("Percent");
         set = ui.add(egui::TextEdit::singleline(&mut percent).desired_width(48.0)).lost_focus();
-        set |= ui.button("Set").clicked();
+        set |= kit::button(ui, "Set").clicked();
     });
     doc.view.fields.insert("zoom", percent.clone());
     if set {
@@ -2023,7 +2132,7 @@ fn document(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
     }
     ui.horizontal_wrapped(|ui| {
         for value in [50.0, 75.0, 100.0, 150.0, 200.0] {
-            if ui.button(format!("{value}%")).clicked() {
+            if kit::button(ui, format!("{value}%")).clicked() {
                 doc.view.zoom = value / 100.0;
                 doc.view.multiple = false;
                 doc.view.fields.remove("zoom");

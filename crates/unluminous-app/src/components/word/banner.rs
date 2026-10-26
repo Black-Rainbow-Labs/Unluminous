@@ -4,6 +4,7 @@
 
 use egui::{Rect, Vec2};
 
+use super::kit;
 use crate::components::controls::TextBoxes;
 use crate::services::plugin_ui::{Look, Request};
 use crate::services::word::Doc;
@@ -26,11 +27,13 @@ pub fn show(
 ) {
     ui.painter().rect_filled(rect, 0.0, look.palette.board_well);
     let inner = rect.shrink2(Vec2::new(12.0, 4.0));
+    crate::components::chrome_kit::groove(ui.painter(), rect.left_bottom(), rect.right_bottom());
     ui.scope_builder(
         egui::UiBuilder::new()
             .max_rect(inner)
             .layout(egui::Layout::left_to_right(egui::Align::Center)),
         |ui| {
+            kit::style_the_panel(ui);
             if let Some((_, when)) = doc.timing.offer.clone() {
                 ui.label(
                     egui::RichText::new(format!(
@@ -38,14 +41,7 @@ pub fn show(
                     ))
                     .color(look.palette.text),
                 );
-                let restore = ui.button("Restore");
-                restore.widget_info(|| {
-                    egui::WidgetInfo::labeled(
-                        egui::WidgetType::Button,
-                        true,
-                        "Restore the recovered copy",
-                    )
-                });
+                let restore = kit::named_pill(ui, "Restore", "Restore the recovered copy");
                 if restore.clicked() {
                     match doc.restore_recovery() {
                         Ok(()) => requests.push(Request::Message(
@@ -54,14 +50,7 @@ pub fn show(
                         Err(problem) => requests.push(Request::Message(problem)),
                     }
                 }
-                let discard = ui.button("Discard");
-                discard.widget_info(|| {
-                    egui::WidgetInfo::labeled(
-                        egui::WidgetType::Button,
-                        true,
-                        "Discard the recovered copy",
-                    )
-                });
+                let discard = kit::named_pill(ui, "Discard", "Discard the recovered copy");
                 if discard.clicked() {
                     doc.discard_recovery();
                 }
@@ -82,10 +71,7 @@ pub fn show(
                 egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Password to modify")
             });
             let entered = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            let unlock = ui.button("Unlock");
-            unlock.widget_info(|| {
-                egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Unlock for editing")
-            });
+            let unlock = kit::named_pill(ui, "Unlock", "Unlock for editing");
             if unlock.clicked() || entered {
                 let password = doc.view.fields.remove("unlock-password").unwrap_or_default();
                 match doc.session.unlock_for_editing(&password) {

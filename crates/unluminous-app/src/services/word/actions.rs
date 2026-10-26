@@ -1091,6 +1091,26 @@ pub const ACTIONS: &[Action] = &[
         },
     },
     Action {
+        id: "word-count",
+        label: "Word count",
+        level: Level::Review,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Review];
+            done("")
+        },
+    },
+    Action {
+        id: "go-to",
+        label: "Go to page, heading or bookmark (Ctrl+G)",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.goto = Some(String::new());
+            done("")
+        },
+    },
+    Action {
         id: "spelling",
         label: "Spelling (F7)",
         level: Level::Review,
@@ -2218,8 +2238,55 @@ pub fn applies(id: &str, doc: &Doc) -> bool {
         "update-table" | "remove-table-of-contents" => {
             !unluminous_word::references::find_tocs(&doc.session.document).is_empty()
         }
+        // Promote and demote, and Outline view's tools: offered only where they would do something, so
+        // none of them answers with an error (`task-2366`).
+        "promote-heading" => doc.session.promoted_style(true).is_ok(),
+        "demote-heading" => doc.session.promoted_style(false).is_ok(),
+        "outline-to-heading-1" => {
+            in_a_paragraph(doc) && doc.session.heading_level_at_caret() != Some(1)
+        }
+        "outline-to-body" => doc.session.heading_level_at_caret().is_some(),
+        "move-paragraph-up" => doc.session.paragraph_can_move(true).is_ok(),
+        "move-paragraph-down" => doc.session.paragraph_can_move(false).is_ok(),
+        "outline-move-up" | "outline-move-down" => {
+            let up = id == "outline-move-up";
+            match doc.view.outline_collapsed.contains(&head.path) {
+                true => doc.session.section_bounds(up).is_ok(),
+                false => doc.session.paragraph_can_move(up).is_ok(),
+            }
+        }
+        "outline-expand" => doc.view.outline_collapsed.contains(&head.path),
+        "outline-collapse" => {
+            !doc.view.outline_collapsed.contains(&head.path) && heading_has_children(doc)
+        }
         _ => true,
     }
+}
+
+/// Whether the caret is in a paragraph of the body, which is where Outline view's tools work.
+fn in_a_paragraph(doc: &Doc) -> bool {
+    let head = &doc.session.selection.head;
+    unluminous_word::position::paragraph(&doc.session.document, &head.story, &head.path).is_some()
+}
+
+/// Whether the heading at the caret has anything under it before the next heading of its level or higher,
+/// which is what Collapse folds.
+fn heading_has_children(doc: &Doc) -> bool {
+    use unluminous_word::model::Block;
+    let head = &doc.session.selection.head;
+    if head.story != unluminous_word::position::StoryId::Body || head.path.len() != 1 {
+        return false;
+    }
+    let resolver = unluminous_word::styles::Resolver::new(&doc.session.document);
+    let level = |block: &Block| match block {
+        Block::Paragraph(p) => {
+            resolver.paragraph(&p.props, None).outline_level.map_or(10, |l| l + 1)
+        }
+        _ => 10,
+    };
+    let index = head.path[0] as usize;
+    let Some(this) = doc.session.document.body.get(index).map(level) else { return false };
+    this < 10 && doc.session.document.body.get(index + 1).is_some_and(|next| level(next) > this)
 }
 
 /// Whether F4 repeats an action: one that formats the selection or puts something in, not one that

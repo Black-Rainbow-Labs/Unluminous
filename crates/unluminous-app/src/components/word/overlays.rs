@@ -3,15 +3,21 @@
 //!
 //! The `/` menu and the search are both lists of the same `actions::ACTIONS`, filtered by what has been
 //! typed; Up and Down choose, Enter runs, Escape closes.
+//!
+//! Every one of them is the window's menu card (`controls::menu_frame`) with the design's rows, wells, pills
+//! and round chips from `kit`, at the design's sizes times the tab's zoom (`task-2366`). No mark is a
+//! character: an arrow, a cross or a link drawn as a character is an empty box in a face without it.
 
-use crate::components::controls::WithHint;
-use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Vec2};
+use egui::{Pos2, Rect, Sense, Stroke, Vec2};
 
+use super::kit;
+use crate::components::controls::{self, TextBoxes, WithHint};
 use crate::services::plugin_ui::{Look, Request};
 use crate::services::word::{actions, Doc, Level};
+use crate::theme::svg_icon;
 
 /// How many rows a menu shows.
-const ROWS: usize = 9;
+const ROWS: usize = 10;
 
 /// The keys the open menu takes before the document does. Answers whether it took this one.
 pub fn takes_key(doc: &mut Doc, key: egui::Key, requests: &mut Vec<Request>) -> bool {
@@ -118,8 +124,8 @@ pub fn show(
     }
 }
 
-/// Go To (Ctrl+G): a box at the top of the pages for `page 3`, `section 2`, `line 40`, `bookmark Intro`,
-/// `footnote 1`, `comment 2`, `heading 3`, `table 1` or `picture 2`. A number alone is a page.
+/// Go To (Ctrl+G): a card at the top of the pages with one field for `page 3`, `section 2`, `line 40`,
+/// `bookmark Intro`, `footnote 1`, `comment 2`, `heading 3`, `table 1` or `picture 2`. A number alone is a page.
 fn go_to_box(
     ui: &mut egui::Ui,
     look: &Look<'_>,
@@ -127,43 +133,59 @@ fn go_to_box(
     area: Rect,
     requests: &mut Vec<Request>,
 ) {
-    let width = 320.0 * look.scale();
-    let at = Pos2::new(area.center().x - width / 2.0, area.top() + 10.0);
+    let _ = look;
+    let z = kit::zoom(ui.ctx());
+    let width = (380.0 * z).min(area.width() - 24.0);
+    let at = Pos2::new(area.center().x - width / 2.0, area.top() + 12.0 * z);
     let mut go = None;
     let mut close = false;
-    egui::Area::new(ui.id().with("word-goto")).order(egui::Order::Foreground).fixed_pos(at).show(
-        ui.ctx(),
-        |ui| {
-            egui::Frame::popup(ui.style()).show(ui, |ui| {
-                ui.set_width(width - 16.0);
+    let shown = egui::Area::new(ui.id().with("word-goto"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(at)
+        .show(ui.ctx(), |ui| {
+            controls::menu_frame(ui).show(ui, |ui| {
                 let Some(text) = doc.view.goto.as_mut() else { return };
-                ui.horizontal(|ui| {
-                    ui.label("Go to");
-                    let field = ui.add(
-                        egui::TextEdit::singleline(text)
-                            .hint_text(crate::components::controls::placeholder(
-                                "page 3, heading 2, bookmark Intro",
-                                &egui::TextStyle::Body.resolve(ui.style()),
-                                crate::theme::color::text_faint(),
-                            ))
-                            .desired_width(width * 0.6),
-                    );
-                    if text.is_empty() && !field.has_focus() {
-                        field.request_focus();
-                    }
-                    if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                        go = Some(text.clone());
-                    }
-                    if ui.input(|i| i.key_pressed(egui::Key::Escape))
-                        || ui.button("✕").with_hint("Close").clicked()
-                    {
-                        close = true;
-                    }
-                });
+                let (row, _) =
+                    ui.allocate_exact_size(Vec2::new(width - 16.0, 36.0 * z), Sense::hover());
+                let chip = 28.0 * z;
+                let well = Rect::from_min_max(
+                    row.min,
+                    Pos2::new(row.right() - chip - 8.0 * z, row.bottom()),
+                );
+                let field = search_field(
+                    ui,
+                    well,
+                    "Go to",
+                    text,
+                    "Go to page 3, heading 2, bookmark Intro",
+                    Some(kit::Mark::Rux(rux::Icon::ArrowRight)),
+                );
+                if text.is_empty() && !field.has_focus() {
+                    field.request_focus();
+                }
+                if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    go = Some(text.clone());
+                }
+                let cross = Rect::from_center_size(
+                    Pos2::new(row.right() - chip / 2.0, row.center().y),
+                    Vec2::splat(chip),
+                );
+                if kit::round_chip(
+                    ui,
+                    cross,
+                    "Close Go To",
+                    "Close",
+                    kit::Mark::Rux(rux::Icon::Cross),
+                    false,
+                )
+                .clicked()
+                    || ui.input(|i| i.key_pressed(egui::Key::Escape))
+                {
+                    close = true;
+                }
             });
-        },
-    );
-    remember_popup(ui, Rect::from_min_size(at, Vec2::new(width, 40.0)));
+        });
+    remember_popup(ui, shown.response.rect);
     if let Some(text) = go {
         let mut words = text.split_whitespace();
         let first = words.next().unwrap_or("page").to_owned();
@@ -184,6 +206,41 @@ fn go_to_box(
         doc.view.goto = None;
         requests.push(Request::TakeTheKeyboard(true));
     }
+}
+
+/// A field to type in: a carved well with round ends, an optional mark at its left, and the words of
+/// `hint` in the quiet ink while it is empty.
+fn search_field(
+    ui: &mut egui::Ui,
+    well: Rect,
+    name: &str,
+    text: &mut String,
+    hint: &str,
+    mark: Option<kit::Mark>,
+) -> egui::Response {
+    let z = kit::zoom(ui.ctx());
+    let ink = kit::ink();
+    kit::layer(ui, ("field", name), well, |rux| {
+        kit::well_surface(rux, well, well.height() / 2.0);
+        if let Some(mark) = mark {
+            let at = Pos2::new(well.left() + 17.0 * z, well.center().y);
+            kit::paint_mark(rux, mark, at, 14.0 * z, ink.i400);
+        }
+    });
+    let left = if mark.is_some() { 34.0 } else { 16.0 } * z;
+    let font = egui::FontId::proportional(13.0 * z);
+    // One row of the font, in the middle of the well, so the words and the hint are centred in it.
+    let row = ui.fonts_mut(|f| f.row_height(&font));
+    let inside = controls::field_text_rect_at(well, left, row);
+    ui.text_box_at(
+        inside,
+        egui::TextEdit::singleline(text)
+            .id(ui.id().with(("word-field", name)))
+            .frame(egui::Frame::NONE)
+            .font(font.clone())
+            .text_color(ink.i900)
+            .hint_text(controls::placeholder(hint, &font, ink.i400)),
+    )
 }
 
 /// Note that a popup covers `card` this frame, so the page under it does not take a press meant for one
@@ -218,86 +275,179 @@ struct Menu<'a> {
     width: f32,
     found: &'a [&'static actions::Action],
     chosen: usize,
-    header: Option<&'a str>,
+    /// What was typed into the command search, with its well at the top of the card. `None` for the `/`
+    /// menu, whose words are typed into the page.
+    query: Option<&'a str>,
 }
 
-/// A list of commands in a card, the chosen one lit. Answers the one clicked.
-fn list(ui: &mut egui::Ui, look: &Look<'_>, menu: Menu<'_>) -> Option<&'static str> {
-    let Menu { name, at, width, found, chosen, header } = menu;
-    let scale = look.scale();
-    let row = 26.0 * scale;
-    let head = if header.is_some() { 34.0 * scale } else { 0.0 };
-    let shown = found.len().min(ROWS);
+/// A list of commands in the window's menu card, the chosen row carved in as the row under the pointer
+/// is. Answers the one clicked.
+fn list(ui: &mut egui::Ui, menu: Menu<'_>) -> Option<&'static str> {
+    let Menu { name, at, width, found, chosen, query } = menu;
+    let z = kit::zoom(ui.ctx());
+    let row = controls::MENU_ROW * z;
     let first = chosen.saturating_sub(ROWS - 1);
-    let height = head + row * shown.max(1) as f32 + 8.0 * scale;
-    let card = Rect::from_min_size(at, Vec2::new(width, height));
-    remember_popup(ui, card);
-    let layer = egui::LayerId::new(egui::Order::Foreground, ui.id().with(("word-list", name)));
-    let painter = ui.ctx().layer_painter(layer);
-    painter.rect_filled(card.translate(Vec2::new(0.0, 3.0)), 8.0, Color32::from_black_alpha(80)); // any ground: the shadow under a card
-    painter.rect(
-        card,
-        8.0,
-        look.palette.menu,
-        Stroke::new(1.0, look.palette.control_border),
-        egui::StrokeKind::Inside,
-    );
-    if let Some(header) = header {
-        painter.text(
-            card.left_top() + Vec2::new(12.0, head / 2.0),
-            Align2::LEFT_CENTER,
-            header,
-            FontId::proportional(look.font_size),
-            look.palette.text,
-        );
-        painter.line_segment(
-            [Pos2::new(card.left(), card.top() + head), Pos2::new(card.right(), card.top() + head)],
-            Stroke::new(1.0, look.palette.divider),
-        );
-    }
-    if found.is_empty() {
-        painter.text(
-            card.left_top() + Vec2::new(12.0, head + row / 2.0 + 4.0),
-            Align2::LEFT_CENTER,
-            "No command has that name",
-            FontId::proportional(look.font_size * 0.95),
-            look.palette.text_dim,
-        );
-        return None;
-    }
+    let inner = width - 16.0;
+    let ink = kit::ink();
     let mut clicked = None;
-    for (offset, action) in found.iter().skip(first).take(ROWS).enumerate() {
-        let index = first + offset;
-        let r = Rect::from_min_size(
-            card.left_top() + Vec2::new(4.0, head + 4.0 * scale + row * offset as f32),
-            Vec2::new(width - 8.0, row),
-        );
-        let response = ui.interact(r, ui.id().with(("word-list-row", name, index)), Sense::click());
-        if index == chosen || response.hovered() {
-            painter.rect_filled(r, 5.0, look.palette.selected_row);
-        }
-        painter.text(
-            r.left_center() + Vec2::new(8.0, 0.0),
-            Align2::LEFT_CENTER,
-            action.label,
-            FontId::proportional(look.font_size),
-            look.palette.text_strong,
-        );
-        painter.text(
-            r.right_center() - Vec2::new(8.0, 0.0),
-            Align2::RIGHT_CENTER,
-            action.level.name(),
-            FontId::proportional(look.font_size * 0.8),
-            look.palette.text_faint,
-        );
-        response.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, action.label)
+    let shown = egui::Area::new(ui.id().with(("word-list", name)))
+        .order(egui::Order::Foreground)
+        .fixed_pos(at)
+        .show(ui.ctx(), |ui| {
+            controls::menu_frame(ui).show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 0.0;
+                if let Some(query) = query {
+                    search_display(ui, inner, query);
+                    ui.add_space(6.0 * z);
+                }
+                if found.is_empty() {
+                    let (rect, _) = ui.allocate_exact_size(Vec2::new(inner, row), Sense::hover());
+                    let size = 12.5 * z;
+                    let galley = kit::words(ui, "No command has that name", size, ink.i400, inner);
+                    let left = rect.left() + 12.0 * z;
+                    kit::draw_by_capitals(
+                        ui.painter(),
+                        left,
+                        rect.center().y,
+                        galley,
+                        size,
+                        ink.i400,
+                    );
+                }
+                for (offset, action) in found.iter().skip(first).take(ROWS).enumerate() {
+                    let index = first + offset;
+                    if command_row(ui, inner, action, index == chosen, (name, index)) {
+                        clicked = Some(action.id);
+                    }
+                }
+                if query.is_some() {
+                    ui.add_space(6.0 * z);
+                    keys_line(ui, inner);
+                }
+            });
         });
-        if response.clicked() {
-            clicked = Some(action.id);
+    remember_popup(ui, shown.response.rect);
+    clicked
+}
+
+/// The command search's well: the search mark, what was typed and a caret, or the hint while nothing is.
+fn search_display(ui: &mut egui::Ui, width: f32, query: &str) {
+    let z = kit::zoom(ui.ctx());
+    let ink = kit::ink();
+    let (well, response) = ui.allocate_exact_size(Vec2::new(width, 38.0 * z), Sense::hover());
+    kit::layer(ui, "command-search-well", well, |rux| {
+        kit::well_surface(rux, well, well.height() / 2.0);
+        rux.mark(
+            rux::Mark::new(rux::Icon::Search, 15.0 * z),
+            Pos2::new(well.left() + 19.0 * z, well.center().y),
+            ink.i400,
+        );
+    });
+    let size = 13.5 * z;
+    let left = well.left() + 38.0 * z;
+    let room = well.right() - 16.0 * z - left;
+    let (words, colour) = match query.is_empty() {
+        true => ("Find a command", ink.i400),
+        false => (query, ink.i900),
+    };
+    let galley = kit::words(ui, words, size, colour, room);
+    let end = left + if query.is_empty() { 0.0 } else { galley.size().x };
+    kit::draw_by_capitals(ui.painter(), left, well.center().y, galley, size, colour);
+    // A caret that blinks, as a field's does, so the well reads as a place to type.
+    let time = ui.input(|i| i.time);
+    if (time * 1.6).fract() < 0.6 {
+        let middle = well.center().y;
+        ui.painter().line_segment(
+            [Pos2::new(end + 1.5, middle - 8.0 * z), Pos2::new(end + 1.5, middle + 8.0 * z)],
+            Stroke::new(1.5 * z, kit::chat().sky),
+        );
+    }
+    ui.ctx().request_repaint_after(std::time::Duration::from_millis(300));
+    response.widget_info(|| {
+        let mut info =
+            egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Find a command");
+        info.current_text_value = Some(query.to_owned());
+        info
+    });
+}
+
+/// One command in the list: its name, and the panel level it belongs to at the right in the quiet ink.
+fn command_row(
+    ui: &mut egui::Ui,
+    width: f32,
+    action: &actions::Action,
+    chosen: bool,
+    salt: (&str, usize),
+) -> bool {
+    let z = kit::zoom(ui.ctx());
+    let (rect, _) =
+        ui.allocate_exact_size(Vec2::new(width, controls::MENU_ROW * z), Sense::hover());
+    let response = ui.interact(rect, ui.id().with(("word-list-row", salt)), Sense::click());
+    let chat = kit::chat();
+    let ink = kit::ink();
+    if chosen || response.hovered() {
+        let painter = ui.painter();
+        let corner = egui::CornerRadius::same((10.0 * z).round() as u8);
+        painter.rect_filled(rect, corner, chat.well);
+        painter.rect_stroke(
+            rect.shrink(0.5),
+            corner,
+            Stroke::new(1.0, chat.dark.gamma_multiply(0.55)),
+            egui::StrokeKind::Inside,
+        );
+    }
+    let quiet = 11.5 * z;
+    let level = kit::words(ui, action.level.name(), quiet, ink.i400, width * 0.4);
+    let level_left = rect.right() - 12.0 * z - level.size().x;
+    kit::draw_by_capitals(ui.painter(), level_left, rect.center().y, level, quiet, ink.i400);
+    let size = 12.5 * z;
+    let room = level_left - rect.left() - 24.0 * z;
+    let label = kit::words(ui, action.label, size, ink.i900, room);
+    let left = rect.left() + 12.0 * z;
+    kit::draw_by_capitals(ui.painter(), left, rect.center().y, label, size, ink.i900);
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    let named = action.label;
+    response
+        .widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, chosen, named));
+    response.clicked()
+}
+
+/// The line under the command search naming its keys, each in a small carved cap.
+fn keys_line(ui: &mut egui::Ui, width: f32) {
+    let z = kit::zoom(ui.ctx());
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 24.0 * z), Sense::hover());
+    let ink = kit::ink();
+    let chat = kit::chat();
+    let size = 11.0 * z;
+    let middle = rect.center().y;
+    let mut x = rect.left() + 10.0 * z;
+    for (key, what) in [("Up", ""), ("Down", "to choose"), ("Enter", "to run"), ("Esc", "to close")]
+    {
+        let cap = kit::words(ui, key, 10.5 * z, ink.i700, 80.0 * z);
+        let cap_rect = Rect::from_min_size(
+            Pos2::new(x, middle - 9.0 * z),
+            Vec2::new(cap.size().x + 12.0 * z, 18.0 * z),
+        );
+        let corner = egui::CornerRadius::same((6.0 * z).round() as u8);
+        let painter = ui.painter();
+        painter.rect_filled(cap_rect, corner, chat.well);
+        painter.rect_stroke(
+            cap_rect,
+            corner,
+            Stroke::new(1.0, chat.dark.gamma_multiply(0.6)),
+            egui::StrokeKind::Inside,
+        );
+        kit::draw_by_capitals(painter, cap_rect.left() + 6.0 * z, middle, cap, 10.5 * z, ink.i700);
+        x = cap_rect.right() + 5.0 * z;
+        if !what.is_empty() {
+            let words = kit::words(ui, what, size, ink.i400, 120.0 * z);
+            let next = x + words.size().x + 14.0 * z;
+            kit::draw_by_capitals(ui.painter(), x, middle, words, size, ink.i400);
+            x = next;
         }
     }
-    clicked
 }
 
 /// `Ctrl+/`: every command, searched by name.
@@ -308,6 +458,7 @@ fn palette(
     area: Rect,
     requests: &mut Vec<Request>,
 ) {
+    let _ = look;
     // Typed letters filter; keys::type_text leaves them alone while the search is open.
     let typed: String = ui.input(|i| {
         i.events
@@ -328,15 +479,11 @@ fn palette(
         .into_iter()
         .filter(|a| actions::applies(a.id, doc))
         .collect::<Vec<_>>();
-    let width = (420.0 * look.scale()).min(area.width() - 32.0);
-    let at = Pos2::new(area.center().x - width / 2.0, area.top() + 24.0);
-    let header =
-        if query.is_empty() { "Type to find a command…".to_owned() } else { query.clone() };
-    if let Some(id) = list(
-        ui,
-        look,
-        Menu { name: "palette", at, width, found: &found, chosen, header: Some(&header) },
-    ) {
+    let z = kit::zoom(ui.ctx());
+    let width = (460.0 * z).min(area.width() - 32.0);
+    let at = Pos2::new(area.center().x - width / 2.0, area.top() + 12.0 * z);
+    let menu = Menu { name: "palette", at, width, found: &found, chosen, query: Some(&query) };
+    if let Some(id) = list(ui, menu) {
         doc.view.palette = None;
         super::run_action(doc, id, requests);
     }
@@ -350,6 +497,7 @@ fn slash(
     area: Rect,
     requests: &mut Vec<Request>,
 ) {
+    let _ = look;
     let Some((at, query, chosen)) = doc.view.slash.clone() else { return };
     // The menu closes when the caret leaves the paragraph it was opened in.
     if doc.session.selection.head.path != at.path {
@@ -360,17 +508,16 @@ fn slash(
         .into_iter()
         .filter(|a| actions::applies(a.id, doc))
         .collect::<Vec<_>>();
+    let z = kit::zoom(ui.ctx());
     let place = caret_point(doc, area).unwrap_or(area.center());
-    let width = 260.0 * look.scale();
+    let width = 290.0 * z;
+    let tall = (ROWS as f32 * controls::MENU_ROW + 24.0) * z;
     let place = Pos2::new(
         place.x.min(area.right() - width - 8.0),
-        (place.y + 6.0).min(area.bottom() - 260.0),
+        (place.y + 6.0).min(area.bottom() - tall),
     );
-    if let Some(id) = list(
-        ui,
-        look,
-        Menu { name: "slash", at: place, width, found: &found, chosen, header: None },
-    ) {
+    let menu = Menu { name: "slash", at: place, width, found: &found, chosen, query: None };
+    if let Some(id) = list(ui, menu) {
         run_slash(doc, &at, &query, id, requests);
     }
 }
@@ -391,7 +538,7 @@ fn caret_point(doc: &Doc, area: Rect) -> Option<Pos2> {
 }
 
 /// Paste Options under the caret straight after a paste: Keep Source Formatting, Merge Formatting and
-/// Keep Text Only, as Word offers them. It goes away once the caret moves.
+/// Keep Text Only, as Word offers them, in the window's menu card. It goes away once the caret moves.
 fn paste_options(
     ui: &mut egui::Ui,
     look: &Look<'_>,
@@ -400,56 +547,36 @@ fn paste_options(
     requests: &mut Vec<Request>,
 ) {
     use unluminous_word::clipboard::PasteAs;
+    let _ = look;
     let Some(at) = caret_point(doc, area) else { return };
+    let z = kit::zoom(ui.ctx());
     let current = doc.view.pasted.as_ref().map_or(PasteAs::Source, |p| p.how);
-    let scale = look.scale();
     let choices = [
         (PasteAs::Source, "Keep Source Formatting"),
         (PasteAs::Merge, "Merge Formatting"),
         (PasteAs::Text, "Keep Text Only"),
     ];
-    let row = 24.0 * scale;
-    let width = 190.0 * scale;
-    let card = Rect::from_min_size(
-        Pos2::new(at.x.clamp(area.left() + 4.0, area.right() - width - 4.0), at.y + 6.0),
-        Vec2::new(width, row * choices.len() as f32 + 8.0),
-    );
-    if card.top() > area.bottom() {
+    let width = 230.0 * z;
+    let place = Pos2::new(at.x.clamp(area.left() + 4.0, area.right() - width - 4.0), at.y + 6.0);
+    if place.y > area.bottom() {
         return;
     }
-    remember_popup(ui, card);
-    let layer = egui::LayerId::new(egui::Order::Foreground, ui.id().with("word-paste-options"));
-    let painter = ui.ctx().layer_painter(layer);
-    painter.rect_filled(card.translate(Vec2::new(0.0, 2.0)), 8.0, Color32::from_black_alpha(70)); // any ground: the shadow under a card
-    painter.rect(
-        card,
-        8.0,
-        look.palette.menu,
-        Stroke::new(1.0, look.palette.control_border),
-        egui::StrokeKind::Inside,
-    );
     let mut chosen = None;
-    for (n, (how, label)) in choices.iter().enumerate() {
-        let r = Rect::from_min_size(
-            card.left_top() + Vec2::new(4.0, 4.0 + row * n as f32),
-            Vec2::new(width - 8.0, row),
-        );
-        let response = ui.interact(r, ui.id().with(("word-paste-option", n)), Sense::click());
-        if *how == current || response.hovered() {
-            painter.rect_filled(r, 5.0, look.palette.selected_row);
-        }
-        painter.text(
-            r.left_center() + Vec2::new(8.0, 0.0),
-            Align2::LEFT_CENTER,
-            *label,
-            FontId::proportional(look.font_size * 0.9),
-            look.palette.text_strong,
-        );
-        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, *label));
-        if response.clicked() {
-            chosen = Some(*how);
-        }
-    }
+    let shown = egui::Area::new(ui.id().with("word-paste-options"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(place)
+        .show(ui.ctx(), |ui| {
+            controls::menu_frame(ui).show(ui, |ui| {
+                ui.set_width(width - 16.0);
+                ui.spacing_mut().item_spacing.y = 0.0;
+                for (how, label) in choices {
+                    if controls::menu_row(ui, label, "", true, how == current, 0.0) {
+                        chosen = Some(how);
+                    }
+                }
+            });
+        });
+    remember_popup(ui, shown.response.rect);
     if let Some(how) = chosen {
         if let Err(problem) = crate::services::word::paste_again(doc, how) {
             requests.push(Request::Message(problem));
@@ -458,7 +585,8 @@ fn paste_options(
     }
 }
 
-/// The small bar over a selection: bold, italic, underline, highlight, link, comment.
+/// The small card over a selection: bold, italic, underline, highlight, link and comment, as one carved
+/// track of marks, the ones that are on raised out of it.
 fn bubble(
     ui: &mut egui::Ui,
     look: &Look<'_>,
@@ -466,100 +594,124 @@ fn bubble(
     area: Rect,
     requests: &mut Vec<Request>,
 ) {
+    let _ = look;
     let start = doc.session.selection.ordered().0.clone();
     let Some((index, line)) = doc.pages.find(&start) else { return };
     let (tops, _) = super::page_view::page_tops(doc, area.width());
     let zoom = doc.view.zoom;
     let origin = area.min + Vec2::new(tops[index].x, tops[index].y - doc.view.scroll);
-    let scale = look.scale();
-    let buttons: [(&str, &str); 6] = [
-        ("bold", "B"),
-        ("italic", "I"),
-        ("underline", "U"),
-        ("highlight", "▍"),
-        ("link", "🔗"),
-        ("comment", "💬"),
+    let z = kit::zoom(ui.ctx());
+    let run = doc.session.look_at_caret();
+    let buttons: [(&str, &str, kit::Mark, bool); 6] = [
+        ("bold", "Bold", kit::Mark::Svg(&svg_icon::BOLD), run.bold),
+        ("italic", "Italic", kit::Mark::Svg(&svg_icon::ITALIC), run.italic),
+        (
+            "underline",
+            "Underline",
+            kit::Mark::Svg(&svg_icon::UNDERLINE),
+            run.underline != unluminous_word::props::Underline::None,
+        ),
+        ("highlight", "Highlight", kit::Mark::Svg(&svg_icon::HIGHLIGHTER), run.highlight.is_some()),
+        ("link", "Link (Ctrl+K)", kit::Mark::Svg(&svg_icon::LINK), false),
+        ("comment", "Comment", kit::Mark::Rux(rux::Icon::Chat), false),
     ];
-    let size = 26.0 * scale;
-    let width = size * buttons.len() as f32 + 8.0;
+    let option = Vec2::new(32.0 * z, 28.0 * z);
+    let track_width = buttons.len() as f32 * (option.x + 2.0 * z) + 4.0 * z;
+    let card = Vec2::new(track_width + 16.0, option.y + 6.0 * z + 16.0);
     let x = (origin.x + line.x_of(start.offset) * zoom)
-        .clamp(area.left() + 4.0, area.right() - width - 4.0);
-    let y = origin.y + line.top * zoom - size - 10.0;
+        .clamp(area.left() + 4.0, area.right() - card.x - 4.0);
+    let y = origin.y + line.top * zoom - card.y - 8.0 * z;
     if y < area.top() || y > area.bottom() {
         return;
     }
-    let card = Rect::from_min_size(Pos2::new(x, y), Vec2::new(width, size + 6.0));
-    remember_popup(ui, card);
-    let layer = egui::LayerId::new(egui::Order::Foreground, ui.id().with("word-bubble"));
-    let painter = ui.ctx().layer_painter(layer);
-    painter.rect_filled(card.translate(Vec2::new(0.0, 2.0)), 8.0, Color32::from_black_alpha(70)); // any ground: the shadow under a card
-    painter.rect(
-        card,
-        8.0,
-        look.palette.menu,
-        Stroke::new(1.0, look.palette.control_border),
-        egui::StrokeKind::Inside,
-    );
-    let run = doc.session.look_at_caret();
-    for (n, (id, label)) in buttons.iter().enumerate() {
-        let r = Rect::from_min_size(
-            card.left_top() + Vec2::new(4.0 + size * n as f32, 3.0),
-            Vec2::splat(size),
-        );
-        let response = ui.interact(r, ui.id().with(("word-bubble", *id)), Sense::click());
-        let on = match *id {
-            "bold" => run.bold,
-            "italic" => run.italic,
-            "underline" => run.underline != unluminous_word::props::Underline::None,
-            "highlight" => run.highlight.is_some(),
-            _ => false,
-        };
-        if on || response.hovered() {
-            painter.rect_filled(r, 5.0, look.palette.selected_row);
-        }
-        let colour = if *id == "highlight" {
-            crate::theme::color::word_highlight()
-        } else {
-            look.palette.text_strong
-        };
-        painter.text(
-            r.center(),
-            Align2::CENTER_CENTER,
-            *label,
-            FontId::proportional(look.font_size),
-            colour,
-        );
-        let name = match *id {
-            "bold" => "Bold",
-            "italic" => "Italic",
-            "underline" => "Underline",
-            "highlight" => "Highlight",
-            "link" => "Link (Ctrl+K)",
-            "comment" => "Comment",
-            other => other,
-        };
-        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name));
-        if response.with_hint(name).clicked() {
-            match *id {
-                "highlight" => {
-                    let on = run.highlight.is_none();
-                    doc.session.format(move |rpr| {
-                        unluminous_word::props::set_val(rpr, "w:highlight", on.then_some("yellow"))
+    let mut pressed = None;
+    let shown = egui::Area::new(ui.id().with("word-bubble"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(Pos2::new(x, y))
+        .show(ui.ctx(), |ui| {
+            controls::menu_frame(ui).show(ui, |ui| {
+                let (track, _) = ui.allocate_exact_size(
+                    Vec2::new(track_width, option.y + 6.0 * z),
+                    Sense::hover(),
+                );
+                let rects: Vec<Rect> = (0..buttons.len())
+                    .map(|n| {
+                        Rect::from_min_size(
+                            Pos2::new(
+                                track.left() + 3.0 * z + n as f32 * (option.x + 2.0 * z),
+                                track.top() + 3.0 * z,
+                            ),
+                            option,
+                        )
+                    })
+                    .collect();
+                let responses: Vec<egui::Response> = buttons
+                    .iter()
+                    .zip(&rects)
+                    .map(|((id, name, ..), at)| {
+                        ui.interact(*at, ui.id().with(("word-bubble", *id)), Sense::click())
+                            .with_hint(*name)
+                    })
+                    .collect();
+                let ink = kit::ink();
+                kit::layer(ui, "bubble-track", track, |rux| {
+                    kit::well_surface(rux, track, track.height() / 2.0);
+                    let chat = rux.theme().chat;
+                    for (((_, _, mark, on), at), response) in
+                        buttons.iter().zip(&rects).zip(&responses)
+                    {
+                        if *on {
+                            kit::chip_surface(rux, *at, at.height() / 2.0, false);
+                        }
+                        let tint = match (*on, response.hovered()) {
+                            (true, _) => ink.i900,
+                            (false, true) => chat.sky,
+                            (false, false) => ink.i500,
+                        };
+                        kit::paint_mark(rux, *mark, at.center(), 15.0 * z, tint);
+                    }
+                });
+                for ((id, name, _, on), response) in buttons.iter().zip(responses) {
+                    let (on, name) = (*on, *name);
+                    response.widget_info(|| {
+                        egui::WidgetInfo::selected(egui::WidgetType::Button, true, on, name)
                     });
+                    if response.clicked() {
+                        pressed = Some(*id);
+                    }
                 }
-                "link" => {
-                    doc.view.panel = vec![Level::Root, Level::Insert];
-                    doc.view.fields.insert("link", String::new());
-                }
-                "comment" => super::run_action(doc, "comment", requests),
-                other => super::run_action(doc, other, requests),
-            }
-            requests.push(Request::TakeTheKeyboard(true));
+            });
+        });
+    remember_popup(ui, shown.response.rect);
+    let Some(id) = pressed else { return };
+    match id {
+        "highlight" => {
+            let on = run.highlight.is_none();
+            doc.session.format(move |rpr| {
+                unluminous_word::props::set_val(rpr, "w:highlight", on.then_some("yellow"))
+            });
         }
+        "link" => {
+            doc.view.panel = vec![Level::Root, Level::Insert];
+            doc.view.fields.insert("link", String::new());
+        }
+        other => super::run_action(doc, other, requests),
     }
+    requests.push(Request::TakeTheKeyboard(true));
 }
 
-/// Find, and Replace with it, at the top right of the pages.
+/// What a press in the find card asked for.
+#[derive(Default)]
+struct FindAsked {
+    close: bool,
+    go: Option<bool>,
+    replace_one: bool,
+    replace_all: bool,
+}
+
+/// Find, and Replace with it, in a card at the top right of the pages: a field with how many were found
+/// in it, the four ways a search can be narrowed as pills, and round chips for the previous match, the
+/// next and closing.
 fn find_bar(
     ui: &mut egui::Ui,
     look: &Look<'_>,
@@ -567,81 +719,34 @@ fn find_bar(
     area: Rect,
     requests: &mut Vec<Request>,
 ) {
-    let scale = look.scale();
-    let replace = doc.view.find.as_ref().is_some_and(|f| f.replace);
-    let width = 360.0 * scale;
-    let height = if replace { 76.0 } else { 42.0 } * scale;
-    let rect = Rect::from_min_size(
-        Pos2::new(area.right() - width - 16.0, area.top() + 10.0),
-        Vec2::new(width, height),
-    );
-    let mut close = false;
-    let mut go: Option<bool> = None;
-    let mut replace_one = false;
-    let mut replace_all = false;
-    egui::Area::new(ui.id().with("word-find"))
-        .order(egui::Order::Foreground)
-        .fixed_pos(rect.min)
-        .show(ui.ctx(), |ui| {
-            egui::Frame::popup(ui.style()).show(ui, |ui| {
-                ui.set_width(width - 16.0);
-                let Some(find) = doc.view.find.as_mut() else { return };
-                ui.horizontal(|ui| {
-                    let field = ui.add(
-                        egui::TextEdit::singleline(&mut find.needle)
-                            .hint_text(crate::components::controls::placeholder(
-                                "Find",
-                                &egui::TextStyle::Body.resolve(ui.style()),
-                                crate::theme::color::text_faint(),
-                            ))
-                            .desired_width(width * 0.45),
-                    );
-                    if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                        go = Some(true);
-                    }
-                    if !field.has_focus() && find.needle.is_empty() {
-                        field.request_focus();
-                    }
-                    ui.toggle_value(&mut find.case, "Aa").with_hint("Match case");
-                    ui.toggle_value(&mut find.word, "W").with_hint("Whole words");
-                    ui.toggle_value(&mut find.wildcards, "?*")
-                        .with_hint("Use wildcards: ? one character, * any, [a-z], (group) and \\1");
-                    ui.toggle_value(&mut find.every_story, "All")
-                        .with_hint("Also search headers, footers, notes, comments and text boxes");
-                    if ui.button("↑").with_hint("Previous").clicked() {
-                        go = Some(false);
-                    }
-                    if ui.button("↓").with_hint("Next").clicked() {
-                        go = Some(true);
-                    }
-                    if ui.button("✕").with_hint("Close").clicked() {
-                        close = true;
-                    }
-                });
-                if find.replace {
-                    ui.horizontal(|ui| {
-                        ui.add(
-                            egui::TextEdit::singleline(&mut find.with)
-                                .hint_text(crate::components::controls::placeholder(
-                                    "Replace with",
-                                    &egui::TextStyle::Body.resolve(ui.style()),
-                                    crate::theme::color::text_faint(),
-                                ))
-                                .desired_width(width * 0.45),
-                        );
-                        replace_one = ui.button("Replace").clicked();
-                        replace_all = ui.button("All").clicked();
-                    });
-                }
-            });
-        });
+    let _ = look;
     let Some(find) = doc.view.find.clone() else { return };
     let search = find.search();
     let (matches, problem) = match doc.session.search(&search) {
         Ok(found) => (found, None),
         Err(problem) => (Vec::new(), Some(problem)),
     };
-    if let Some(forward) = go {
+    let count = match (find.needle.is_empty(), problem) {
+        (true, _) => String::new(),
+        (false, Some(problem)) => problem,
+        (false, None) => format!("{} found", matches.len()),
+    };
+    let z = kit::zoom(ui.ctx());
+    let width = (452.0 * z).min(area.width() - 24.0);
+    let at = Pos2::new(area.right() - width - 14.0 * z, area.top() + 12.0 * z);
+    let mut asked = FindAsked::default();
+    let shown = egui::Area::new(ui.id().with("word-find"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(at)
+        .show(ui.ctx(), |ui| {
+            controls::menu_frame(ui).show(ui, |ui| {
+                if let Some(find) = doc.view.find.as_mut() {
+                    find_rows(ui, width - 16.0, find, &count, &mut asked);
+                }
+            });
+        });
+    remember_popup(ui, shown.response.rect);
+    if let Some(forward) = asked.go {
         if !matches.is_empty() {
             let head = doc.session.selection.ordered().1.clone();
             let next = if forward {
@@ -656,7 +761,7 @@ fn find_bar(
             doc.view.reveal = true;
         }
     }
-    if replace_one && !matches.is_empty() {
+    if asked.replace_one && !matches.is_empty() {
         let current = matches.iter().position(|m| *m == doc.session.selection).unwrap_or(0);
         let chosen = matches[current].clone();
         let text = unluminous_word::position::paragraph(
@@ -681,29 +786,123 @@ fn find_bar(
         doc.session.selection = chosen;
         doc.session.type_text(&new);
     }
-    if replace_all {
+    if asked.replace_all {
         match doc.session.replace_matches(&search, &find.with, &Default::default()) {
             Ok(count) => requests.push(Request::Message(format!("{count} replaced"))),
             Err(problem) => requests.push(Request::Message(problem)),
         }
     }
-    if !find.needle.is_empty() {
-        let label = problem.unwrap_or_else(|| format!("{} found", matches.len()));
-        ui.ctx()
-            .layer_painter(egui::LayerId::new(
-                egui::Order::Foreground,
-                ui.id().with("word-find-count"),
-            ))
-            .text(
-                Pos2::new(rect.left() - 8.0, rect.top() + 21.0 * scale),
-                Align2::RIGHT_CENTER,
-                label,
-                FontId::proportional(look.font_size * 0.85),
-                look.palette.text_dim,
-            );
-    }
-    if close {
+    if asked.close {
         doc.view.find = None;
         requests.push(Request::TakeTheKeyboard(true));
     }
 }
+
+/// The find card's one or two rows.
+fn find_rows(
+    ui: &mut egui::Ui,
+    width: f32,
+    find: &mut crate::services::word::Find,
+    count: &str,
+    asked: &mut FindAsked,
+) {
+    let z = kit::zoom(ui.ctx());
+    let height = 34.0 * z;
+    let chip = 28.0 * z;
+    let (row, _) = ui.allocate_exact_size(Vec2::new(width, height), Sense::hover());
+    let middle = row.center().y;
+    // From the right: close, next, previous, then the four pills, then the field takes what is left.
+    let mut x = row.right();
+    let chip_at = |x: &mut f32| {
+        *x -= chip;
+        let rect = Rect::from_min_size(Pos2::new(*x, middle - chip / 2.0), Vec2::splat(chip));
+        *x -= 6.0 * z;
+        rect
+    };
+    let close = chip_at(&mut x);
+    let next = chip_at(&mut x);
+    let previous = chip_at(&mut x);
+    let cross = kit::Mark::Rux(rux::Icon::Cross);
+    if kit::round_chip(ui, close, "Close Find", "Close", cross, false).clicked() {
+        asked.close = true;
+    }
+    if kit::round_chip(ui, next, "Next match", "Next", kit::Mark::Rux(rux::Icon::ChevDown), false)
+        .clicked()
+    {
+        asked.go = Some(true);
+    }
+    let up = kit::Mark::Svg(&UP);
+    if kit::round_chip(ui, previous, "Previous match", "Previous", up, false).clicked() {
+        asked.go = Some(false);
+    }
+    x -= 4.0 * z;
+    let pills: [(&str, &str, &mut bool); 4] = [
+        ("Aa", "Match case", &mut find.case),
+        ("W", "Whole words", &mut find.word),
+        (
+            "?*",
+            "Use wildcards: ? one character, * any, [a-z], (group) and \\1",
+            &mut find.wildcards,
+        ),
+        (
+            "All",
+            "Also search headers, footers, notes, comments and text boxes",
+            &mut find.every_story,
+        ),
+    ];
+    for (label, hint, value) in pills.into_iter().rev() {
+        let w = kit::pill_width(ui, label).max(30.0 * z);
+        x -= w;
+        let rect = Rect::from_min_size(Pos2::new(x, middle - 13.0 * z), Vec2::new(w, 26.0 * z));
+        x -= 4.0 * z;
+        if kit::pill_at(ui, rect, label, hint, *value, true).with_hint(hint).clicked() {
+            *value = !*value;
+        }
+    }
+    let well = Rect::from_min_max(row.min, Pos2::new(x - 4.0 * z, row.max.y));
+    let field = search_field(
+        ui,
+        well,
+        "Find",
+        &mut find.needle,
+        "Find",
+        Some(kit::Mark::Rux(rux::Icon::Search)),
+    );
+    if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+        asked.go = Some(true);
+    }
+    if !field.has_focus() && find.needle.is_empty() {
+        field.request_focus();
+    }
+    if !count.is_empty() {
+        let ink = kit::ink();
+        let size = 11.0 * z;
+        let galley = kit::words(ui, count, size, ink.i400, well.width() * 0.4);
+        let left = well.right() - 14.0 * z - galley.size().x;
+        kit::draw_by_capitals(ui.painter(), left, middle, galley, size, ink.i400);
+    }
+    if !find.replace {
+        return;
+    }
+    ui.add_space(6.0 * z);
+    let (row, _) = ui.allocate_exact_size(Vec2::new(width, height), Sense::hover());
+    let middle = row.center().y;
+    let all_width = kit::pill_width(ui, "Replace All");
+    let one_width = kit::pill_width(ui, "Replace");
+    let all = Rect::from_min_size(
+        Pos2::new(row.right() - all_width, middle - kit::PILL * z / 2.0),
+        Vec2::new(all_width, kit::PILL * z),
+    );
+    let one = Rect::from_min_size(
+        Pos2::new(all.left() - 6.0 * z - one_width, middle - kit::PILL * z / 2.0),
+        Vec2::new(one_width, kit::PILL * z),
+    );
+    asked.replace_one = kit::pill_at(ui, one, "Replace", "Replace", false, true).clicked();
+    asked.replace_all = kit::pill_at(ui, all, "Replace All", "Replace All", false, true).clicked();
+    let well = Rect::from_min_max(row.min, Pos2::new(one.left() - 8.0 * z, row.max.y));
+    search_field(ui, well, "Replace with", &mut find.with, "Replace with", None);
+}
+
+/// A chevron pointing up, for the previous match: `rux`'s own chevron is drawn pointing down.
+static UP: svg_icon::SvgMark =
+    svg_icon::SvgMark { view: 24.0, stroke: 1.9, parts: &[svg_icon::Part::Path("m18 15-6-6-6 6")] };

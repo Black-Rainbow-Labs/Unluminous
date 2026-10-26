@@ -95,6 +95,137 @@ pub static DEBUG_CONTINUE: SvgMark = SvgMark {
     parts: &[Part::Path("M2.75 2.75V13.25"), Part::Path("M6.75 2.52 14.48 8 6.75 13.48z")],
 };
 
+/// A Lucide line mark (MIT) in a 24 unit view box with Lucide's own stroke, drawn a little lighter so it
+/// sits with the `rux` marks beside it. The Word tab's bar, flyout and panel use these (`task-2366`).
+macro_rules! lucide {
+    ($(#[$doc:meta])* $name:ident, [$($part:expr),* $(,)?]) => {
+        $(#[$doc])*
+        pub static $name: SvgMark =
+            SvgMark { view: 24.0, stroke: 1.9, parts: &[$(Part::Path($part)),*] };
+    };
+}
+
+lucide!(
+    /// Lucide `bold`.
+    BOLD,
+    ["M6 12h9a4 4 0 0 1 0 8H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h7a4 4 0 0 1 0 8"]
+);
+lucide!(
+    /// Lucide `italic`.
+    ITALIC,
+    ["M19 4h-9", "M14 20H5", "M15 4 9 20"]
+);
+lucide!(
+    /// Lucide `underline`.
+    UNDERLINE,
+    ["M6 4v6a6 6 0 0 0 12 0V4", "M4 20h16"]
+);
+lucide!(
+    /// Lucide `strikethrough`.
+    STRIKETHROUGH,
+    ["M16 4H9a3 3 0 0 0-2.83 4", "M14 12a4 4 0 0 1 0 8H6", "M4 12h16"]
+);
+lucide!(
+    /// Lucide `superscript`, its small two written with `C` where Lucide writes `S`, which this parser
+    /// does not read.
+    SUPERSCRIPT,
+    [
+        "m4 19 8-8",
+        "m12 19-8-8",
+        "M20 12h-4c0-1.5 0.4-2 1.5-2.5C18.6 9 20 8.3 20 7c0-1.1-0.9-2-2-2c-0.8 0-1.5 0.4-1.8 1.1"
+    ]
+);
+lucide!(
+    /// Lucide `subscript`, with the two written as in [`SUPERSCRIPT`].
+    SUBSCRIPT,
+    [
+        "m4 5 8 8",
+        "m12 5-8 8",
+        "M20 19h-4c0-1.5 0.4-2 1.5-2.5C18.6 16 20 15.3 20 14c0-1.1-0.9-2-2-2c-0.8 0-1.5 0.4-1.8 1.1"
+    ]
+);
+lucide!(
+    /// Lucide `list`.
+    LIST,
+    ["M3 12h0.01", "M3 18h0.01", "M3 6h0.01", "M8 12h13", "M8 18h13", "M8 6h13"]
+);
+lucide!(
+    /// Lucide `list-ordered`, its two written with `C` in place of `S`.
+    LIST_ORDERED,
+    ["M10 12h11", "M10 18h11", "M10 6h11", "M4 10h2", "M4 6h1v4", "M6 18H4c0-1 2-2 2-3C6 14 5 13.5 4 14"]
+);
+lucide!(
+    /// Lucide `list-indent-decrease`.
+    OUTDENT,
+    ["M21 12H11", "M21 18H11", "M21 6H11", "m7 8-4 4 4 4"]
+);
+lucide!(
+    /// Lucide `list-indent-increase`.
+    INDENT,
+    ["M21 12H11", "M21 18H11", "M21 6H11", "m3 8 4 4-4 4"]
+);
+lucide!(
+    /// Lucide `text-align-start`.
+    ALIGN_LEFT,
+    ["M15 12H3", "M17 18H3", "M21 6H3"]
+);
+lucide!(
+    /// Lucide `text-align-center`.
+    ALIGN_CENTER,
+    ["M17 12H7", "M19 18H5", "M21 6H3"]
+);
+lucide!(
+    /// Lucide `text-align-end`.
+    ALIGN_RIGHT,
+    ["M21 12H9", "M21 18H7", "M21 6H3"]
+);
+lucide!(
+    /// Lucide `text-align-justify`.
+    ALIGN_JUSTIFY,
+    ["M3 12h18", "M3 18h18", "M3 6h18"]
+);
+lucide!(
+    /// Lucide `a-large-small`: the Format button, a large A beside a small a.
+    LETTER_SIZES,
+    ["M21 14h-5", "M16 16v-3.5a2.5 2.5 0 0 1 5 0V16", "M4.5 13h6", "m3 16 4.5-9 4.5 9"]
+);
+lucide!(
+    /// Lucide `type`: the Text level.
+    TYPE,
+    ["M12 4v16", "M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2", "M9 20h6"]
+);
+lucide!(
+    /// Lucide `pilcrow`: the Paragraph level.
+    PILCROW,
+    ["M13 4v16", "M17 4v16", "M19 4H9.5a4.5 4.5 0 0 0 0 9H13"]
+);
+lucide!(
+    /// Lucide `heading`: the Styles level.
+    HEADING,
+    ["M6 12h12", "M6 20V4", "M18 20V4"]
+);
+lucide!(
+    /// Lucide `link`.
+    LINK,
+    [
+        "M10 13a5 5 0 0 0 7.54 0.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71",
+        "M14 11a5 5 0 0 0-7.54-0.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"
+    ]
+);
+lucide!(
+    /// Lucide `highlighter`.
+    HIGHLIGHTER,
+    ["m9 11-6 6v3h9l3-3", "m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"]
+);
+lucide!(
+    /// Lucide `book-open`: the References level. Lucide repeats each arc command without its letter; it is
+    /// written out here.
+    BOOK_OPEN,
+    [
+        "M12 7v14",
+        "M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4a4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3a3 3 0 0 0-3-3z"
+    ]
+);
 /// Draw `mark` centred on `centre`, `size` points across, in `color`.
 pub fn paint(painter: &egui::Painter, centre: Pos2, size: f32, mark: &SvgMark, color: Color32) {
     let scale = size / mark.view;

@@ -7650,8 +7650,9 @@ Three additions to the plugin contract, which `task-2338` adds for workbooks wit
 `OpenKeyedTab`, `RenameTab` and `CloseKeyedTab`. A Word tab saves as it closes, like a text tab; an untitled one asks
 where to go.
 
-There is no ribbon. The format bar has the style, bold, italic, underline, the two lists, the alignment and the
-`Aa` and `+` buttons that open the drill down panel; `/` at the start of an empty paragraph and `Ctrl+/` anywhere
+There is no ribbon. The format bar has the paragraph style, `Text options` (a flyout with bold, italic, underline,
+strikethrough, the scripts, the lists and the alignment), the view, and the `Format`, `Insert` and `Find a command`
+chips (`task-2366`, below); `/` at the start of an empty paragraph and `Ctrl+/` anywhere
 search `services::word::actions::ACTIONS`, which is also what `plugins run word action <id>` runs, so the four ways
 in are one list. `# `, `- `, `1. ` and `> ` at a paragraph's start become a heading, a list or a quote.
 
@@ -7669,6 +7670,25 @@ is `overlays::remember_popup` and `overlays::a_popup_covers`; a new popup calls 
 
 Spell check is `unluminous_word::spell` (SCOWL en_US through `spellbook`, inflated only on first use) and
 `services::word::spelling`, which caches each paragraph's result by its checked text. TDD section 13 has the rules.
+
+### Word round 3: the Word tab is drawn in the design system (`task-2366`)
+
+`tasks/task-2366-word-design-tdd.md` is the design. Rules it left:
+
+- **Every part of the Word chrome is drawn with `components/word/kit.rs`**: the round chip, the select chip, the pill,
+  the switch, the swatches, the section heading, and `kit::style_the_panel` for the egui widgets the deep panel levels
+  still use. A new control in the Word tab is built from the kit, not from `ui.button` or a hand painted rectangle.
+- **Sizes are the design's points times `Look::zoom()`**, the tab's own zoom, never `look.font_size` or `look.scale()`.
+  Those follow the editor's font, and on a machine whose interface font is 24 points they set the whole Word chrome at
+  twice the size of the window's menus. `kit::set_zoom` records the zoom once a frame.
+- **No mark is a character.** A Lucide mark is kept as path data in `theme::svg_icon` (`lucide!`); `✕`, `‹`, `⊕` and
+  `■` drew empty boxes in faces without them.
+- **The Word tab draws no strip under the pages.** The page, the words, Track Changes and the spelling count are items
+  in the window's status bar, from `UiProvider::tab_status` (`services::word::status`), and a press runs the provider
+  command the item names. Any plugin tab can say what it is and its facts this way.
+- **A tool that would fail is not offered.** `actions::applies` answers for Promote, Demote, Outline view's tools and
+  the paragraph moves through `Session::promoted_style`, `paragraph_can_move` and `section_bounds`, the same checks the
+  commands make; the panel's pills, the outline toolbar and the command search all ask it.
 
 ### Word round 2 (`task-2359`)
 

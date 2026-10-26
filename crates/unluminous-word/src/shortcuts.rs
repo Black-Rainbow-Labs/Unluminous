@@ -108,6 +108,21 @@ impl Session {
     /// Alt+Shift+Left and Right: a heading one level up or down. Body text promoted takes the level of
     /// the heading above it, and Heading 9 demoted becomes body text, as Word's outline does.
     pub fn promote_heading(&mut self, promote: bool) -> Result<(), String> {
+        let next = self.promoted_style(promote)?;
+        self.apply_style(&next)
+    }
+
+    /// The heading level of the paragraph at the caret, `None` for body text (`task-2366`).
+    pub fn heading_level_at_caret(&self) -> Option<u8> {
+        let at = &self.selection.head;
+        let resolver = crate::styles::Resolver::new(&self.document);
+        position::paragraph(&self.document, &at.story, &at.path)
+            .and_then(|p| resolver.paragraph_style_id(&p.props).and_then(heading_level))
+    }
+
+    /// The style promoting or demoting the paragraph at the caret gives it, or why it cannot be. The menus
+    /// ask this before they offer Promote and Demote, so neither is offered where it would fail.
+    pub fn promoted_style(&self, promote: bool) -> Result<String, String> {
         let at = self.selection.head.clone();
         let resolver = crate::styles::Resolver::new(&self.document);
         let style = position::paragraph(&self.document, &at.story, &at.path)
@@ -130,7 +145,7 @@ impl Session {
             (None, true) => format!("Heading{}", above()),
             (None, false) => return Err("body text is already the lowest level".into()),
         };
-        self.apply_style(&next)
+        Ok(next)
     }
 
     /// Alt+Shift+Up and Down: move the paragraph at the caret above the one before it or below the one
@@ -143,24 +158,32 @@ impl Session {
         self.move_inside(at, up)
     }
 
+    /// Whether the paragraph at the caret can move up or down inside its body, cell or content control, or
+    /// why not.
+    pub fn paragraph_can_move(&self, up: bool) -> Result<(), String> {
+        let at = &self.selection.head;
+        let Some(&last) = at.path.last() else {
+            return Err("the caret is not in a paragraph".into());
+        };
+        let blocks = position::story(&self.document, &at.story).ok_or("the story has gone")?;
+        let mut other = at.path.clone();
+        let moves = match up {
+            true => last > 0,
+            false => {
+                *other.last_mut().expect("checked") = last + 1;
+                position::block(blocks, &other).is_some()
+            }
+        };
+        match (moves, up) {
+            (true, _) => Ok(()),
+            (false, true) => Err("this is the first paragraph here".into()),
+            (false, false) => Err("this is the last paragraph here".into()),
+        }
+    }
+
     fn move_inside(&mut self, at: Pos, up: bool) -> Result<(), String> {
         let index = *at.path.last().expect("checked") as usize;
-        let check = {
-            let mut copy = self.document.clone();
-            let blocks = position::story_mut(&mut copy, &at.story).ok_or("the story has gone")?;
-            let (container, _) = position::container_mut(blocks, &at.path)
-                .ok_or("the caret is not in a paragraph")?;
-            let other = if up { index.checked_sub(1) } else { Some(index + 1) };
-            other.filter(|o| *o < container.len()).is_some()
-        };
-        if !check {
-            return Err(if up {
-                "this is the first paragraph here"
-            } else {
-                "this is the last paragraph here"
-            }
-            .into());
-        }
+        self.paragraph_can_move(up)?;
         self.change(Scope::Story, move |document, selection, _| {
             let Some(blocks) = position::story_mut(document, &at.story) else {
                 return selection.clone();
@@ -186,6 +209,21 @@ impl Session {
     /// up to the next heading of its level or higher, swapped with the section of the same level before
     /// or after it. The caret goes with it.
     pub fn move_section(&mut self, up: bool) -> Result<(), String> {
+        let (start, middle, end) = self.section_bounds(up)?;
+        self.change(Scope::Story, move |document, selection, _| {
+            document.body[start..end].rotate_left(middle - start);
+            // The moved heading is now at `start` when it went up, and after the other section when down.
+            let at = if up { start } else { start + (end - middle) };
+            let moved =
+                |p: &Pos| Pos { story: p.story.clone(), path: vec![at as u32], offset: p.offset };
+            Selection { anchor: moved(&selection.anchor), head: moved(&selection.head) }
+        });
+        Ok(())
+    }
+
+    /// The blocks a move of the section at the caret rotates, as the start, the block that comes first
+    /// after the move and the end, or why the section cannot move (`task-2366`).
+    pub fn section_bounds(&self, up: bool) -> Result<(usize, usize, usize), String> {
         let head = self.selection.head.clone();
         if head.story != crate::position::StoryId::Body || head.path.len() != 1 {
             return Err("Outline view moves headings in the body".into());
@@ -221,16 +259,7 @@ impl Session {
             }
             (i, j, end_of(j))
         };
-        drop(resolver);
-        self.change(Scope::Story, move |document, selection, _| {
-            document.body[start..end].rotate_left(middle - start);
-            // The moved heading is now at `start` when it went up, and after the other section when down.
-            let at = if up { start } else { start + (end - middle) };
-            let moved =
-                |p: &Pos| Pos { story: p.story.clone(), path: vec![at as u32], offset: p.offset };
-            Selection { anchor: moved(&selection.anchor), head: moved(&selection.head) }
-        });
-        Ok(())
+        Ok((start, middle, end))
     }
 
     /// Sort the selected paragraphs of one body, cell or content control by their text, A to Z or Z to A,
