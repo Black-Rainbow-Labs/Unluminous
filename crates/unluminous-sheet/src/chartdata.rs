@@ -66,7 +66,10 @@ fn area_range(book: &Workbook, sheet: usize, area: &str) -> Option<Range> {
         return Some(Range::new(CellRef::new(0, x.min(y)), CellRef::new(used.last.row, x.max(y))));
     }
     if let (Ok(x), Ok(y)) = (a.parse::<u32>(), b.parse::<u32>()) {
-        return Some(Range::new(CellRef::new(x.min(y) - 1, 0), CellRef::new(x.max(y) - 1, used.last.col)));
+        return Some(Range::new(
+            CellRef::new(x.min(y) - 1, 0),
+            CellRef::new(x.max(y) - 1, used.last.col),
+        ));
     }
     None
 }
@@ -143,7 +146,14 @@ pub fn resolve(book: &Workbook, current: usize, formula: &str) -> Resolved {
     if let Some(values) = array_constant(formula) {
         let hidden = vec![false; values.len()];
         let texts = values.iter().map(Value::to_text).collect();
-        return Resolved { shape: (1, values.len() as u32), values, hidden, dates: false, texts, format: String::new() };
+        return Resolved {
+            shape: (1, values.len() as u32),
+            values,
+            hidden,
+            dates: false,
+            texts,
+            format: String::new(),
+        };
     }
     let Some(parts) = parse_refs(book, current, formula) else { return Resolved::default() };
     let mut out = Resolved::default();
@@ -152,7 +162,10 @@ pub fn resolve(book: &Workbook, current: usize, formula: &str) -> Resolved {
         let used = sheet.used_range();
         let last_row = used.map_or(part.range.first.row, |u| u.last.row).min(part.range.last.row);
         let last_col = used.map_or(part.range.first.col, |u| u.last.col).min(part.range.last.col);
-        let range = Range::new(part.range.first, CellRef::new(last_row.max(part.range.first.row), last_col.max(part.range.first.col)));
+        let range = Range::new(
+            part.range.first,
+            CellRef::new(last_row.max(part.range.first.row), last_col.max(part.range.first.col)),
+        );
         if i == 0 {
             out.shape = (range.rows(), range.cols());
         }
@@ -186,7 +199,9 @@ pub fn label(book: &Workbook, sheet: usize, at: CellRef) -> String {
     let value = s.value_at(at);
     match (&value, s.cell(at)) {
         (Value::Number(_), Some(cell)) => {
-            Format::parse(&book.styles.format_code(cell.style)).render(&value, book.date1904, 11).text
+            Format::parse(&book.styles.format_code(cell.style))
+                .render(&value, book.date1904, 11)
+                .text
         }
         _ => value.to_text(),
     }
@@ -241,11 +256,13 @@ pub fn shape_of(book: &Workbook, sheet: usize, range: Range) -> Shape {
     let rows = range.rows();
     let cols = range.cols();
     let date_cell = |r: u32, c: u32| {
-        s.cell(CellRef::new(r, c))
-            .is_some_and(|cell| is_number(&cell.value) && Format::parse(&book.styles.format_code(cell.style)).is_date())
+        s.cell(CellRef::new(r, c)).is_some_and(|cell| {
+            is_number(&cell.value) && Format::parse(&book.styles.format_code(cell.style)).is_date()
+        })
     };
     // The first column holds categories when it is text, empty at the top, or dates.
-    let first_col: Vec<Value> = (range.first.row..=range.last.row).map(|r| value(r, range.first.col)).collect();
+    let first_col: Vec<Value> =
+        (range.first.row..=range.last.row).map(|r| value(r, range.first.col)).collect();
     let body_first_col = if rows > 1 { &first_col[1..] } else { &first_col[..] };
     let text_column = !body_first_col.is_empty() && body_first_col.iter().all(is_text);
     let date_column = cols > 1
@@ -253,20 +270,34 @@ pub fn shape_of(book: &Workbook, sheet: usize, range: Range) -> Shape {
         && (range.first.row + 1..=range.last.row).all(|r| date_cell(r, range.first.col));
     let label_column = cols > 1 && (top_left_empty || text_column || date_column);
     // The first row holds series names when it is text over numbers (or the corner is empty).
-    let first_row: Vec<Value> = (range.first.col..=range.last.col).map(|c| value(range.first.row, c)).collect();
+    let first_row: Vec<Value> =
+        (range.first.col..=range.last.col).map(|c| value(range.first.row, c)).collect();
     let from = usize::from(label_column);
     let row_cells = &first_row[from.min(first_row.len())..];
     let header_row = rows > 1
-        && (top_left_empty || (!row_cells.is_empty() && row_cells.iter().all(|v| is_text(v) || matches!(v, Value::Empty))));
+        && (top_left_empty
+            || (!row_cells.is_empty()
+                && row_cells.iter().all(|v| is_text(v) || matches!(v, Value::Empty))));
     let data_rows = rows - u32::from(header_row);
     let data_cols = cols - u32::from(label_column);
-    let plot_by = if data_rows > data_cols { PlotBy::Columns } else if data_rows < data_cols { PlotBy::Rows } else { PlotBy::Columns };
+    let plot_by = if data_rows > data_cols {
+        PlotBy::Columns
+    } else if data_rows < data_cols {
+        PlotBy::Rows
+    } else {
+        PlotBy::Columns
+    };
     let dates = label_column && date_column;
     Shape { header_row, label_column, plot_by, dates }
 }
 
 /// Lay a selection out as series: names, categories and values formulas, by columns or by rows.
-pub fn layout_series(book: &Workbook, sheet: usize, range: Range, shape: Shape) -> Vec<ChartSeries> {
+pub fn layout_series(
+    book: &Workbook,
+    sheet: usize,
+    range: Range,
+    shape: Shape,
+) -> Vec<ChartSeries> {
     let name = &book.sheets[sheet].name;
     let top = range.first.row + u32::from(shape.header_row);
     let left = range.first.col + u32::from(shape.label_column);
@@ -274,22 +305,44 @@ pub fn layout_series(book: &Workbook, sheet: usize, range: Range, shape: Shape) 
     match shape.plot_by {
         PlotBy::Columns => {
             let categories = shape.label_column.then(|| {
-                absolute(name, Range::new(CellRef::new(top, range.first.col), CellRef::new(range.last.row, range.first.col)))
+                absolute(
+                    name,
+                    Range::new(
+                        CellRef::new(top, range.first.col),
+                        CellRef::new(range.last.row, range.first.col),
+                    ),
+                )
             });
             for col in left..=range.last.col {
-                let values = absolute(name, Range::new(CellRef::new(top, col), CellRef::new(range.last.row, col)));
-                let title = shape.header_row.then(|| absolute(name, Range::cell(CellRef::new(range.first.row, col))));
+                let values = absolute(
+                    name,
+                    Range::new(CellRef::new(top, col), CellRef::new(range.last.row, col)),
+                );
+                let title = shape
+                    .header_row
+                    .then(|| absolute(name, Range::cell(CellRef::new(range.first.row, col))));
                 out.push(ChartSeries::new(title, categories.clone(), values));
             }
         }
         PlotBy::Rows => {
             // By rows, the first row's cells are the categories and the first column's are the names.
             let categories = shape.header_row.then(|| {
-                absolute(name, Range::new(CellRef::new(range.first.row, left), CellRef::new(range.first.row, range.last.col)))
+                absolute(
+                    name,
+                    Range::new(
+                        CellRef::new(range.first.row, left),
+                        CellRef::new(range.first.row, range.last.col),
+                    ),
+                )
             });
             for row in top..=range.last.row {
-                let values = absolute(name, Range::new(CellRef::new(row, left), CellRef::new(row, range.last.col)));
-                let title = shape.label_column.then(|| absolute(name, Range::cell(CellRef::new(row, range.first.col))));
+                let values = absolute(
+                    name,
+                    Range::new(CellRef::new(row, left), CellRef::new(row, range.last.col)),
+                );
+                let title = shape
+                    .label_column
+                    .then(|| absolute(name, Range::cell(CellRef::new(row, range.first.col))));
                 out.push(ChartSeries::new(title, categories.clone(), values));
             }
         }
@@ -326,18 +379,34 @@ pub fn recommend(book: &Workbook, sheet: usize, range: Range) -> Vec<ChartType> 
         return out;
     }
     if count <= 3 {
-        return vec![T::ColumnClustered, T::LineMarkers, T::ColumnStacked, T::BarClustered, T::AreaStacked];
+        return vec![
+            T::ColumnClustered,
+            T::LineMarkers,
+            T::ColumnStacked,
+            T::BarClustered,
+            T::AreaStacked,
+        ];
     }
     vec![T::ColumnClustered, T::LineMarkers, T::ColumnStacked, T::AreaStacked, T::BarClustered]
 }
 
 /// Lay a selection out for a scatter or bubble chart: the first column holds X, and each other column is a
 /// Y series; a bubble chart takes its sizes from the column after each Y, or draws equal bubbles.
-pub fn layout_xy(book: &Workbook, sheet: usize, range: Range, header_row: bool, bubble: bool) -> Vec<ChartSeries> {
+pub fn layout_xy(
+    book: &Workbook,
+    sheet: usize,
+    range: Range,
+    header_row: bool,
+    bubble: bool,
+) -> Vec<ChartSeries> {
     let name = &book.sheets[sheet].name;
     let top = range.first.row + u32::from(header_row);
-    let column = |col: u32| absolute(name, Range::new(CellRef::new(top, col), CellRef::new(range.last.row, col)));
-    let title = |col: u32| header_row.then(|| absolute(name, Range::cell(CellRef::new(range.first.row, col))));
+    let column = |col: u32| {
+        absolute(name, Range::new(CellRef::new(top, col), CellRef::new(range.last.row, col)))
+    };
+    let title = |col: u32| {
+        header_row.then(|| absolute(name, Range::cell(CellRef::new(range.first.row, col))))
+    };
     if range.cols() == 1 {
         return vec![ChartSeries::new(title(range.first.col), None, column(range.first.col))];
     }

@@ -154,7 +154,9 @@ fn merge_tx_pr(old: &Option<String>, f: &ElementFormat) -> Option<String> {
         Some(c) => srgb_fill(Some(c)),
         None => old_text
             .find("<a:solidFill>")
-            .and_then(|a| old_text[a..].find("</a:solidFill>").map(|e| old_text[a..a + e + 14].to_owned()))
+            .and_then(|a| {
+                old_text[a..].find("</a:solidFill>").map(|e| old_text[a..a + e + 14].to_owned())
+            })
             .unwrap_or_default(),
     };
     Some(format!(
@@ -172,7 +174,9 @@ const NEW_COLUMNS: u32 = 8;
 
 fn srgb_fill(color: Option<(u8, u8, u8)>) -> String {
     match color {
-        Some((r, g, b)) => format!("<a:solidFill><a:srgbClr val=\"{r:02X}{g:02X}{b:02X}\"/></a:solidFill>"),
+        Some((r, g, b)) => {
+            format!("<a:solidFill><a:srgbClr val=\"{r:02X}{g:02X}{b:02X}\"/></a:solidFill>")
+        }
         None => "<a:noFill/>".to_owned(),
     }
 }
@@ -200,14 +204,22 @@ fn merge_sp_pr(old: &Option<String>, fill: FillChange, line: LineChange) -> Opti
                         t.to_string()
                     } else {
                         let end = format!("</{}>", &t[1..]);
-                        old.find(t).and_then(|s| old[s..].find(&end).map(|e| old[s..s + e + end.len()].to_owned())).unwrap_or_default()
+                        old.find(t)
+                            .and_then(|s| {
+                                old[s..].find(&end).map(|e| old[s..s + e + end.len()].to_owned())
+                            })
+                            .unwrap_or_default()
                     }
                 })
                 .unwrap_or_default()
         }
     };
     let line_xml = match line {
-        Some(Some((color, width))) => format!("<a:ln w=\"{}\" cap=\"rnd\">{}<a:round/></a:ln>", (width * 12700.0).round() as i64, srgb_fill(Some(color))),
+        Some(Some((color, width))) => format!(
+            "<a:ln w=\"{}\" cap=\"rnd\">{}<a:round/></a:ln>",
+            (width * 12700.0).round() as i64,
+            srgb_fill(Some(color))
+        ),
         Some(None) => "<a:ln><a:noFill/></a:ln>".to_owned(),
         None => kept("a:ln").unwrap_or_default(),
     };
@@ -289,7 +301,10 @@ impl Session {
         self.check_sheet(sheet)?;
         self.allowed(sheet, Guard::Forbidden)?;
         if ty == ChartType::Map {
-            return Err("A map chart looks its regions up on Bing Maps, which a chart made here cannot do.".to_owned());
+            return Err(
+                "A map chart looks its regions up on Bing Maps, which a chart made here cannot do."
+                    .to_owned(),
+            );
         }
         let shape = chartdata::shape_of(&self.book, sheet, range);
         let xy = matches!(
@@ -337,7 +352,19 @@ impl Session {
         chart.spec.rounded_corners = Some(false);
         chart.spec.title_deleted = false;
         chart.spec.title_auto = chart.title.is_none();
-        if chart.series.len() > 1 || matches!(ty, ChartType::Pie | ChartType::Doughnut | ChartType::PieExploded | ChartType::Pie3D | ChartType::Pie3DExploded | ChartType::DoughnutExploded | ChartType::PieOfPie | ChartType::BarOfPie) {
+        if chart.series.len() > 1
+            || matches!(
+                ty,
+                ChartType::Pie
+                    | ChartType::Doughnut
+                    | ChartType::PieExploded
+                    | ChartType::Pie3D
+                    | ChartType::Pie3DExploded
+                    | ChartType::DoughnutExploded
+                    | ChartType::PieOfPie
+                    | ChartType::BarOfPie
+            )
+        {
             chart.spec.legend = Some(Legend { position: legend_default(ty), ..Legend::default() });
         }
         if dates {
@@ -358,10 +385,17 @@ impl Session {
     }
 
     /// Change the type of the whole chart (`Change Chart Type`). Series keep their sources and formatting.
-    pub fn change_chart_type(&mut self, sheet: usize, index: usize, ty: ChartType) -> Result<(), String> {
+    pub fn change_chart_type(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        ty: ChartType,
+    ) -> Result<(), String> {
         self.change_chart("Change chart type", sheet, index, |chart| {
             if ty == ChartType::Combo {
-                return Err("Choose the type of each series to make a combination chart.".to_owned());
+                return Err(
+                    "Choose the type of each series to make a combination chart.".to_owned()
+                );
             }
             chartbuild::apply_type(chart, ty);
             Ok(())
@@ -369,7 +403,13 @@ impl Session {
     }
 
     /// Change the type of one series, making a combination chart (`Change Series Chart Type`).
-    pub fn change_series_type(&mut self, sheet: usize, index: usize, series: usize, ty: ChartType) -> Result<(), String> {
+    pub fn change_series_type(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        series: usize,
+        ty: ChartType,
+    ) -> Result<(), String> {
         self.change_chart("Change series chart type", sheet, index, |chart| {
             let secondary = series_is_secondary(chart, series)?;
             retype_series(chart, series, ty, secondary)
@@ -377,7 +417,13 @@ impl Session {
     }
 
     /// Plot a series on the secondary axis, or back on the primary one.
-    pub fn set_series_secondary(&mut self, sheet: usize, index: usize, series: usize, secondary: bool) -> Result<(), String> {
+    pub fn set_series_secondary(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        series: usize,
+        secondary: bool,
+    ) -> Result<(), String> {
         self.change_chart("Secondary axis", sheet, index, |chart| {
             series_is_secondary(chart, series)?;
             let ty = chart.spec.groups[chart.series[series].group].chart_type();
@@ -386,13 +432,22 @@ impl Session {
     }
 
     /// Add a series (`Select Data`, `Add`). The formulas are references such as `Sheet1!$B$2:$B$9`.
-    pub fn add_series(&mut self, sheet: usize, index: usize, source: SeriesSource) -> Result<usize, String> {
+    pub fn add_series(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        source: SeriesSource,
+    ) -> Result<usize, String> {
         let current = sheet;
         let checks = self.series_source_check(current, &source);
         checks?;
         self.change_chart("Add series", sheet, index, |chart| {
             let values = source.values.clone().ok_or("A series needs values.")?;
-            let mut s = ChartSeries::new(source.name.clone().flatten(), source.categories.clone().flatten(), values);
+            let mut s = ChartSeries::new(
+                source.name.clone().flatten(),
+                source.categories.clone().flatten(),
+                values,
+            );
             s.sizes = source.sizes.clone().flatten();
             s.group = 0;
             chartbuild::style_series(chart.chart_type(), &mut s);
@@ -413,7 +468,13 @@ impl Session {
     }
 
     /// Change what a series reads (`Select Data`, `Edit`).
-    pub fn edit_series(&mut self, sheet: usize, index: usize, series: usize, source: SeriesSource) -> Result<(), String> {
+    pub fn edit_series(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        series: usize,
+        source: SeriesSource,
+    ) -> Result<(), String> {
         self.series_source_check(sheet, &source)?;
         self.change_chart("Edit series", sheet, index, |chart| {
             let s = chart.series.get_mut(series).ok_or("There is no such series.")?;
@@ -436,7 +497,11 @@ impl Session {
     /// Refuse a formula that is not a reference, as Excel does in the Edit Series box.
     fn series_source_check(&self, sheet: usize, source: &SeriesSource) -> Result<(), String> {
         let bad = |f: &Option<String>, name: &str| match f {
-            Some(f) if !f.starts_with('"') && !chartdata::is_reference(&self.book, sheet, f) && !f.starts_with('{') => {
+            Some(f)
+                if !f.starts_with('"')
+                    && !chartdata::is_reference(&self.book, sheet, f)
+                    && !f.starts_with('{') =>
+            {
                 Err(format!("The reference you entered for {name} is not valid."))
             }
             _ => Ok(()),
@@ -448,7 +513,12 @@ impl Session {
     }
 
     /// Take a series out of the chart (`Select Data`, `Remove`). A chart with no series is refused.
-    pub fn remove_series(&mut self, sheet: usize, index: usize, series: usize) -> Result<(), String> {
+    pub fn remove_series(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        series: usize,
+    ) -> Result<(), String> {
         self.change_chart("Remove series", sheet, index, |chart| {
             if series >= chart.series.len() {
                 return Err("There is no such series.".to_owned());
@@ -472,7 +542,13 @@ impl Session {
     }
 
     /// Move a series one place earlier or later in the plot order.
-    pub fn move_series(&mut self, sheet: usize, index: usize, series: usize, later: bool) -> Result<(), String> {
+    pub fn move_series(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        series: usize,
+        later: bool,
+    ) -> Result<(), String> {
         self.change_chart("Move series", sheet, index, |chart| {
             let to = if later { series + 1 } else { series.wrapping_sub(1) };
             if series >= chart.series.len() || to >= chart.series.len() {
@@ -486,7 +562,13 @@ impl Session {
 
     /// Make the series of a chart from a range of cells (`Select Data`, chart data range), laid out as Excel
     /// lays out a selection, or the other way round when `plot_by` says so.
-    pub fn set_chart_source(&mut self, sheet: usize, index: usize, range: Range, plot_by: Option<PlotBy>) -> Result<(), String> {
+    pub fn set_chart_source(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        range: Range,
+        plot_by: Option<PlotBy>,
+    ) -> Result<(), String> {
         let mut shape = chartdata::shape_of(&self.book, sheet, range);
         if let Some(by) = plot_by {
             shape.plot_by = by;
@@ -515,8 +597,14 @@ impl Session {
 
     /// Swap the rows and columns of the data (`Select Data`, `Switch Row/Column`).
     pub fn switch_row_column(&mut self, sheet: usize, index: usize) -> Result<(), String> {
-        let chart = self.book.sheets.get(sheet).and_then(|s| s.charts.get(index)).ok_or("there is no such chart")?;
-        let (range, by) = source_block(&self.book, sheet, chart).ok_or("The chart's data is not a block of cells.")?;
+        let chart = self
+            .book
+            .sheets
+            .get(sheet)
+            .and_then(|s| s.charts.get(index))
+            .ok_or("there is no such chart")?;
+        let (range, by) = source_block(&self.book, sheet, chart)
+            .ok_or("The chart's data is not a block of cells.")?;
         let flipped = if by == PlotBy::Columns { PlotBy::Rows } else { PlotBy::Columns };
         let mut shape = chartdata::shape_of(&self.book, sheet, range);
         shape.plot_by = flipped;
@@ -540,7 +628,13 @@ impl Session {
     }
 
     /// How hidden and empty cells are treated (`Select Data`, `Hidden and Empty Cells`).
-    pub fn set_hidden_and_empty_cells(&mut self, sheet: usize, index: usize, show_hidden: bool, blanks: Blanks) -> Result<(), String> {
+    pub fn set_hidden_and_empty_cells(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        show_hidden: bool,
+        blanks: Blanks,
+    ) -> Result<(), String> {
         self.change_chart("Hidden and empty cells", sheet, index, |chart| {
             chart.spec.plot_visible_only = Some(!show_hidden);
             chart.spec.blanks = Some(blanks);
@@ -549,7 +643,13 @@ impl Session {
     }
 
     /// Move a chart or change its size, as the two cells its corners are in.
-    pub fn move_chart(&mut self, sheet: usize, index: usize, from: (CellRef, i64, i64), to: (CellRef, i64, i64)) -> Result<(), String> {
+    pub fn move_chart(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        from: (CellRef, i64, i64),
+        to: (CellRef, i64, i64),
+    ) -> Result<(), String> {
         self.change_chart("Move chart", sheet, index, |chart| {
             chart.from = from;
             chart.to = to;
@@ -559,7 +659,13 @@ impl Session {
     }
 
     /// Name a chart, and describe it for people who cannot see it.
-    pub fn set_chart_name(&mut self, sheet: usize, index: usize, name: Option<String>, alt_text: Option<Option<String>>) -> Result<(), String> {
+    pub fn set_chart_name(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        name: Option<String>,
+        alt_text: Option<Option<String>>,
+    ) -> Result<(), String> {
         self.change_chart("Chart name", sheet, index, |chart| {
             if let Some(name) = name {
                 chart.spec.name = Some(name).filter(|n| !n.is_empty());
@@ -573,7 +679,12 @@ impl Session {
     }
 
     /// Move a chart to another sheet (`Move Chart`, `Object in`). It keeps its place in cells.
-    pub fn move_chart_to_sheet(&mut self, sheet: usize, index: usize, target: usize) -> Result<usize, String> {
+    pub fn move_chart_to_sheet(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        target: usize,
+    ) -> Result<usize, String> {
         self.check_sheet(target)?;
         self.allowed(target, Guard::Forbidden)?;
         let mut chart = take_chart(self, sheet, index)?;
@@ -592,7 +703,12 @@ impl Session {
     }
 
     /// Move a chart onto a new chart sheet (`Move Chart`, `New sheet`, or F11). Returns the sheet's index.
-    pub fn move_chart_to_new_sheet(&mut self, sheet: usize, index: usize, name: Option<&str>) -> Result<usize, String> {
+    pub fn move_chart_to_new_sheet(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        name: Option<&str>,
+    ) -> Result<usize, String> {
         let mut chart = take_chart(self, sheet, index)?;
         let source = self.book.sheets[sheet].name.clone();
         qualify_formulas(&mut chart, &source);
@@ -608,19 +724,34 @@ impl Session {
         }
         let s = &mut self.book.sheets[at];
         s.charts.push(chart);
-        s.kept_part = Some(KeptSheet { part: String::new(), kind: REL_CHART_SHEET.to_owned(), content_type: CT_CHART_SHEET.to_owned() });
+        s.kept_part = Some(KeptSheet {
+            part: String::new(),
+            kind: REL_CHART_SHEET.to_owned(),
+            content_type: CT_CHART_SHEET.to_owned(),
+        });
         self.modified = true;
         Ok(at)
     }
 
     /// Make a chart sheet holding a new chart of the default type from a range (F11).
-    pub fn insert_chart_sheet(&mut self, sheet: usize, range: Range, ty: ChartType) -> Result<usize, String> {
+    pub fn insert_chart_sheet(
+        &mut self,
+        sheet: usize,
+        range: Range,
+        ty: ChartType,
+    ) -> Result<usize, String> {
         let index = self.insert_chart(sheet, range, ty, None)?;
         self.move_chart_to_new_sheet(sheet, index, None)
     }
 
     /// Set, change or remove the chart title (`Chart Title`). `None` removes it.
-    pub fn set_chart_title(&mut self, sheet: usize, index: usize, title: Option<String>, overlay: Option<bool>) -> Result<(), String> {
+    pub fn set_chart_title(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        title: Option<String>,
+        overlay: Option<bool>,
+    ) -> Result<(), String> {
         self.change_chart("Chart title", sheet, index, |chart| {
             chart.spec.title_deleted = title.is_none();
             chart.spec.title_auto = false;
@@ -633,7 +764,13 @@ impl Session {
     }
 
     /// Change an axis: its bounds, units, scale, number format, tick marks, labels, gridlines and title.
-    pub fn set_axis_options(&mut self, sheet: usize, index: usize, axis: AxisSelector, options: AxisOptions) -> Result<(), String> {
+    pub fn set_axis_options(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        axis: AxisSelector,
+        options: AxisOptions,
+    ) -> Result<(), String> {
         self.change_chart("Format axis", sheet, index, |chart| {
             let id = axis_id(chart, axis).ok_or("The chart has no such axis.")?;
             let reversed = options.reverse;
@@ -648,7 +785,13 @@ impl Session {
     }
 
     /// Show or hide the legend, and place it (`Legend`).
-    pub fn set_legend(&mut self, sheet: usize, index: usize, position: Option<LegendPosition>, overlay: bool) -> Result<(), String> {
+    pub fn set_legend(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        position: Option<LegendPosition>,
+        overlay: bool,
+    ) -> Result<(), String> {
         self.change_chart("Legend", sheet, index, |chart| {
             chart.spec.legend = position.map(|p| {
                 let old = chart.spec.legend.take().unwrap_or_default();
@@ -659,9 +802,18 @@ impl Session {
     }
 
     /// Show or hide the data table under the chart (`Data Table`).
-    pub fn set_data_table(&mut self, sheet: usize, index: usize, table: Option<DataTable>) -> Result<(), String> {
+    pub fn set_data_table(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        table: Option<DataTable>,
+    ) -> Result<(), String> {
         self.change_chart("Data table", sheet, index, |chart| {
-            if table.is_some() && chart.spec.groups.iter().any(|g| !g.kind.has_axes() || matches!(g.kind, GroupKind::Scatter | GroupKind::Bubble)) {
+            if table.is_some()
+                && chart.spec.groups.iter().any(|g| {
+                    !g.kind.has_axes() || matches!(g.kind, GroupKind::Scatter | GroupKind::Bubble)
+                })
+            {
                 return Err("A data table is not available for this type of chart.".to_owned());
             }
             chart.spec.data_table = table;
@@ -670,7 +822,14 @@ impl Session {
     }
 
     /// Turn data labels on or off for one series, or for all of them, and say what they show.
-    pub fn set_data_labels(&mut self, sheet: usize, index: usize, series: Option<usize>, show: bool, options: LabelOptions) -> Result<(), String> {
+    pub fn set_data_labels(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        series: Option<usize>,
+        show: bool,
+        options: LabelOptions,
+    ) -> Result<(), String> {
         self.change_chart("Data labels", sheet, index, |chart| {
             let range: Vec<usize> = match series {
                 Some(s) if s < chart.series.len() => vec![s],
@@ -693,7 +852,13 @@ impl Session {
     }
 
     /// Add a trendline to a series. Returns its number among the series' trendlines.
-    pub fn add_trendline(&mut self, sheet: usize, index: usize, series: usize, trendline: Trendline) -> Result<usize, String> {
+    pub fn add_trendline(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        series: usize,
+        trendline: Trendline,
+    ) -> Result<usize, String> {
         self.change_chart("Add trendline", sheet, index, |chart| {
             check_trendline(chart, series, &trendline)?;
             let s = &mut chart.series[series];
@@ -703,17 +868,34 @@ impl Session {
     }
 
     /// Change a trendline of a series.
-    pub fn edit_trendline(&mut self, sheet: usize, index: usize, series: usize, which: usize, trendline: Trendline) -> Result<(), String> {
+    pub fn edit_trendline(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        series: usize,
+        which: usize,
+        trendline: Trendline,
+    ) -> Result<(), String> {
         self.change_chart("Format trendline", sheet, index, |chart| {
             check_trendline(chart, series, &trendline)?;
-            let slot = chart.series[series].fmt.trendlines.get_mut(which).ok_or("There is no such trendline.")?;
+            let slot = chart.series[series]
+                .fmt
+                .trendlines
+                .get_mut(which)
+                .ok_or("There is no such trendline.")?;
             *slot = trendline;
             Ok(())
         })
     }
 
     /// Remove a trendline of a series.
-    pub fn remove_trendline(&mut self, sheet: usize, index: usize, series: usize, which: usize) -> Result<(), String> {
+    pub fn remove_trendline(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        series: usize,
+        which: usize,
+    ) -> Result<(), String> {
         self.change_chart("Remove trendline", sheet, index, |chart| {
             let s = chart.series.get_mut(series).ok_or("There is no such series.")?;
             if which >= s.fmt.trendlines.len() {
@@ -725,10 +907,29 @@ impl Session {
     }
 
     /// Put error bars on a series, replacing those in the same direction.
-    pub fn set_error_bars(&mut self, sheet: usize, index: usize, series: usize, bars: ErrorBars) -> Result<(), String> {
+    pub fn set_error_bars(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        series: usize,
+        bars: ErrorBars,
+    ) -> Result<(), String> {
         self.change_chart("Error bars", sheet, index, |chart| {
-            let kind = chart.spec.groups.get(chart.series.get(series).ok_or("There is no such series.")?.group).map(|g| g.kind);
-            if matches!(kind, Some(GroupKind::Pie | GroupKind::Doughnut | GroupKind::OfPie | GroupKind::Radar | GroupKind::Surface)) {
+            let kind = chart
+                .spec
+                .groups
+                .get(chart.series.get(series).ok_or("There is no such series.")?.group)
+                .map(|g| g.kind);
+            if matches!(
+                kind,
+                Some(
+                    GroupKind::Pie
+                        | GroupKind::Doughnut
+                        | GroupKind::OfPie
+                        | GroupKind::Radar
+                        | GroupKind::Surface
+                )
+            ) {
                 return Err("Error bars are not available for this type of chart.".to_owned());
             }
             if bars.amount == ErrorAmount::Custom && bars.plus.is_none() && bars.minus.is_none() {
@@ -742,7 +943,13 @@ impl Session {
     }
 
     /// Take the error bars of one direction off a series.
-    pub fn remove_error_bars(&mut self, sheet: usize, index: usize, series: usize, direction: Option<ErrorDirection>) -> Result<(), String> {
+    pub fn remove_error_bars(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        series: usize,
+        direction: Option<ErrorDirection>,
+    ) -> Result<(), String> {
         self.change_chart("Remove error bars", sheet, index, |chart| {
             let s = chart.series.get_mut(series).ok_or("There is no such series.")?;
             s.fmt.error_bars.retain(|e| e.direction != direction);
@@ -751,7 +958,13 @@ impl Session {
     }
 
     /// Change how the series of one chart group are drawn: gap, overlap, hole, angle, lines.
-    pub fn set_group_options(&mut self, sheet: usize, index: usize, group: usize, options: GroupOptions) -> Result<(), String> {
+    pub fn set_group_options(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        group: usize,
+        options: GroupOptions,
+    ) -> Result<(), String> {
         self.change_chart("Format data series", sheet, index, |chart| {
             let g = chart.spec.groups.get_mut(group).ok_or("There is no such chart group.")?;
             apply_group_options(g, &options);
@@ -760,7 +973,14 @@ impl Session {
     }
 
     /// Change how a series, or one of its points, looks.
-    pub fn set_series_format(&mut self, sheet: usize, index: usize, series: usize, point: Option<u32>, options: SeriesOptions) -> Result<(), String> {
+    pub fn set_series_format(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        series: usize,
+        point: Option<u32>,
+        options: SeriesOptions,
+    ) -> Result<(), String> {
         self.change_chart("Format data series", sheet, index, |chart| {
             let s = chart.series.get_mut(series).ok_or("There is no such series.")?;
             apply_series_options(s, point, &options);
@@ -769,7 +989,13 @@ impl Session {
     }
 
     /// Format an element of the chart: fill, border and text (the Format pane).
-    pub fn set_element_format(&mut self, sheet: usize, index: usize, element: ChartElement, format: ElementFormat) -> Result<(), String> {
+    pub fn set_element_format(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        element: ChartElement,
+        format: ElementFormat,
+    ) -> Result<(), String> {
         self.change_chart("Format chart element", sheet, index, |chart| {
             let text = wants_text(&format);
             match element {
@@ -823,7 +1049,11 @@ impl Session {
                         None => (0..chart.series.len()).collect(),
                     };
                     for i in range {
-                        let l = chart.series[i].fmt.labels.as_mut().ok_or("The series has no data labels.")?;
+                        let l = chart.series[i]
+                            .fmt
+                            .labels
+                            .as_mut()
+                            .ok_or("The series has no data labels.")?;
                         l.fields.sp_pr = merge_sp_pr(&l.fields.sp_pr, format.fill, format.line);
                         if text {
                             l.fields.tx_pr = merge_tx_pr(&l.fields.tx_pr, &format);
@@ -836,9 +1066,18 @@ impl Session {
     }
 
     /// Hide a series from the chart without removing it (`Chart Filters`).
-    pub fn filter_series(&mut self, sheet: usize, index: usize, series: usize, hidden: bool) -> Result<(), String> {
+    pub fn filter_series(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        series: usize,
+        hidden: bool,
+    ) -> Result<(), String> {
         self.change_chart("Chart filters", sheet, index, |chart| {
-            if hidden && chart.series.iter().filter(|s| !s.fmt.filtered).count() <= 1 && !chart.series.get(series).ok_or("There is no such series.")?.fmt.filtered {
+            if hidden
+                && chart.series.iter().filter(|s| !s.fmt.filtered).count() <= 1
+                && !chart.series.get(series).ok_or("There is no such series.")?.fmt.filtered
+            {
                 return Err("A chart needs at least one series.".to_owned());
             }
             chart.series.get_mut(series).ok_or("There is no such series.")?.fmt.filtered = hidden;
@@ -847,7 +1086,12 @@ impl Session {
     }
 
     /// Hide categories of the chart by position (`Chart Filters`).
-    pub fn filter_categories(&mut self, sheet: usize, index: usize, hidden: Vec<u32>) -> Result<(), String> {
+    pub fn filter_categories(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        hidden: Vec<u32>,
+    ) -> Result<(), String> {
         self.change_chart("Chart filters", sheet, index, |chart| {
             for s in &mut chart.series {
                 s.fmt.filtered_categories = hidden.clone();
@@ -857,12 +1101,24 @@ impl Session {
     }
 
     /// Apply one of the 14 quick layouts Excel offers for the chart's type (`Quick Layout`).
-    pub fn apply_quick_layout(&mut self, sheet: usize, index: usize, layout: u32) -> Result<(), String> {
-        self.change_chart("Quick layout", sheet, index, |chart| crate::chartlayout::apply(chart, layout))
+    pub fn apply_quick_layout(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        layout: u32,
+    ) -> Result<(), String> {
+        self.change_chart("Quick layout", sheet, index, |chart| {
+            crate::chartlayout::apply(chart, layout)
+        })
     }
 
     /// Choose the chart style, a number from 1 to 48 (`Chart Styles`).
-    pub fn set_chart_style(&mut self, sheet: usize, index: usize, style: u32) -> Result<(), String> {
+    pub fn set_chart_style(
+        &mut self,
+        sheet: usize,
+        index: usize,
+        style: u32,
+    ) -> Result<(), String> {
         self.change_chart("Chart style", sheet, index, |chart| {
             if !(1..=48).contains(&style) {
                 return Err("Chart styles are numbered 1 to 48.".to_owned());
@@ -1109,7 +1365,9 @@ fn axis_id(chart: &Chart, which: AxisSelector) -> Option<u32> {
         let index = usize::from(wants_value);
         return axes.get(index).map(|a| a.id);
     }
-    axes.iter().find(|a| (a.kind == AxisKind::Value) == wants_value && a.kind != AxisKind::Series).map(|a| a.id)
+    axes.iter()
+        .find(|a| (a.kind == AxisKind::Value) == wants_value && a.kind != AxisKind::Series)
+        .map(|a| a.id)
 }
 
 /// Reversing an axis moves the axes that cross it to the other side, as Excel does.
@@ -1197,7 +1455,10 @@ fn apply_axis_display(a: &mut Axis, o: AxisOptions) {
         a.minor_gridlines = v.then(|| a.minor_gridlines.take().unwrap_or_default());
     }
     if let Some(v) = o.title {
-        a.title = v.map(|text| AxisTitle { text, format: a.title.take().map(|t| t.format).unwrap_or_default() });
+        a.title = v.map(|text| AxisTitle {
+            text,
+            format: a.title.take().map(|t| t.format).unwrap_or_default(),
+        });
     }
     if let Some(v) = o.between {
         a.between = Some(v);
@@ -1216,8 +1477,16 @@ fn apply_axis_display(a: &mut Axis, o: AxisOptions) {
 fn check_trendline(chart: &Chart, series: usize, t: &Trendline) -> Result<(), String> {
     let s = chart.series.get(series).ok_or("There is no such series.")?;
     let kind = chart.spec.groups.get(s.group).map(|g| g.kind);
-    if matches!(kind, Some(GroupKind::Pie | GroupKind::Doughnut | GroupKind::OfPie | GroupKind::Radar | GroupKind::Surface))
-        || matches!(chart.spec.groups.get(s.group), Some(g) if g.three_d || g.grouping == Grouping::Stacked || g.grouping == Grouping::PercentStacked)
+    if matches!(
+        kind,
+        Some(
+            GroupKind::Pie
+                | GroupKind::Doughnut
+                | GroupKind::OfPie
+                | GroupKind::Radar
+                | GroupKind::Surface
+        )
+    ) || matches!(chart.spec.groups.get(s.group), Some(g) if g.three_d || g.grouping == Grouping::Stacked || g.grouping == Grouping::PercentStacked)
     {
         return Err("Trendlines are not available for this type of chart.".to_owned());
     }
@@ -1225,7 +1494,9 @@ fn check_trendline(chart: &Chart, series: usize, t: &Trendline) -> Result<(), St
         TrendKind::Polynomial(order) if !(2..=6).contains(&order) => {
             Err("The polynomial order must be from 2 to 6.".to_owned())
         }
-        TrendKind::MovingAverage(period) if period < 2 => Err("The period must be at least 2.".to_owned()),
+        TrendKind::MovingAverage(period) if period < 2 => {
+            Err("The period must be at least 2.".to_owned())
+        }
         _ => Ok(()),
     }
 }
@@ -1240,8 +1511,11 @@ fn renumber(chart: &mut Chart) {
 
 /// Take away chart groups no series is in, and the axes no group is drawn against.
 fn drop_empty_groups(chart: &mut Chart) {
-    let used: Vec<usize> = (0..chart.spec.groups.len()).filter(|g| chart.series.iter().any(|s| s.group == *g)).collect();
-    let map: Vec<Option<usize>> = (0..chart.spec.groups.len()).map(|g| used.iter().position(|u| *u == g)).collect();
+    let used: Vec<usize> = (0..chart.spec.groups.len())
+        .filter(|g| chart.series.iter().any(|s| s.group == *g))
+        .collect();
+    let map: Vec<Option<usize>> =
+        (0..chart.spec.groups.len()).map(|g| used.iter().position(|u| *u == g)).collect();
     for s in &mut chart.series {
         s.group = map[s.group].unwrap_or(0);
     }
@@ -1256,7 +1530,10 @@ fn drop_empty_groups(chart: &mut Chart) {
     }
     chart.spec.groups = keep;
     let ids: Vec<u32> = chart.spec.groups.iter().flat_map(|g| g.axes.clone()).collect();
-    chart.spec.axes.retain(|a| ids.contains(&a.id) || chart.spec.groups.iter().all(|g| g.axes.is_empty()));
+    chart
+        .spec
+        .axes
+        .retain(|a| ids.contains(&a.id) || chart.spec.groups.iter().all(|g| g.axes.is_empty()));
 }
 
 fn series_is_secondary(chart: &Chart, series: usize) -> Result<bool, String> {
@@ -1269,18 +1546,29 @@ fn series_is_secondary(chart: &Chart, series: usize) -> Result<bool, String> {
 
 /// Draw one series as another type, on the primary or secondary axis, in a group of its own if no group
 /// of that type is there already. Excel refuses types that cannot be combined.
-fn retype_series(chart: &mut Chart, series: usize, ty: ChartType, secondary: bool) -> Result<(), String> {
+fn retype_series(
+    chart: &mut Chart,
+    series: usize,
+    ty: ChartType,
+    secondary: bool,
+) -> Result<(), String> {
     if ty.is_extended() || ty == ChartType::Combo || chart.spec.ex.is_some() {
         return Err("This type of chart cannot be combined with another.".to_owned());
     }
     let built = chartbuild::build(ty);
-    let Some(mut target) = built.groups.into_iter().next() else { return Err("Unknown chart type.".to_owned()) };
-    let other_kinds = chart.series.iter().enumerate().filter(|(i, _)| *i != series).any(|(_, s)| {
-        chart.spec.groups.get(s.group).is_some_and(|g| {
-            (g.three_d || target.three_d) && (g.kind != target.kind || g.three_d != target.three_d)
-                || (g.horizontal != target.horizontal && g.kind == GroupKind::Bar && target.kind == GroupKind::Bar)
-        })
-    });
+    let Some(mut target) = built.groups.into_iter().next() else {
+        return Err("Unknown chart type.".to_owned());
+    };
+    let other_kinds =
+        chart.series.iter().enumerate().filter(|(i, _)| *i != series).any(|(_, s)| {
+            chart.spec.groups.get(s.group).is_some_and(|g| {
+                (g.three_d || target.three_d)
+                    && (g.kind != target.kind || g.three_d != target.three_d)
+                    || (g.horizontal != target.horizontal
+                        && g.kind == GroupKind::Bar
+                        && target.kind == GroupKind::Bar)
+            })
+        });
     if other_kinds || (target.three_d && chart.series.len() > 1) {
         return Err("Some chart types cannot be combined with other chart types. Select a different chart type.".to_owned());
     }
@@ -1293,7 +1581,13 @@ fn retype_series(chart: &mut Chart, series: usize, ty: ChartType, secondary: boo
     } else if chart.spec.groups.is_empty() || target.axes.is_empty() {
         target.axes = chartbuild::primary_axes();
     } else {
-        target.axes = chart.spec.groups.first().map(|g| g.axes.clone()).filter(|a| !chart.spec.is_secondary(0) && !a.is_empty()).unwrap_or_else(chartbuild::primary_axes);
+        target.axes = chart
+            .spec
+            .groups
+            .first()
+            .map(|g| g.axes.clone())
+            .filter(|a| !chart.spec.is_secondary(0) && !a.is_empty())
+            .unwrap_or_else(chartbuild::primary_axes);
     }
     for id in &target.axes {
         if chart.spec.axis(*id).is_none() {
@@ -1332,7 +1626,11 @@ fn built_axes(ty: ChartType) -> Vec<Axis> {
 }
 
 /// The block of cells a chart's series read, and which way the series lie in it.
-fn source_block(book: &crate::model::Workbook, sheet: usize, chart: &Chart) -> Option<(Range, PlotBy)> {
+fn source_block(
+    book: &crate::model::Workbook,
+    sheet: usize,
+    chart: &Chart,
+) -> Option<(Range, PlotBy)> {
     let mut union: Option<(usize, Range)> = None;
     let mut add = |f: &Option<String>| -> Option<()> {
         for part in chartdata::parse_refs(book, sheet, f.as_deref()?)? {
@@ -1352,7 +1650,10 @@ fn source_block(book: &crate::model::Workbook, sheet: usize, chart: &Chart) -> O
     let (_, range) = union?;
     let first = chart.series.first()?;
     let values = chartdata::parse_refs(book, sheet, &first.values)?.first().copied()?;
-    let by = if values.range.cols() == 1 && values.range.rows() >= 1 && (values.range.rows() > 1 || chart.series.len() == 1) {
+    let by = if values.range.cols() == 1
+        && values.range.rows() >= 1
+        && (values.range.rows() > 1 || chart.series.len() == 1)
+    {
         PlotBy::Columns
     } else {
         PlotBy::Rows
@@ -1373,7 +1674,11 @@ fn chart_sheet_of(book: &crate::model::Workbook, sheet: usize, chart: &Chart) ->
 fn take_chart(session: &mut Session, sheet: usize, index: usize) -> Result<Chart, String> {
     session.check_object_sheet(sheet)?;
     session.allowed(sheet, Guard::Objects)?;
-    session.book.sheets[sheet].charts.get(index).cloned().ok_or_else(|| format!("there is no chart {} on this sheet", index + 1))
+    session.book.sheets[sheet]
+        .charts
+        .get(index)
+        .cloned()
+        .ok_or_else(|| format!("there is no chart {} on this sheet", index + 1))
 }
 
 /// Make every unqualified reference in a chart name its sheet, for a chart that moves to another sheet.

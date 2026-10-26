@@ -34,7 +34,10 @@ fn excel_available() -> bool {
     if excel_is_installed() {
         return true;
     }
-    assert!(std::env::var("UNLUMINOUS_REQUIRE_EXCEL").is_err(), "Excel is required and is not installed");
+    assert!(
+        std::env::var("UNLUMINOUS_REQUIRE_EXCEL").is_err(),
+        "Excel is required and is not installed"
+    );
     println!("Excel is not installed here, so what it makes of the charts was not checked");
     false
 }
@@ -64,7 +67,8 @@ fn inspect_many(paths: &[PathBuf]) -> Vec<serde_json::Value> {
     panic!("Excel's answer did not read: {last}");
 }
 fn scratch(name: &str) -> PathBuf {
-    let folder = std::env::temp_dir().join(format!("unluminous-sheet-charts-{}", std::process::id()));
+    let folder =
+        std::env::temp_dir().join(format!("unluminous-sheet-charts-{}", std::process::id()));
     std::fs::create_dir_all(&folder).unwrap();
     folder.join(name)
 }
@@ -80,7 +84,11 @@ fn excels_chart_workbook_reads_with_every_type_and_option() {
     let book = unluminous_sheet::xlsx::read(&fixture("14-charts.xlsx")).unwrap();
     let sheet = book.sheet_index("Charts").unwrap();
     let charts = &book.sheets[sheet].charts;
-    assert_eq!(charts.len(), 19, "13 chart parts and 6 chartEx parts, the 14th chart part is on a chart sheet");
+    assert_eq!(
+        charts.len(),
+        19,
+        "13 chart parts and 6 chartEx parts, the 14th chart part is on a chart sheet"
+    );
     let types: Vec<ChartType> = charts.iter().map(|c| c.chart_type()).collect();
     for expected in [
         ChartType::ColumnClustered,
@@ -127,7 +135,10 @@ fn every_chart_written_from_the_model_reads_back_the_same() {
             assert_eq!(x.title, y.title);
             assert_eq!(x.series.len(), y.series.len());
             for (s, t) in x.series.iter().zip(&y.series) {
-                assert_eq!((&s.name, &s.categories, &s.values), (&t.name, &t.categories, &t.values));
+                assert_eq!(
+                    (&s.name, &s.categories, &s.values),
+                    (&t.name, &t.categories, &t.values)
+                );
                 assert_eq!(s.fmt.trendlines, t.fmt.trendlines);
                 assert_eq!(s.fmt.error_bars, t.fmt.error_bars);
                 assert_eq!(s.fmt.labels, t.fmt.labels);
@@ -168,7 +179,19 @@ fn every_type_workbook() -> Session {
 /// A workbook with one chart of each newer type Excel's Insert Chart offers, other than the map.
 fn extended_workbook() -> Session {
     let mut s = Session::new(Workbook::new(), 46318.5);
-    for (r, (name, v)) in [("a", 5.0), ("b", 9.0), ("c", 3.0), ("a", 7.0), ("b", 4.0), ("c", 8.0), ("a", 6.0), ("b", 2.0)].iter().enumerate() {
+    for (r, (name, v)) in [
+        ("a", 5.0),
+        ("b", 9.0),
+        ("c", 3.0),
+        ("a", 7.0),
+        ("b", 4.0),
+        ("c", 8.0),
+        ("a", 6.0),
+        ("b", 2.0),
+    ]
+    .iter()
+    .enumerate()
+    {
         s.set_input(0, CellRef::new(r as u32 + 1, 0), name).unwrap();
         s.set_input(0, CellRef::new(r as u32 + 1, 1), &format!("{v}")).unwrap();
     }
@@ -234,8 +257,13 @@ fn excel_agrees_with_what_is_read_written_and_made() {
     let seen = inspect_many(&[original, regenerated, all_types, extended_path]);
     let [a, c, d, e] = &seen[..] else { panic!("four answers expected") };
     assert_eq!(e["repaired"], false, "{}", e["problem"]);
-    let types: Vec<i64> = e["charts"].as_array().unwrap().iter().map(|c| c["type"].as_i64().unwrap()).collect();
-    let wanted: Vec<i64> = extended.book.sheets[0].charts.iter().map(|c| i64::from(c.chart_type().excel_number())).collect();
+    let types: Vec<i64> =
+        e["charts"].as_array().unwrap().iter().map(|c| c["type"].as_i64().unwrap()).collect();
+    let wanted: Vec<i64> = extended.book.sheets[0]
+        .charts
+        .iter()
+        .map(|c| i64::from(c.chart_type().excel_number()))
+        .collect();
     assert_eq!(types, wanted, "Excel reads the newer chart types made here");
     assert_eq!(c["repaired"], false, "{}", c["problem"]);
     let (left, right) = (a["charts"].as_array().unwrap(), c["charts"].as_array().unwrap());
@@ -292,7 +320,8 @@ fn a_selection_is_laid_out_as_excel_lays_out_a_chart() {
             wide.set_input(0, CellRef::new(r as u32 + 1, c), &format!("{}", c * 2)).unwrap();
         }
     }
-    wide.insert_chart(0, Range::new(CellRef::new(0, 0), CellRef::new(2, 4)), ChartType::Line, None).unwrap();
+    wide.insert_chart(0, Range::new(CellRef::new(0, 0), CellRef::new(2, 4)), ChartType::Line, None)
+        .unwrap();
     let c = first_chart(&wide);
     assert_eq!(c.series[0].values, "Sheet1!$B$2:$E$2");
     assert_eq!(c.series[0].name.as_deref(), Some("Sheet1!$A$2"));
@@ -313,7 +342,13 @@ fn every_chart_method_is_one_undo_step_and_undo_restores_the_chart() {
         Box::new(|s| s.set_legend(0, 0, Some(LegendPosition::Top), false)),
         Box::new(|s| s.set_data_table(0, 0, Some(DataTable::default()))),
         Box::new(|s| {
-            s.set_data_labels(0, 0, None, true, LabelOptions { show_value: Some(true), ..Default::default() })
+            s.set_data_labels(
+                0,
+                0,
+                None,
+                true,
+                LabelOptions { show_value: Some(true), ..Default::default() },
+            )
         }),
         Box::new(|s| s.add_trendline(0, 0, 0, Trendline::default()).map(|_| ())),
         Box::new(|s| s.set_error_bars(0, 0, 0, ErrorBars::default())),
@@ -323,7 +358,12 @@ fn every_chart_method_is_one_undo_step_and_undo_restores_the_chart() {
         Box::new(|s| s.switch_row_column(0, 0)),
         Box::new(|s| s.set_hidden_and_empty_cells(0, 0, true, Blanks::Zero)),
         Box::new(|s| {
-            s.set_axis_options(0, 0, AxisSelector::Value, AxisOptions { minimum: Some(Some(2.0)), ..Default::default() })
+            s.set_axis_options(
+                0,
+                0,
+                AxisSelector::Value,
+                AxisOptions { minimum: Some(Some(2.0)), ..Default::default() },
+            )
         }),
     ];
     for (i, step) in steps.iter().enumerate() {
@@ -372,10 +412,21 @@ fn select_data_adds_edits_removes_and_refuses() {
         )
         .unwrap();
     assert_eq!(n, 2);
-    s.edit_series(0, 0, 2, SeriesSource { values: Some("Sheet1!$C$2:$C$4".into()), ..Default::default() }).unwrap();
+    s.edit_series(
+        0,
+        0,
+        2,
+        SeriesSource { values: Some("Sheet1!$C$2:$C$4".into()), ..Default::default() },
+    )
+    .unwrap();
     assert_eq!(first_chart(&s).series[2].values, "Sheet1!$C$2:$C$4");
     assert!(s
-        .edit_series(0, 0, 2, SeriesSource { values: Some("not a range".into()), ..Default::default() })
+        .edit_series(
+            0,
+            0,
+            2,
+            SeriesSource { values: Some("not a range".into()), ..Default::default() }
+        )
         .is_err());
     s.remove_series(0, 0, 2).unwrap();
     s.remove_series(0, 0, 1).unwrap();
@@ -425,7 +476,8 @@ fn deleting_a_chart_from_a_file_takes_its_parts_with_it() {
     let mut t = Session::new(book, 46318.5);
     t.delete_chart(sheet, 0).unwrap();
     let bytes = unluminous_sheet::xlsx::write(&t.book).unwrap();
-    let names: Vec<String> = unluminous_sheet::zip::read(&bytes).unwrap().into_iter().map(|e| e.name).collect();
+    let names: Vec<String> =
+        unluminous_sheet::zip::read(&bytes).unwrap().into_iter().map(|e| e.name).collect();
     assert!(!names.contains(&"xl/charts/chart2.xml".to_owned()), "the chart part goes");
     let rels = unluminous_sheet::zip::read(&fixture("14-charts.xlsx")).unwrap();
     let rels = rels.iter().find(|e| e.name == "xl/charts/_rels/chart2.xml.rels").unwrap();
@@ -449,7 +501,10 @@ fn a_chart_moves_to_a_chart_sheet_and_back_out_to_a_sheet() {
     assert!(sheet.kept_part.is_some(), "a chart sheet is not a worksheet");
     assert_eq!(sheet.charts.len(), 1);
     assert_eq!(sheet.charts[0].title.as_deref(), Some("Share"));
-    assert!(sheet.charts[0].series[0].values.starts_with("Sheet1!"), "the data is still on the first sheet");
+    assert!(
+        sheet.charts[0].series[0].values.starts_with("Sheet1!"),
+        "the data is still on the first sheet"
+    );
     s.move_chart_to_sheet(at, 0, 0).unwrap();
     assert_eq!(s.book.sheets[0].charts.len(), 1);
 }
@@ -467,7 +522,8 @@ fn refused_changes_leave_the_chart_alone() {
     assert_eq!(first_chart(&s), &before);
     let mut line = data_session();
     line.insert_chart(0, all(), ChartType::Line, None).unwrap();
-    let bad = AxisOptions { minimum: Some(Some(10.0)), maximum: Some(Some(5.0)), ..Default::default() };
+    let bad =
+        AxisOptions { minimum: Some(Some(10.0)), maximum: Some(Some(5.0)), ..Default::default() };
     assert!(line.set_axis_options(0, 0, AxisSelector::Value, bad).is_err());
     let bad = Trendline { kind: TrendKind::Polynomial(9), ..Default::default() };
     assert!(line.add_trendline(0, 0, 0, bad).is_err());
@@ -493,8 +549,20 @@ use unluminous_sheet::edit::charts::*;
 
 /// The scenario names, which are the ones in `tools/excel-oracle/charts-scenarios.ps1`.
 const SCENARIOS: &[&str] = &[
-    "secondary", "titles", "labels", "trend", "errbars", "axis", "log", "filter", "layout", "style", "switch",
-    "blanks", "bargroup", "pie",
+    "secondary",
+    "titles",
+    "labels",
+    "trend",
+    "errbars",
+    "axis",
+    "log",
+    "filter",
+    "layout",
+    "style",
+    "switch",
+    "blanks",
+    "bargroup",
+    "pie",
 ];
 
 fn scenario(name: &str) -> Session {
@@ -509,8 +577,16 @@ fn scenario(name: &str) -> Session {
         }
         "titles" => {
             s.set_chart_title(0, 0, Some("Sales".into()), None).unwrap();
-            axis(&mut s, AxisSelector::Category, AxisOptions { title: Some(Some("Month".into())), ..Default::default() });
-            axis(&mut s, AxisSelector::Value, AxisOptions { title: Some(Some("Units".into())), ..Default::default() });
+            axis(
+                &mut s,
+                AxisSelector::Category,
+                AxisOptions { title: Some(Some("Month".into())), ..Default::default() },
+            );
+            axis(
+                &mut s,
+                AxisSelector::Value,
+                AxisOptions { title: Some(Some("Units".into())), ..Default::default() },
+            );
             s.set_legend(0, 0, Some(LegendPosition::Top), false).unwrap();
             s.set_data_table(0, 0, Some(DataTable::default())).unwrap();
         }
@@ -529,14 +605,38 @@ fn scenario(name: &str) -> Session {
             )
             .unwrap(),
         "trend" => {
-            let linear = Trendline { show_equation: true, show_r_squared: true, forward: 1.0, backward: 0.5, ..Default::default() };
+            let linear = Trendline {
+                show_equation: true,
+                show_r_squared: true,
+                forward: 1.0,
+                backward: 0.5,
+                ..Default::default()
+            };
             s.add_trendline(0, 0, 0, linear).unwrap();
-            s.add_trendline(0, 0, 1, Trendline { kind: TrendKind::Polynomial(3), ..Default::default() }).unwrap();
-            s.add_trendline(0, 0, 1, Trendline { kind: TrendKind::MovingAverage(3), ..Default::default() }).unwrap();
+            s.add_trendline(
+                0,
+                0,
+                1,
+                Trendline { kind: TrendKind::Polynomial(3), ..Default::default() },
+            )
+            .unwrap();
+            s.add_trendline(
+                0,
+                0,
+                1,
+                Trendline { kind: TrendKind::MovingAverage(3), ..Default::default() },
+            )
+            .unwrap();
         }
         "errbars" => {
-            s.set_error_bars(0, 0, 0, ErrorBars { value: Some(2.0), ..Default::default() }).unwrap();
-            let percent = ErrorBars { amount: ErrorAmount::Percentage, sides: ErrorSides::Minus, value: Some(10.0), ..Default::default() };
+            s.set_error_bars(0, 0, 0, ErrorBars { value: Some(2.0), ..Default::default() })
+                .unwrap();
+            let percent = ErrorBars {
+                amount: ErrorAmount::Percentage,
+                sides: ErrorSides::Minus,
+                value: Some(10.0),
+                ..Default::default()
+            };
             s.set_error_bars(0, 0, 1, percent).unwrap();
         }
         "axis" => {
@@ -552,21 +652,48 @@ fn scenario(name: &str) -> Session {
                 ..Default::default()
             };
             axis(&mut s, AxisSelector::Value, o);
-            axis(&mut s, AxisSelector::Category, AxisOptions { reverse: Some(true), ..Default::default() });
+            axis(
+                &mut s,
+                AxisSelector::Category,
+                AxisOptions { reverse: Some(true), ..Default::default() },
+            );
         }
-        "log" => axis(&mut s, AxisSelector::Value, AxisOptions { log_base: Some(Some(10.0)), ..Default::default() }),
+        "log" => axis(
+            &mut s,
+            AxisSelector::Value,
+            AxisOptions { log_base: Some(Some(10.0)), ..Default::default() },
+        ),
         "filter" => s.filter_series(0, 0, 1, true).unwrap(),
         "layout" => s.apply_quick_layout(0, 0, 3).unwrap(),
         "style" => s.set_chart_style(0, 0, 10).unwrap(),
         "switch" => s.switch_row_column(0, 0).unwrap(),
         "blanks" => s.set_hidden_and_empty_cells(0, 0, true, Blanks::Zero).unwrap(),
         "bargroup" => {
-            s.set_group_options(0, 0, 0, GroupOptions { gap_width: Some(80), overlap: Some(20), ..Default::default() }).unwrap();
-            s.set_series_format(0, 0, 0, None, SeriesOptions { fill: Some(Some((255, 0, 0))), ..Default::default() }).unwrap();
+            s.set_group_options(
+                0,
+                0,
+                0,
+                GroupOptions { gap_width: Some(80), overlap: Some(20), ..Default::default() },
+            )
+            .unwrap();
+            s.set_series_format(
+                0,
+                0,
+                0,
+                None,
+                SeriesOptions { fill: Some(Some((255, 0, 0))), ..Default::default() },
+            )
+            .unwrap();
         }
         "pie" => {
             s.change_chart_type(0, 0, ChartType::Pie).unwrap();
-            s.set_group_options(0, 0, 0, GroupOptions { first_slice_angle: Some(90), ..Default::default() }).unwrap();
+            s.set_group_options(
+                0,
+                0,
+                0,
+                GroupOptions { first_slice_angle: Some(90), ..Default::default() },
+            )
+            .unwrap();
         }
         other => panic!("no scenario {other}"),
     }
@@ -600,14 +727,23 @@ fn summary(chart: &unluminous_sheet::model::Chart) -> String {
         });
         out.push(format!("  labels {l:?}"));
         for t in &f.trendlines {
-            out.push(format!("  trend {:?} fwd {} back {} eq {} r2 {}", t.kind, t.forward, t.backward, t.show_equation, t.show_r_squared));
+            out.push(format!(
+                "  trend {:?} fwd {} back {} eq {} r2 {}",
+                t.kind, t.forward, t.backward, t.show_equation, t.show_r_squared
+            ));
         }
         for e in &f.error_bars {
-            out.push(format!("  errbars {:?} {:?} {:?} cap {}", e.sides, e.amount, e.value, !e.no_cap));
+            out.push(format!(
+                "  errbars {:?} {:?} {:?} cap {}",
+                e.sides, e.amount, e.value, !e.no_cap
+            ));
         }
     }
     for g in &spec.groups {
-        out.push(format!("group {:?} {:?} gap {:?} overlap {:?} angle {:?}", g.kind, g.grouping, g.gap_width, g.overlap, g.first_slice_angle));
+        out.push(format!(
+            "group {:?} {:?} gap {:?} overlap {:?} angle {:?}",
+            g.kind, g.grouping, g.gap_width, g.overlap, g.first_slice_angle
+        ));
     }
     for a in &spec.axes {
         out.push(format!(
@@ -634,7 +770,8 @@ fn summary(chart: &unluminous_sheet::model::Chart) -> String {
 }
 
 fn excel_fixture(name: &str) -> Option<Workbook> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/fixtures/charts/excel/excel-{name}.xlsx"));
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(format!("tests/fixtures/charts/excel/excel-{name}.xlsx"));
     std::fs::read(path).ok().map(|b| unluminous_sheet::xlsx::read(&b).unwrap())
 }
 
@@ -678,7 +815,8 @@ fn excel_sees_the_same_chart_in_a_session_made_file_as_in_its_own() {
     let mut pairs = Vec::new();
     for name in SCENARIOS {
         let Some(_) = excel_fixture(name) else { continue };
-        let theirs = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/fixtures/charts/excel/excel-{name}.xlsx"));
+        let theirs = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(format!("tests/fixtures/charts/excel/excel-{name}.xlsx"));
         let ours = save(&scenario(name).book, &format!("unl-{name}.xlsx"));
         pairs.push((paths.len(), name));
         paths.push(theirs);
@@ -689,11 +827,26 @@ fn excel_sees_the_same_chart_in_a_session_made_file_as_in_its_own() {
         let (theirs, ours) = (&seen[at], &seen[at + 1]);
         assert_eq!(ours["repaired"], false, "{name}: {}", ours["problem"]);
         let (a, b) = (&theirs["charts"][0], &ours["charts"][0]);
-        for key in ["type", "title", "legend", "table", "plotVisibleOnly", "blanks", "gapWidth", "overlap", "firstSliceAngle", "groups"] {
+        for key in [
+            "type",
+            "title",
+            "legend",
+            "table",
+            "plotVisibleOnly",
+            "blanks",
+            "gapWidth",
+            "overlap",
+            "firstSliceAngle",
+            "groups",
+        ] {
             assert_eq!(a[key], b[key], "{name} {key}");
         }
         assert_eq!(a["series"], b["series"], "{name} series");
-        assert_eq!(without_automatic_scale(&a["axes"]), without_automatic_scale(&b["axes"]), "{name} axes");
+        assert_eq!(
+            without_automatic_scale(&a["axes"]),
+            without_automatic_scale(&b["axes"]),
+            "{name} axes"
+        );
     }
 }
 
@@ -703,7 +856,12 @@ fn without_automatic_scale(axes: &serde_json::Value) -> serde_json::Value {
     let mut axes = axes.clone();
     for key in ["value", "secondaryValue"] {
         if let Some(axis) = axes.get_mut(key).and_then(|a| a.as_object_mut()) {
-            for (auto, number) in [("majorAuto", "majorUnit"), ("majorAuto", "minorUnit"),("maxAuto", "max"), ("minAuto", "min")] {
+            for (auto, number) in [
+                ("majorAuto", "majorUnit"),
+                ("majorAuto", "minorUnit"),
+                ("maxAuto", "max"),
+                ("minAuto", "min"),
+            ] {
                 if axis.get(auto) == Some(&serde_json::Value::Bool(true)) {
                     axis.remove(number);
                 }
@@ -729,7 +887,11 @@ fn a_plot_reads_the_cells_now_and_follows_hidden_rows_and_blanks() {
     assert_eq!(p.series[0].labels, vec!["c1", "c2", "c3", "c4", "c5"]);
     s.hide_rows(0, 2, 3, true).unwrap();
     let p = plot(&s.book, 0, first_chart(&s), PlotSize::default());
-    assert_eq!(p.series[0].values, vec![Some(3.0), Some(12.0), Some(15.0)], "hidden rows are not plotted");
+    assert_eq!(
+        p.series[0].values,
+        vec![Some(3.0), Some(12.0), Some(15.0)],
+        "hidden rows are not plotted"
+    );
     s.set_hidden_and_empty_cells(0, 0, true, Blanks::Gap).unwrap();
     let p = plot(&s.book, 0, first_chart(&s), PlotSize::default());
     assert_eq!(p.series[0].values.len(), 5, "unless the chart shows hidden cells");
@@ -760,11 +922,21 @@ fn stacked_series_start_where_the_series_before_them_end() {
 fn trendlines_and_error_bars_are_worked_out_for_the_drawing() {
     let mut s = data_session();
     s.insert_chart(0, all(), ChartType::Line, None).unwrap();
-    s.add_trendline(0, 0, 0, Trendline { show_equation: true, show_r_squared: true, forward: 2.0, ..Default::default() }).unwrap();
+    s.add_trendline(
+        0,
+        0,
+        0,
+        Trendline { show_equation: true, show_r_squared: true, forward: 2.0, ..Default::default() },
+    )
+    .unwrap();
     s.set_error_bars(0, 0, 0, ErrorBars { value: Some(2.0), ..Default::default() }).unwrap();
     let p = plot(&s.book, 0, first_chart(&s), PlotSize::default());
     let fit = &p.series[0].trendlines[0];
-    assert!((fit.coefficients[0] - 3.0).abs() < 1e-9 && fit.coefficients[1].abs() < 1e-9, "{:?}", fit.coefficients);
+    assert!(
+        (fit.coefficients[0] - 3.0).abs() < 1e-9 && fit.coefficients[1].abs() < 1e-9,
+        "{:?}",
+        fit.coefficients
+    );
     assert!((fit.r_squared.unwrap() - 1.0).abs() < 1e-12);
     assert_eq!(fit.name, "Linear (One)");
     assert!(fit.samples.last().unwrap().0 > 5.9, "forecast reaches two periods past the data");
@@ -780,7 +952,7 @@ fn the_newer_charts_get_their_figures() {
     let mut book = Workbook::new();
     let mut s = Session::new(std::mem::take(&mut book), 46318.5);
     for (i, v) in [1.0, 2.0, 2.0, 3.0, 4.0, 5.0, 6.0, 6.0, 9.0, 40.0].iter().enumerate() {
-        s.set_input(0, CellRef::new(i as u32, 0), &format!("{}", ["a", "b"][i % 2])).unwrap();
+        s.set_input(0, CellRef::new(i as u32, 0), ["a", "b"][i % 2]).unwrap();
         s.set_input(0, CellRef::new(i as u32, 1), &format!("{v}")).unwrap();
     }
     let range = Range::new(CellRef::new(0, 0), CellRef::new(9, 1));
@@ -789,7 +961,15 @@ fn the_newer_charts_get_their_figures() {
         t.insert_chart(0, range, ty, None).map_err(|e| format!("{ty:?}: {e}"))
     };
     let _ = &mut chart;
-    for ty in [ChartType::Histogram, ChartType::Pareto, ChartType::BoxWhisker, ChartType::Waterfall, ChartType::Funnel, ChartType::Treemap, ChartType::Sunburst] {
+    for ty in [
+        ChartType::Histogram,
+        ChartType::Pareto,
+        ChartType::BoxWhisker,
+        ChartType::Waterfall,
+        ChartType::Funnel,
+        ChartType::Treemap,
+        ChartType::Sunburst,
+    ] {
         let mut t = s.clone();
         t.insert_chart(0, range, ty, None).unwrap_or_else(|e| panic!("{ty:?}: {e}"));
         let chart = &t.book.sheets[0].charts[0];
@@ -803,10 +983,14 @@ fn the_newer_charts_get_their_figures() {
                 assert_eq!(rows.len(), 2);
                 assert!((rows.last().unwrap().2 - 1.0).abs() < 1e-12);
             }
-            (ChartType::BoxWhisker, ExtendedPlot::BoxWhisker { boxes }) => assert!(!boxes.is_empty()),
+            (ChartType::BoxWhisker, ExtendedPlot::BoxWhisker { boxes }) => {
+                assert!(!boxes.is_empty())
+            }
             (ChartType::Waterfall, ExtendedPlot::Waterfall { bars }) => assert_eq!(bars.len(), 10),
             (ChartType::Funnel, ExtendedPlot::Funnel { items }) => assert_eq!(items.len(), 10),
-            (ChartType::Treemap | ChartType::Sunburst, ExtendedPlot::Hierarchy { leaves }) => assert_eq!(leaves.len(), 10),
+            (ChartType::Treemap | ChartType::Sunburst, ExtendedPlot::Hierarchy { leaves }) => {
+                assert_eq!(leaves.len(), 10)
+            }
             other => panic!("unexpected {other:?}"),
         }
         // And they read back from the file they are written to.
@@ -823,9 +1007,12 @@ fn the_newer_charts_get_their_figures() {
 fn tokens(xml: &str) -> Vec<String> {
     let mut stripped = String::new();
     let mut rest = xml;
-    while let Some(at) = rest.find("<c:strCache>").into_iter().chain(rest.find("<c:numCache>")).min() {
+    while let Some(at) =
+        rest.find("<c:strCache>").into_iter().chain(rest.find("<c:numCache>")).min()
+    {
         stripped.push_str(&rest[..at]);
-        let close = if rest[at..].starts_with("<c:strCache>") { "</c:strCache>" } else { "</c:numCache>" };
+        let close =
+            if rest[at..].starts_with("<c:strCache>") { "</c:strCache>" } else { "</c:numCache>" };
         let end = rest[at..].find(close).map_or(rest.len(), |e| at + e + close.len());
         rest = &rest[end..];
     }
@@ -869,10 +1056,14 @@ fn every_classic_chart_written_from_the_model_has_the_tags_of_the_one_excel_wrot
         if name.contains("chartEx") || !name.ends_with(".xml") || name.contains("_rels") {
             continue;
         }
-        let (ta, mut tb) = (tokens(&String::from_utf8_lossy(a)), tokens(&String::from_utf8_lossy(b)));
+        let (ta, mut tb) =
+            (tokens(&String::from_utf8_lossy(a)), tokens(&String::from_utf8_lossy(b)));
         if ta.len() + 1 == tb.len() {
             // Excel leaves out `crosses` on an axis that crosses at the automatic place; it is written.
-            let at = tb.iter().rposition(|t| t == "<c:crosses val=\"autoZero\"/>").expect("one tag more");
+            let at = tb
+                .iter()
+                .rposition(|t| t == "<c:crosses val=\"autoZero\"/>")
+                .expect("one tag more");
             tb.remove(at);
         }
         assert_eq!(ta, tb, "{name}");

@@ -96,3 +96,11 @@ Pointer handling to wire: dragging a chart should call `move_chart`, a corner dr
 `xlsx/chart_read.rs` reads a `chart` part, `xlsx/chart_write.rs` writes one, `xlsx/chartex.rs` reads and
 writes `chartEx`, `xlsx/chart_drawing.rs` reads anchors and rebuilds a drawing, `xlsx/write/charts.rs` is the
 writer's chart half. Excel tools are in `tools/excel-oracle/charts-*.ps1`.
+
+## Additions
+
+- `Session::set_element_format(sheet, index, ChartElement, ElementFormat)` changes the fill, line or text of any chart element in one undo step.
+- Chart sheets are drawn by `components::spreadsheet::chart::show_chart_sheet(ui, book, area, ink, look)`; inserting a map chart is refused because a map is only kept and drawn as a card.
+- `chart_paint::draw` is the one entry for every chart type, and `chart::show` and `show_chart_sheet` call it. Layout arithmetic is in `chart_paint::geometry`, which has unit tests.
+- Writing a chart regenerates its `numCache` and `strCache` from the cells; Excel stops responding on a surface chart without them.
+- Automatic axis scales in `plot::scale` and trendline equation text in `plot::equation` have not been calibrated against Excel's own values (`tools/excel-oracle/charts-scale.ps1` and `charts-trend.ps1` were written and not run).

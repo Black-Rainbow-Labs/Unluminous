@@ -1373,7 +1373,9 @@ impl ChartSpec {
     pub fn is_secondary(&self, group: usize) -> bool {
         match (self.groups.first(), self.groups.get(group)) {
             (Some(first), Some(this)) => {
-                group > 0 && !this.axes.is_empty() && this.axes.iter().all(|a| !first.axes.contains(a))
+                group > 0
+                    && !this.axes.is_empty()
+                    && this.axes.iter().all(|a| !first.axes.contains(a))
             }
             _ => false,
         }
@@ -1431,7 +1433,9 @@ impl Group {
             (GroupKind::Bar, false) if self.horizontal => {
                 pick(T::BarClustered, T::BarStacked, T::BarStacked100)
             }
-            (GroupKind::Bar, false) => pick(T::ColumnClustered, T::ColumnStacked, T::ColumnStacked100),
+            (GroupKind::Bar, false) => {
+                pick(T::ColumnClustered, T::ColumnStacked, T::ColumnStacked100)
+            }
             (GroupKind::Bar, true) if self.horizontal => {
                 pick(T::Bar3DClustered, T::Bar3DStacked, T::Bar3DStacked100)
             }

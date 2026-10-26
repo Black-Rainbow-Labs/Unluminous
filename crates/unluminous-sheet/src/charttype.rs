@@ -33,15 +33,22 @@ impl Chart {
     fn refine_by_series(&self, by_groups: ChartType) -> ChartType {
         use ChartType as T;
         let Some(group) = self.spec.groups.first() else { return by_groups };
-        let members: Vec<&crate::model::ChartSeries> = self.series.iter().filter(|s| s.group == 0).collect();
+        let members: Vec<&crate::model::ChartSeries> =
+            self.series.iter().filter(|s| s.group == 0).collect();
         let Some(first) = members.first() else { return by_groups };
-        let no_markers = members.iter().all(|s| s.fmt.marker.as_ref().and_then(|m| m.symbol.as_deref()) == Some("none"));
+        let no_markers = members
+            .iter()
+            .all(|s| s.fmt.marker.as_ref().and_then(|m| m.symbol.as_deref()) == Some("none"));
         match (group.kind, by_groups) {
             (GroupKind::Line, T::LineMarkers) if no_markers => T::Line,
             (GroupKind::Line, T::LineMarkersStacked) if no_markers => T::LineStacked,
             (GroupKind::Line, T::LineMarkersStacked100) if no_markers => T::LineStacked100,
             (GroupKind::Scatter, _) if self.spec.groups.len() == 1 => {
-                let lines_off = first.fmt.sp_pr.as_deref().is_some_and(|x| x.contains("<a:ln") && x.contains("<a:noFill/></a:ln>"));
+                let lines_off = first
+                    .fmt
+                    .sp_pr
+                    .as_deref()
+                    .is_some_and(|x| x.contains("<a:ln") && x.contains("<a:noFill/></a:ln>"));
                 let smooth = first.fmt.smooth == Some(true);
                 match (lines_off, smooth, no_markers) {
                     (true, _, _) => T::ScatterMarkers,

@@ -21,7 +21,8 @@ const VIEW_3D: &str = "<c:view3D><c:rotX val=\"15\"/><c:rotY val=\"20\"/><c:dept
 const VIEW_3D_PERSPECTIVE: &str = "<c:view3D><c:rotX val=\"15\"/><c:rotY val=\"20\"/><c:depthPercent val=\"100\"/><c:rAngAx val=\"0\"/><c:perspective val=\"30\"/></c:view3D>";
 const VIEW_SURFACE: &str = "<c:view3D><c:rotX val=\"15\"/><c:rotY val=\"20\"/><c:depthPercent val=\"100\"/><c:rAngAx val=\"0\"/></c:view3D>";
 const VIEW_CONTOUR: &str = "<c:view3D><c:rotX val=\"90\"/><c:rotY val=\"0\"/><c:rAngAx val=\"0\"/><c:perspective val=\"0\"/></c:view3D>";
-const VIEW_PIE_3D: &str = "<c:view3D><c:rotX val=\"30\"/><c:rotY val=\"0\"/><c:rAngAx val=\"0\"/></c:view3D>";
+const VIEW_PIE_3D: &str =
+    "<c:view3D><c:rotX val=\"30\"/><c:rotY val=\"0\"/><c:rAngAx val=\"0\"/></c:view3D>";
 
 /// A category axis as Excel makes one.
 pub fn category_axis(id: u32, cross: u32, position: AxisPosition) -> Axis {
@@ -102,34 +103,59 @@ fn area(grouping: Grouping, three_d: bool) -> Group {
 pub fn build(ty: ChartType) -> Built {
     use ChartType as T;
     match ty {
-        T::ColumnClustered | T::ColumnStacked | T::ColumnStacked100 => flat(bar(false, grouping_of(ty), false), cat_val(true)),
-        T::Column3DClustered | T::Column3DStacked | T::Column3DStacked100 | T::Column3D => bar_3d(ty),
+        T::ColumnClustered | T::ColumnStacked | T::ColumnStacked100 => {
+            flat(bar(false, grouping_of(ty), false), cat_val(true))
+        }
+        T::Column3DClustered | T::Column3DStacked | T::Column3DStacked100 | T::Column3D => {
+            bar_3d(ty)
+        }
         T::Bar3DClustered | T::Bar3DStacked | T::Bar3DStacked100 => bar_3d(ty),
-        T::BarClustered | T::BarStacked | T::BarStacked100 => flat(bar(true, grouping_of(ty), false), horizontal_axes()),
-        T::Line | T::LineMarkers | T::LineStacked | T::LineMarkersStacked | T::LineStacked100 | T::LineMarkersStacked100 => {
-            flat(line(grouping_of(ty), false), cat_val(true))
+        T::BarClustered | T::BarStacked | T::BarStacked100 => {
+            flat(bar(true, grouping_of(ty), false), horizontal_axes())
         }
+        T::Line
+        | T::LineMarkers
+        | T::LineStacked
+        | T::LineMarkersStacked
+        | T::LineStacked100
+        | T::LineMarkersStacked100 => flat(line(grouping_of(ty), false), cat_val(true)),
         T::Line3D => three_d(line(Grouping::Standard, true), cat_val_ser(), VIEW_3D_PERSPECTIVE),
-        T::Pie | T::PieExploded | T::Pie3D | T::Pie3DExploded | T::PieOfPie | T::BarOfPie | T::Doughnut | T::DoughnutExploded => {
-            pie_family(ty)
+        T::Pie
+        | T::PieExploded
+        | T::Pie3D
+        | T::Pie3DExploded
+        | T::PieOfPie
+        | T::BarOfPie
+        | T::Doughnut
+        | T::DoughnutExploded => pie_family(ty),
+        T::Area | T::AreaStacked | T::AreaStacked100 => {
+            flat(area(grouping_of(ty), false), cat_val_mid())
         }
-        T::Area | T::AreaStacked | T::AreaStacked100 => flat(area(grouping_of(ty), false), cat_val_mid()),
         T::Area3D | T::Area3DStacked | T::Area3DStacked100 => {
             let grouping = grouping_of(ty);
             let axes = if grouping == Grouping::Standard { cat_val_ser() } else { cat_val(true) };
             three_d(area(grouping, true), axes, VIEW_3D_PERSPECTIVE)
         }
-        T::ScatterMarkers | T::ScatterSmooth | T::ScatterSmoothNoMarkers | T::ScatterLines | T::ScatterLinesNoMarkers => {
-            flat(scatter(ty), scatter_axes())
-        }
+        T::ScatterMarkers
+        | T::ScatterSmooth
+        | T::ScatterSmoothNoMarkers
+        | T::ScatterLines
+        | T::ScatterLinesNoMarkers => flat(scatter(ty), scatter_axes()),
         T::Bubble | T::Bubble3D => flat(bubble(ty), scatter_axes()),
         T::StockHlc | T::StockOhlc => flat(stock(ty, PRIMARY[..2].to_vec()), cat_val(true)),
         T::StockVhlc | T::StockVohlc => stock_with_volume(ty),
-        T::Surface | T::SurfaceWireframe | T::SurfaceTopView | T::SurfaceTopViewWireframe => surface(ty),
-        T::Radar | T::RadarMarkers | T::RadarFilled => flat(radar(ty), cat_val(true)),
-        T::Treemap | T::Sunburst | T::Histogram | T::Pareto | T::BoxWhisker | T::Waterfall | T::Funnel | T::Map => {
-            Built { ex: Some(build_ex(ty)), ..empty() }
+        T::Surface | T::SurfaceWireframe | T::SurfaceTopView | T::SurfaceTopViewWireframe => {
+            surface(ty)
         }
+        T::Radar | T::RadarMarkers | T::RadarFilled => flat(radar(ty), cat_val(true)),
+        T::Treemap
+        | T::Sunburst
+        | T::Histogram
+        | T::Pareto
+        | T::BoxWhisker
+        | T::Waterfall
+        | T::Funnel
+        | T::Map => Built { ex: Some(build_ex(ty)), ..empty() },
         T::Combo => flat(bar(false, Grouping::Clustered, false), cat_val(true)),
     }
 }
@@ -153,11 +179,25 @@ fn three_d(group: Group, axes: Vec<Axis>, view: &str) -> Built {
 fn grouping_of(ty: ChartType) -> Grouping {
     use ChartType as T;
     match ty {
-        T::ColumnStacked | T::BarStacked | T::LineStacked | T::LineMarkersStacked | T::AreaStacked | T::Column3DStacked
-        | T::Bar3DStacked | T::Area3DStacked => Grouping::Stacked,
-        T::ColumnStacked100 | T::BarStacked100 | T::LineStacked100 | T::LineMarkersStacked100 | T::AreaStacked100
-        | T::Column3DStacked100 | T::Bar3DStacked100 | T::Area3DStacked100 => Grouping::PercentStacked,
-        T::Line | T::LineMarkers | T::Area | T::Area3D | T::Line3D | T::Column3D => Grouping::Standard,
+        T::ColumnStacked
+        | T::BarStacked
+        | T::LineStacked
+        | T::LineMarkersStacked
+        | T::AreaStacked
+        | T::Column3DStacked
+        | T::Bar3DStacked
+        | T::Area3DStacked => Grouping::Stacked,
+        T::ColumnStacked100
+        | T::BarStacked100
+        | T::LineStacked100
+        | T::LineMarkersStacked100
+        | T::AreaStacked100
+        | T::Column3DStacked100
+        | T::Bar3DStacked100
+        | T::Area3DStacked100 => Grouping::PercentStacked,
+        T::Line | T::LineMarkers | T::Area | T::Area3D | T::Line3D | T::Column3D => {
+            Grouping::Standard
+        }
         _ => Grouping::Clustered,
     }
 }
@@ -185,7 +225,10 @@ fn cat_val_ser() -> Vec<Axis> {
 }
 
 fn bar_3d(ty: ChartType) -> Built {
-    let horizontal = matches!(ty, ChartType::Bar3DClustered | ChartType::Bar3DStacked | ChartType::Bar3DStacked100);
+    let horizontal = matches!(
+        ty,
+        ChartType::Bar3DClustered | ChartType::Bar3DStacked | ChartType::Bar3DStacked100
+    );
     let grouping = grouping_of(ty);
     let axes = if horizontal {
         horizontal_axes()
@@ -200,10 +243,18 @@ fn bar_3d(ty: ChartType) -> Built {
 fn pie_family(ty: ChartType) -> Built {
     use ChartType as T;
     let group = match ty {
-        T::Pie | T::PieExploded => {
-            Group { kind: GroupKind::Pie, vary_colors: Some(true), first_slice_angle: Some(0), ..Group::default() }
-        }
-        T::Pie3D | T::Pie3DExploded => Group { kind: GroupKind::Pie, three_d: true, vary_colors: Some(true), ..Group::default() },
+        T::Pie | T::PieExploded => Group {
+            kind: GroupKind::Pie,
+            vary_colors: Some(true),
+            first_slice_angle: Some(0),
+            ..Group::default()
+        },
+        T::Pie3D | T::Pie3DExploded => Group {
+            kind: GroupKind::Pie,
+            three_d: true,
+            vary_colors: Some(true),
+            ..Group::default()
+        },
         T::PieOfPie | T::BarOfPie => Group {
             kind: GroupKind::OfPie,
             of_pie: if ty == T::BarOfPie { OfPieKind::Bar } else { OfPieKind::Pie },
@@ -237,7 +288,12 @@ fn scatter(ty: ChartType) -> Group {
         ChartType::ScatterSmoothNoMarkers => "smooth",
         _ => "lineMarker",
     };
-    Group { kind: GroupKind::Scatter, scatter_style: Some(style.to_owned()), vary_colors: Some(false), ..Group::default() }
+    Group {
+        kind: GroupKind::Scatter,
+        scatter_style: Some(style.to_owned()),
+        vary_colors: Some(false),
+        ..Group::default()
+    }
 }
 
 fn bubble(ty: ChartType) -> Group {
@@ -253,7 +309,13 @@ fn bubble(ty: ChartType) -> Group {
 
 fn stock(ty: ChartType, axes: Vec<u32>) -> Group {
     let with_bars = matches!(ty, ChartType::StockOhlc | ChartType::StockVohlc);
-    Group { kind: GroupKind::Stock, hi_low_lines: true, up_down_bars: with_bars.then_some(150), axes, ..Group::default() }
+    Group {
+        kind: GroupKind::Stock,
+        hi_low_lines: true,
+        up_down_bars: with_bars.then_some(150),
+        axes,
+        ..Group::default()
+    }
 }
 
 /// Volume columns on the primary axes and the stock group on the secondary ones.
@@ -286,7 +348,12 @@ fn radar(ty: ChartType) -> Group {
         ChartType::RadarFilled => "filled",
         _ => "standard",
     };
-    Group { kind: GroupKind::Radar, radar_style: Some(style.to_owned()), vary_colors: Some(false), ..Group::default() }
+    Group {
+        kind: GroupKind::Radar,
+        radar_style: Some(style.to_owned()),
+        vary_colors: Some(false),
+        ..Group::default()
+    }
 }
 
 fn cat_val_mid() -> Vec<Axis> {
@@ -323,13 +390,17 @@ fn build_ex(ty: ChartType) -> ExSpec {
         _ => {}
     }
     let mut ex = ExSpec { legend: false, series: vec![series], ..ExSpec::default() };
-    let axis = |id, value| ExAxis { id, value_axis: value, tick_labels: true, major_gridlines: value, ..ExAxis::default() };
+    let axis = |id, value| ExAxis {
+        id,
+        value_axis: value,
+        tick_labels: true,
+        major_gridlines: value,
+        ..ExAxis::default()
+    };
     match ty {
         ChartType::Histogram => {
-            ex.axes = vec![
-                ExAxis { gap_width: Some("0".to_owned()), ..axis(0, false) },
-                axis(1, true),
-            ]
+            ex.axes =
+                vec![ExAxis { gap_width: Some("0".to_owned()), ..axis(0, false) }, axis(1, true)]
         }
         ChartType::Pareto => {
             let mut line = ex.series[0].clone();
@@ -344,9 +415,17 @@ fn build_ex(ty: ChartType) -> ExSpec {
                 ExAxis { num_fmt: None, ..axis(2, true) },
             ];
         }
-        ChartType::Waterfall => ex.axes = vec![ExAxis { gap_width: Some("0.5".to_owned()), ..axis(0, false) }, axis(1, true)],
-        ChartType::BoxWhisker => ex.axes = vec![ExAxis { gap_width: Some("1".to_owned()), ..axis(0, false) }, axis(1, true)],
-        ChartType::Funnel => ex.axes = vec![ExAxis { gap_width: Some("0.06".to_owned()), ..axis(0, false) }],
+        ChartType::Waterfall => {
+            ex.axes =
+                vec![ExAxis { gap_width: Some("0.5".to_owned()), ..axis(0, false) }, axis(1, true)]
+        }
+        ChartType::BoxWhisker => {
+            ex.axes =
+                vec![ExAxis { gap_width: Some("1".to_owned()), ..axis(0, false) }, axis(1, true)]
+        }
+        ChartType::Funnel => {
+            ex.axes = vec![ExAxis { gap_width: Some("0.06".to_owned()), ..axis(0, false) }]
+        }
         _ => {}
     }
     ex
@@ -406,7 +485,9 @@ pub fn apply_type(chart: &mut Chart, ty: ChartType) {
     chart.spec.groups = built.groups;
     chart.spec.axes = built.axes;
     for axis in &mut chart.spec.axes {
-        if let Some(old) = old_axes.iter().find(|o| o.kind == axis.kind && o.position == axis.position) {
+        if let Some(old) =
+            old_axes.iter().find(|o| o.kind == axis.kind && o.position == axis.position)
+        {
             axis.title = old.title.clone();
             axis.min = old.min;
             axis.max = old.max;
@@ -425,8 +506,10 @@ pub fn apply_type(chart: &mut Chart, ty: ChartType) {
     if built.floor_and_walls {
         let wall = "<c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>";
         chart.spec.raw.floor = Some(format!("<c:floor><c:thickness val=\"0\"/>{wall}</c:floor>"));
-        chart.spec.raw.side_wall = Some(format!("<c:sideWall><c:thickness val=\"0\"/>{wall}</c:sideWall>"));
-        chart.spec.raw.back_wall = Some(format!("<c:backWall><c:thickness val=\"0\"/>{wall}</c:backWall>"));
+        chart.spec.raw.side_wall =
+            Some(format!("<c:sideWall><c:thickness val=\"0\"/>{wall}</c:sideWall>"));
+        chart.spec.raw.back_wall =
+            Some(format!("<c:backWall><c:thickness val=\"0\"/>{wall}</c:backWall>"));
     } else {
         chart.spec.raw.floor = None;
         chart.spec.raw.side_wall = None;
@@ -444,7 +527,11 @@ pub fn apply_type(chart: &mut Chart, ty: ChartType) {
         ex.series = Vec::new();
         for (i, _) in chart.series.iter().enumerate() {
             for t in &template {
-                ex.series.push(ExSeries { data: i, format_index: ex.series.len() as u32, ..t.clone() });
+                ex.series.push(ExSeries {
+                    data: i,
+                    format_index: ex.series.len() as u32,
+                    ..t.clone()
+                });
             }
         }
     }
