@@ -77,7 +77,7 @@ The bar is 44 points. From the left:
    eleven styles a person uses most come first, each name set in a size and weight that suggests the style
    (Title largest, the headings stepping down), then a groove, then every other paragraph style in the
    document in the plain row style. The chosen style has the tick `menu_row` draws.
-2. **Text options**, a round chip with the `Letters` mark and a small chevron, opening a flyout. This is the
+2. **Text options**, a round chip with Lucide's `bold` mark, opening a flyout. This is the
    menu that opens and closes which the ticket asks for, and it is the same control the title bar uses for
    Markdown (`text_tools`). The flyout holds four rows, each named at its left:
    - `Text`: a carved track of bold, italic, underline and strikethrough. A raised option is on.
@@ -87,9 +87,10 @@ The bar is 44 points. From the left:
    The chip shows a small accent dot while the caret's text is bold, italic or underlined, so the state is
    visible with the menu shut.
 3. A groove.
-4. **View**, a select chip with the view's name (`Print Layout`, `Read Mode`, `Outline`). This replaces the
-   three buttons that were in the strip under the pages.
-5. At the right, three round chips: **Format** (Lucide `a-large-small`, opens the panel at its root),
+4. **View mode**, a select chip with the view's name (`Print Layout`, `Read Mode`, `Outline`). This replaces
+   the three buttons that were in the strip under the pages. It is named `View mode` because the window's
+   own menu bar has a `View` menu, and two controls must not share a name.
+5. At the right, three round chips: **Format** (the `Palette` mark, opens the panel at its root),
    **Insert** (`Plus`, opens the panel at Insert) and **Find a command** (`Search`). Each is carved in while
    what it opens is open. The magnifier is a 16 point mark centred in a 32 point disc, so nothing is clipped.
 
@@ -128,7 +129,13 @@ still Ctrl and the wheel, Ctrl and plus or minus, and `Document -> Zoom` in the 
 
 `status_bar::Status` gains `items: &[StatusItem]` and answers which item was pressed in `Outcome`; the window
 runs the press through the provider's `command`, which is the path `plugins run word` takes, so a press and
-an agent's command are the same call.
+an agent's command are the same call. The page item runs `action go-to` and the words item `action
+word-count`, two actions added for them. What the command says is not repeated in the bar; only a refusal is.
+
+### 3a. The Settings page
+
+`Settings -> Word` is drawn with `settings_kit`'s cards, as the spreadsheet's page is: a `Word` card with the
+author, the zoom a document opens at and formatting marks, and a `Proofing` card with spell check.
 
 ### 4. The command search and the slash menu
 
@@ -150,7 +157,7 @@ The go to box (`Ctrl+G`) becomes the same card with one carved well and the hint
 
 Width 320 points. Its ground is the pane ground with a groove along its left edge.
 
-**The head** is 52 points: a round back chip (`ChevLeft`) when deeper than the root, the level's name in the
+**The head** is 58 points: a round back chip (`ChevLeft`) when deeper than the root, the level's name in the
 design's 15 point semibold, the path above it in 11 point quiet ink (`Format`, `Format · Text`), and a round
 close chip (`Cross`) at the right. The empty box in the report is gone because the mark is drawn.
 
@@ -224,8 +231,10 @@ The ruler is 26 points on the pane ground with a groove under it.
   panel, the search, the `/` menu and `plugins run word action` are one path.
 - Every control keeps an accessible name. Names the tests use and that still describe the control are kept
   (`Bold`, `Italic`, `Format: text, paragraph, styles, page and more`, `Landscape`, `Promote`, `Ruler`,
-  `Tab kind`). `View: Outline` and `View: Read Mode` become rows of the view select, still named that way.
-  `Status: page` and the other strip names move to the window's status bar items with the same names.
+  `Tab kind`).
+  `View: Outline` and `View: Read Mode` are gone: the views are the rows `Outline` and `Read Mode` of the
+  `View mode` chip. `Status: page`, `Status: words` and `Status: track changes` are the window's status bar
+  items, and the spelling count keeps the name `Next spelling error (F7)`.
 - Keyboard handling, layout, pagination and the document model are untouched.
 
 ## Tests

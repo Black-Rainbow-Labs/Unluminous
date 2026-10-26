@@ -142,7 +142,7 @@ pub fn ruler(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, rect: Rect, page
     );
     // Ticks every eighth of an inch from the left margin, longer at the quarters and halves, the inches
     // numbered.
-    let tick_ink = Color32::from_rgba_unmultiplied(40, 40, 40, 110); // any ground: drawn on the paper band
+    let tick_ink = Color32::from_gray(140); // any ground: drawn on the paper band
     let number_ink = Color32::from_gray(105); // any ground: drawn on the paper band
     let inch = 72.0 * zoom;
     let mut n = ((page_left - column_left) / (inch / 8.0)).floor() as i32;

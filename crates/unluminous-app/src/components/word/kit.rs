@@ -331,7 +331,8 @@ pub fn styled_row(ui: &mut egui::Ui, name: &str, size: f32, strong: bool, checke
 pub fn pill_width(ui: &egui::Ui, label: &str) -> f32 {
     let z = zoom(ui.ctx());
     let font = egui::FontId::proportional(12.0 * z);
-    let words = ui.fonts_mut(|f| f.layout_no_wrap(label.to_owned(), font, Color32::WHITE).size().x);
+    let words =
+        ui.fonts_mut(|f| f.layout_no_wrap(label.to_owned(), font, Color32::PLACEHOLDER).size().x);
     words + 26.0 * z
 }
 
