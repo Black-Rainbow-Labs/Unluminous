@@ -25,14 +25,20 @@ fn folder() -> PathBuf {
 /// columns and pages (`min(largest scale that fits, estimate)` in `pages::paginate`), and the other fonts agree in
 /// every case but these five, where the scale decision does not follow from column width alone.
 const KNOWN_DIFFERENCES: &[(&str, &str)] = &[
-    ("pages-aptos-narrow.json/fit-1x1", FIT_IN_ANOTHER_FONT),
     ("pages-aptos-narrow.json/fit-2x3", FIT_IN_ANOTHER_FONT),
     ("pages-arial.json/fit-2x3", FIT_IN_ANOTHER_FONT),
-    ("pages-times.json/fit-1x1", FIT_IN_ANOTHER_FONT),
     ("pages-times.json/fit-2x3", FIT_IN_ANOTHER_FONT),
 ];
 
-/// Excel's PDFs for the fit sheets give the scales it used, read from the column pitch: 1 by 1 is 23% (Aptos Narrow
+/// Sheets fitted to one page by one page in Aptos Narrow and Times New Roman. Excel's PDF for each is one page at
+/// the paginator's scale (23%), and Excel's break list through COM holds no break after the last column where the
+/// paginator has one, so only the printed page count is compared. Excel lists that break for Arial at 25%.
+const BREAK_AFTER_THE_DATA: &[&str] =
+    &["pages-aptos-narrow.json/fit-1x1", "pages-times.json/fit-1x1"];
+
+/// Calibri 2 by 3 set to a fixed zoom of 49 prints four pages with 211 pixel columns, which is `round(430 * 0.49)`,
+/// so 49 fits and Excel still chose 48; Calibri 4 by 4 at 94 to 98 prints twelve pages with the same rounded widths
+/// and Excel chose 93. The scale is therefore not the largest that fits. Excel's PDFs for the fit sheets give the scales it used, read from the column pitch: 1 by 1 is 23% (Aptos Narrow
 /// and Times New Roman), 25% (Arial), 24% (Calibri) and 18% (Consolas), all the paginator's scale, so for those two
 /// sheets only the break after the data differs: Excel lists none for Aptos Narrow and Times New Roman and lists one
 /// for Arial. 2 by 3 is 46% (Aptos Narrow), 50% (Arial), 47% (Times New Roman), 48% (Calibri) and 37% (Consolas).
@@ -40,7 +46,8 @@ const KNOWN_DIFFERENCES: &[(&str, &str)] = &[
 /// one lower than Excel's for the three sheets here. No allowance and boundary term, rounded up, down or to the
 /// nearest, reproduces all five fonts, and leaving out the break when under 30 pixels remain breaks Calibri's
 /// margins-asym sheet.
-const FIT_IN_ANOTHER_FONT: &str = "Excel's fitted scale or its trailing break differs from the paginator's";
+const FIT_IN_ANOTHER_FONT: &str =
+    "Excel's fitted scale or its trailing break differs from the paginator's";
 
 /// The one based rows or columns of a list of breaks in Excel's answer.
 fn locations(answer: &Value, key: &str, axis: &str) -> Vec<u32> {
@@ -94,7 +101,9 @@ fn every_sheet_breaks_where_excel_breaks_it() {
             let pages = answer["pages"].as_u64().unwrap() as usize;
             // Several print areas print on pages of their own and Excel lists no breaks for them.
             let several_areas = unluminous_sheet::pages::print_area(&book, index).len() > 1;
+            let printed_only = BREAK_AFTER_THE_DATA.iter().any(|k| key.ends_with(k));
             let breaks_agree = several_areas
+                || printed_only
                 || breaks_match(&ours.0, answer, "hbreaks", "hcount", "row")
                     && breaks_match(&ours.1, answer, "vbreaks", "vcount", "col");
             let ours_listed = (ours.0.len(), ours.1.len());
