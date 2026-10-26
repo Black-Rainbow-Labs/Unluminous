@@ -61,6 +61,7 @@ impl BorderSides {
 
 /// One change, or one move of the selection.
 #[derive(Debug, Clone, PartialEq)]
+#[allow(clippy::large_enum_variant)] // an Act is made once per key press, so the size of one is of no cost
 pub enum Act {
     /// Choose these ranges; the last is the current one and its first cell is the active cell.
     Select(Vec<Range>),

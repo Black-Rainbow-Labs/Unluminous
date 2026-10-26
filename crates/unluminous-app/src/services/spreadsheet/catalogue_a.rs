@@ -134,7 +134,7 @@ fn filter_column_items() -> Vec<Item> {
     let text = |label: &str, kind: &str| {
         form(
             label,
-            &format!("filter-column"),
+            "filter-column",
             vec![
                 Field::bare("Column", "A"),
                 Field::choice("Kind", "kind", &[(label.trim_end_matches("..."), kind)], kind),

@@ -307,7 +307,7 @@ fn every_verb_in_the_help_is_one_the_provider_runs_and_takes_the_words_it_lists(
             assert!(!e.contains(&unknown), "`{verb}` is in the help but nothing runs it");
         }
         for word in offered_words(usage) {
-            if let Err(e) = sheet.command(verb, &[word.clone()]) {
+            if let Err(e) = sheet.command(verb, std::slice::from_ref(&word)) {
                 assert!(
                     !e.contains(&format!("not `{word}`")),
                     "`{verb}` lists `{word}` in its help and refuses it: {e}"

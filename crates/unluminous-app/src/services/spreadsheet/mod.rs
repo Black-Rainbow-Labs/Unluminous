@@ -50,6 +50,7 @@ mod tests;
 mod tests_a;
 #[cfg(test)]
 mod tests_c;
+#[cfg(test)]
 mod tests_b;
 
 use std::path::{Path, PathBuf};

@@ -327,7 +327,7 @@ impl Session {
             let drawing = &mut self.book.sheets[sheet].drawing;
             drawing
                 .objects
-                .retain(|o| !o.tree.find(local).is_some_and(|e| e.attr("name") == Some(name)));
+                .retain(|o| o.tree.find(local).is_none_or(|e| e.attr("name") != Some(name)));
             drawing.changed = true;
         }
     }

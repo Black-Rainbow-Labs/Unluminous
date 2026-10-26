@@ -101,7 +101,10 @@ fn forget_what_has_no_object(book: &mut Workbook) {
 
 /// The pivot tables a cache filters, with the number of the sheet each is on, and the number the pivot
 /// cache is known by.
-fn pivots_of(book: &Workbook, names: &[String]) -> Option<(Vec<(u32, String)>, usize, u64)> {
+/// The pivot caches a slicer reads: their ids and names, the first table's cache and its slicer id.
+type PivotsOf = (Vec<(u32, String)>, usize, u64);
+
+fn pivots_of(book: &Workbook, names: &[String]) -> Option<PivotsOf> {
     let tables: Vec<usize> = names.iter().filter_map(|n| book.pivots.find(n)).collect();
     let first = *tables.first()?;
     let cache = book.pivots.tables[first].cache;

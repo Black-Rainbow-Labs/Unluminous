@@ -480,8 +480,8 @@ fn calculated_column_button(
 ) {
     let id = egui::Id::new(("spreadsheet-calculated", &book.key));
     let now = formula_columns(book);
-    let (before, seen, offer): (Vec<(String, usize)>, u64, Option<(String, usize)>) =
-        ui.data(|d| d.get_temp(id)).unwrap_or_default();
+    type Remembered = (Vec<(String, usize)>, u64, Option<(String, usize)>);
+    let (before, seen, offer): Remembered = ui.data(|d| d.get_temp(id)).unwrap_or_default();
     let mut offer = offer;
     if seen != book.revision {
         offer =
