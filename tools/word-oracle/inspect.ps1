@@ -1,11 +1,35 @@
 # Opens a .docx read only in Word and writes what Word reports about it as JSON.
 # Usage: pwsh -NoProfile -File tools/word-oracle/inspect.ps1 -Path <file.docx> -Out <out.json>
-param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Out, [string]$Password = '')
+#
+# With -Serve it starts one Word and inspects one document for each line read from standard input,
+# until standard input closes (task-2368). Starting and quitting Word, with the cloud fonts loaded, is
+# most of the time a single report takes, so a caller with many documents keeps one server. A request
+# is one JSON line, {"path": "...", "out": "...", "password": "...", "lines": true}, and each answer is one line on
+# standard output that starts with "WORD-ORACLE " followed by JSON: {"ok": true, "timings": {...}} or
+# {"ok": false, "error": "..."}. Lines that do not start with the marker are not answers. The first
+# answer, {"ready": true, ...}, is written once Word has started. The process id of that Word is
+# written to -PidFile, so a caller that gives up on a report stops that Word. "lines": false leaves out
+# the lines of each paragraph, which on a long document is half of the report's time, for a caller
+# that does not read them.
+#
+#   pwsh -NoProfile -File tools/word-oracle/inspect.ps1 -Serve -PidFile <file>
+[CmdletBinding(DefaultParameterSetName = 'One')]
+param(
+    [Parameter(Mandatory, ParameterSetName = 'One')][string]$Path,
+    [Parameter(Mandatory, ParameterSetName = 'One')][string]$Out,
+    [Parameter(ParameterSetName = 'One')][string]$Password = '',
+    [Parameter(Mandatory, ParameterSetName = 'Serve')][switch]$Serve,
+    [Parameter(ParameterSetName = 'Serve')][string]$PidFile = '',
+    # How long a served Word may live at most. A single report that hangs is the caller's to stop.
+    [Parameter(ParameterSetName = 'Serve')][int]$LifetimeSeconds = 14400
+)
 
 . "$PSScriptRoot/WordCom.ps1"
 $MIXED = 9999999
 $script:ThemeCache = @{}
 $script:Doc = $null
+# Milliseconds spent on the per line questions and on the character runs of the current document.
+$script:Spent = @{ lines = [Diagnostics.Stopwatch]::new(); runs = [Diagnostics.Stopwatch]::new() }
 
 # Runs a script block and returns $Default when it throws.
 function Try-Get {
@@ -193,6 +217,12 @@ function Read-Paragraph {
     $f = $para.Format
     $listType = Try-Get { $r.ListFormat.ListType } 0
     $text = ([string]$r.Text) -replace "\r$", '' -replace "\u0007", ''
+    $script:Spent.runs.Start()
+    $runs = Get-RunsSafe $doc $para
+    $script:Spent.runs.Stop()
+    $script:Spent.lines.Start()
+    $lines = Get-Lines $doc $para
+    $script:Spent.lines.Stop()
     [ordered]@{
         index = $index
         text = $text
@@ -212,8 +242,8 @@ function Read-Paragraph {
         top = (Round2 (Try-Get { $doc.Range($r.Start, $r.Start).Information(6) } 0))
         left = (Round2 (Try-Get { $doc.Range($r.Start, $r.Start).Information(5) } 0))
         lastTop = (Round2 (Try-Get { $e = [math]::Max($r.Start, $r.End - 1); $doc.Range($e, $e).Information(6) } 0))
-        runs = (Get-RunsSafe $doc $para)
-        lines = (Get-Lines $doc $para)
+        runs = $runs
+        lines = $lines
     }
 }
 
@@ -365,33 +395,107 @@ function Write-Report {
     [IO.File]::WriteAllText($outPath, $json, (New-Object Text.UTF8Encoding($false)))
 }
 
-$fullPath = (Resolve-Path -LiteralPath $Path).Path
-# Asking for every line is slow, so it is done for documents of a few hundred paragraphs or fewer.
-$script:AskLines = $true
+# Opens one document read only in the running Word, writes its report to $Out and closes it. Answers
+# how long each part took, in milliseconds.
+function Invoke-Inspection {
+    param($word, [string]$Path, [string]$Out, [string]$Password = '', [bool]$Lines = $true)
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    $timings = [ordered]@{}
+    $fullPath = (Resolve-Path -LiteralPath $Path).Path
+    $outPath = [IO.Path]::GetFullPath($Out)
+    $script:ThemeCache = @{}
+    $script:Doc = $null
+    $script:Spent.lines.Reset()
+    $script:Spent.runs.Reset()
+    # Asking for every line is slow, so it is done for documents of a few hundred paragraphs or fewer.
+    $script:AskLines = $Lines
+    # Records an earlier, stopped Word left about this folder would make this open wait on a hidden dialog.
+    $folder = Split-Path -Parent $fullPath
+    Clear-WordResiliency -Folder $folder
+    $timings.resiliency = $clock.ElapsedMilliseconds
+    try {
+        $clock.Restart()
+        try {
+            # An encrypted document is opened with its password; Word ignores one given for a document with none.
+            $doc = $word.Documents.Open($fullPath, $false, $true, $false, $Password)
+        } catch {
+            $report = [ordered]@{ file = [IO.Path]::GetFileName($fullPath); opened = $false; error = $_.Exception.Message }
+            Write-Report $report $outPath
+            $timings.open = $clock.ElapsedMilliseconds
+            return $timings
+        }
+        $script:Doc = $doc
+        try { if ($doc.Paragraphs.Count -gt 400) { $script:AskLines = $false } } catch { }
+        # Positions are only right in Print Layout view.
+        try { $doc.ActiveWindow.View.Type = 3 } catch { try { $doc.Windows.Item(1).View.Type = 3 } catch { } }
+        $timings.open = $clock.ElapsedMilliseconds
+        try {
+            $clock.Restart()
+            $report = Get-Report $doc ([IO.Path]::GetFileName($fullPath))
+            $timings.report = $clock.ElapsedMilliseconds
+            $timings.lines = $script:Spent.lines.ElapsedMilliseconds
+            $timings.runs = $script:Spent.runs.ElapsedMilliseconds
+            $clock.Restart()
+            Write-Report $report $outPath
+            $timings.write = $clock.ElapsedMilliseconds
+        } finally {
+            $clock.Restart()
+            try { $doc.Close(0) } catch { }
+            [void][Runtime.InteropServices.Marshal]::ReleaseComObject($doc)
+            $timings.close = $clock.ElapsedMilliseconds
+        }
+    } finally {
+        Clear-WordResiliency -Folder $folder
+    }
+    return $timings
+}
+
+# Writes one answer line for a caller of -Serve.
+function Write-Answer {
+    param($answer)
+    [Console]::Out.WriteLine('WORD-ORACLE ' + ($answer | ConvertTo-Json -Compress -Depth 5))
+    [Console]::Out.Flush()
+}
+
+# Starts one Word and inspects a document for every request line until standard input closes.
+function Invoke-Server {
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    $handle = $null
+    try {
+        $handle = Start-WordApp -PidFile $PidFile -TimeoutSeconds $LifetimeSeconds
+        Write-Answer ([ordered]@{ ready = $true; pid = $handle.Pid; fonts = @($handle.Fonts).Count; start = $clock.ElapsedMilliseconds })
+        while ($null -ne ($line = [Console]::In.ReadLine())) {
+            if ($line.Trim() -eq '') { continue }
+            try {
+                $request = $line | ConvertFrom-Json
+                $password = if ($request.password) { [string]$request.password } else { '' }
+                $lines = $request.lines -ne $false
+                $timings = Invoke-Inspection $handle.App ([string]$request.path) ([string]$request.out) $password $lines
+                Write-Answer ([ordered]@{ ok = $true; timings = $timings })
+            } catch {
+                Write-Answer ([ordered]@{ ok = $false; error = $_.Exception.Message })
+            }
+        }
+    } finally {
+        $clock.Restart()
+        Stop-WordApp $handle
+        if ($PidFile) { Remove-Item -LiteralPath $PidFile -ErrorAction SilentlyContinue -Confirm:$false }
+        [Console]::Error.WriteLine("inspect.ps1: Word stopped in $($clock.ElapsedMilliseconds) ms")
+    }
+}
+
+if ($Serve) {
+    Invoke-Server
+    return
+}
+
 $outPath = [IO.Path]::GetFullPath($Out)
 $handle = $null
-# Records an earlier, stopped Word left about this folder would make this open wait on a hidden dialog.
-$folder = Split-Path -Parent $fullPath
-Clear-WordResiliency -Folder $folder
+Clear-WordResiliency -Folder (Split-Path -Parent (Resolve-Path -LiteralPath $Path).Path)
 try {
     $handle = Start-WordApp -PidFile "$outPath.pid"
-    $word = $handle.App
-    try {
-        # An encrypted document is opened with its password; Word ignores one given for a document with none.
-        $doc = $word.Documents.Open($fullPath, $false, $true, $false, $Password)
-    } catch {
-        $report = [ordered]@{ file = [IO.Path]::GetFileName($fullPath); opened = $false; error = $_.Exception.Message }
-        Write-Report $report $outPath
-        return
-    }
-    $script:Doc = $doc
-    try { if ($doc.Paragraphs.Count -gt 400) { $script:AskLines = $false } } catch { }
-    # Positions are only right in Print Layout view.
-    try { $doc.ActiveWindow.View.Type = 3 } catch { try { $doc.Windows.Item(1).View.Type = 3 } catch { } }
-    try { Write-Report (Get-Report $doc ([IO.Path]::GetFileName($fullPath))) $outPath }
-    finally { try { $doc.Close(0) } catch { } }
+    $null = Invoke-Inspection $handle.App $Path $Out $Password
 } finally {
     Stop-WordApp $handle
-    Clear-WordResiliency -Folder $folder
     Remove-Item -LiteralPath "$outPath.pid" -ErrorAction SilentlyContinue -Confirm:$false
 }

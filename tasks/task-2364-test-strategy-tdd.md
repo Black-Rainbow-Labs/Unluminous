@@ -345,7 +345,8 @@ typically runs the gate twice and the window suite twice, and the release runs t
 Filed as tickets:
 
 - **`word_live` takes 745 s** (task-2368). Each test starts a Word, and `inspect.ps1` asks for every line of
-  every paragraph. One Word for the whole binary, reused by every inspect, would cut most of it.
+  every paragraph. One Word for the whole binary, reused by every inspect, would cut most of it. Done in
+  task-2368: 1,259 s before and 211 s after, measured one after the other on the same machine.
 - **`notebooks` aborted once** (task-2369) in a `windows-core` COM call ("misaligned pointer dereference", a
   non unwinding panic, so the process ended). Not reproduced in six more runs. The runner now runs a
   binary that ends without a result again whole and records the line it died on, so the next one
