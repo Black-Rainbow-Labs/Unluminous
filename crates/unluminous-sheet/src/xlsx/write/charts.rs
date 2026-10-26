@@ -143,6 +143,9 @@ impl<'a> Writer<'a> {
             if extended { (REL_CHART_EX, CT_CHART_EX) } else { (REL_CHART, CT_CHART) };
         let bytes = self.chart_bytes(chart);
         self.add(&chart_part, Some(content_type), bytes);
+        if extended {
+            self.add_chart_style_parts(&chart_part);
+        }
         let id = next_id(rels);
         rels.push(Relationship {
             id: id.clone(),
@@ -151,6 +154,30 @@ impl<'a> Writer<'a> {
             external: false,
         });
         id
+    }
+
+    /// The style and colour parts Excel will not open an extended chart without, related to the chart part.
+    fn add_chart_style_parts(&mut self, chart_part: &str) {
+        const DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r\n";
+        let style = self.fresh("xl/charts/style{}.xml");
+        self.taken.insert(style.clone());
+        let colors = self.fresh("xl/charts/colors{}.xml");
+        self.taken.insert(colors.clone());
+        let style_xml = format!("{DECLARATION}{}", include_str!("../chartex_style.xml"));
+        let colors_xml = format!("{DECLARATION}{}", include_str!("../chartex_colors.xml"));
+        self.add(&style, Some("application/vnd.ms-office.chartstyle+xml"), style_xml.into_bytes());
+        self.add(&colors, Some("application/vnd.ms-office.chartcolorstyle+xml"), colors_xml.into_bytes());
+        let rel = |id: &str, kind: &str, target: &str| Relationship {
+            id: id.to_owned(),
+            kind: kind.to_owned(),
+            target: relative(chart_part, target),
+            external: false,
+        };
+        let rels = vec![
+            rel("rId1", "http://schemas.microsoft.com/office/2011/relationships/chartStyle", &style),
+            rel("rId2", "http://schemas.microsoft.com/office/2011/relationships/chartColorStyle", &colors),
+        ];
+        self.add(&rels_path(chart_part), None, write_rels(&rels).into_bytes());
     }
 
     /// A chart sheet made here: its part, its drawing and its chart. Returns the part's path.

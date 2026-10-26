@@ -280,13 +280,9 @@ pub fn shape_of(book: &Workbook, sheet: usize, range: Range) -> Shape {
                 && row_cells.iter().all(|v| is_text(v) || matches!(v, Value::Empty))));
     let data_rows = rows - u32::from(header_row);
     let data_cols = cols - u32::from(label_column);
-    let plot_by = if data_rows > data_cols {
-        PlotBy::Columns
-    } else if data_rows < data_cols {
-        PlotBy::Rows
-    } else {
-        PlotBy::Columns
-    };
+    // Measured against Excel: a wide block is plotted by rows only when its corner cell is empty, which is how
+    // a block with names across the top and categories down the side is written; otherwise by columns.
+    let plot_by = if data_rows < data_cols && top_left_empty { PlotBy::Rows } else { PlotBy::Columns };
     let dates = label_column && date_column;
     Shape { header_row, label_column, plot_by, dates }
 }

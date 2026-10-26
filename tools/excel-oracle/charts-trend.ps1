@@ -42,7 +42,11 @@ try {
                 if ($k.order) { $t.Order = $k.order }
                 $t.DisplayEquation = $true
                 $t.DisplayRSquared = $true
+                $chart.Refresh()
+                [void]$chart.Export((Join-Path ([IO.Path]::GetTempPath()) 'charts-trend-render.png'))
                 $o.text = $t.DataLabel.Text
+                if (-not $o.text) { $o.text = $t.DataLabel.Caption }
+                if (-not $o.text) { $o.text = [string]$t.DataLabel.Formula }
                 $t.Delete() | Out-Null
             } catch { $o.error = $_.Exception.Message }
             $o | ConvertTo-Json -Compress

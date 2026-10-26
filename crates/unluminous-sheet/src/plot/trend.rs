@@ -28,11 +28,17 @@ const SAMPLES: usize = 120;
 /// Fit a trendline to points. Returns `None` when Excel would refuse: too few points, or a logarithm of a
 /// value that is not positive.
 pub fn fit(t: &Trendline, xs: &[f64], ys: &[f64], series_name: &str) -> Option<TrendResult> {
-    let points: Vec<(f64, f64)> = xs.iter().copied().zip(ys.iter().copied()).filter(|(x, y)| x.is_finite() && y.is_finite()).collect();
+    let points: Vec<(f64, f64)> = xs
+        .iter()
+        .copied()
+        .zip(ys.iter().copied())
+        .filter(|(x, y)| x.is_finite() && y.is_finite())
+        .collect();
     if points.len() < 2 {
         return None;
     }
-    let (xmin, xmax) = points.iter().fold((f64::MAX, f64::MIN), |(a, b), (x, _)| (a.min(*x), b.max(*x)));
+    let (xmin, xmax) =
+        points.iter().fold((f64::MAX, f64::MIN), |(a, b), (x, _)| (a.min(*x), b.max(*x)));
     let (from, to) = (xmin - t.backward, xmax + t.forward);
     let name = t.name.clone().unwrap_or_else(|| default_name(t.kind, series_name));
     if let TrendKind::MovingAverage(period) = t.kind {
@@ -45,10 +51,20 @@ pub fn fit(t: &Trendline, xs: &[f64], ys: &[f64], series_name: &str) -> Option<T
             let x = from + (to - from) * i as f64 / (SAMPLES - 1) as f64;
             (x, curve(x))
         })
-        .filter(|(x, y)| y.is_finite() && !matches!(t.kind, TrendKind::Logarithmic | TrendKind::Power) || *x > 0.0 && y.is_finite())
+        .filter(|(x, y)| {
+            y.is_finite() && !matches!(t.kind, TrendKind::Logarithmic | TrendKind::Power)
+                || *x > 0.0 && y.is_finite()
+        })
         .collect();
     let equation = super::equation::text(t.kind, &coefficients, t.intercept);
-    Some(TrendResult { kind: t.kind, samples, coefficients, r_squared: Some(r_squared), name, equation })
+    Some(TrendResult {
+        kind: t.kind,
+        samples,
+        coefficients,
+        r_squared: Some(r_squared),
+        name,
+        equation,
+    })
 }
 
 /// The legend name Excel gives a trendline: `Linear (Series1)`.
@@ -145,7 +161,13 @@ fn coefficients_of(t: &Trendline, points: &[(f64, f64)]) -> Option<(Vec<f64>, f6
             }
             let logged: Vec<(f64, f64)> = points.iter().map(|(x, y)| (*x, y.ln())).collect();
             let (b, ln_a, r2) = line(&logged, t.intercept.filter(|i| *i > 0.0).map(f64::ln))?;
-            Some((vec![ln_a.exp(), b], r2))
+            let c = vec![ln_a.exp(), b];
+            let r2 = if t.intercept.is_some() {
+                r2
+            } else {
+                correlation_squared(points, |x| evaluate(t.kind, &c, x))
+            };
+            Some((c, r2))
         }
         TrendKind::Logarithmic => {
             if points.iter().any(|(x, _)| *x <= 0.0) {
@@ -161,10 +183,35 @@ fn coefficients_of(t: &Trendline, points: &[(f64, f64)]) -> Option<(Vec<f64>, f6
             }
             let logged: Vec<(f64, f64)> = points.iter().map(|(x, y)| (x.ln(), y.ln())).collect();
             let (b, ln_a, r2) = line(&logged, t.intercept.filter(|i| *i > 0.0).map(f64::ln))?;
-            Some((vec![ln_a.exp(), b], r2))
+            let c = vec![ln_a.exp(), b];
+            let r2 = if t.intercept.is_some() {
+                r2
+            } else {
+                correlation_squared(points, |x| evaluate(t.kind, &c, x))
+            };
+            Some((c, r2))
         }
         TrendKind::Polynomial(order) => polynomial(points, order as usize, t.intercept),
         TrendKind::MovingAverage(_) => None,
+    }
+}
+
+/// The squared correlation between the Y values and the curve's values, which is the R squared Excel shows
+/// for exponential and power fits.
+fn correlation_squared(points: &[(f64, f64)], curve: impl Fn(f64) -> f64) -> f64 {
+    let n = points.len() as f64;
+    let fitted: Vec<f64> = points.iter().map(|(x, _)| curve(*x)).collect();
+    let (my, mf) = (points.iter().map(|p| p.1).sum::<f64>() / n, fitted.iter().sum::<f64>() / n);
+    let (mut syy, mut sff, mut syf) = (0.0, 0.0, 0.0);
+    for ((_, y), f) in points.iter().zip(&fitted) {
+        syy += (y - my) * (y - my);
+        sff += (f - mf) * (f - mf);
+        syf += (y - my) * (f - mf);
+    }
+    if syy == 0.0 || sff == 0.0 {
+        1.0
+    } else {
+        syf * syf / (syy * sff)
     }
 }
 
@@ -172,7 +219,8 @@ fn coefficients_of(t: &Trendline, points: &[(f64, f64)]) -> Option<(Vec<f64>, f6
 fn solve(mut a: Vec<Vec<f64>>, mut b: Vec<f64>) -> Option<Vec<f64>> {
     let n = b.len();
     for col in 0..n {
-        let pivot = (col..n).max_by(|&i, &j| a[i][col].abs().partial_cmp(&a[j][col].abs()).unwrap())?;
+        let pivot =
+            (col..n).max_by(|&i, &j| a[i][col].abs().partial_cmp(&a[j][col].abs()).unwrap())?;
         if a[pivot][col].abs() < 1e-300 {
             return None;
         }
@@ -196,8 +244,14 @@ fn solve(mut a: Vec<Vec<f64>>, mut b: Vec<f64>) -> Option<Vec<f64>> {
 
 /// A polynomial fit by least squares on centred and scaled X, which keeps the normal equations well
 /// conditioned; the coefficients are returned for X as it is, highest power first.
-fn polynomial(points: &[(f64, f64)], order: usize, intercept: Option<f64>) -> Option<(Vec<f64>, f64)> {
-    if points.len() <= order {
+fn polynomial(
+    points: &[(f64, f64)],
+    order: usize,
+    intercept: Option<f64>,
+) -> Option<(Vec<f64>, f64)> {
+    // Excel fits a lower order when there are not enough points for the one asked for.
+    let order = order.min(points.len().saturating_sub(1));
+    if order == 0 {
         return None;
     }
     let first = usize::from(intercept.is_some());
