@@ -112,6 +112,21 @@ fn read_feat(path: &Path) -> BTreeMap<String, String> {
     parse_feat(&text)
 }
 
+/// What a dump line says about the file itself. A colour scale's lowest value (type 1) and highest value
+/// (type 2) criteria store no number: the number Excel reports is the range's own lowest or highest cell, which
+/// the cached values already compare, and Excel reported 0 for one on a copy it had not worked out yet, then -3
+/// and 6 when the same copy was opened again (task-2360). So their value is left out.
+fn stored_part(key: &str, value: &str) -> String {
+    if !key.ends_with(".ColorScale") {
+        return value.to_owned();
+    }
+    let criterion = |c: &str| match c.split(':').collect::<Vec<_>>()[..] {
+        [kind @ ("1" | "2"), _, colour] => format!("{kind}::{colour}"),
+        _ => c.to_owned(),
+    };
+    value.split(';').map(criterion).collect::<Vec<_>>().join(";")
+}
+
 /// The keys that differ between two dumps, each as `key: expected -> actual`.
 fn diff_feat(
     expected: &BTreeMap<String, String>,
@@ -121,8 +136,9 @@ fn diff_feat(
     keys.sort();
     keys.dedup();
     let show = |v: Option<&String>| v.map_or("<absent>".to_owned(), |v| format!("{v:?}"));
+    let stored = |k: &str, v: Option<&String>| v.map(|v| stored_part(k, v));
     keys.into_iter()
-        .filter(|k| expected.get(*k) != actual.get(*k))
+        .filter(|k| stored(k, expected.get(*k)) != stored(k, actual.get(*k)))
         .map(|k| format!("{k}: {} -> {}", show(expected.get(k)), show(actual.get(k))))
         .collect()
 }
