@@ -6,7 +6,7 @@ members = ["crates/unluminous-core", "crates/unluminous-chat", "crates/unluminou
 exclude = ["vendor"]
 
 [workspace.package]
-version = "1.16.1"
+version = "1.16.2"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
@@ -295,3 +295,8 @@ lto = "thin"
 # changed and how to carry it to the next egui.
 [patch.crates-io]
 egui-wgpu = { path = "vendor/egui-wgpu" }
+# wgpu-hal 30.0.1 with one change (`task-2369`): DX12 copies a shader compiled by FXC out of its `ID3DBlob`
+# before caching it. That blob does not count its references atomically, and the per-device shader cache
+# handed clones of one blob to every thread making the same pipeline, so the blob was freed while still
+# cached and a window test binary aborted reading it. `vendor/wgpu-hal/UNLUMINOUS.md` has the measurement.
+wgpu-hal = { path = "vendor/wgpu-hal" }
