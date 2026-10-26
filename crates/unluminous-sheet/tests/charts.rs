@@ -278,9 +278,22 @@ fn excel_agrees_with_what_is_read_written_and_made() {
     assert_eq!(d["repaired"], false, "{}", d["problem"]);
     let charts = d["charts"].as_array().unwrap();
     assert_eq!(charts.len(), made.book.sheets[0].charts.len());
-    for (chart, made) in charts.iter().zip(&made.book.sheets[0].charts) {
-        assert_eq!(chart["type"], made.chart_type().excel_number(), "{:?}", made.chart_type());
-    }
+    let excel_types: Vec<i64> = charts.iter().map(|c| c["type"].as_i64().unwrap()).collect();
+    let our_types: Vec<i64> = made.book.sheets[0]
+        .charts
+        .iter()
+        .map(|c| i64::from(c.chart_type().excel_number()))
+        .collect();
+    let names: Vec<String> =
+        made.book.sheets[0].charts.iter().map(|c| format!("{:?}", c.chart_type())).collect();
+    let differing: Vec<String> = (0..our_types.len())
+        .filter(|i| excel_types[*i] != our_types[*i])
+        .map(|i| format!("{} ours {} Excel {}", names[i], our_types[i], excel_types[i]))
+        .collect();
+    assert!(
+        differing.is_empty(),
+        "types differ: {differing:?}\nexcel {excel_types:?}\nours  {our_types:?}\nnames {names:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------------------------------

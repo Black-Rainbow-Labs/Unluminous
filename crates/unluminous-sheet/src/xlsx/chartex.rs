@@ -51,7 +51,9 @@ fn read_series_name(tx: Node, resolve: &dyn Fn(&str) -> String) -> Option<String
     let data = child(tx, "txData")?;
     match child(data, "f").and_then(|f| f.text()) {
         Some(f) => Some(resolve(f.trim())),
-        None => child(data, "v").and_then(|v| v.text()).map(|t| format!("\"{}\"", t.replace('"', "\"\""))),
+        None => child(data, "v")
+            .and_then(|v| v.text())
+            .map(|t| format!("\"{}\"", t.replace('"', "\"\""))),
     }
 }
 
@@ -73,7 +75,11 @@ pub fn parse(xml: &str, resolve: &dyn Fn(&str) -> String) -> Option<Parsed> {
                 let d = child(tx, "txData");
                 match d.and_then(|d| child(d, "f")).and_then(|f| f.text()) {
                     Some(f) => format!("={}", resolve(f.trim())),
-                    None => d.and_then(|d| child(d, "v")).and_then(|v| v.text()).unwrap_or("").to_owned(),
+                    None => d
+                        .and_then(|d| child(d, "v"))
+                        .and_then(|v| v.text())
+                        .unwrap_or("")
+                        .to_owned(),
                 }
             }
         });
@@ -123,7 +129,8 @@ fn read_axis(xml: &str, a: Node) -> ExAxis {
 /// Read the position, number format, visibility and text properties of a series' data labels.
 fn read_series_labels(xml: &str, labels: Node, e: &mut ExSeries) {
     e.label_position = attr(labels, "pos").map(str::to_owned);
-    e.label_num_fmt = child(labels, "numFmt").and_then(|n| attr(n, "formatCode")).map(str::to_owned);
+    e.label_num_fmt =
+        child(labels, "numFmt").and_then(|n| attr(n, "formatCode")).map(str::to_owned);
     e.labels = child(labels, "visibility").map(|v| {
         (
             flag_attr(v, "seriesName").unwrap_or(false),
@@ -157,7 +164,8 @@ fn read_series(
     resolve: &dyn Fn(&str) -> String,
 ) {
     let layout = attr(s, "layoutId").and_then(ExLayout::from_id).unwrap_or_default();
-    let data_id: u32 = child(s, "dataId").and_then(|d| attr(d, "val")).and_then(|v| v.parse().ok()).unwrap_or(0);
+    let data_id: u32 =
+        child(s, "dataId").and_then(|d| attr(d, "val")).and_then(|v| v.parse().ok()).unwrap_or(0);
     let mut e = ExSeries {
         layout,
         unique_id: attr(s, "uniqueId").unwrap_or("").to_owned(),
@@ -208,7 +216,8 @@ fn read_layout_options(pr: Node, e: &mut ExSeries) {
     if let Some(sub) = child(pr, "subtotals") {
         e.subtotals = children(sub, "idx").filter_map(|i| attr(i, "val")?.parse().ok()).collect();
     }
-    e.parent_labels = child(pr, "parentLabelLayout").and_then(|p| attr(p, "val")).map(str::to_owned);
+    e.parent_labels =
+        child(pr, "parentLabelLayout").and_then(|p| attr(p, "val")).map(str::to_owned);
     e.aggregation = child(pr, "aggregation").is_some();
     if child(pr, "statistics").is_some() || child(pr, "visibility").is_some() {
         let mut o = BoxOptions::default();
@@ -243,13 +252,19 @@ pub fn write(chart: &crate::model::Chart, name_of: &dyn Fn(&str) -> String) -> S
     for (i, s) in chart.series.iter().enumerate() {
         out.push_str(&format!("<cx:data id=\"{i}\">"));
         if let Some(c) = &s.categories {
-            out.push_str(&format!("<cx:strDim type=\"cat\"><cx:f>{}</cx:f></cx:strDim>", escape(&name_of(c))));
+            out.push_str(&format!(
+                "<cx:strDim type=\"cat\"><cx:f>{}</cx:f></cx:strDim>",
+                escape(&name_of(c))
+            ));
         }
         let kind = match ex.series.first().map(|e| e.layout) {
             Some(ExLayout::Treemap | ExLayout::Sunburst) => "size",
             _ => "val",
         };
-        out.push_str(&format!("<cx:numDim type=\"{kind}\"><cx:f>{}</cx:f></cx:numDim></cx:data>", escape(&name_of(&s.values))));
+        out.push_str(&format!(
+            "<cx:numDim type=\"{kind}\"><cx:f>{}</cx:f></cx:numDim></cx:data>",
+            escape(&name_of(&s.values))
+        ));
     }
     out.push_str("</cx:chartData><cx:chart>");
     out.push_str(&title_xml(chart, ex));
@@ -288,17 +303,23 @@ fn title_xml(chart: &crate::model::Chart, ex: &ExSpec) -> String {
 }
 
 fn axis_xml(a: &ExAxis) -> String {
-    let mut out = format!("<cx:axis id=\"{}\"{}>", a.id, if a.hidden { " hidden=\"1\"" } else { "" });
+    let mut out =
+        format!("<cx:axis id=\"{}\"{}>", a.id, if a.hidden { " hidden=\"1\"" } else { "" });
     let mut scaling = String::new();
     if let Some(g) = &a.gap_width {
         scaling.push_str(&format!(" gapWidth=\"{g}\""));
     }
-    for (name, v) in [("max", a.max), ("min", a.min), ("majorUnit", a.major_unit), ("minorUnit", a.minor_unit)] {
+    for (name, v) in
+        [("max", a.max), ("min", a.min), ("majorUnit", a.major_unit), ("minorUnit", a.minor_unit)]
+    {
         if let Some(v) = v {
             scaling.push_str(&format!(" {name}=\"{}\"", num(v)));
         }
     }
-    out.push_str(&format!("<cx:{0}{scaling}/>", if a.value_axis { "valScaling" } else { "catScaling" }));
+    out.push_str(&format!(
+        "<cx:{0}{scaling}/>",
+        if a.value_axis { "valScaling" } else { "catScaling" }
+    ));
     out.push_str(a.title.as_deref().unwrap_or(""));
     if a.major_gridlines {
         out.push_str("<cx:majorGridlines/>");
@@ -314,7 +335,15 @@ fn axis_xml(a: &ExAxis) -> String {
     out
 }
 
-fn series_xml(chart: &crate::model::Chart, e: &ExSeries, position: usize, name_of: &dyn Fn(&str) -> String) -> String {
+fn series_xml(
+    chart: &crate::model::Chart,
+    e: &ExSeries,
+    position: usize,
+    name_of: &dyn Fn(&str) -> String,
+) -> String {
+    if e.layout == ExLayout::ParetoLine {
+        return pareto_line_xml(chart, e, position);
+    }
     let data = chart.series.get(e.data);
     let mut out = format!("<cx:series layoutId=\"{}\"", e.layout.id());
     if e.hidden {
@@ -329,18 +358,35 @@ fn series_xml(chart: &crate::model::Chart, e: &ExSeries, position: usize, name_o
     if let Some(name) = data.and_then(|d| d.name.as_ref()) {
         out.push_str(&match name.strip_prefix('"').and_then(|n| n.strip_suffix('"')) {
             Some(t) => format!("<cx:tx><cx:txData><cx:v>{}</cx:v></cx:txData></cx:tx>", escape(t)),
-            None => format!("<cx:tx><cx:txData><cx:f>{}</cx:f></cx:txData></cx:tx>", escape(&name_of(name))),
+            None => format!(
+                "<cx:tx><cx:txData><cx:f>{}</cx:f></cx:txData></cx:tx>",
+                escape(&name_of(name))
+            ),
         });
     }
     out.push_str(e.sp_pr.as_deref().unwrap_or(""));
     for (idx, sp) in &e.points {
         out.push_str(&format!("<cx:dataPt idx=\"{idx}\">{sp}</cx:dataPt>"));
     }
+    out.push_str(&labels_xml(e));
+    out.push_str(&format!("<cx:dataId val=\"{}\"/>", e.data));
+    out.push_str(&layout_xml(e));
+    out.push_str(e.ext.as_deref().unwrap_or(""));
+    out.push_str("</cx:series>");
+    out
+}
+
+/// The data labels element of a series, or nothing when the series has none.
+fn labels_xml(e: &ExSeries) -> String {
+    let mut out = String::new();
     if let Some((name, category, value)) = e.labels {
         let pos = e.label_position.as_deref().map(|p| format!(" pos=\"{p}\"")).unwrap_or_default();
         out.push_str(&format!("<cx:dataLabels{pos}>"));
         if let Some(code) = &e.label_num_fmt {
-            out.push_str(&format!("<cx:numFmt formatCode=\"{}\" sourceLinked=\"0\"/>", escape(code)));
+            out.push_str(&format!(
+                "<cx:numFmt formatCode=\"{}\" sourceLinked=\"0\"/>",
+                escape(code)
+            ));
         }
         out.push_str(e.tx_pr.as_deref().unwrap_or(""));
         out.push_str(&format!(
@@ -350,14 +396,28 @@ fn series_xml(chart: &crate::model::Chart, e: &ExSeries, position: usize, name_o
             u8::from(value)
         ));
     }
-    out.push_str(&format!("<cx:dataId val=\"{}\"/>", e.data));
-    out.push_str(&layout_xml(e));
-    if e.layout == ExLayout::ParetoLine {
-        out.push_str("<cx:axisId val=\"2\"/>");
-    }
-    out.push_str(e.ext.as_deref().unwrap_or(""));
-    out.push_str("</cx:series>");
     out
+}
+
+/// The cumulative line of a Pareto chart: Excel names the column series that owns it and gives it no data of
+/// its own, and a chart without `ownerIdx` is read as a histogram.
+fn pareto_line_xml(chart: &crate::model::Chart, e: &ExSeries, position: usize) -> String {
+    let owner = chart
+        .spec
+        .ex
+        .as_ref()
+        .and_then(|x| x.series.iter().position(|s| s.layout != ExLayout::ParetoLine))
+        .unwrap_or(0);
+    let unique = if e.unique_id.is_empty() {
+        format!("{{{:08X}-0000-4000-8000-{:012X}}}", position + 1, position + 1)
+    } else {
+        e.unique_id.clone()
+    };
+    format!(
+        "<cx:series layoutId=\"paretoLine\" ownerIdx=\"{owner}\" uniqueId=\"{}\">{}<cx:axisId val=\"2\"/></cx:series>",
+        escape(&unique),
+        e.sp_pr.as_deref().unwrap_or("")
+    )
 }
 
 /// The visibility and statistics elements of a box and whisker series.
@@ -382,7 +442,9 @@ fn binning_xml(b: &Binning) -> String {
         attrs.push_str(&format!(" overflow=\"{}\"", num(o)));
     }
     match b.by {
-        BinBy::Width(w) => format!("<cx:binning{attrs}><cx:binSize val=\"{}\"/></cx:binning>", num(w)),
+        BinBy::Width(w) => {
+            format!("<cx:binning{attrs}><cx:binSize val=\"{}\"/></cx:binning>", num(w))
+        }
         BinBy::Count(c) => format!("<cx:binning{attrs}><cx:binCount val=\"{c}\"/></cx:binning>"),
         _ => format!("<cx:binning{attrs}/>"),
     }

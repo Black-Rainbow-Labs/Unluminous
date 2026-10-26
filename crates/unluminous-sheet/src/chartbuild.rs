@@ -438,7 +438,13 @@ fn ex_add_axes(ty: ChartType, ex: &mut ExSpec) {
             ex.axes = vec![
                 ex_gapped_axis("0.00999999978"),
                 ex_axis(1, true),
-                ExAxis { num_fmt: None, ..ex_axis(2, true) },
+                ExAxis {
+                    max: Some(1.0),
+                    min: Some(0.0),
+                    title: Some("<cx:units unit=\"percentage\"/>".to_owned()),
+                    major_gridlines: false,
+                    ..ex_axis(2, true)
+                },
             ];
         }
         ChartType::Waterfall => ex.axes = vec![ex_gapped_axis("0.5"), ex_axis(1, true)],

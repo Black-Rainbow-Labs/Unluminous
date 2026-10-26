@@ -16,15 +16,27 @@ impl Chart {
     pub fn chart_type(&self) -> ChartType {
         let by_groups = self.refine_by_series(self.spec.chart_type());
         let Some(stock) = self.spec.groups.iter().position(|g| g.kind == GroupKind::Stock) else {
-            return by_groups;
+            return self.exploded_if_pulled_apart(by_groups);
         };
-        let count = self.series.iter().filter(|s| s.group == stock).count();
+        // Excel tells open high low close from high low close by the up and down bars between open and close.
+        let opens = self.spec.groups[stock].up_down_bars.is_some();
         let has_volume = self.spec.groups.iter().any(|g| g.kind == GroupKind::Bar);
-        match (has_volume, count) {
-            (false, 4) => ChartType::StockOhlc,
-            (false, _) => ChartType::StockHlc,
-            (true, 4) => ChartType::StockVohlc,
-            (true, _) => ChartType::StockVhlc,
+        match (has_volume, opens) {
+            (false, true) => ChartType::StockOhlc,
+            (false, false) => ChartType::StockHlc,
+            (true, true) => ChartType::StockVohlc,
+            (true, false) => ChartType::StockVhlc,
+        }
+    }
+
+    /// A pie or doughnut whose slices are pulled out is the exploded type.
+    fn exploded_if_pulled_apart(&self, ty: ChartType) -> ChartType {
+        let pulled = self.series.iter().any(|s| s.fmt.explosion.is_some_and(|e| e > 0));
+        match ty {
+            ChartType::Pie if pulled => ChartType::PieExploded,
+            ChartType::Pie3D if pulled => ChartType::Pie3DExploded,
+            ChartType::Doughnut if pulled => ChartType::DoughnutExploded,
+            other => other,
         }
     }
 

@@ -70,6 +70,17 @@ fn rounded_half_away(v: f64, decimals: usize) -> String {
             }
         }
     }
+    layout_digits(&digits, keep, exponent, decimals, v < 0.0)
+}
+
+/// Lay out rounded digits as text: `keep` digits were kept, the first of which has the value 10^exponent.
+fn layout_digits(
+    digits: &[u8],
+    keep: usize,
+    exponent: i32,
+    decimals: usize,
+    negative: bool,
+) -> String {
     let carried = digits.len() as i32 - keep as i32;
     let point = exponent + 1 + carried;
     let mut whole = String::new();
@@ -90,7 +101,7 @@ fn rounded_half_away(v: f64, decimals: usize) -> String {
     while fraction.len() < decimals {
         fraction.insert(0, '0');
     }
-    let sign = if v < 0.0 { "-" } else { "" };
+    let sign = if negative { "-" } else { "" };
     if decimals == 0 {
         format!("{sign}{whole}")
     } else {

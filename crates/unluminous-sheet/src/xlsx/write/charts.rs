@@ -43,12 +43,20 @@ impl<'a> Writer<'a> {
         }
         let book = self.book;
         let resolve = move |f: &str| crate::chartdata::resolve(book, 0, f);
-        crate::xlsx::chart_write::chart_xml(chart, &crate::xlsx::chart_write::Env { resolve: &resolve }).into_bytes()
+        crate::xlsx::chart_write::chart_xml(
+            chart,
+            &crate::xlsx::chart_write::Env { resolve: &resolve },
+        )
+        .into_bytes()
     }
 
     /// The next free number for an `_xlchart.v1.N` name, after the ones the file already has.
     pub(super) fn ex_name_base(&self) -> usize {
-        let used = self.book.names.iter().filter_map(|n| n.name.strip_prefix("_xlchart.v1.")?.parse::<usize>().ok());
+        let used = self
+            .book
+            .names
+            .iter()
+            .filter_map(|n| n.name.strip_prefix("_xlchart.v1.")?.parse::<usize>().ok());
         used.max().map_or(0, |m| m + 1)
     }
 
@@ -74,7 +82,9 @@ impl<'a> Writer<'a> {
     /// Charts read from the file and changed since are written from the model over the part they came from.
     pub(super) fn write_changed_charts(&mut self) {
         for sheet in &self.book.sheets {
-            for chart in sheet.charts.iter().filter(|c| !c.new && c.spec.dirty && !c.part.is_empty()) {
+            for chart in
+                sheet.charts.iter().filter(|c| !c.new && c.spec.dirty && !c.part.is_empty())
+            {
                 let bytes = self.chart_bytes(chart);
                 self.entries.retain(|e| e.name != chart.part);
                 self.add(&chart.part.clone(), None, bytes);
@@ -93,7 +103,8 @@ impl<'a> Writer<'a> {
         r: &str,
         raw_drawing: String,
     ) -> String {
-        let changed = sheet.charts.iter().any(|c| c.new || c.spec.moved) || !sheet.chart_removed.is_empty();
+        let changed =
+            sheet.charts.iter().any(|c| c.new || c.spec.moved) || !sheet.chart_removed.is_empty();
         if !changed {
             return raw_drawing;
         }
@@ -109,7 +120,14 @@ impl<'a> Writer<'a> {
             anchors.push_str(&crate::xlsx::chart::anchor_xml(chart, &id, shape));
         }
         let plain: Vec<Chart> = sheet.charts.clone();
-        let built = rebuild(old_xml.as_deref(), &new_rels, &drawing_part, &plain, &sheet.chart_removed, &anchors);
+        let built = rebuild(
+            old_xml.as_deref(),
+            &new_rels,
+            &drawing_part,
+            &plain,
+            &sheet.chart_removed,
+            &anchors,
+        );
         let content_type = if existing.is_some() { None } else { Some(CT_DRAWING) };
         self.add(&drawing_part, content_type, built.xml.into_bytes());
         self.add(&rels_path(&drawing_part), None, write_rels(&built.rels).into_bytes());
@@ -120,12 +138,17 @@ impl<'a> Writer<'a> {
     }
 
     /// The part, relationships and XML of the drawing a sheet already has, or a fresh part with none.
-    fn drawing_source(&mut self, existing: &Option<Relationship>, part: &str) -> (String, Vec<Relationship>, Option<String>) {
+    fn drawing_source(
+        &mut self,
+        existing: &Option<Relationship>,
+        part: &str,
+    ) -> (String, Vec<Relationship>, Option<String>) {
         let book = self.book;
         match existing {
             Some(rel) => {
                 let path = resolve(part, &rel.target);
-                let text = |p: &str| book.kept.get(p).map(|b| String::from_utf8_lossy(b).into_owned());
+                let text =
+                    |p: &str| book.kept.get(p).map(|b| String::from_utf8_lossy(b).into_owned());
                 let xml = text(&path);
                 let old_rels = parse_rels(&text(&rels_path(&path)).unwrap_or_default());
                 (path, old_rels, xml)
@@ -135,7 +158,12 @@ impl<'a> Writer<'a> {
     }
 
     /// Write a chart made here as a new part and relate the drawing to it; returns the relationship id.
-    fn add_new_chart(&mut self, chart: &Chart, drawing_part: &str, rels: &mut Vec<Relationship>) -> String {
+    fn add_new_chart(
+        &mut self,
+        chart: &Chart,
+        drawing_part: &str,
+        rels: &mut Vec<Relationship>,
+    ) -> String {
         let extended = chart.spec.ex.is_some();
         let pattern = if extended { "xl/charts/chartEx{}.xml" } else { "xl/charts/chart{}.xml" };
         let chart_part = self.fresh(pattern);
@@ -158,7 +186,8 @@ impl<'a> Writer<'a> {
 
     /// The style and colour parts Excel will not open an extended chart without, related to the chart part.
     fn add_chart_style_parts(&mut self, chart_part: &str) {
-        const DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r\n";
+        const DECLARATION: &str =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r\n";
         let style = self.fresh("xl/charts/style{}.xml");
         self.taken.insert(style.clone());
         let colors = self.fresh("xl/charts/colors{}.xml");
@@ -166,7 +195,11 @@ impl<'a> Writer<'a> {
         let style_xml = format!("{DECLARATION}{}", include_str!("../chartex_style.xml"));
         let colors_xml = format!("{DECLARATION}{}", include_str!("../chartex_colors.xml"));
         self.add(&style, Some("application/vnd.ms-office.chartstyle+xml"), style_xml.into_bytes());
-        self.add(&colors, Some("application/vnd.ms-office.chartcolorstyle+xml"), colors_xml.into_bytes());
+        self.add(
+            &colors,
+            Some("application/vnd.ms-office.chartcolorstyle+xml"),
+            colors_xml.into_bytes(),
+        );
         let rel = |id: &str, kind: &str, target: &str| Relationship {
             id: id.to_owned(),
             kind: kind.to_owned(),
@@ -174,8 +207,16 @@ impl<'a> Writer<'a> {
             external: false,
         };
         let rels = vec![
-            rel("rId1", "http://schemas.microsoft.com/office/2011/relationships/chartStyle", &style),
-            rel("rId2", "http://schemas.microsoft.com/office/2011/relationships/chartColorStyle", &colors),
+            rel(
+                "rId1",
+                "http://schemas.microsoft.com/office/2011/relationships/chartStyle",
+                &style,
+            ),
+            rel(
+                "rId2",
+                "http://schemas.microsoft.com/office/2011/relationships/chartColorStyle",
+                &colors,
+            ),
         ];
         self.add(&rels_path(chart_part), None, write_rels(&rels).into_bytes());
     }
@@ -194,7 +235,11 @@ impl<'a> Writer<'a> {
             whole.spec.anchor_edit_as = Some("twoCell".to_owned());
             anchors.push_str(&whole_sheet_anchor(&whole, &id));
         }
-        self.add(&drawing_part, Some(CT_DRAWING), crate::xlsx::chart::drawing_xml(&anchors).into_bytes());
+        self.add(
+            &drawing_part,
+            Some(CT_DRAWING),
+            crate::xlsx::chart::drawing_xml(&anchors).into_bytes(),
+        );
         self.add(&rels_path(&drawing_part), None, write_rels(&drawing_rels).into_bytes());
         let sheet_rels = vec![Relationship {
             id: "rId1".to_owned(),
@@ -209,7 +254,12 @@ impl<'a> Writer<'a> {
 }
 
 /// Relate a sheet to a drawing part that was just made, and return the `drawing` element naming it.
-fn relate_new_drawing(rels: &mut Vec<Relationship>, part: &str, drawing_part: &str, r: &str) -> String {
+fn relate_new_drawing(
+    rels: &mut Vec<Relationship>,
+    part: &str,
+    drawing_part: &str,
+    r: &str,
+) -> String {
     let id = next_id(rels);
     rels.push(Relationship {
         id: id.clone(),

@@ -34,7 +34,7 @@ const LEAST_SPACING: f64 = 12.75;
 fn extent(low: f64, high: f64) -> (f64, f64) {
     if low == high {
         return match low {
-            v if v == 0.0 => (0.0, 1.0),
+            0.0 => (0.0, 1.0),
             v if v > 0.0 => (0.0, v * 1.05),
             v => (v * 1.05, 0.0),
         };
@@ -69,7 +69,7 @@ fn nice_step(low: f64, high: f64, length: f64) -> f64 {
         for multiple in [1.0, 2.0, 5.0] {
             let step = multiple * 10f64.powi(power);
             let (_, _, count) = covered(low, high, step);
-            if count >= 1.0 && count <= MOST_INTERVALS && length / count >= LEAST_SPACING {
+            if (1.0..=MOST_INTERVALS).contains(&count) && length / count >= LEAST_SPACING {
                 return step;
             }
         }
