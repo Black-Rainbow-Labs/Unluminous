@@ -261,6 +261,12 @@ filtering, evaluating a formula without writing it, the selection, undo and redo
 - **Shapes, SmartArt, sparklines, slicers, form controls and icon sets** are kept in the file and not
   drawn.
 
+**Round 2 (`task-2360`, design in `tasks/task-2357-spreadsheet-round2-tdd.md`) built most of this list.**
+`.xls`, `.xlsb` and `.ods` are read, and `.ods` is written. Pivot tables are built and refreshed,
+with slicers and timelines. Goal Seek, data tables, scenarios, Flash Fill, printing, print preview and
+PDF export, pictures, shapes, text boxes, sparklines and icon sets are in. What is still not in this
+version: running VBA macros, Power Query, Solver, SmartArt and form controls, for the reasons above.
+
 ## How it is checked
 
 - **The Excel oracle.** A corpus workbook of formulas covering every function is computed by Excel and
