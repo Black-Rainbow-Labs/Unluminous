@@ -523,13 +523,7 @@ fn insert() -> Item {
             ask("Note...", "Note", "note"),
             ask2("Link...", "Address, or a place such as Sheet2!A1", "Text to show", "link"),
             run("Table", "Ctrl+T", "table"),
-            sub(
-                "Chart",
-                ["column", "bar", "line", "area", "pie", "doughnut", "scatter"]
-                    .iter()
-                    .map(|k| run(&capitalised(k), "", &format!("chart {k}")))
-                    .collect(),
-            ),
+            super::catalogue_charts::insert_charts(),
             super::catalogue_c::insert_objects(),
         ],
     )
@@ -687,6 +681,7 @@ pub fn panel_root(book: &Book) -> Vec<Item> {
         super::catalogue_a::styles_and_themes(book),
         super::catalogue_c::object_level(book),
         super::catalogue_c::sparkline_level(book),
+        super::catalogue_charts::chart_level(book),
         super::catalogue_b::page_layout(book),
         super::catalogue_b::pivot_table(book),
         view(book),
@@ -805,6 +800,7 @@ pub fn everything(book: &Book) -> Vec<Item> {
         super::catalogue_a::styles_and_themes(book),
         super::catalogue_c::object_level(book),
         super::catalogue_c::sparkline_level(book),
+        super::catalogue_charts::chart_level(book),
         super::catalogue_b::page_layout(book),
         super::catalogue_b::pivot_table(book),
         view(book),
@@ -816,6 +812,9 @@ pub fn everything(book: &Book) -> Vec<Item> {
 pub fn cell_menu(book: &Book) -> Vec<Item> {
     if book.view.objects.menu.is_some() {
         return super::catalogue_c::object_menu(book);
+    }
+    if book.view.chart.is_some() {
+        return super::catalogue_charts::chart_menu(book);
     }
     let at = book.view.cursor;
     let s = &book.session.book.sheets[book.view.sheet];

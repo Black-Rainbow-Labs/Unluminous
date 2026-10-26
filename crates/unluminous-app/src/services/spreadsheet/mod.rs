@@ -42,6 +42,11 @@ pub mod view_c;
 pub mod verbs_c;
 pub mod verbs_c_spark;
 pub mod catalogue_c;
+pub mod catalogue_charts;
+pub mod verbs_charts;
+pub mod verbs_charts_axis;
+pub mod verbs_charts_info;
+pub mod verbs_charts_series;
 pub mod view_b;
 
 #[cfg(test)]
@@ -52,6 +57,8 @@ mod tests_a;
 mod tests_c;
 #[cfg(test)]
 mod tests_b;
+#[cfg(test)]
+mod tests_charts;
 
 use std::path::{Path, PathBuf};
 

@@ -8,6 +8,7 @@
 //! two functions an agent's commands reach.
 
 pub mod chart;
+pub mod chart_drag;
 pub mod chart_paint;
 pub mod editor;
 pub mod grid;
@@ -168,6 +169,12 @@ fn draw(
         }
     }
     show_bar(ui, bar, book, look, name_box, asked);
+    if is_a_chart_sheet(book) {
+        show_a_chart_sheet(ui, grid_area, book, look, asked);
+        show_sheet_tabs(ui, sheets, book, look, asked);
+        show_floating(ui, grid_area, book, look, asked);
+        return;
+    }
     let pointing = book.view.edit.as_ref().is_some_and(|e| {
         let id = editor::box_with_the_caret(&ctx, book);
         let caret = keys::caret_of(&ctx, id).unwrap_or(e.text.chars().count());
@@ -183,10 +190,15 @@ fn draw(
     if out.pressed {
         book.view.chart = None;
     }
-    if let Some(chosen) = chart::show(ui, book, frame, &ink, look, book.view.chart) {
+    let charts = chart::show(ui, book, frame, &ink, look, book.view.chart);
+    if let Some(chosen) = charts.pressed {
         book.view.chart = Some(chosen);
         asked.requests.push(Request::TakeTheKeyboard(true));
     }
+    if charts.menu.is_some() {
+        book.view.menu = charts.menu;
+    }
+    asked.words.extend(charts.words);
     after_the_grid(ui, book, look, &mut out, asked);
     if let Some(col) = book.view.audit.open_filter.take() {
         book.filter_values = filter_values(book, col);
@@ -226,6 +238,27 @@ fn draw(
     asked.requests.extend(out.requests);
 }
 
+/// Whether the sheet showing is a chart sheet: a sheet that is one chart and no cells.
+fn is_a_chart_sheet(book: &Book) -> bool {
+    let sheet = &book.session.book.sheets[book.view.sheet];
+    let kept = sheet.kept_part.as_ref();
+    kept.is_some_and(|k| k.kind == unluminous_sheet::xlsx::chart_drawing::REL_CHART_SHEET)
+        && !sheet.charts.is_empty()
+}
+
+/// Draw a chart sheet's one chart over the whole area. A press chooses the chart and a right click opens
+/// its menu, so every chart command is on a chart sheet as it is on a chart over cells.
+fn show_a_chart_sheet(ui: &egui::Ui, area: Rect, book: &mut Book, look: &Look<'_>, asked: &mut Asked) {
+    let ink = grid::Ink::of(look, book.view.paper);
+    let (pressed, menu) = chart::show_chart_sheet(ui, book, area, &ink, look);
+    if pressed {
+        book.view.chart = Some(0);
+        asked.requests.push(Request::TakeTheKeyboard(true));
+    }
+    if menu.is_some() {
+        book.view.menu = menu;
+    }
+}
 /// What the pointer did on the grid: start or steer typing, open menus, and finish a cell being typed into
 /// when another cell is clicked.
 fn after_the_grid(

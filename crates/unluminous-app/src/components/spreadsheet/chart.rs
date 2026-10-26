@@ -7,6 +7,7 @@ use unluminous_sheet::model::Chart;
 use unluminous_sheet::plot::PlotSize;
 use unluminous_sheet::styles::Color as SheetColor;
 
+use super::chart_drag::{self, Drag, Grab};
 use super::chart_paint::{self, Colours};
 use super::grid::{Frame, Ink};
 use crate::services::plugin_ui::Look;
@@ -90,19 +91,40 @@ pub fn show_pictures(ui: &egui::Ui, book: &mut Book, frame: Frame) {
 }
 
 /// Draw the chart of a chart sheet, filling the area; the sheet showing is a chart sheet. Answers whether the
-/// chart was pressed.
-pub fn show_chart_sheet(ui: &egui::Ui, book: &Book, area: Rect, ink: &Ink, look: &Look<'_>) -> bool {
+/// chart was pressed and where a right click opened its menu.
+pub fn show_chart_sheet(
+    ui: &egui::Ui,
+    book: &Book,
+    area: Rect,
+    ink: &Ink,
+    look: &Look<'_>,
+) -> (bool, Option<Pos2>) {
     let sheet = &book.session.book.sheets[book.view.sheet];
-    let Some(chart) = sheet.charts.first() else { return false };
+    let Some(chart) = sheet.charts.first() else { return (false, None) };
     let painter = ui.painter_at(area);
     painter.rect_filled(area, 0, ink.paper);
-    let response = ui.interact(area, ui.id().with(("chart-sheet", &book.key)), egui::Sense::click());
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Chart".to_owned()));
+    let response =
+        ui.interact(area, ui.id().with(("chart-sheet", &book.key)), egui::Sense::click());
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Chart 1".to_owned())
+    });
     draw_one(&painter, book, chart, area.shrink(16.0), ink, look, 1.0);
-    response.clicked() || response.secondary_clicked()
+    let menu = response.secondary_clicked().then(|| response.interact_pointer_pos()).flatten();
+    (response.clicked() || response.secondary_clicked(), menu)
+}
+/// What the charts of the sheet showing did this frame.
+#[derive(Default)]
+pub struct ChartOut {
+    /// The chart pressed, by its place in the sheet's list.
+    pub pressed: Option<usize>,
+    /// Where a right click opened the chart's menu.
+    pub menu: Option<Pos2>,
+    /// The words of a drag that ended: move or size a chart.
+    pub words: Vec<Vec<String>>,
 }
 
-/// Draw every chart of the sheet showing. Answers the chart pressed, by its place in the sheet's list.
+/// Draw every chart of the sheet showing and read the pointer on them: a press chooses a chart, a right
+/// click opens its menu, and dragging the body or a corner moves or sizes it.
 pub fn show(
     ui: &egui::Ui,
     book: &Book,
@@ -110,26 +132,16 @@ pub fn show(
     ink: &Ink,
     look: &Look<'_>,
     chosen: Option<usize>,
-) -> Option<usize> {
+) -> ChartOut {
     let sheet = &book.session.book.sheets[book.view.sheet];
     let painter = ui.painter_at(frame.cells);
-    let mut pressed = None;
+    let mut out = ChartOut::default();
     for (index, chart) in sheet.charts.iter().enumerate() {
         let rect = rect_of(book, frame, chart);
         if !rect.intersects(frame.cells) {
             continue;
         }
-        let response = ui.interact(
-            rect.intersect(frame.cells),
-            ui.id().with(("chart", &book.key, index)),
-            egui::Sense::click(),
-        );
-        response.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::WidgetType::Other, true, format!("Chart {}", index + 1))
-        });
-        if response.clicked() || response.secondary_clicked() {
-            pressed = Some(index);
-        }
+        let dragging = read_the_pointer(ui, book, frame, rect, index, &mut out);
         painter.rect(
             rect,
             CornerRadius::same(6),
@@ -145,11 +157,73 @@ pub fn show(
                 egui::StrokeKind::Outside,
             );
         }
-        draw_one(&painter, book, chart, rect.shrink(10.0 * frame.zoom.min(1.5)), ink, look, frame.zoom);
+        draw_one(
+            &painter,
+            book,
+            chart,
+            rect.shrink(10.0 * frame.zoom.min(1.5)),
+            ink,
+            look,
+            frame.zoom,
+        );
+        if let Some(landing) = dragging {
+            painter.rect_stroke(
+                landing,
+                CornerRadius::same(6),
+                Stroke::new(2.0, ink.accent),
+                egui::StrokeKind::Outside,
+            );
+        }
     }
-    pressed
+    out
 }
 
+/// Read the pointer on one chart. Answers where the chart would land while it is being dragged.
+fn read_the_pointer(
+    ui: &egui::Ui,
+    book: &Book,
+    frame: Frame,
+    rect: Rect,
+    index: usize,
+    out: &mut ChartOut,
+) -> Option<Rect> {
+    let id = ui.id().with(("chart", &book.key, index));
+    let response = ui.interact(rect.intersect(frame.cells), id, egui::Sense::click_and_drag());
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Other, true, format!("Chart {}", index + 1))
+    });
+    if response.clicked() || response.drag_started() {
+        out.pressed = Some(index);
+    }
+    if response.secondary_clicked() {
+        out.pressed = Some(index);
+        out.menu = response.interact_pointer_pos();
+    }
+    let memory = id.with("drag");
+    if response.drag_started_by(egui::PointerButton::Primary) {
+        let start = ui.input(|i| i.pointer.press_origin()).unwrap_or(rect.center());
+        let drag = Drag { grab: chart_drag::grab_at(rect, start), start, rect };
+        ui.data_mut(|d| d.insert_temp(memory, drag));
+    }
+    let drag = ui.data(|d| d.get_temp::<Drag>(memory));
+    let pointer = ui.input(|i| i.pointer.latest_pos());
+    if let (Some(drag), Some(to)) = (drag, pointer) {
+        if response.dragged() {
+            ui.ctx().set_cursor_icon(chart_drag::cursor(drag.grab));
+            return Some(chart_drag::landing(&drag, to));
+        }
+        if response.drag_stopped() {
+            ui.data_mut(|d| d.remove::<Drag>(memory));
+            let words = chart_drag::release_words(book, &frame, index, &drag, to);
+            out.words.extend(Some(words).filter(|w| !w.is_empty()));
+        }
+    } else if let Some(p) = response.hover_pos() {
+        if let Grab::Corner(..) = chart_drag::grab_at(rect, p) {
+            ui.ctx().set_cursor_icon(chart_drag::cursor(chart_drag::grab_at(rect, p)));
+        }
+    }
+    None
+}
 /// Draw one chart in its area, from what its series read now.
 fn draw_one(
     painter: &egui::Painter,
@@ -160,7 +234,10 @@ fn draw_one(
     look: &Look<'_>,
     zoom: f32,
 ) {
-    let size = PlotSize { width: f64::from(area.width() / zoom.max(0.1)), height: f64::from(area.height() / zoom.max(0.1)) };
+    let size = PlotSize {
+        width: f64::from(area.width() / zoom.max(0.1)),
+        height: f64::from(area.height() / zoom.max(0.1)),
+    };
     let plot = unluminous_sheet::plot::plot(&book.session.book, book.view.sheet, chart, size);
     chart_paint::draw(painter, area, &plot, chart, &colours_of(book, ink, look), zoom);
 }

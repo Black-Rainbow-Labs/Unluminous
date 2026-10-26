@@ -210,3 +210,69 @@ fn switching_the_plugin_off_opens_a_csv_file_as_text() {
         "a workbook is not shown while its plugin is off: {opened}"
     );
 }
+
+/// The chart named `Chart 1`, found by the name its control carries.
+fn the_chart(harness: &Harness<'static, UnluminousApp>) -> egui::Rect {
+    harness.get_by_label("Chart 1").rect()
+}
+
+#[test]
+fn dragging_a_chart_moves_it_and_dragging_its_corner_sizes_it() {
+    let (_, mut harness) = a_workbook_window("unluminous-sheet-chart-drag", "prices.csv");
+    did(&mut harness, "plugins run spreadsheet chart column A1:C4 Prices");
+    steady(&mut harness);
+    let before = did(&mut harness, "plugins run spreadsheet chart-info 1");
+    let area = the_chart(&harness);
+    drag(&mut harness, area.center(), area.center() + egui::vec2(70.0, 40.0));
+    let moved = did(&mut harness, "plugins run spreadsheet chart-info 1");
+    let gained = |after: &serde_json::Value, key: &str| {
+        after[key].as_f64().unwrap() - before[key].as_f64().unwrap()
+    };
+    assert!(gained(&moved, "left") > 40.0, "dragging right moved it right: {before} then {moved}");
+    assert!(gained(&moved, "top") > 20.0, "dragging down moved it down: {before} then {moved}");
+    assert!(gained(&moved, "width").abs() < 3.0, "moving keeps the width");
+    assert!(gained(&moved, "height").abs() < 3.0, "moving keeps the height");
+    assert!(
+        did(&mut harness, "plugins run spreadsheet cell A1")["value"] == "Item",
+        "the drag did not touch the cells"
+    );
+    let area = the_chart(&harness);
+    let corner = area.right_bottom() - egui::vec2(6.0, 6.0);
+    drag(&mut harness, corner, corner - egui::vec2(60.0, 30.0));
+    let sized = did(&mut harness, "plugins run spreadsheet chart-info 1");
+    let shrank = |key: &str| moved[key].as_f64().unwrap() - sized[key].as_f64().unwrap();
+    assert!(
+        shrank("width") > 35.0,
+        "dragging the corner in made it narrower: {moved} then {sized}"
+    );
+    assert!(shrank("height") > 15.0, "and shorter: {moved} then {sized}");
+    assert!(
+        (sized["left"].as_f64().unwrap() - moved["left"].as_f64().unwrap()).abs() < 3.0,
+        "the far corner stays put"
+    );
+    did(&mut harness, "plugins run spreadsheet undo");
+    let undone = did(&mut harness, "plugins run spreadsheet chart-info 1");
+    assert_eq!(undone["width"], moved["width"], "the whole drag is one undo step");
+}
+
+#[test]
+fn f11_makes_a_chart_sheet_and_a_right_click_on_a_chart_opens_its_menu() {
+    let (_, mut harness) = a_workbook_window("unluminous-sheet-chart-sheet", "prices.csv");
+    did(&mut harness, "plugins run spreadsheet chart line A1:C4");
+    steady(&mut harness);
+    let area = the_chart(&harness);
+    right_click_at(&mut harness, area.center());
+    steady(&mut harness);
+    harness.get_by_label("Change chart type");
+    harness.key_press(egui::Key::Escape);
+    steady(&mut harness);
+    did(&mut harness, "plugins run spreadsheet select A1:C4");
+    press(&mut harness, egui::Key::F11, Modifiers::NONE);
+    let charts = did(&mut harness, "plugins run spreadsheet charts");
+    let sheets: Vec<&str> =
+        charts.as_array().unwrap().iter().map(|c| c["sheet"].as_str().unwrap()).collect();
+    assert_eq!(sheets.len(), 2, "F11 made a second chart: {charts}");
+    assert_ne!(sheets[0], sheets[1], "on a sheet of its own");
+    steady(&mut harness);
+    harness.get_by_label("Chart 1");
+}

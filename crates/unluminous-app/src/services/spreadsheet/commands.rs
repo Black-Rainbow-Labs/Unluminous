@@ -5,7 +5,7 @@
 use serde_json::{json, Value as Json};
 use unluminous_sheet::coord::{column_name, column_number, CellRef, Range};
 use unluminous_sheet::edit::{clip_to_used, Clear, Direction, PasteMode};
-use unluminous_sheet::model::{CfRule, Cfvo, ChartKind, FilterCriteria, Validation, Visibility};
+use unluminous_sheet::model::{CfRule, Cfvo, FilterCriteria, Validation, Visibility};
 use unluminous_sheet::styles::{AlignEdit, Color, FontEdit, StyleChange, Underline};
 use unluminous_sheet::Value;
 
@@ -81,6 +81,9 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Result<Answe
         return answer;
     }
     if let Some(answer) = super::verbs_b::first(sheet, verb, args) {
+        return answer;
+    }
+    if let Some(answer) = super::verbs_charts::first(sheet, verb, args) {
         return answer;
     }
     match verb {
@@ -630,26 +633,6 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Result<Answe
             let book = sheet.current_book()?;
             let rest = take_range(book, args);
             act(sheet, Act::Table(rest.first().cloned()))
-        }
-        "chart" if args.first().map(String::as_str) == Some("delete") => {
-            let n: usize = args
-                .get(1)
-                .and_then(|n| n.parse().ok())
-                .ok_or("chart delete needs the chart's number, from 1")?;
-            let book = sheet.current_book()?;
-            let index = book.view.sheet;
-            book.session.delete_chart(index, n.saturating_sub(1))?;
-            book.changed();
-            Ok(said(format!("Deleted chart {n}")))
-        }
-        "chart" => {
-            let kind = args
-                .first()
-                .and_then(|k| ChartKind::parse(k))
-                .ok_or("chart takes column, bar, line, area, pie, doughnut or scatter")?;
-            let book = sheet.current_book()?;
-            let rest = take_range(book, &args[1..]);
-            act(sheet, Act::Chart { kind, title: (!rest.is_empty()).then(|| rest.join(" ")) })
         }
         "autosum" => {
             let book = sheet.current_book()?;
