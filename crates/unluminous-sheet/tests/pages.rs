@@ -32,7 +32,12 @@ const KNOWN_DIFFERENCES: &[(&str, &str)] = &[
     ("pages-times.json/fit-2x3", FIT_IN_ANOTHER_FONT),
 ];
 
-const FIT_IN_ANOTHER_FONT: &str = "Excel's fitted scale differs by one or two percent";
+/// The three 2 by 3 sheets: Excel's scale is the largest that fits (46, 50 and 47) while the estimate in
+/// `pages::paginate` is one lower, and no allowance or boundary term reproduces all four fonts. The two 1 by 1 sheets:
+/// Excel's PDF for Aptos Narrow shows 106 pixel columns, which is 23%, the paginator's scale, so the scale is right
+/// and only the break after the data is not listed by Excel (it is listed for Arial at 25%, and leaving it out when
+/// less than 30 pixels remain breaks Calibri's margins-asym sheet).
+const FIT_IN_ANOTHER_FONT: &str = "Excel's fitted scale or its trailing break differs from the paginator's";
 
 /// The one based rows or columns of a list of breaks in Excel's answer.
 fn locations(answer: &Value, key: &str, axis: &str) -> Vec<u32> {
