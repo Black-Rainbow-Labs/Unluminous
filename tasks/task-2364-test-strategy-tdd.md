@@ -109,8 +109,10 @@ A lib test run of `unluminous-app` alone left about 100 uniquely named folders (
 | alone, runner, one binary at a time | after | 14.5 min | 10 pictures that draw the fixture path (accepted again), 1 abort in `notebooks` |
 | alone, runner, `--jobs 3`, 19 threads each | after | 11.3 min | the same pictures; three heaviest binaries 3 to 4 times slower than alone |
 | alone, runner, `--jobs 2`, 10 threads each | after | 11.7 min | the walk's ordering race, `Untitled.ipynb` written into the shared folder (both fixed) |
-| alone, runner, `--jobs 2` | final | RUN5 | RUN5F |
-| under load, runner, `--jobs 2` | final | RUN6 | RUN6F |
+| alone, runner, `--jobs 2` | all fixes but the profile | 9.6 min | none |
+| under load, runner, `--jobs 2` | all fixes but the profile | 18.5 min | 1 flake retried (`the_description_and_the_comments_fold...`, the relative time) |
+| alone, runner, `--jobs 2`, dependencies optimized | final | 4.0 min | none |
+| under load, runner, `--jobs 2`, dependencies optimized | final | RUN8 | RUN8F |
 
 The three longest binaries before and after splitting their longest tests, alone, one binary at a
 time:
@@ -121,6 +123,10 @@ time:
 | `panel_docking` | 331 s | 78 s |
 | `plugins_board_and_chat` | 289 s | 208 s |
 | `command_line` | 94 s | 48 s (the walk's drives side by side) |
+
+With dependencies optimized (section 4a), the same binaries alone, two at a time: `window_and_chrome`
+104 s, `plugins_board_and_chat` 99 s, `debugging` 41 s, `panel_docking` 28 s, every other one under
+25 s.
 
 Eleven tests ran for more than a minute each before; libtest says so with `has been running for over
 60 seconds`, and each held its binary open after every other test in it had finished.
@@ -174,6 +180,11 @@ These are written into `CLAUDE.md` as well, under "Tests".
 9. **Every picture goes through `PatientRenderer`**, the renderer `common::builder` gives every
    harness: at most four renders in flight in a binary, and a render that failed (not a picture
    that differs) tried up to three times.
+10. **A relative time is drawn from the drawing clock.** `clock::now_for_drawing` and
+    `clock::seconds_for_drawing` answer the real clock, except on the thread of a window built with
+    `draw_deterministically`, where they answer the moment the window was built. The ticket modal said
+    `just now` for a ticket a test had just made and `1m ago` when a loaded run took over a minute to
+    photograph it. The board's own timestamps still use the real clock.
 
 ## 4. The gate (`tools/test.mjs`)
 
@@ -184,7 +195,8 @@ What changed:
   nothing. A crate's receipt is written when its own command passes.
 - **A failed test is run once more, alone, on one thread.** If it passes, it is a flake: it is
   written to `_agent_output/test-runs/flakes.jsonl` and its crate is recorded as passed. A binary
-  that ended without a result line (an abort, a hang that was stopped) is not retried.
+  that ended without a result line (an abort, a hang that was stopped) is run again whole, and the
+  line it died on is recorded with the flake.
 - **The tests that drive other programs run after the other lanes.** `unluminous-jupyter` (real
   kernels) and `unluminous-word` (Word through COM) are compiled beside clippy and the test build,
   and their tests start once both have finished, so the Word and kernel tests run on a quiet machine.
@@ -196,6 +208,27 @@ What changed:
   `tests/*.rs` (the window suite) are not that unit's inputs either. Clippy builds `--all-targets`,
   so clippy's own tests stay its inputs.
 - **A record of every run** in `_agent_output/test-runs/runs.jsonl`, with each crate's time.
+
+## 4a. Dependencies are optimized in a test build
+
+`[profile.test.package."*"] opt-level = 2` in the workspace `Cargo.toml`. The workspace's own crates
+stay at `opt-level = 0`, so a panic still names its file and line and our code is built as it was.
+
+A window test spends nearly all of its time in code that is not ours: egui laying out and
+tessellating a frame, `vello_cpu` and `rux` rasterizing the decoration, `image` reading and comparing
+pictures. Unoptimized, one frame of the forty-card AI Configuration page took seconds. Measured on
+single tests run alone:
+
+| test | before | after |
+|---|---:|---:|
+| `the_acp_registry_is_cards_that_add_and_remove_an_agent` | 157 s | 17 s |
+| `create_task_with_no_title_keeps_the_ticket_and_says_the_title_is_needed` | 56 s | 7 s |
+
+The whole window suite went from 9.6 to 4.0 minutes. Every accepted picture still matched: Rust does
+not reorder floating point arithmetic at any optimization level, and `vello_cpu`'s SIMD level is
+pinned in a test window. The cost is a one time rebuild of the dependencies, about five minutes on
+this machine, and test builds no longer share dependency artifacts with `cargo run`, which they had
+already stopped doing for `debug = "line-tables-only"`.
 
 ## 5. The window suite
 
@@ -277,6 +310,7 @@ typically runs the gate twice and the window suite twice, and the release runs t
 
 | # | Change | Saves | How |
 |---|---|---|---|
+| 0 | Dependencies optimized in test builds | about 20 min per window suite run, with the splitting below | 24.5 min to 4.0 min for the whole suite alone, together with rows 4 and 5. Most of a window test's time was unoptimized egui, `vello_cpu`, `rux` and `image`. |
 | 1 | Flake retry and record (gate and runner) | 0.5 to 2 h when a flake happens | A test that fails under load is run again on its own instead of sending the person round the whole suite. task-2359 saw five unrelated failures in one afternoon, each a 40 minute rerun. |
 | 2 | One `cargo test` per crate in the gate | up to the whole gate per failure | One crate's failure no longer leaves the others unrecorded, so the next attempt runs only the crate that failed. task-2359's release reran every crate after `word_live` hung. |
 | 3 | Run folders for every test command | the 19 kernel failures, and every later dependence on `%TEMP%` | Nothing lists 169,000 entries; nothing a run writes is left behind; lib tests with fixed folder names in two worktrees stop colliding. |
@@ -287,6 +321,7 @@ typically runs the gate twice and the window suite twice, and the release runs t
 | 8 | `PatientRenderer` | render timeouts under load | Two `PollError` failures in five loaded `canvas_realm` runs, none since. |
 | 9 | Word: pid file, stop on timeout, Resiliency records cleared, late lane | the two one hour hangs | A Word that stops answering is stopped at the test's limit and leaves nothing that makes the next open wait. |
 | 10 | `did()` answers held commands through frames | `editor signature --wait` and its kind | A command that holds its answer is waited for the way the control channel waits, which also found the dictation caret fault. |
+| 11 | The drawing clock | a 160 pixel difference under load | `just now` stays `just now` however long a loaded run takes to photograph it. |
 
 ## 10. What is left
 

@@ -6915,6 +6915,12 @@ release again. The rules:
   seconds` for a test that needs splitting.
 - **Every picture is rendered through `common::PatientRenderer`**: at most four renders in flight in a binary,
   and a render that failed (`PollError` under load, never a picture that differs) tried three times.
+- **Dependencies are optimized in test builds** (`[profile.test.package."*"] opt-level = 2`); our crates are not.
+  A window test spends its time in egui, `vello_cpu`, `rux` and `image`, and unoptimized one frame of a busy page
+  took seconds. The whole window suite went from 9.6 to 4.0 minutes with every picture unchanged.
+- **A relative time on the screen comes from `agent_tasks::clock::now_for_drawing`** (or `seconds_for_drawing`),
+  never from the real clock directly. A test window holds that clock at the moment it was built, so `just now`
+  stays `just now` however long a loaded run takes; the board's own timestamps still use `clock::now`.
 - **Nothing depends on `%TEMP%`.** `tools/test.mjs` and the runner point `TMP`, `TEMP` and `TMPDIR` at a run
   folder under `%TEMP%\unluminous-tests`, so a test, Python and PowerShell all write there, and a run removes
   its own folder. `node tools/clean-test-leftovers.mjs [--delete]` is for what earlier runs left.
