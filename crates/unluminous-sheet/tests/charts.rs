@@ -165,6 +165,22 @@ fn every_type_workbook() -> Session {
     s
 }
 
+/// A workbook with one chart of each newer type Excel's Insert Chart offers, other than the map.
+fn extended_workbook() -> Session {
+    let mut s = Session::new(Workbook::new(), 46318.5);
+    for (r, (name, v)) in [("a", 5.0), ("b", 9.0), ("c", 3.0), ("a", 7.0), ("b", 4.0), ("c", 8.0), ("a", 6.0), ("b", 2.0)].iter().enumerate() {
+        s.set_input(0, CellRef::new(r as u32 + 1, 0), name).unwrap();
+        s.set_input(0, CellRef::new(r as u32 + 1, 1), &format!("{v}")).unwrap();
+    }
+    s.set_input(0, CellRef::new(0, 0), "Group").unwrap();
+    s.set_input(0, CellRef::new(0, 1), "Value").unwrap();
+    let range = Range::new(CellRef::new(0, 0), CellRef::new(8, 1));
+    for ty in ChartType::ALL.iter().filter(|t| t.is_extended() && **t != ChartType::Map) {
+        s.insert_chart(0, range, *ty, None).unwrap_or_else(|e| panic!("{ty:?}: {e}"));
+    }
+    s
+}
+
 #[test]
 fn every_type_can_be_inserted() {
     let s = every_type_workbook();
@@ -213,8 +229,14 @@ fn excel_agrees_with_what_is_read_written_and_made() {
     let regenerated = save(&dirty, "14-regenerated.xlsx");
     let made = every_type_workbook();
     let all_types = save(&made.book, "all-types.xlsx");
-    let seen = inspect_many(&[original, regenerated, all_types]);
-    let [a, c, d] = &seen[..] else { panic!("three answers expected") };
+    let extended = extended_workbook();
+    let extended_path = save(&extended.book, "extended-types.xlsx");
+    let seen = inspect_many(&[original, regenerated, all_types, extended_path]);
+    let [a, c, d, e] = &seen[..] else { panic!("four answers expected") };
+    assert_eq!(e["repaired"], false, "{}", e["problem"]);
+    let types: Vec<i64> = e["charts"].as_array().unwrap().iter().map(|c| c["type"].as_i64().unwrap()).collect();
+    let wanted: Vec<i64> = extended.book.sheets[0].charts.iter().map(|c| i64::from(c.chart_type().excel_number())).collect();
+    assert_eq!(types, wanted, "Excel reads the newer chart types made here");
     assert_eq!(c["repaired"], false, "{}", c["problem"]);
     let (left, right) = (a["charts"].as_array().unwrap(), c["charts"].as_array().unwrap());
     assert_eq!(left.len(), right.len());
@@ -554,7 +576,10 @@ fn scenario(name: &str) -> Session {
 /// The parts of a chart both Excel's file and ours must agree on, as text.
 fn summary(chart: &unluminous_sheet::model::Chart) -> String {
     let spec = &chart.spec;
-    let mut out = vec![format!("type {:?}", chart.chart_type()), format!("title {:?}", chart.title)];
+    let mut out = vec![
+        format!("type {:?}", chart.chart_type()),
+        format!("title {:?} auto {} deleted {}", chart.title, spec.title_auto, spec.title_deleted),
+    ];
     out.push(format!("legend {:?}", spec.legend.as_ref().map(|l| l.position)));
     out.push(format!("table {}", spec.data_table.is_some()));
     out.push(format!("visible {} blanks {:?}", spec.visible_only(), spec.blanks_as()));
@@ -668,8 +693,24 @@ fn excel_sees_the_same_chart_in_a_session_made_file_as_in_its_own() {
             assert_eq!(a[key], b[key], "{name} {key}");
         }
         assert_eq!(a["series"], b["series"], "{name} series");
-        assert_eq!(a["axes"], b["axes"], "{name} axes");
+        assert_eq!(without_automatic_scale(&a["axes"]), without_automatic_scale(&b["axes"]), "{name} axes");
     }
+}
+
+/// Excel's automatic scale depends on the size of the plot, which differs between the two files, so
+/// the numbers it chose are left out where the scale is automatic.
+fn without_automatic_scale(axes: &serde_json::Value) -> serde_json::Value {
+    let mut axes = axes.clone();
+    for key in ["value", "secondaryValue"] {
+        if let Some(axis) = axes.get_mut(key).and_then(|a| a.as_object_mut()) {
+            for (auto, number) in [("majorAuto", "majorUnit"), ("majorAuto", "minorUnit"),("maxAuto", "max"), ("minAuto", "min")] {
+                if axis.get(auto) == Some(&serde_json::Value::Bool(true)) {
+                    axis.remove(number);
+                }
+            }
+        }
+    }
+    axes
 }
 
 // ---------------------------------------------------------------------------------------------------

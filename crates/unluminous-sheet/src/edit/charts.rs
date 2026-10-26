@@ -335,8 +335,8 @@ impl Session {
         chart.spec.style = Some(2);
         chartbuild::apply_type(&mut chart, ty);
         chart.spec.rounded_corners = Some(false);
-        chart.spec.title_deleted = chart.title.is_none() && chart.series.len() != 1;
-        chart.spec.title_auto = chart.title.is_none() && chart.series.len() == 1 && ty != ChartType::Combo;
+        chart.spec.title_deleted = false;
+        chart.spec.title_auto = chart.title.is_none();
         if chart.series.len() > 1 || matches!(ty, ChartType::Pie | ChartType::Doughnut | ChartType::PieExploded | ChartType::Pie3D | ChartType::Pie3DExploded | ChartType::DoughnutExploded | ChartType::PieOfPie | ChartType::BarOfPie) {
             chart.spec.legend = Some(Legend { position: legend_default(ty), ..Legend::default() });
         }
@@ -897,8 +897,8 @@ fn complete_new_chart(chart: &mut Chart) {
     chartbuild::apply_type(chart, ty);
     chart.spec.style = Some(2);
     chart.spec.rounded_corners = Some(false);
-    chart.spec.title_deleted = chart.title.is_none() && chart.series.len() != 1;
-    chart.spec.title_auto = chart.title.is_none() && chart.series.len() == 1;
+    chart.spec.title_deleted = false;
+    chart.spec.title_auto = chart.title.is_none();
     if chart.series.len() > 1 || matches!(ty, ChartType::Pie | ChartType::Doughnut) {
         chart.spec.legend = Some(Legend { position: LegendPosition::Bottom, ..Legend::default() });
     }

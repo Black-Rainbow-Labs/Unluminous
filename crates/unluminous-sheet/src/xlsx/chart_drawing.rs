@@ -220,7 +220,7 @@ fn qualified_name(root: &Node) -> String {
 
 /// One anchor holding a chart by its relationship id.
 pub fn anchor_xml(chart: &Chart, rel_id: &str, shape_id: u32) -> String {
-    let name = chart.spec.name.clone().unwrap_or_else(|| format!("Chart {}", shape_id.saturating_sub(1)));
+    let name = chart.spec.name.clone().unwrap_or_else(|| format!("Chart {}", shape_id.saturating_sub(999).max(1)));
     let descr = chart.spec.alt_text.as_deref().map(|d| format!(" descr=\"{}\"", escape(d))).unwrap_or_default();
     let edit_as = chart.spec.anchor_edit_as.as_deref().unwrap_or("oneCell");
     let frame = if chart.spec.ex.is_some() {
