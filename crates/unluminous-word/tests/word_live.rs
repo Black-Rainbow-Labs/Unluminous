@@ -40,10 +40,14 @@ fn inspect(path: &Path) -> Value {
     inspect_with_password(path, "")
 }
 
-/// One Word at a time. The tests run on several threads, and with a Word started for each, one of them
-/// now and then stopped answering while it opened its file, until its watchdog stopped it fifteen minutes
-/// later and left `inspect.ps1` waiting on nothing (task-2359, measured in three release runs).
-static ONE_WORD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+/// One Word for the whole binary, used by one test at a time. The tests run on several threads, and with a
+/// Word started for each, one of them now and then stopped answering while it opened its file, until its
+/// watchdog stopped it fifteen minutes later and left `inspect.ps1` waiting on nothing (task-2359,
+/// measured in three release runs). Starting and quitting Word was also most of each report's time: 15 s
+/// for an empty document, against 0.2 s from a Word already running (task-2368). So the first report
+/// starts `inspect.ps1 -Serve`, and every later one is a request to it. `None` until then, and again after
+/// a report that took too long, so the next test starts a fresh Word.
+static ONE_WORD: std::sync::Mutex<Option<WordServer>> = std::sync::Mutex::new(None);
 
 /// How long one report may take before the test says so rather than waiting on a Word that has stopped.
 const INSPECT_LIMIT: std::time::Duration = std::time::Duration::from_secs(600);
@@ -502,57 +506,138 @@ fn comments_added_and_deleted_keep_their_side_parts_consistent() {
 
 /// Word's report on a file opened with a password, an empty one for a file with none.
 fn inspect_with_password(path: &Path, password: &str) -> Value {
-    let _one = ONE_WORD.lock().unwrap_or_else(|held| held.into_inner());
-    let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/word-oracle/inspect.ps1");
+    let mut held = ONE_WORD.lock().unwrap_or_else(|held| held.into_inner());
     let out = path.with_extension("word.json");
     let _ = std::fs::remove_file(&out);
-    let mut command = std::process::Command::new("pwsh");
-    command
-        .args(["-NoProfile", "-NonInteractive", "-File"])
-        .arg(&script)
-        .arg("-Path")
-        .arg(path)
-        .arg("-Out")
-        .arg(&out);
-    if !password.is_empty() {
-        command.arg("-Password").arg(password);
+    if held.is_none() {
+        *held = Some(WordServer::start());
     }
-    let mut child = command.spawn().expect("pwsh runs");
-    let started = std::time::Instant::now();
-    let status = loop {
-        if let Some(status) = child.try_wait().expect("pwsh can be waited for") {
-            break status;
+    let request = serde_json::json!({
+        "path": path,
+        "out": out,
+        "password": password,
+        // No test here reads where Word broke the lines, which is half of a long document's report.
+        "lines": false,
+    });
+    let answer = match held.as_mut().unwrap().ask(&request.to_string()) {
+        Ok(answer) => answer,
+        Err(problem) => {
+            // The server and its Word go, so the next test starts a fresh one rather than waiting
+            // behind a Word that has stopped answering.
+            held.take().unwrap().stop();
+            panic!("Word gave no report on {}: {problem}", path.display());
         }
-        if started.elapsed() > INSPECT_LIMIT {
-            let _ = child.kill();
-            // The Word that stopped answering is not a child of `pwsh`: COM starts it. `inspect.ps1`
-            // writes its process id beside the report, so it is stopped here rather than left to its
-            // fifteen minute watchdog, which held the next test's open for as long (task-2364).
-            stop_the_word_in(&out);
-            panic!(
-                "Word gave no report on {} in {} seconds",
-                path.display(),
-                INSPECT_LIMIT.as_secs()
-            );
-        }
-        std::thread::sleep(std::time::Duration::from_millis(200));
     };
-    assert!(status.success(), "inspect.ps1 failed on {}", path.display());
+    assert_eq!(answer["ok"], true, "inspect.ps1 failed on {}: {}", path.display(), answer["error"]);
     serde_json::from_str(std::fs::read_to_string(&out).unwrap().trim_start_matches('\u{feff}'))
         .unwrap()
 }
 
-/// Stop the Word `inspect.ps1` started for the report `out`, named by the process id it wrote to
-/// `<out>.pid`, and remove the file.
-fn stop_the_word_in(out: &Path) {
-    let file = PathBuf::from(format!("{}.pid", out.display()));
-    if let Ok(text) = std::fs::read_to_string(&file) {
-        let id = text.trim();
-        if !id.is_empty() && id.chars().all(|c| c.is_ascii_digit()) {
-            let _ = std::process::Command::new("taskkill").args(["/PID", id, "/F"]).output();
+/// `inspect.ps1 -Serve`: one PowerShell holding one Word, asked for one report a line.
+///
+/// It is never dropped, because a static outlives every test, and it does not have to be: when the
+/// binary ends, its end of the pipe to the server closes, the server reads the end of its input and quits
+/// Word, and Word's watchdog stops Word as well once the server's PowerShell has gone.
+struct WordServer {
+    child: std::process::Child,
+    stdin: std::process::ChildStdin,
+    answers: std::sync::mpsc::Receiver<String>,
+    pid_file: PathBuf,
+}
+
+impl WordServer {
+    /// Start the server and wait for it to say its Word is running.
+    fn start() -> WordServer {
+        let script =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/word-oracle/inspect.ps1");
+        let pid_file = scratch(&format!("word-{}.pid", std::process::id()));
+        let _ = std::fs::remove_file(&pid_file);
+        let mut child = std::process::Command::new("pwsh")
+            .args(["-NoProfile", "-NonInteractive", "-File"])
+            .arg(&script)
+            .arg("-Serve")
+            .arg("-PidFile")
+            .arg(&pid_file)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("pwsh runs");
+        let stdin = child.stdin.take().unwrap();
+        let (send, answers) = std::sync::mpsc::channel();
+        let stdout = child.stdout.take().unwrap();
+        std::thread::spawn(move || {
+            use std::io::BufRead;
+            for line in std::io::BufReader::new(stdout).lines().map_while(Result::ok) {
+                match line.strip_prefix("WORD-ORACLE ") {
+                    Some(answer) => {
+                        if send.send(answer.to_owned()).is_err() {
+                            break;
+                        }
+                    }
+                    None => println!("inspect.ps1: {line}"),
+                }
+            }
+        });
+        // Standard error is read here rather than inherited, so the server's PowerShell, still quitting
+        // Word after the binary has ended, does not hold the test runner's own output open.
+        let stderr = child.stderr.take().unwrap();
+        std::thread::spawn(move || {
+            use std::io::BufRead;
+            for line in std::io::BufReader::new(stderr).lines().map_while(Result::ok) {
+                eprintln!("inspect.ps1: {line}");
+            }
+        });
+        let mut server = WordServer { child, stdin, answers, pid_file };
+        let ready = server.answer();
+        match ready {
+            Ok(ready) if ready["ready"] == true => {
+                println!("Word started for this binary in {} ms", ready["start"]);
+                server
+            }
+            other => {
+                server.stop();
+                panic!("inspect.ps1 -Serve did not start Word: {other:?}");
+            }
         }
     }
-    let _ = std::fs::remove_file(&file);
+
+    /// Send one request line and wait for its answer.
+    fn ask(&mut self, request: &str) -> Result<Value, String> {
+        use std::io::Write;
+        writeln!(self.stdin, "{request}")
+            .and_then(|()| self.stdin.flush())
+            .map_err(|e| format!("the server is gone: {e}"))?;
+        self.answer()
+    }
+
+    /// The next answer, or why there is none within `INSPECT_LIMIT`.
+    fn answer(&mut self) -> Result<Value, String> {
+        match self.answers.recv_timeout(INSPECT_LIMIT) {
+            Ok(line) => serde_json::from_str(&line).map_err(|e| format!("{e}: {line}")),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                Err(format!("no answer in {} seconds", INSPECT_LIMIT.as_secs()))
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                Err(format!("the server ended: {:?}", self.child.try_wait()))
+            }
+        }
+    }
+
+    /// Stop the server's PowerShell and its Word. The Word is not a child of `pwsh`: COM starts it, so
+    /// it is named by the process id the server wrote to its pid file and stopped here, rather than left
+    /// to its watchdog (task-2364).
+    fn stop(mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        if let Ok(text) = std::fs::read_to_string(&self.pid_file) {
+            let id = text.trim();
+            if !id.is_empty() && id.chars().all(|c| c.is_ascii_digit()) {
+                let _ = std::process::Command::new("taskkill").args(["/PID", id, "/F"]).output();
+            }
+        }
+        let _ = std::fs::remove_file(&self.pid_file);
+    }
 }
 
 /// Round 2 (task-2359): a text box, a table style, a split table, a wrapped picture, a cross reference,

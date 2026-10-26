@@ -47,7 +47,9 @@ function Clear-WordResiliency {
 }
 
 # Starts Word hidden. Returns @{ App; Pid; Watchdog; Fonts }. Pid is the one new WINWORD process (or $null).
-# A watchdog process force-stops that one pid after $TimeoutSeconds in case a modal dialog hangs a COM call.
+# A watchdog process force-stops that one pid after $TimeoutSeconds in case a modal dialog hangs a COM call,
+# and as soon as the PowerShell that started it has ended, so a script that was stopped from outside does
+# not leave its Word running until the timeout (task-2368, where one Word serves a whole test binary).
 # With -PidFile, the Word's process id is written there, so a caller that gives up waiting (word_live's
 # limit) stops that Word rather than leaving it to the watchdog (task-2364).
 function Start-WordApp {
@@ -64,7 +66,7 @@ function Start-WordApp {
     $watchdog = $null
     if ($newPid -and $PidFile) { [IO.File]::WriteAllText($PidFile, "$newPid") }
     if ($newPid) {
-        $cmd = "Start-Sleep -Seconds $TimeoutSeconds; Stop-Process -Id $newPid -Force -ErrorAction SilentlyContinue"
+        $cmd = "`$end = (Get-Date).AddSeconds($TimeoutSeconds); while ((Get-Date) -lt `$end -and (Get-Process -Id $PID -ErrorAction SilentlyContinue)) { Start-Sleep -Seconds 2 }; Stop-Process -Id $newPid -Force -ErrorAction SilentlyContinue"
         $watchdog = Start-Process pwsh -ArgumentList '-NoProfile', '-Command', $cmd -PassThru -WindowStyle Hidden
     }
     return @{ App = $app; Pid = $newPid; Watchdog = $watchdog; Fonts = $fonts }
