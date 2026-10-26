@@ -6,7 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.16.0 — 2026-10-26
+## 1.16.1 — 2026-10-26
+
+- The panel's rows wrap in a narrow panel instead of running past its edge (`task-2366`)
+
+## 1.16.0 — 2026-10-25
 
 - The Word tab drawn in the design system (`task-2366`)
 - Word settings page in the Settings cards, palette rules kept, TDD brought in line with the build (`task-2366`)
