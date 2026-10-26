@@ -7144,3 +7144,25 @@ fn the_templates_manager_lists_edits_and_writes_templates() {
     did(&mut harness, "explorer new-file docs/today --template note");
     assert_eq!(std::fs::read_to_string(project.join("docs/today.md")).unwrap(), "# today\n");
 }
+
+/// `task-2369`. Every test thread makes egui's pipeline on one of the [`DEVICES`] the binary shares, and
+/// wgpu's DX12 backend kept the compiled shader in a cache as the `ID3DBlob` FXC returned. That blob does
+/// not count its references atomically, so threads cloning and dropping one cached blob freed it while it
+/// was still cached: a binary aborted with `misaligned pointer dereference` in `Interface::assume_vtable`,
+/// or ended with no message at all. Before `vendor/wgpu-hal` copied the shader's bytes out, this test failed
+/// in 26 of 200 runs on Windows. It makes 6,400 renderers from 64 threads at once.
+#[test]
+fn many_threads_make_renderers_on_the_shared_devices_at_once() {
+    let threads: Vec<_> = (0..64)
+        .map(|_| {
+            std::thread::spawn(|| {
+                for _ in 0..100 {
+                    drop(shared_render_state());
+                }
+            })
+        })
+        .collect();
+    for thread in threads {
+        thread.join().expect("a thread making renderers panicked");
+    }
+}

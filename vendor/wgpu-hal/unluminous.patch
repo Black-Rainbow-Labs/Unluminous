@@ -1,0 +1,37 @@
+--- a/src/dx12/mod.rs
++++ b/src/dx12/mod.rs
+@@ -1348,6 +1348,9 @@
+ #[derive(Clone)]
+ pub(super) enum CompiledShader {
+     Dxc(Direct3D::Dxc::IDxcBlob),
++    // Unluminous (task-2369): no longer made, because FXC's blob cannot be shared between threads.
++    // See `compile_fxc`.
++    #[allow(dead_code)]
+     Fxc(Direct3D::ID3DBlob),
+     Precompiled(Vec<u8>),
+ }
+--- a/src/dx12/shader_compilation.rs
++++ b/src/dx12/shader_compilation.rs
+@@ -253,8 +253,21 @@
+ 
+     match hr {
+         Ok(()) => {
++            // Unluminous (task-2369): d3dcompiler_47's ID3DBlob does not count its references
++            // atomically, and `Device::load_shader` caches what this returns and clones it for every
++            // thread that creates a pipeline from the same source. Two threads cloning and dropping
++            // one cached blob lose updates to its count, the blob is freed while it is still cached,
++            // and the next clone reads freed memory. So the bytes are copied out here and the blob is
++            // released on the thread that made it.
+             let shader_data = shader_data.unwrap();
+-            Ok(super::CompiledShader::Fxc(shader_data))
++            let bytes = unsafe {
++                core::slice::from_raw_parts(
++                    shader_data.GetBufferPointer().cast::<u8>(),
++                    shader_data.GetBufferSize(),
++                )
++            }
++            .to_vec();
++            Ok(super::CompiledShader::Precompiled(bytes))
+         }
+         Err(e) => {
+             let mut full_msg = format!("FXC D3DCompile error ({e})");
