@@ -6,6 +6,14 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.15.2 — 2026-10-26
+
+- Work in progress, test isolation and runners (not yet built) (`task-2364`)
+- Fixtures per binary, split long tests, renderer that waits, held commands answered by frames, dictation caret, walk drives what it counts (`task-2364`)
+- Dependencies optimized in test builds, a held drawing clock, the shared folder writer fixed, a stand-in npm, the runner keeps a failed attempt's pictures and defaults to two binaries (`task-2364`)
+- The design document's measurements and ranking, and the rules in CLAUDE.md (`task-2364`)
+- A reloaded tab forgets its old layout (a crash in a split view), the renderer catches kittest's poll timeout panic, the runner records how a binary ended (`task-2364`)
+
 ## 1.15.1 — 2026-10-25
 
 - The Word status area fits its strip: its words are sized to the strip, the view buttons and zoom are laid out first, and an item that does not fit the room left is left out rather than drawn over them (`task-2359`)
