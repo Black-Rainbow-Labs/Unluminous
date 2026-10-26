@@ -11,7 +11,29 @@ Add-Type -Namespace WordOracle -Name Fonts -MemberDefinition @'
 [DllImport("gdi32.dll", CharSet = CharSet.Unicode)] public static extern int AddFontResourceW(string file);
 [DllImport("gdi32.dll", CharSet = CharSet.Unicode)] public static extern bool RemoveFontResourceW(string file);
 [DllImport("user32.dll")] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint msg, IntPtr w, IntPtr l, uint flags, uint timeout, out IntPtr result);
+[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowW(string cls, string title);
+[DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
 '@ -ErrorAction SilentlyContinue
+
+# The process id of the Word behind $app. Word has no property for it, so its main window, class OpusApp,
+# is found by a caption nobody else uses. Comparing the WINWORD processes before and after the start can
+# name another agent's Word that started at the same moment, which Stop-WordApp would then stop (task-2368
+# saw two other Words start during one run). That comparison is the fallback.
+function Get-WordPid {
+    param($app, $guess)
+    try {
+        $caption = "word-oracle-$([guid]::NewGuid())"
+        $app.Caption = $caption
+        $window = [WordOracle.Fonts]::FindWindowW('OpusApp', $caption)
+        $app.Caption = ''
+        if ($window -ne [IntPtr]::Zero) {
+            [uint32]$found = 0
+            [void][WordOracle.Fonts]::GetWindowThreadProcessId($window, [ref]$found)
+            if ($found -ne 0) { return [int]$found }
+        }
+    } catch { }
+    return $guess
+}
 
 # The font files Office downloaded for this person.
 function Get-CloudFonts {
@@ -62,6 +84,7 @@ function Start-WordApp {
     $newPid = $after | Where-Object { $before -notcontains $_ } | Select-Object -First 1
     $app.Visible = $false
     $app.DisplayAlerts = 0
+    $newPid = Get-WordPid $app $newPid
     try { $app.Options.SaveNormalPrompt = $false } catch { }
     $watchdog = $null
     if ($newPid -and $PidFile) { [IO.File]::WriteAllText($PidFile, "$newPid") }

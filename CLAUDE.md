@@ -6933,6 +6933,11 @@ release again. The rules:
   the way the control channel does (`UnluminousApp::start_command_line`).
 - **A test that drives another program stops it when it gives up.** `word_live` stops the Word whose process
   id `inspect.ps1` writes, and `inspect.ps1` clears Word's Resiliency records for its folder.
+- **A test binary that asks another program many questions starts it once** (`task-2368`). `word_live` keeps
+  one `inspect.ps1 -Serve` for the binary, one request at a time, and starts a fresh one after a report that
+  times out. Starting and quitting Word was 10 to 15 s of each of 55 reports: the binary went from 1,259 s to
+  211 s on the same machine. `Start-WordApp` names its Word by a window caption, never by which `WINWORD`
+  appeared, because another agent's Word can start at the same moment.
 - **One `cargo test` a crate in the gate**, so one failure costs the other crates nothing, and the Word and
   kernel tests run after the other lanes, on a quiet machine.
 - **A flake is retried once and recorded.** A test that fails and then passes on its own does not stop a
@@ -7624,7 +7629,8 @@ Eight rules, each found by measuring:
   COM and writes Word's report; `make-fixtures.ps1` makes the fixtures with Word. The reports are committed, so
   `tests/oracle.rs` and `tests/pagination.rs` need no Word. `tests/word_live.rs` writes documents with Unluminous,
   has Word open them, and fails if Word repairs one; it passes with a printed line where Word is not installed,
-  and `UNLUMINOUS_REQUIRE_WORD=1` makes that a failure.
+  and `UNLUMINOUS_REQUIRE_WORD=1` makes that a failure. It asks one Word for every report through
+  `inspect.ps1 -Serve`, without the per line questions, which none of its tests reads.
 - **Word's paragraph spacing is the larger of the space after and the space before, never their sum.**
   Measured against Word 16's positions: a paragraph with 8 points after and a heading with 8 before are 8
   points apart.
