@@ -13,7 +13,7 @@ use crate::services::word::Doc;
 fn points(ui: &mut egui::Ui, label: &str, value: f32) -> Option<f32> {
     let mut v = value;
     let mut changed = false;
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label(label);
         changed = ui
             .add(egui::DragValue::new(&mut v).range(0.0..=1584.0).speed(0.5).suffix(" pt"))
@@ -75,7 +75,7 @@ pub fn page_setup(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>)
         doc.session.set_paper(width, height);
     }
     heading(ui, "Vertical alignment");
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         for (label, value) in
             [("Top", "top"), ("Center", "center"), ("Justified", "both"), ("Bottom", "bottom")]
         {
@@ -108,7 +108,7 @@ pub fn page_setup(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>)
         let mut from = start as f32;
         let mut away = distance;
         let mut changed = false;
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Count by");
             changed |=
                 ui.add(egui::DragValue::new(&mut by).range(1.0..=100.0).speed(0.2)).changed();
@@ -157,7 +157,7 @@ pub fn page_setup(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>)
     let mut colour = geometry
         .page_border
         .map_or(egui::Color32::BLACK, |b| egui::Color32::from_rgb(b.1 .0, b.1 .1, b.1 .2)); // any ground: a border colour, not a surface
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label("Border colour");
         if ui.color_edit_button_srgba(&mut colour).changed() {
             let hex = format!("{:02X}{:02X}{:02X}", colour.r(), colour.g(), colour.b());
@@ -222,7 +222,7 @@ pub fn page_setup(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>)
         } else {
             geometry.page_number_format.as_str()
         };
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         numbering_changed |= kit::check(ui, &mut restart, "Start at").changed();
         numbering_changed |= ui
             .add_enabled(restart, egui::DragValue::new(&mut start).range(0.0..=32767.0).speed(0.2))
@@ -279,7 +279,7 @@ pub fn modify_style(
     if family != run_look.font.as_ref() {
         set(doc, "font", family);
     }
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         let mut size = run_look.size;
         ui.label("Size");
         if ui
@@ -289,7 +289,7 @@ pub fn modify_style(
             set(doc, "size", format!("{size}"));
         }
     });
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         for (label, property, on) in
             [("Bold", "bold", run_look.bold), ("Italic", "italic", run_look.italic)]
         {
@@ -305,7 +305,7 @@ pub fn modify_style(
     let mut colour = run_look
         .color
         .map_or(crate::theme::color::word_ink(), |c| egui::Color32::from_rgb(c.0, c.1, c.2));
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label("Colour");
         if ui.color_edit_button_srgba(&mut colour).changed() {
             set(doc, "colour", format!("{:02X}{:02X}{:02X}", colour.r(), colour.g(), colour.b()));
@@ -315,7 +315,7 @@ pub fn modify_style(
         }
     });
     heading(ui, "Paragraph");
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         for (label, value) in
             [("Left", "left"), ("Center", "center"), ("Right", "right"), ("Justify", "justify")]
         {
@@ -335,7 +335,7 @@ pub fn modify_style(
             set(doc, property, format!("{v}"));
         }
     }
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label("Line spacing");
         for (label, value) in [("1.0", "1"), ("1.15", "1.15"), ("1.5", "1.5"), ("2.0", "2")] {
             if kit::button(ui, label).clicked() {
@@ -345,7 +345,7 @@ pub fn modify_style(
     });
     heading(ui, "Based on and next");
     for (label, property) in [("Based on", "based-on"), ("Style for the next paragraph", "next")] {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(label);
             let mut chosen = String::new();
             egui::ComboBox::from_id_salt(("word-modify", property, &doc.key))
