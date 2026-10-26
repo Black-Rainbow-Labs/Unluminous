@@ -271,8 +271,15 @@ fn feature_differences(a: &Workbook, b: &Workbook, index: usize, lossy: bool) ->
     };
     note("row heights", format!("{:?}", heights(sa)), format!("{:?}", heights(sb)));
     let notes = |s: &Sheet| {
-        s.notes
-            .iter()
+        // A threaded comment is a note in an `.ods` file, with the words an older Excel shows for it.
+        let mut all: Vec<((u32, u32), unluminous_sheet::model::Note)> =
+            s.notes.iter().map(|(k, n)| (*k, n.clone())).collect();
+        for (k, t) in &s.threads {
+            let words = unluminous_sheet::xlsx::threads::legacy_text(t);
+            all.push((*k, unluminous_sheet::model::Note::new("", words)));
+        }
+        all.sort_by_key(|(k, _)| *k);
+        all.iter()
             .map(|(k, n)| {
                 let text = n.text.replace("\r\n", "\n");
                 // The text Excel puts in front of a threaded comment for older versions is not in an `.ods`.

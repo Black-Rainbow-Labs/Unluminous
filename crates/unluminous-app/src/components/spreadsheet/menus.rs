@@ -851,6 +851,11 @@ pub fn filter_menu(
                     "clear".to_owned(),
                 ]));
             }
+            ui.collapsing("More filters", |ui| {
+                if let Some(more) = super::overlay_a::filter_extras(ui, column) {
+                    picked = Some(more);
+                }
+            });
             line(ui, look);
             let all = values.iter().all(|(_, keep)| *keep);
             if controls::menu_row(ui, "(Select all)", "", true, all, 0.0) {

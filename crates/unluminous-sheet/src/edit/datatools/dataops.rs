@@ -1,7 +1,7 @@
 //! Remove Duplicates and Text to Columns.
 
-use crate::edit::Guard;
 use crate::coord::{CellRef, Range};
+use crate::edit::Guard;
 use crate::edit::{clip_to_used, Session};
 use crate::model::*;
 use crate::styles::StyleChange;

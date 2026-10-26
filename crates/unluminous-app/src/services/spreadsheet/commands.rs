@@ -77,6 +77,12 @@ pub fn act(sheet: &mut Spreadsheet, act: Act) -> Result<Answer, String> {
 
 /// Run a verb.
 pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Result<Answer, String> {
+    if let Some(answer) = super::verbs_a::first(sheet, verb, args) {
+        return answer;
+    }
+    if let Some(answer) = super::verbs_b::first(sheet, verb, args) {
+        return answer;
+    }
     match verb {
         "open" => {
             let path = args.first().ok_or("open needs a file")?;

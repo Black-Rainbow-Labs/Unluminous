@@ -2103,6 +2103,9 @@ mod tests {
         //   41,636   `task-2341` merged with `task-2338`, adding the Word plugin's tool: 35 verbs, each summary cut
         //            to one line of arguments first, which took 470 tokens off; the rest is the tool and its verb
         //            enum, which no wording removes. The ceiling moves to 42,000.
+        //   43,368   `task-2360` adding the Spreadsheet verbs for data tools, outlines, rules, what if,
+        //            protection, styles, themes and review (37 verbs, each with a usage line). The ceiling
+        //            moves to 45,000.
         //
         // **The number being hard to hold is itself `task-1804` §4.2's finding**, and what
         // changed with it is that there is now an answer: `mcp serve --areas` equips an agent with
@@ -2110,7 +2113,7 @@ mod tests {
         // `editor,git` rather than 18,511 for all of it. This ceiling goes on saying when the
         // *default* has grown, which is what it is for; it is no longer the only lever there is.
         assert!(
-            grouped.len() / 4 < 42_000,
+            grouped.len() / 4 < 45_000,
             "grouped MCP schema exceeded budget: {} bytes",
             grouped.len()
         );

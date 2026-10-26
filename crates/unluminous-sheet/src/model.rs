@@ -41,6 +41,10 @@ pub struct Workbook {
     pub dynamic_cm: Option<u32>,
     /// The path of the workbook part, `xl/workbook.xml` in every file Excel writes.
     pub part: String,
+    /// The people who wrote threaded comments.
+    pub persons: Vec<Person>,
+    /// The people changed since the file was read, so the persons part is written again.
+    pub persons_changed: bool,
     /// The pivot tables and the caches of data they summarise.
     pub pivots: crate::pivot::Pivots,
 }
@@ -238,11 +242,20 @@ pub struct Note {
     pub visible: bool,
     /// The `comment` element's other attributes, such as the `xr:uid` a threaded comment is matched by.
     pub attrs: Vec<(String, String)>,
+    /// Where the note's box sits, as the VML drawing says it. `None` for a note made here and not yet
+    /// given a place, which the writer positions the way Excel positions a new one.
+    pub bounds: Option<NoteBox>,
 }
 
 impl Note {
     pub fn new(author: impl Into<String>, text: impl Into<String>) -> Self {
-        Self { author: author.into(), text: text.into(), visible: false, attrs: Vec::new() }
+        Self {
+            author: author.into(),
+            text: text.into(),
+            visible: false,
+            attrs: Vec::new(),
+            bounds: None,
+        }
     }
 }
 
@@ -664,15 +677,24 @@ pub struct Sheet {
     pub conditional: Vec<ConditionalFormat>,
     pub validations: Vec<Validation>,
     pub notes: BTreeMap<(u32, u32), Note>,
-    /// The notes changed since the file was read, so their parts are written again.
+    /// Threaded comments by their cell. Each also has a legacy note in the file, which is made when the
+    /// sheet is written and is not in [`Sheet::notes`].
+    pub threads: BTreeMap<(u32, u32), Thread>,
+    /// The notes or threads changed since the file was read, so their parts are written again.
     pub notes_changed: bool,
+    /// The errors Excel is told not to flag (`ignoredErrors`).
+    pub ignored_errors: Vec<IgnoredError>,
+    /// The cells in the Watch Window (`cellWatches`).
+    pub watches: Vec<CellWatch>,
     pub links: Vec<Hyperlink>,
     pub filter: Option<AutoFilter>,
     pub charts: Vec<Chart>,
     /// Chart parts read from the file whose charts were deleted or moved off this sheet.
     pub chart_removed: Vec<String>,
-    /// Pictures a drawing places over the cells, read for drawing; their parts are kept.
-    pub pictures: Vec<Picture>,
+    /// The pictures, shapes and other objects the sheet's drawing places over the cells, bottom first.
+    pub drawing: crate::objects::Drawing,
+    /// The sparkline groups of the sheet.
+    pub sparklines: Vec<crate::objects::sparkline::SparklineGroup>,
     pub state: Visibility,
     pub tab_color: Option<crate::styles::Color>,
     pub zoom: u32,
@@ -890,6 +912,23 @@ pub struct SheetRaw {
 }
 
 impl Sheet {
+    /// The pictures of the drawing as the grid draws them: where each is and the part holding its image.
+    pub fn pictures(&self) -> Vec<Picture> {
+        use crate::objects::geometry::cell_at;
+        self.drawing
+            .objects
+            .iter()
+            .filter(|o| !o.hidden)
+            .filter_map(|o| {
+                let part = o.picture.as_ref()?.part.clone();
+                let r = o.frame_rect(self);
+                let end = cell_at(self, r.right(), r.bottom());
+                let start = cell_at(self, r.x, r.y);
+                Some(Picture { from: start, to: end, part })
+            })
+            .collect()
+    }
+
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
@@ -1110,4 +1149,84 @@ impl DateGrouping {
             _ => return None,
         })
     }
+}
+
+/// Someone who wrote a threaded comment: a row of `persons/person.xml`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Person {
+    /// The braced GUID the comments name.
+    pub id: String,
+    pub display_name: String,
+    pub user_id: String,
+    /// `Windows Live`, `AD` or `None`.
+    pub provider_id: String,
+    /// Other attributes, kept.
+    pub attrs: Vec<(String, String)>,
+}
+
+/// An `@mention` inside a threaded comment, stored the way Excel stores it: the person, a GUID of its
+/// own, and where in the comment's text the `@name` starts and how many characters it runs.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Mention {
+    pub person: String,
+    pub id: String,
+    pub start: usize,
+    pub length: usize,
+}
+
+/// One message of a threaded comment: the first of a thread or a reply to it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ThreadMessage {
+    /// The braced GUID that replies name as their parent.
+    pub id: String,
+    /// The id of the [`Person`] who wrote it.
+    pub person: String,
+    /// When it was written, as Excel writes it: `2026-10-24T19:33:38.78`.
+    pub date: String,
+    pub text: String,
+    pub mentions: Vec<Mention>,
+    /// The `threadedComment` element's other attributes, kept.
+    pub attrs: Vec<(String, String)>,
+}
+
+/// A threaded comment on a cell: the message that started it, the replies in the order they were made, and
+/// whether it is resolved. One thread belongs to one cell.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Thread {
+    pub first: ThreadMessage,
+    pub replies: Vec<ThreadMessage>,
+    pub resolved: bool,
+}
+
+impl Thread {
+    /// The messages of the thread in order, the first and then the replies.
+    pub fn messages(&self) -> impl Iterator<Item = &ThreadMessage> {
+        std::iter::once(&self.first).chain(self.replies.iter())
+    }
+}
+
+/// Where a note's box sits on the sheet, as the VML shape says it: the anchor Excel positions it by and the
+/// shape's own position and size in points.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NoteBox {
+    /// Left column, offset in pixels, top row, offset, right column, offset, bottom row, offset.
+    pub anchor: [i32; 8],
+    pub left: f64,
+    pub top: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+/// A cell whose errors Excel is told not to flag: one `ignoredError` element.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IgnoredError {
+    pub ranges: Vec<Range>,
+    /// The rules ignored, as the attribute names Excel writes: `numberStoredAsText`, `formula` and so on.
+    pub rules: Vec<String>,
+}
+
+/// A cell in the Watch Window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CellWatch {
+    pub at: CellRef,
 }

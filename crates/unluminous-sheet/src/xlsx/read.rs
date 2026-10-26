@@ -97,11 +97,17 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
     if let Some(path) = target_of(REL_CALC_CHAIN) {
         regenerated_parts.insert(path);
     }
+    // The people who wrote threaded comments. The part stays among the kept parts until a thread changes.
+    if let Some(xml) = target_of(super::threads::REL_PERSON).and_then(|p| text(&p)) {
+        book.persons = super::threads::read_persons(&xml);
+    }
     // Dynamic array metadata: which cm index means a dynamic array.
     let mut dynamic_cm: Option<u32> = None;
+    let mut rich_metadata = false;
     if let Some(path) = target_of(REL_METADATA) {
         if let Some(xml) = text(&path) {
             let (cm, only_dynamic) = read_metadata(&xml);
+            rich_metadata = xml.contains("XLRICHVALUE");
             dynamic_cm = cm;
             if only_dynamic {
                 regenerated_parts.insert(path);
@@ -221,7 +227,8 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
         .iter()
         .filter(|r| {
             let regenerated = REGENERATED.contains(&r.kind.as_str());
-            let unused_metadata = r.kind == REL_METADATA && book.dynamic_cm.is_none();
+            let unused_metadata =
+                r.kind == REL_METADATA && book.dynamic_cm.is_none() && !rich_metadata;
             !(regenerated || unused_metadata)
         })
         .filter(|r| {
@@ -248,6 +255,7 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
     }
     crate::pivot::xml::attach(&mut book);
     // Formulas read from a file are computed once now, except the ones that cannot be.
+    crate::objects::geometry::set_metrics(&mut book);
     Ok(book)
 }
 
@@ -1191,6 +1199,8 @@ fn read_sheet(
                     sheet.filter = Some(filter);
                 }
             }
+            "ignoredErrors" => sheet.ignored_errors = super::audit::read_ignored_errors(section),
+            "cellWatches" => sheet.watches = super::audit::read_watches(section),
             "legacyDrawing" => {
                 // The notes' shapes: kept unless the notes change.
                 sheet.raw.elements.push((name.to_owned(), raw(xml, section).to_owned()));
@@ -1227,11 +1237,16 @@ fn read_sheet(
             }
             // Kept as bytes; regenerated only if a note changes.
         }
+        if rel.kind == super::threads::REL_THREADED {
+            if let Some(tx) = text(&resolve(part, &rel.target)) {
+                sheet.threads = super::threads::read_threads(&tx);
+            }
+        }
         // Charts, read so they can be drawn; their parts are kept as they were.
         if rel.kind == REL_DRAWING {
             let names = |f: &str| book.names.iter().find(|n| n.name == f).map(|n| n.formula.clone());
             sheet.charts.extend(super::chart::read_charts(part, &rel.target, text, &names));
-            sheet.pictures.extend(super::chart::read_pictures(part, &rel.target, text));
+            read_drawing_objects(sheet, part, &rel.target, text);
         }
         let kept = !matches!(rel.kind.as_str(), REL_HYPERLINK | REL_TABLE);
         if kept {
@@ -1239,6 +1254,8 @@ fn read_sheet(
         }
     }
     sheet.raw.rels = kept_rels;
+    crate::objects::sparkline::extract(sheet);
+    super::threads::drop_legacy_notes(sheet);
     // The cells a dynamic array spilled into were saved as values; they are the spill now.
     for range in dynamic_ranges {
         let anchor = (range.first.row, range.first.col);
@@ -1336,6 +1353,20 @@ fn read_table(xml: &str, part: &str, sheet: usize) -> Option<Table> {
     })
 }
 
+/// The pictures, shapes and other objects a sheet's drawing holds, read so they can be drawn and edited.
+pub(crate) fn read_drawing_objects(
+    sheet: &mut Sheet,
+    sheet_part: &str,
+    target: &str,
+    text: &dyn Fn(&str) -> Option<String>,
+) {
+    let drawing_part = resolve(sheet_part, target);
+    let Some(xml) = text(&drawing_part) else { return };
+    let rels = parse_rels(&text(&rels_path(&drawing_part)).unwrap_or_default());
+    let objects = crate::objects::read::read_drawing(&xml, &rels, &drawing_part);
+    sheet.drawing.objects.extend(objects);
+}
+
 fn read_notes(xml: &str, sheet: &mut Sheet) {
     let Ok(doc) = Document::parse(xml) else { return };
     let root = doc.root_element();
@@ -1358,12 +1389,15 @@ fn read_notes(xml: &str, sheet: &mut Sheet) {
             .unwrap_or_default();
         let text = child(c, "text").map(|t| string_item(xml, t).0.to_string()).unwrap_or_default();
         let attrs = attrs_of(c, &["ref", "authorId"]);
-        sheet.notes.insert((at.row, at.col), Note { author, text, visible: false, attrs });
+        sheet
+            .notes
+            .insert((at.row, at.col), Note { author, text, visible: false, attrs, bounds: None });
     }
 }
 
-/// Which notes the VML drawing shows all the time: a shape whose client data says `Visible`. VML is not
-/// always well formed XML, so it is read as text.
+/// Which notes the VML drawing shows all the time, and where each note's box sits: a shape whose client
+/// data says `Visible`, with its anchor and the position and size its style gives. VML is not always well
+/// formed XML, so it is read as text. A thread's stand in note keeps no box of its own.
 fn read_note_visibility(vml: &str, sheet: &mut Sheet) {
     for shape in vml.split("<v:shape ").skip(1) {
         let shape = shape.split("</v:shape>").next().unwrap_or("");
@@ -1373,10 +1407,30 @@ fn read_note_visibility(vml: &str, sheet: &mut Sheet) {
             shape[start..end].trim().parse().ok()
         };
         let (Some(row), Some(col)) = (number("Row"), number("Column")) else { continue };
-        if shape.contains("<x:Visible") {
-            if let Some(note) = sheet.notes.get_mut(&(row, col)) {
-                note.visible = true;
-            }
+        if let Some(note) = sheet.notes.get_mut(&(row, col)) {
+            note.visible = shape.contains("<x:Visible");
+            note.bounds = read_note_bounds(shape);
         }
     }
+}
+
+/// A note shape's anchor and the position and size in points its style gives.
+fn read_note_bounds(shape: &str) -> Option<NoteBox> {
+    let start = shape.find("<x:Anchor>")? + "<x:Anchor>".len();
+    let end = shape[start..].find('<')? + start;
+    let numbers: Vec<i32> =
+        shape[start..end].split(',').filter_map(|v| v.trim().parse().ok()).collect();
+    let anchor: [i32; 8] = numbers.try_into().ok()?;
+    let points = |name: &str| -> Option<f64> {
+        let at = shape.find(&format!("{name}:"))? + name.len() + 1;
+        let end = shape[at..].find("pt")? + at;
+        shape[at..end].trim().parse().ok()
+    };
+    Some(NoteBox {
+        anchor,
+        left: points("margin-left")?,
+        top: points("margin-top")?,
+        width: points("width")?,
+        height: points("height")?,
+    })
 }

@@ -55,7 +55,11 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Option<Resul
             _ => Err("autofit takes rows or columns".to_owned()),
         },
         "fill-handle" => fill_handle(sheet, args),
-        _ => return None,
+        _ => {
+            return super::verbs_a::run(sheet, verb, args)
+                .or_else(|| super::verbs_c::run(sheet, verb, args))
+                .or_else(|| super::verbs_b::run(sheet, verb, args))
+        }
     })
 }
 
@@ -636,6 +640,12 @@ fn fill_handle(sheet: &mut Spreadsheet, args: &[String]) -> Result<Answer, Strin
 fn pick_from_list(sheet: &mut Spreadsheet) -> Result<Answer, String> {
     let book = sheet.current_book()?;
     let at = book.view.cursor;
+    if let Some(filter) = &book.session.book.sheets[book.view.sheet].filter {
+        if at.row == filter.range.first.row && (filter.range.first.col..=filter.range.last.col).contains(&at.col) {
+            book.view.audit.open_filter = Some(at.col);
+            return Ok(Answer::said("Filter menu"));
+        }
+    }
     let entries = super::entry::column_entries(&book.session.book.sheets[book.view.sheet], at);
     book.view.choices = true;
     Ok(Answer::said(format!("{} entries", entries.len())).with(json!(entries)))

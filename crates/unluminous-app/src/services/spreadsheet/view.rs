@@ -289,8 +289,14 @@ pub struct View {
     pub sheet_menu: Option<(usize, egui::Pos2)>,
     /// The list under a filter button: its column and where it opened.
     pub filter_menu: Option<(u32, egui::Pos2)>,
+    /// The Sort popup's levels, trace arrows, the Evaluate Formula stepper and the review panels.
+    pub audit: super::view_a::AuditState,
+    /// The clipboard and fill buttons, the print preview, the PivotTable Fields pane and the slicers.
+    pub lane_b: super::view_b::State,
     /// The chart chosen with a click, by its place in the sheet's list.
     pub chart: Option<usize>,
+    /// The objects chosen on the sheet, their menu and the shape being drawn.
+    pub objects: super::view_c::ObjectState,
     /// The list under a cell with a list rule, opened with its arrow or Alt+Down.
     pub choices: bool,
     /// Scroll the active cell into view on the next frame.
@@ -350,7 +356,10 @@ impl Default for View {
             renaming: None,
             sheet_menu: None,
             filter_menu: None,
+            audit: Default::default(),
+            lane_b: Default::default(),
             chart: None,
+            objects: Default::default(),
             choices: false,
             reveal: false,
             take_keys: false,
@@ -466,6 +475,7 @@ impl View {
         self.book_menu = None;
         self.sheet_menu = None;
         self.filter_menu = None;
+        self.objects.menu = None;
         self.choices = false;
     }
 }

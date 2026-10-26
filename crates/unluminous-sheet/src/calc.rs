@@ -260,7 +260,8 @@ impl Engine {
     fn iterate(&mut self, book: &mut Workbook, cycle: &[Key], env: &Env) {
         let passes = book.calc.iterate_count.max(1);
         let delta = book.calc.iterate_delta;
-        for _ in 0..passes {
+        let saved: Vec<Value> = cycle.iter().map(|&key| cell_value(book, key)).collect();
+        for pass in 0..passes {
             let mut largest = 0.0f64;
             for &key in cycle {
                 let before = cell_value(book, key);
@@ -270,6 +271,14 @@ impl Engine {
                 largest = largest.max(change_between(&before, &cell_value(book, key)));
             }
             if largest < delta {
+                // Excel leaves the values of a cycle that is already within the change limit as they were.
+                if pass == 0 {
+                    for (&key, value) in cycle.iter().zip(saved) {
+                        if let Some(cell) = book.sheets[key.0].cells.get_mut(&(key.1, key.2)) {
+                            cell.value = value;
+                        }
+                    }
+                }
                 break;
             }
         }
@@ -581,6 +590,22 @@ fn collect(
         }
         _ => {}
     });
+}
+
+/// Every cell and range a formula reads, as the sheets it reaches and the range on each, following defined
+/// names, tables and spill references: what Trace Precedents draws arrows to. A 3D reference reaches
+/// several sheets, first to last.
+pub fn precedents_of(book: &Workbook, sheet: usize, expr: &Expr) -> Vec<(usize, usize, Range)> {
+    let mut found = Found::default();
+    collect(expr, book, sheet, &mut found, &mut Vec::new(), 0);
+    found
+        .precedents
+        .into_iter()
+        .map(|p| match p {
+            Precedent::Cell((s, row, col)) => (s, s, Range::cell(CellRef::new(row, col))),
+            Precedent::Range { first, last, range } => (first, last, range),
+        })
+        .collect()
 }
 
 /// What a formula's value is in its cell, given what it evaluated to.

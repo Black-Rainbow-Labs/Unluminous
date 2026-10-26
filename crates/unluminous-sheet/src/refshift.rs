@@ -14,7 +14,7 @@
 
 use crate::coord::{CellRef, Range, MAX_COLS, MAX_ROWS};
 use crate::formula::{self, Axis, Expr};
-use crate::model::Workbook;
+use crate::model::{Sheet, Workbook};
 
 /// One change that moves cells or sheets.
 #[derive(Debug, Clone)]
@@ -45,6 +45,8 @@ pub enum Syntax {
     Col0,
     /// A manual page break: the first row (or column) after the break, counting from 0.
     Break,
+    /// The pivot table a chart shows, written `[book.xlsx]Sheet!PivotTable`; only the sheet follows a rename.
+    PivotSource,
 }
 
 /// Where the reference is in an element.
@@ -78,8 +80,6 @@ pub const REGISTRY: &[Row] = &[
     row("sortState", Target::Attr("ref"), Syntax::Ref),
     row("sortCondition", Target::Attr("ref"), Syntax::Ref),
     row("protectedRange", Target::Attr("sqref"), Syntax::Sqref),
-    row("ignoredError", Target::Attr("sqref"), Syntax::Sqref),
-    row("cellWatch", Target::Attr("r"), Syntax::Ref),
     row("dataRef", Target::Attr("ref"), Syntax::Ref),
     row("dataRef", Target::Attr("sheet"), Syntax::SheetName),
     row("scenario", Target::Attr("sqref"), Syntax::Sqref),
@@ -104,8 +104,8 @@ pub const REGISTRY: &[Row] = &[
     under("from", "col", Target::Text, Syntax::Col0),
     under("to", "row", Target::Text, Syntax::Row0),
     under("to", "col", Target::Text, Syntax::Col0),
+    under("pivotSource", "name", Target::Text, Syntax::PivotSource),
     // Threaded comments, kept comments and pivot tables.
-    row("threadedComment", Target::Attr("ref"), Syntax::Ref),
     row("comment", Target::Attr("ref"), Syntax::Ref),
     row("location", Target::Attr("ref"), Syntax::Ref),
     row("worksheetSource", Target::Attr("ref"), Syntax::Ref),
@@ -138,6 +138,9 @@ pub const MODELLED: &[&str] = &[
     "calculatedColumnFormula",
     "totalsRowFormula",
     "brk",
+    "threadedComment",
+    "ignoredError",
+    "cellWatch",
 ];
 
 /// Apply a structural edit to every kept element and part of the workbook.
@@ -232,10 +235,64 @@ fn shift_modelled_text(book: &mut Workbook, sheet: usize, edit: &StructuralEdit)
             *at = shift_cell_range(Range::cell(*at), &own, edit).first;
         }
     }
-    for picture in &mut s.pictures {
-        picture.from.0 = shift_anchor(picture.from.0, &own, edit);
-        picture.to.0 = shift_anchor(picture.to.0, &own, edit);
+    shift_objects(s, &own, edit);
+    shift_sparklines(s, &own, edit);
+}
+
+/// The anchors of the sheet's drawing objects after the edit. An object that moves but does not size with
+/// the cells keeps its size, and one that does neither stays where it is.
+fn shift_objects(s: &mut Sheet, own: &str, edit: &StructuralEdit) {
+    use crate::objects::{AnchorKind, Placement};
+    let mut changed = false;
+    for o in &mut s.drawing.objects {
+        let a = &mut o.anchor;
+        if a.kind == AnchorKind::Absolute || a.placement == Placement::Fixed {
+            continue;
+        }
+        let before = a.clone();
+        let from = shift_anchor(a.from.0, own, edit);
+        if a.kind == AnchorKind::TwoCell {
+            a.to.0 = if a.placement == Placement::Move {
+                let (dr, dc) =
+                    (from.row as i64 - a.from.0.row as i64, from.col as i64 - a.from.0.col as i64);
+                a.to.0.offset(dr, dc).unwrap_or(a.to.0)
+            } else {
+                shift_anchor(a.to.0, own, edit)
+            };
+        }
+        a.from.0 = from;
+        changed |= *a != before;
     }
+    if changed {
+        s.drawing.changed = true;
+    }
+}
+
+/// Sparkline data ranges and locations after the edit. A sparkline whose cell was deleted goes with it.
+fn shift_sparklines(s: &mut Sheet, own: &str, edit: &StructuralEdit) {
+    for g in &mut s.sparklines {
+        for sp in &mut g.sparklines {
+            sp.data = shift_formula_text(&sp.data, own, edit);
+        }
+        if let Some(d) = &mut g.date_axis {
+            *d = shift_formula_text(d, own, edit);
+        }
+        let deleted = |at: CellRef| match edit {
+            StructuralEdit::Lines { sheet, axis, at: start, count, band: None }
+                if *count < 0 && own.eq_ignore_ascii_case(sheet) =>
+            {
+                let index = if matches!(axis, Axis::Rows) { at.row } else { at.col } as i64;
+                index >= *start as i64 && index < *start as i64 - count
+            }
+            _ => false,
+        };
+        g.sparklines.retain(|sp| !deleted(sp.location));
+        for sp in &mut g.sparklines {
+            let text = shift_sqref(&sp.location.a1(), own, edit);
+            sp.location = CellRef::parse(&text).unwrap_or(sp.location);
+        }
+    }
+    s.sparklines.retain(|g| !g.sparklines.is_empty());
 }
 
 /// A range on `own` after the edit, or `None` when it was wholly deleted.
@@ -340,6 +397,8 @@ const COMMON_PREFIXES: &[(&str, &str)] = &[
 /// A whole XML document after the edit, every registry row applied. A document that does not parse is
 /// returned as it was.
 pub fn shift_document(xml: &str, own: &str, edit: &StructuralEdit) -> String {
+    let without = remove_deleted_sparklines(xml, own, edit);
+    let xml = without.as_str();
     let Ok(doc) = roxmltree::Document::parse(xml) else { return xml.to_owned() };
     let mut changes: Vec<(std::ops::Range<usize>, String)> = Vec::new();
     for node in doc.descendants().filter(|n| n.is_element()) {
@@ -362,7 +421,8 @@ pub fn shift_document(xml: &str, own: &str, edit: &StructuralEdit) -> String {
                 Target::Text => {
                     let Some(text) = node.first_child().filter(|t| t.is_text()) else { continue };
                     let value = text.text().unwrap_or("");
-                    let new = shift_value(value, node, r.syntax, own, edit);
+                    let new = anchored_value(value, node, r.syntax, own, edit)
+                        .unwrap_or_else(|| shift_value(value, node, r.syntax, own, edit));
                     if new != value {
                         changes.push((text.range(), crate::xlsx::escape(&new)));
                     }
@@ -381,6 +441,80 @@ pub fn shift_document(xml: &str, own: &str, edit: &StructuralEdit) -> String {
     out
 }
 
+/// Whether the first range in a reference text (`Sheet1!B3:E3`, `H3`) is wholly inside the rows or columns an
+/// edit deletes. `own` is the sheet a reference with no sheet name is on.
+fn wholly_deleted(text: &str, own: &str, edit: &StructuralEdit) -> bool {
+    let StructuralEdit::Lines { sheet, axis, at, count, band } = edit else { return false };
+    if *count >= 0 {
+        return false;
+    }
+    let (on, cells) = match text.trim().rsplit_once('!') {
+        Some((name, cells)) => (name.trim_matches('\''), cells),
+        None => (own, text.trim()),
+    };
+    if !on.eq_ignore_ascii_case(sheet) {
+        return false;
+    }
+    let Some(range) = Range::parse(&cells.replace('$', "")) else { return false };
+    shift_range(range, *axis, *at, *count, *band).is_none()
+}
+
+/// A document without the sparklines whose source or cell is wholly deleted by the edit, as Excel drops them.
+fn remove_deleted_sparklines(xml: &str, own: &str, edit: &StructuralEdit) -> String {
+    if !xml.contains("sparkline>") {
+        return xml.to_owned();
+    }
+    let Ok(doc) = roxmltree::Document::parse(xml) else { return xml.to_owned() };
+    let mut cuts: Vec<std::ops::Range<usize>> = Vec::new();
+    for node in doc.descendants().filter(|n| n.is_element() && n.tag_name().name() == "sparkline") {
+        let gone = node.children().filter(|c| c.is_element()).any(|c| {
+            matches!(c.tag_name().name(), "f" | "sqref")
+                && wholly_deleted(c.text().unwrap_or(""), own, edit)
+        });
+        if gone {
+            cuts.push(node.range());
+        }
+    }
+    let mut out = xml.to_owned();
+    for range in cuts.into_iter().rev() {
+        out.replace_range(range, "");
+    }
+    out
+}
+
+/// A row or column inside a drawing anchor's `from` or `to`, when the anchor says how it follows its cells.
+/// `editAs="absolute"` does not move or resize with the cells; `oneCell` moves with them and keeps its size,
+/// so its `to` moves by what its `from` moved. Any other anchor, and any other element, answers `None`.
+fn anchored_value(
+    value: &str,
+    node: roxmltree::Node,
+    syntax: Syntax,
+    own: &str,
+    edit: &StructuralEdit,
+) -> Option<String> {
+    let corner = node.parent_element()?;
+    let corner_name = corner.tag_name().name();
+    if !matches!(syntax, Syntax::Row0 | Syntax::Col0) || !matches!(corner_name, "from" | "to") {
+        return None;
+    }
+    let anchor = corner.parent_element()?;
+    match anchor.attribute("editAs")? {
+        "absolute" => Some(value.to_owned()),
+        "oneCell" if corner_name == "to" => {
+            let from = anchor
+                .children()
+                .find(|n| n.is_element() && n.tag_name().name() == "from")?
+                .children()
+                .find(|n| n.is_element() && n.tag_name().name() == node.tag_name().name())?;
+            let old: i64 = from.text()?.trim().parse().ok()?;
+            let new: i64 = shift_index(from.text()?.trim(), syntax, own, edit).parse().ok()?;
+            let at: i64 = value.trim().parse().ok()?;
+            Some((at + new - old).max(0).to_string())
+        }
+        _ => None,
+    }
+}
+
 /// One value after the edit, read in its syntax. `node` is the element, for values whose sheet is named by
 /// a sibling attribute (a pivot cache's `ref` and `sheet`).
 fn shift_value(
@@ -397,6 +531,16 @@ fn shift_value(
         Syntax::Formula => shift_formula_text(value, own, edit),
         Syntax::SheetName => match edit {
             StructuralEdit::Rename { from, to } if value.eq_ignore_ascii_case(from) => to.clone(),
+            _ => value.to_owned(),
+        },
+        Syntax::PivotSource => match (edit, value.split_once(']')) {
+            (StructuralEdit::Rename { from, to }, Some((book, rest))) => match rest.split_once('!')
+            {
+                Some((sheet, pivot)) if sheet.eq_ignore_ascii_case(from) => {
+                    format!("{book}]{to}!{pivot}")
+                }
+                _ => value.to_owned(),
+            },
             _ => value.to_owned(),
         },
         Syntax::Row0 | Syntax::Col0 | Syntax::Break => shift_index(value, syntax, own, edit),

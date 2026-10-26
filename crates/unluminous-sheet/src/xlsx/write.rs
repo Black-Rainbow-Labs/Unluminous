@@ -19,6 +19,14 @@ const XML_HEAD: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"ye
 
 /// The workbook as the bytes of an `.xlsx` file. Its formulas' values should already be computed.
 pub fn write(book: &Workbook) -> Result<Vec<u8>, String> {
+    // A drawing whose objects changed is written from them first; the writer then keeps it like any part.
+    let synced;
+    let book = if crate::objects::write::needs_sync(book) {
+        synced = crate::objects::write::synced(book);
+        &synced
+    } else {
+        book
+    };
     let mut w = Writer::new(book);
     w.run()?;
     crate::zip::write(&w.entries)
@@ -108,6 +116,9 @@ impl<'a> Writer<'a> {
         // Sheet parts first, so the workbook knows their relationship ids and paths.
         let mut sheet_parts: Vec<(String, String, String)> = Vec::new(); // (rel id, part, rel type)
         let mut workbook_rels: Vec<Relationship> = book.kept.workbook_rels.clone();
+        if book.persons_changed {
+            workbook_rels.retain(|r| r.kind != super::threads::REL_PERSON);
+        }
         // A sheet made in this session gets a part name no existing sheet uses, wherever it sits among them.
         for sheet in &book.sheets {
             let existing =
@@ -155,6 +166,18 @@ impl<'a> Writer<'a> {
             if !rels.is_empty() {
                 self.add(&rels_path(&part), None, write_rels(&rels).into_bytes());
             }
+        }
+        if book.persons_changed && !book.persons.is_empty() {
+            let part = self.fresh("xl/persons/person{}.xml");
+            let id = next_id(&workbook_rels);
+            workbook_rels.push(Relationship {
+                id,
+                kind: super::threads::REL_PERSON.to_owned(),
+                target: relative(&self.workbook_part, &part),
+                external: false,
+            });
+            let xml = super::threads::persons_xml(&book.persons);
+            self.add(&part, Some(super::threads::CT_PERSON), xml.into_bytes());
         }
         // Styles, strings, theme, metadata.
         let styles_part = "xl/styles.xml".to_owned();
@@ -279,14 +302,18 @@ impl<'a> Writer<'a> {
                 continue;
             }
             for r in &sheet.raw.rels {
-                if (r.kind == REL_COMMENTS || r.kind == REL_VML)
-                    && resolve(&sheet.raw.part, &r.target) == path
-                {
+                let replaced = matches!(r.kind.as_str(), REL_COMMENTS | REL_VML)
+                    || r.kind == super::threads::REL_THREADED;
+                if replaced && resolve(&sheet.raw.part, &r.target) == path {
                     return true;
                 }
             }
         }
-        false
+        self.book.persons_changed
+            && self.book.kept.workbook_rels.iter().any(|r| {
+                r.kind == super::threads::REL_PERSON
+                    && resolve(&self.workbook_part, &r.target) == path
+            })
     }
 
     fn content_types(&self) -> String {
@@ -496,7 +523,10 @@ impl<'a> Writer<'a> {
         };
         let mut rels: Vec<Relationship> = sheet.raw.rels.clone();
         if sheet.notes_changed {
-            rels.retain(|r| r.kind != REL_COMMENTS && r.kind != REL_VML);
+            rels.retain(|r| {
+                !matches!(r.kind.as_str(), REL_COMMENTS | REL_VML)
+                    && r.kind != super::threads::REL_THREADED
+            });
         }
         let mut namespaces = sheet.raw.namespaces.clone();
         if !namespaces.iter().any(|(_, uri)| uri == REL_NS) {
@@ -643,7 +673,13 @@ impl<'a> Writer<'a> {
             // The page setup elements come from the model, which writes margins on every sheet, as Excel does.
             let modelled = crate::pages::xml::write_element(&sheet.page, name, &r);
             if modelled.is_empty() {
-                out.push_str(&raw(name));
+                match name {
+                    "cellWatches" => out.push_str(&super::audit::watches_xml(&sheet.watches)),
+                    "ignoredErrors" => {
+                        out.push_str(&super::audit::ignored_errors_xml(&sheet.ignored_errors))
+                    }
+                    _ => out.push_str(&raw(name)),
+                }
             } else {
                 out.push_str(&modelled);
             }
@@ -653,7 +689,19 @@ impl<'a> Writer<'a> {
         out.push_str(&drawing);
         // Notes: the kept legacy drawing, or new comments and VML parts when they changed.
         if sheet.notes_changed {
-            if !sheet.notes.is_empty() {
+            if !sheet.notes.is_empty() || !sheet.threads.is_empty() {
+                if !sheet.threads.is_empty() {
+                    let threaded_part = self.fresh("xl/threadedComments/threadedComment{}.xml");
+                    let id = next_id(&rels);
+                    rels.push(Relationship {
+                        id,
+                        kind: super::threads::REL_THREADED.to_owned(),
+                        target: relative(part, &threaded_part),
+                        external: false,
+                    });
+                    let xml = super::threads::threads_xml(&sheet.threads);
+                    self.add(&threaded_part, Some(super::threads::CT_THREADED), xml.into_bytes());
+                }
                 let comments_part = self.fresh("xl/comments{}.xml");
                 let vml_part = self.fresh("xl/drawings/vmlDrawing{}.vml");
                 let comments_id = next_id(&rels);
@@ -740,10 +788,9 @@ impl<'a> Writer<'a> {
             }
             out.push_str("</tableParts>");
         }
-        out.push_str(&extension_list(
-            &raw("extLst"),
-            &super::cf::write_extension(sheet, &book.styles),
-        ));
+        let with_cf =
+            extension_list(&raw("extLst"), &super::cf::write_extension(sheet, &book.styles));
+        out.push_str(&crate::objects::sparkline::ext_list(sheet, &with_cf));
         out.push_str("</worksheet>");
         Ok((out, rels))
     }
@@ -1485,14 +1532,15 @@ fn table_xml(t: &Table) -> String {
 }
 
 fn comments_xml(sheet: &Sheet) -> String {
+    let notes = super::threads::combined_notes(sheet);
     let mut authors: Vec<String> = Vec::new();
-    for note in sheet.notes.values() {
+    for (_, note) in &notes {
         if !authors.contains(&note.author) {
             authors.push(note.author.clone());
         }
     }
     // A note that carries a threaded comment keeps the `xr:uid` the thread is matched by.
-    let revision = sheet.notes.values().any(|n| n.attrs.iter().any(|(k, _)| k.starts_with("xr:")));
+    let revision = notes.iter().any(|(_, n)| n.attrs.iter().any(|(k, _)| k.starts_with("xr:")));
     let declarations = if revision {
         " xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\" mc:Ignorable=\"xr\" xmlns:xr=\"http://schemas.microsoft.com/office/spreadsheetml/2014/revision\""
     } else {
@@ -1503,13 +1551,20 @@ fn comments_xml(sheet: &Sheet) -> String {
         out.push_str(&format!("<author>{}</author>", escape(a)));
     }
     out.push_str("</authors><commentList>");
-    for ((row, col), note) in &sheet.notes {
+    for ((row, col), note) in &notes {
         let author = authors.iter().position(|a| *a == note.author).unwrap_or(0);
+        let text = if super::threads::is_legacy_note(note) {
+            format!("<t>{}</t>", escape(&note.text))
+        } else {
+            format!(
+                "<r><rPr><sz val=\"9\"/><color indexed=\"81\"/><rFont val=\"Tahoma\"/><family val=\"2\"/></rPr><t xml:space=\"preserve\">{}</t></r>",
+                escape(&note.text)
+            )
+        };
         out.push_str(&format!(
-            "<comment ref=\"{}\" authorId=\"{author}\"{}><text><r><rPr><sz val=\"9\"/><color indexed=\"81\"/><rFont val=\"Tahoma\"/><family val=\"2\"/></rPr><t xml:space=\"preserve\">{}</t></r></text></comment>",
+            "<comment ref=\"{}\" authorId=\"{author}\"{}><text>{text}</text></comment>",
             CellRef::new(*row, *col).a1(),
             attrs_text(&note.attrs),
-            escape(&note.text)
         ));
     }
     out.push_str("</commentList></comments>");
@@ -1523,20 +1578,25 @@ fn vml_xml(sheet: &Sheet) -> String {
 <o:shapelayout v:ext=\"edit\"><o:idmap v:ext=\"edit\" data=\"1\"/></o:shapelayout>\
 <v:shapetype id=\"_x0000_t202\" coordsize=\"21600,21600\" o:spt=\"202\" path=\"m,l,21600r21600,l21600,xe\"><v:stroke joinstyle=\"miter\"/><v:path gradientshapeok=\"t\" o:connecttype=\"rect\"/></v:shapetype>",
     );
-    for (i, ((row, col), note)) in sheet.notes.iter().enumerate() {
+    for (i, ((row, col), note)) in super::threads::combined_notes(sheet).iter().enumerate() {
         let (visibility, visible) =
             if note.visible { ("visible", "<x:Visible/>") } else { ("hidden", "") };
+        let bounds = note.bounds.clone().unwrap_or_else(|| {
+            crate::edit::review::notebox::default_box(sheet, CellRef::new(*row, *col))
+        });
+        let a = bounds.anchor;
         out.push_str(&format!(
-            "<v:shape id=\"_x0000_s{}\" type=\"#_x0000_t202\" style=\"position:absolute;margin-left:59.25pt;margin-top:1.5pt;width:108pt;height:59.25pt;z-index:{};visibility:{visibility}\" fillcolor=\"#ffffe1\" o:insetmode=\"auto\">\
+            "<v:shape id=\"_x0000_s{}\" type=\"#_x0000_t202\" style=\"position:absolute;margin-left:{}pt;margin-top:{}pt;width:{}pt;height:{}pt;z-index:{};visibility:{visibility}\" fillcolor=\"#ffffe1\" o:insetmode=\"auto\">\
 <v:fill color2=\"#ffffe1\"/><v:shadow on=\"t\" color=\"black\" obscured=\"t\"/><v:path o:connecttype=\"none\"/>\
 <v:textbox style=\"mso-direction-alt:auto\"><div style=\"text-align:left\"></div></v:textbox>\
-<x:ClientData ObjectType=\"Note\"><x:MoveWithCells/><x:SizeWithCells/><x:Anchor>{}, 15, {}, 2, {}, 15, {}, 16</x:Anchor><x:AutoFill>False</x:AutoFill><x:Row>{row}</x:Row><x:Column>{col}</x:Column>{visible}</x:ClientData></v:shape>",
+<x:ClientData ObjectType=\"Note\"><x:MoveWithCells/><x:SizeWithCells/><x:Anchor>{}, {}, {}, {}, {}, {}, {}, {}</x:Anchor><x:AutoFill>False</x:AutoFill><x:Row>{row}</x:Row><x:Column>{col}</x:Column>{visible}</x:ClientData></v:shape>",
             1025 + i,
+            number_text(bounds.left),
+            number_text(bounds.top),
+            number_text(bounds.width),
+            number_text(bounds.height),
             i + 1,
-            col + 1,
-            row,
-            col + 3,
-            row + 4
+            a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7],
         ));
     }
     out.push_str("</xml>");

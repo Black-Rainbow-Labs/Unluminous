@@ -530,6 +530,7 @@ fn insert() -> Item {
                     .map(|k| run(&capitalised(k), "", &format!("chart {k}")))
                     .collect(),
             ),
+            super::catalogue_c::insert_objects(),
         ],
     )
 }
@@ -660,7 +661,9 @@ fn scopes(book: &Book) -> Vec<(String, String)> {
 
 /// The Formulas level: functions, names, auditing and calculation, as Excel's Formulas tab groups them.
 pub fn formulas(book: &Book) -> Item {
-    sub("Formulas", vec![insert_function(), run("AutoSum", "Alt+=", "autosum"), names(book)])
+    let mut items = vec![insert_function(), run("AutoSum", "Alt+=", "autosum"), names(book)];
+    items.push(sub("Formula auditing", super::catalogue_a::auditing(book)));
+    sub("Formulas", items)
 }
 
 /// The Format panel's first level.
@@ -675,6 +678,17 @@ pub fn panel_root(book: &Book) -> Vec<Item> {
         cell_size(),
         rules(),
         data(book),
+        super::catalogue_a::sort_and_filter(book),
+        super::catalogue_a::data_tools(book),
+        super::catalogue_a::outline(book),
+        super::catalogue_a::manage_rules(book),
+        super::catalogue_a::review(book),
+        super::catalogue_a::protection(),
+        super::catalogue_a::styles_and_themes(book),
+        super::catalogue_c::object_level(book),
+        super::catalogue_c::sparkline_level(book),
+        super::catalogue_b::page_layout(book),
+        super::catalogue_b::pivot_table(book),
         view(book),
         sheet(book),
     ]
@@ -738,7 +752,7 @@ pub fn everything(book: &Book) -> Vec<Item> {
             "File",
             vec![
                 run("Save", "Ctrl+S", "save"),
-                ask("Save as...", "File name, .xlsx or .csv", "save-as"),
+                sub("Save as", super::catalogue_b::save_as(book)),
                 ask("Save this sheet as CSV...", "File name ending .csv", "save-as"),
             ],
         ),
@@ -756,9 +770,9 @@ pub fn everything(book: &Book) -> Vec<Item> {
                 run("Paste formulas", "", "paste formulas"),
                 run("Paste formats", "", "paste formats"),
                 run("Paste transposed", "", "paste transpose"),
+                super::catalogue_b::paste_special_menu(),
                 Item::Line,
-                run("Fill down", "Ctrl+D", "fill down"),
-                run("Fill right", "Ctrl+R", "fill right"),
+                super::catalogue_b::fill(book),
                 run("Find...", "Ctrl+F", "find-bar"),
                 run("Replace...", "Ctrl+H", "find-bar replace"),
                 run("Go to...", "Ctrl+G", "goto"),
@@ -782,13 +796,27 @@ pub fn everything(book: &Book) -> Vec<Item> {
         ),
         rules(),
         data(book),
+        super::catalogue_a::sort_and_filter(book),
+        super::catalogue_a::data_tools(book),
+        super::catalogue_a::outline(book),
+        super::catalogue_a::manage_rules(book),
+        super::catalogue_a::review(book),
+        super::catalogue_a::protection(),
+        super::catalogue_a::styles_and_themes(book),
+        super::catalogue_c::object_level(book),
+        super::catalogue_c::sparkline_level(book),
+        super::catalogue_b::page_layout(book),
+        super::catalogue_b::pivot_table(book),
         view(book),
         sheet(book),
     ]
 }
 
-/// The right click menu of the chosen cells.
+/// The right click menu of the chosen cells, or of the chosen objects when they were right clicked.
 pub fn cell_menu(book: &Book) -> Vec<Item> {
+    if book.view.objects.menu.is_some() {
+        return super::catalogue_c::object_menu(book);
+    }
     let at = book.view.cursor;
     let s = &book.session.book.sheets[book.view.sheet];
     let has_note = s.notes.contains_key(&(at.row, at.col));
@@ -796,15 +824,7 @@ pub fn cell_menu(book: &Book) -> Vec<Item> {
         run("Cut", "Ctrl+X", "cut"),
         run("Copy", "Ctrl+C", "copy"),
         run("Paste", "Ctrl+V", "paste"),
-        sub(
-            "Paste special",
-            vec![
-                run("Values", "", "paste values"),
-                run("Formulas", "", "paste formulas"),
-                run("Formats", "", "paste formats"),
-                run("Transposed", "", "paste transpose"),
-            ],
-        ),
+        super::catalogue_b::paste_special_menu(),
         Item::Line,
         insert(),
         delete(),
@@ -842,6 +862,10 @@ pub fn cell_menu(book: &Book) -> Vec<Item> {
         "Unhide",
         vec![run("Rows", "", "unhide rows"), run("Columns", "", "unhide columns")],
     ));
+    if book.session.book.pivots.at(book.view.sheet, at).is_some() {
+        items.push(Item::Line);
+        items.push(super::catalogue_b::pivot_table(book));
+    }
     items
 }
 
