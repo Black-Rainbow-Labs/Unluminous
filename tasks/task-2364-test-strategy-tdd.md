@@ -76,7 +76,17 @@ were made, and what is left, ranked by the hours each one saves.
    start of the prompt after live dictation: egui keeps a text box's caret where it was when its text
    is replaced from outside, so the next key a person pressed went in front of the dictated words.
    Fixed: dictated words leave the caret after them (`PaneState::caret_to_the_end`).
-6. **The release ran the gate under 80% processor load** with Word and the kernels in a lane beside
+6. **A crash the walk found under load.** `every_action_changes_the_window_or_says_why_it_cannot_4`
+   failed once on `assertion failed: bytes.end <= self.text.len_bytes()` in `LayoutTextView`. Reading a
+   file again (`reread_a_tab`) replaced the tab's document and forgot its layout only when the tab was
+   the active one. Every document counts its text revisions from one, so a file showing in the other
+   pane of a split, never edited and then made shorter on disk (which is what an agent does), kept the
+   layout of its longer text under the same revision and was painted with it. In a debug build that is
+   the assertion; in a release build it is the rope's `assert!` (`slice past the end of the text`),
+   which ends the process. Fixed: the layout goes with the document whichever tab it is.
+   `a_file_read_again_in_the_pane_without_the_keyboard_is_laid_out_again` reproduces it every time
+   without the fix.
+7. **The release ran the gate under 80% processor load** with Word and the kernels in a lane beside
    clippy and the test build, which is the load under which the Word hang happened.
 
 ## 2. Measurements
@@ -112,7 +122,11 @@ A lib test run of `unluminous-app` alone left about 100 uniquely named folders (
 | alone, runner, `--jobs 2` | all fixes but the profile | 9.6 min | none |
 | under load, runner, `--jobs 2` | all fixes but the profile | 18.5 min | 1 flake retried (`the_description_and_the_comments_fold...`, the relative time) |
 | alone, runner, `--jobs 2`, dependencies optimized | final | 4.0 min | none |
-| under load, runner, `--jobs 2`, dependencies optimized | final | RUN8 | RUN8F |
+| alone, runner, final commit, twice | final | 4.8 and 4.3 min | none |
+| under load, runner, final commit, twice | final | 7.3 and 7.0 min | one: `canvas_realm` ended with no output 13 s in, passed run again whole (task-2369) |
+
+So the whole window suite takes about four and a half minutes alone and about seven under load, against
+24.5 and 36.4 before, and in four final runs one binary needed running again and no test failed.
 
 The three longest binaries before and after splitting their longest tests, alone, one binary at a
 time:
@@ -179,7 +193,9 @@ These are written into `CLAUDE.md` as well, under "Tests".
    runs side by side.
 9. **Every picture goes through `PatientRenderer`**, the renderer `common::builder` gives every
    harness: at most four renders in flight in a binary, and a render that failed (not a picture
-   that differs) tried up to three times.
+   that differs) tried up to three times. kittest returns some failures as an error and panics on
+   others (`Failed to poll device: Timeout` is an `expect`), so the panic is caught too, and the
+   receipt's panic hook is told it is expected (`receipt::while_a_panic_is_expected`).
 10. **A relative time is drawn from the drawing clock.** `clock::now_for_drawing` and
     `clock::seconds_for_drawing` answer the real clock, except on the thread of a window built with
     `draw_deterministically`, where they answer the moment the window was built. The ticket modal said
@@ -322,6 +338,7 @@ typically runs the gate twice and the window suite twice, and the release runs t
 | 9 | Word: pid file, stop on timeout, Resiliency records cleared, late lane | the two one hour hangs | A Word that stops answering is stopped at the test's limit and leaves nothing that makes the next open wait. |
 | 10 | `did()` answers held commands through frames | `editor signature --wait` and its kind | A command that holds its answer is waited for the way the control channel waits, which also found the dictation caret fault. |
 | 11 | The drawing clock | a 160 pixel difference under load | `just now` stays `just now` however long a loaded run takes to photograph it. |
+| 12 | The layout forgotten on every reload | a crash in the shipped window | Not test time at all: a product fault the loaded walk found, now with a test that reproduces it. |
 
 ## 10. What is left
 

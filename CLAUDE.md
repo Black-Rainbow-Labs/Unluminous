@@ -6918,6 +6918,10 @@ release again. The rules:
 - **Dependencies are optimized in test builds** (`[profile.test.package."*"] opt-level = 2`); our crates are not.
   A window test spends its time in egui, `vello_cpu`, `rux` and `image`, and unoptimized one frame of a busy page
   took seconds. The whole window suite went from 9.6 to 4.0 minutes with every picture unchanged.
+- **A tab whose document is replaced forgets what was worked out for the old one** (`forget_what_was_worked_out`),
+  whichever tab it is. Every document counts its text revisions from one, so a kept layout looks current to the
+  new document; a reload of a file showing in the other pane of a split was painted past the end of its text,
+  which ends a release build (found by the loaded every action walk, fixed in `reread_a_tab`).
 - **A relative time on the screen comes from `agent_tasks::clock::now_for_drawing`** (or `seconds_for_drawing`),
   never from the real clock directly. A test window holds that clock at the moment it was built, so `just now`
   stays `just now` however long a loaded run takes; the board's own timestamps still use `clock::now`.

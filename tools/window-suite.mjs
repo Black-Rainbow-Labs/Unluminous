@@ -361,10 +361,14 @@ function runExecutable(name, exe, temp, log, threads) {
     child.stdout.on('data', (data) => chunks.push(data));
     child.stderr.on('data', (data) => chunks.push(data));
     const finish = (code) => {
-      const output = `     Running tests\\${name}.rs (${exe})\n` + Buffer.concat(chunks).toString('utf8');
+      // **How it ended, written the way cargo writes it**, so a binary that dies with no word of its own (an
+      // access violation prints nothing) still says how, and `readLibtest` records it with the flake. Measured
+      // on task-2364: `canvas_realm` once printed `running 124 tests` and nothing else, 13 s in, under load.
+      const ended = code === 0 ? '' : `\nerror: process didn't exit successfully: exit code ${code} (0x${((code ?? 1) >>> 0).toString(16)})\n`;
+      const output = `     Running tests\\${name}.rs (${exe})\n` + Buffer.concat(chunks).toString('utf8') + ended;
       fs.appendFileSync(log, output);
       const seconds = Math.round((Date.now() - started) / 1000);
-      console.log(`  ${code === 0 ? 'passed' : 'FAILED'}  ${name} in ${seconds} s`);
+      console.log(`  ${code === 0 ? 'passed' : 'FAILED'}  ${name} in ${seconds} s${ended ? `, ${ended.trim().replace(/^error: /, '')}` : ''}`);
       resolve({ code: code ?? 1, output });
     };
     child.on('close', finish);

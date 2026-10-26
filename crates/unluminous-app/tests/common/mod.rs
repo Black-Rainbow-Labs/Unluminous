@@ -123,8 +123,8 @@ const RENDER_TRIES: usize = 3;
 ///
 /// It is the renderer rather than a helper around `snapshot`, so the 330 snapshots, the renders a test
 /// reads pixels from and the screenshots a window asks for all go through it with nothing at the call
-/// sites. Only a render that failed is tried again: a picture that differs from the accepted one is
-/// still a failure the first time.
+/// sites. Only a render that failed is tried again, whether kittest returned an error or panicked: a
+/// picture that differs from the accepted one is still a failure the first time.
 struct PatientRenderer(WgpuTestRenderer);
 
 impl egui_kittest::TestRenderer for PatientRenderer {
@@ -144,9 +144,24 @@ impl egui_kittest::TestRenderer for PatientRenderer {
         let _turn = RenderTurn::take();
         let mut last = String::new();
         for _ in 0..RENDER_TRIES {
-            match self.0.render(ctx, output) {
-                Ok(picture) => return Ok(picture),
-                Err(error) => last = error,
+            // kittest reports some failures as an error and panics on others: a texture read back
+            // after a ten second wait is `Failed to poll device: Timeout`, an `expect`. Both are tried
+            // again, and the receipt is told the panic is being caught.
+            let attempt = receipt::while_a_panic_is_expected(|| {
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    self.0.render(ctx, output)
+                }))
+            });
+            match attempt {
+                Ok(Ok(picture)) => return Ok(picture),
+                Ok(Err(error)) => last = error,
+                Err(panic) => {
+                    last = panic
+                        .downcast_ref::<String>()
+                        .cloned()
+                        .or_else(|| panic.downcast_ref::<&str>().map(|said| (*said).to_owned()))
+                        .unwrap_or_else(|| "the render panicked".to_owned())
+                }
             }
         }
         Err(last)

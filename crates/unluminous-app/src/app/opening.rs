@@ -635,6 +635,15 @@ impl UnluminousApp {
                     file.scroll = 0.0;
                     file.forget_git();
                     file.forget_where_it_was_being_read();
+                    // **What was laid out for the last document goes with it, whichever tab this is
+                    // (`task-2364`).** Every document counts its text revisions from one, so a layout
+                    // made for the file before it was read again looks current to the new document
+                    // whenever neither was edited. It used to be forgotten only for the active tab, and
+                    // a file showing in the other pane of a split, changed on disk to something shorter,
+                    // was painted with the old layout: `LayoutTextView` sliced past the end of the new
+                    // text, which is the rope's `assert!` and ends a release build. The every action walk
+                    // found it under load.
+                    file.forget_what_was_worked_out();
                     file.note_what_is_on_disk();
                 }
                 if index == self.files.active_index() {

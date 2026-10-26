@@ -157,6 +157,26 @@ fn runs_the_whole_binary(mut args: impl Iterator<Item = String>) -> bool {
     true
 }
 
+thread_local! {
+    /// Set while this thread runs work that may panic and is caught on purpose, so the hook leaves the
+    /// receipt alone. See [`while_a_panic_is_expected`].
+    static A_PANIC_IS_EXPECTED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Run `work`, during which a panic on this thread is caught by the caller and does not mean a test
+/// failed, so the receipt is not taken away for it.
+///
+/// `task-2364`. `egui_kittest` panics rather than returning an error when the graphics card does not
+/// finish a render in ten seconds (`Failed to poll device: Timeout`), which a loaded machine does.
+/// `common::PatientRenderer` catches that and renders again; without this, the panic it caught took
+/// the binary's receipt away although every test in it passed.
+pub fn while_a_panic_is_expected<T>(work: impl FnOnce() -> T) -> T {
+    A_PANIC_IS_EXPECTED.with(|expected| expected.set(true));
+    let answer = work();
+    A_PANIC_IS_EXPECTED.with(|expected| expected.set(false));
+    answer
+}
+
 /// Write this binary's receipt and arrange for it to be taken away again if anything panics.
 ///
 /// Called from `common::builder`, which every harness in the suite is built through, so a test file
@@ -184,7 +204,9 @@ pub fn note_this_binary_started() {
         let taken_away = receipt.clone();
         std::panic::set_hook(Box::new(move |info| {
             previous(info);
-            let _ = std::fs::remove_file(&taken_away);
+            if !A_PANIC_IS_EXPECTED.with(std::cell::Cell::get) {
+                let _ = std::fs::remove_file(&taken_away);
+            }
         }));
         let when = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
