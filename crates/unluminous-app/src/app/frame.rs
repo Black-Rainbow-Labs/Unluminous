@@ -80,6 +80,15 @@ impl UnluminousApp {
         if let Some(interval) = self.double_click_interval.take() {
             crate::services::double_click::use_interval(ui.ctx(), interval);
         }
+        // Counted on every frame, so a press nothing selectable was drawn under still counts. `task-2374`.
+        crate::components::editor_view::presses_in_a_row(ui.ctx());
+        let_a_press_elsewhere_take_the_focus(ui.ctx());
+        // How full egui's glyph atlas is, in percent. At 80 epaint throws the atlas away and lays every glyph
+        // out again in one frame, which is a stall the other phases cannot name. `task-2374`.
+        if crate::services::frame_trace::watching() {
+            let fill = ui.ctx().fonts(|fonts| fonts.font_atlas_fill_ratio());
+            crate::services::frame_trace::value("atlas", f64::from(fill) * 100.0);
+        }
         // Where every modal was left, read back once and written when a drag ends. `task-2280`.
         self.keep_the_modal_places(ui.ctx());
         self.take_what_the_threads_answered(ui);
@@ -2047,6 +2056,14 @@ impl UnluminousApp {
             if outcome.changed {
                 self.unsaved_run_configurations = true;
             }
+            // The run widget holds its choice by name, so a renamed configuration takes the choice with
+            // it, or the widget goes on naming the configuration by the name it no longer has.
+            if let Some((was, now)) = outcome.renamed {
+                if self.run_selected.as_deref() == Some(was.as_str()) {
+                    self.run_selected = Some(now);
+                }
+                self.unsaved_run_configurations = true;
+            }
             if let Some(name) = outcome.remove {
                 self.run_configurations.remove(&name);
                 if self.run_selected.as_deref() == Some(name.as_str()) {
@@ -2824,5 +2841,23 @@ fn footer_words(state: &unluminous_lsp::ServerState) -> String {
         unluminous_lsp::ServerState::Failed(_) => "stopped".to_owned(),
         unluminous_lsp::ServerState::Absent(_) => "not found".to_owned(),
         other => other.describe(),
+    }
+}
+
+/// Make a press anywhere outside a focused text box take the keyboard from it (`task-2374`).
+///
+/// egui's default is to let go of a text box's focus on a *click* elsewhere, and a drag is not a click. So
+/// a person who had typed in the chat's prompt box and then dragged over words in an answer, the preview or
+/// a ticket's comments still had the prompt box holding the keyboard, and `Ctrl`/`Cmd`+`C` copied the
+/// prompt box's empty selection instead of the words just selected: *"I continue having issues selecting
+/// partial text in the UI and being able to use common keyboard shortcuts like cmd + c."* Every program on
+/// the desktop moves the keyboard on the press, and so does this window now. Asked every frame and set only
+/// when it differs, because it is one comparison.
+///
+/// @param ctx - the window's context
+fn let_a_press_elsewhere_take_the_focus(ctx: &egui::Context) {
+    let on = egui::SurrenderFocusOn::Presses;
+    if ctx.options(|options| options.input_options.surrender_focus_on != on) {
+        ctx.options_mut(|options| options.input_options.surrender_focus_on = on);
     }
 }

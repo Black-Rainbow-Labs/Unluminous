@@ -159,12 +159,15 @@ impl Store {
     /// Take away everything past `keep`, oldest first.
     ///
     /// Called after a conversation is written, so the folder is bounded by the `chat.history`
-    /// setting rather than growing for ever the way `recent.txt` deliberately does not.
-    pub fn tidy(&self, keep: usize) {
-        let all = self.list(usize::MAX);
-        for old in all.into_iter().skip(keep) {
+    /// setting rather than growing for ever the way `recent.txt` deliberately does not. Answers what is
+    /// kept, newest first, which is what [`Store::list`] would answer next.
+    pub fn tidy(&self, keep: usize) -> Vec<Summary> {
+        let mut all = self.list(usize::MAX);
+        for old in all.iter().skip(keep) {
             let _ = self.remove(&old.id);
         }
+        all.truncate(keep);
+        all
     }
 }
 

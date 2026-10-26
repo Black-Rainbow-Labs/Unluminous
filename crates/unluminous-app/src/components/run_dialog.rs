@@ -53,6 +53,14 @@ const LIST_FOOTER: f32 = 34.0;
 pub struct RunDialog {
     pub open: bool,
     pub chosen: Option<String>,
+    /// Where `chosen` was found on the last frame: which list and how far down it (`task-2374`).
+    ///
+    /// The name alone is not enough while the name is the thing being typed. Every keystroke renames the
+    /// configuration, and a name part way through being typed can be another configuration's name, such
+    /// as `Unnamed` on the way from `Unnamed 2` to something else. Looked up by name, that keystroke
+    /// chose the first configuration and the next one rewrote its name. The place is used while the
+    /// configuration there still has the chosen name, and the name is used once it does not.
+    pub chosen_at: Option<(Origin, usize)>,
     /// The environment table's rows for `env_for`, kept while they are edited so that a row with no
     /// key yet is not lost between frames. Only rows with a key reach the configuration.
     pub env_rows: Vec<(String, String)>,
@@ -84,6 +92,26 @@ impl RunDialog {
     pub fn close(&mut self) {
         self.open = false;
     }
+
+    /// Choose the configuration of this name, forgetting where the last one was.
+    pub fn choose(&mut self, name: String) {
+        self.chosen = Some(name);
+        self.chosen_at = None;
+    }
+
+    /// Where the chosen configuration is held now: the remembered place while the configuration there
+    /// still has the chosen name, and otherwise wherever that name is.
+    ///
+    /// @param configurations - the configurations the dialog edits
+    pub fn locate(&self, configurations: &RunConfigurations) -> Option<(Origin, usize)> {
+        let name = self.chosen.as_deref()?;
+        if let Some((origin, at)) = self.chosen_at {
+            if configurations.at(origin, at).is_some_and(|held| held.name == name) {
+                return Some((origin, at));
+            }
+        }
+        configurations.position(name)
+    }
 }
 
 /// What the dialog asked the window to do.
@@ -102,6 +130,9 @@ pub struct DialogOutcome {
     /// The folder button beside `Directory` was pressed, which is what opens the platform's folder
     /// picker. The window answers it, because the picker is the window's to open.
     pub browse_directory: bool,
+    /// The chosen configuration's name was changed, from the first name to the second. The window moves
+    /// the run widget's choice with it, so the widget names the configuration by its new name.
+    pub renamed: Option<(String, String)>,
 }
 
 /// Draw the dialog, editing `configurations` in place.
@@ -145,9 +176,11 @@ fn contents(
 
     // A name that nothing holds any more chooses nothing, and with nothing chosen the first
     // configuration is, so opening the dialog always lands on something to edit.
-    if dialog.chosen.as_deref().and_then(|name| configurations.find(name)).is_none() {
+    dialog.chosen_at = dialog.locate(configurations);
+    if dialog.chosen_at.is_none() {
         dialog.chosen =
             configurations.listed().first().map(|(_, configuration)| configuration.name.clone());
+        dialog.chosen_at = dialog.locate(configurations);
     }
 
     let list = Rect::from_min_max(
@@ -184,11 +217,21 @@ fn show_list(
     modal::well(ui, area);
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(area.shrink(6.0)));
     child.set_clip_rect(area);
-    let mut chosen: Option<String> = None;
+    let mut chosen: Option<(String, (Origin, usize))> = None;
     egui::ScrollArea::vertical().id_salt("run-configuration-list").show(&mut child, |ui| {
+        let mut permanents = 0;
+        let mut temporaries = 0;
         for (origin, configuration) in configurations.listed() {
+            let counter = match origin {
+                Origin::Temporary => &mut temporaries,
+                _ => &mut permanents,
+            };
+            let place = (origin, *counter);
+            *counter += 1;
             let name = configuration.name.clone();
-            let is_chosen = dialog.chosen.as_deref() == Some(name.as_str());
+            // Asked of the place rather than the name, so two rows that share a name for a keystroke
+            // while one of them is being renamed are not both lit.
+            let is_chosen = dialog.chosen_at == Some(place);
             let is_running = running.contains(&name);
             // A temporary is drawn in the quiet colour, exactly as it is in the widget's flyout:
             // it is something that was run rather than something somebody kept.
@@ -197,7 +240,8 @@ fn show_list(
                 Origin::Temporary | Origin::Suggested => color::text_dim(),
             };
             let label = name.clone();
-            let response = modal::row(ui, &name, &name, is_chosen, move |painter, row| {
+            let id = format!("{:?}{}", place.0, place.1);
+            let response = modal::row(ui, &id, &name, is_chosen, move |painter, row| {
                 let mut left = row.left() + 12.0;
                 if is_running {
                     crate::theme::icon::state_dot(
@@ -210,7 +254,7 @@ fn show_list(
                 modal::label(painter, row, left, &label, tint, 12.5);
             });
             if response.clicked() {
-                chosen = Some(name);
+                chosen = Some((name, place));
             }
         }
         if configurations.is_empty() {
@@ -222,8 +266,9 @@ fn show_list(
             );
         }
     });
-    if let Some(name) = chosen {
+    if let Some((name, place)) = chosen {
         dialog.chosen = Some(name);
+        dialog.chosen_at = Some(place);
     }
 }
 
@@ -241,7 +286,7 @@ fn show_list_buttons(
     if modal::button(ui, add, "Add", true, false) {
         let name = configurations.unused_name("Unnamed");
         configurations.add_permanent(Configuration::new(&name, "cargo run"));
-        dialog.chosen = Some(name);
+        dialog.choose(name);
         outcome.changed = true;
     }
     let remove =
@@ -272,7 +317,7 @@ fn show_fields(
     configurations: &mut RunConfigurations,
     outcome: &mut DialogOutcome,
 ) {
-    let Some(name) = dialog.chosen.clone() else {
+    let (Some(name), Some((origin, at))) = (dialog.chosen.clone(), dialog.chosen_at) else {
         modal::note(
             ui,
             area,
@@ -281,8 +326,7 @@ fn show_fields(
         );
         return;
     };
-    let origin = configurations.find(&name).map(|(origin, _)| origin);
-    let Some(configuration) = configurations.find_mut(&name) else {
+    let Some(configuration) = configurations.at_mut(origin, at) else {
         return;
     };
     sync_environment_rows(dialog, &name, configuration);
@@ -295,15 +339,26 @@ fn show_fields(
             let width = (area.width() - 14.0).max(200.0);
             let column = Rect::from_min_size(ui.cursor().min, Vec2::new(width, area.height()));
             let mut end = draw_fields(ui, column, dialog, configuration, outcome);
-            if origin == Some(Origin::Temporary) {
+            if origin == Origin::Temporary {
                 save = draw_save_button(ui, column, end);
                 end += 40.0;
             }
             ui.allocate_space(Vec2::new(width, end - column.top() + 8.0));
         },
     );
+    // A keystroke in `Name` renamed the configuration, so the dialog follows it by its new name and tells
+    // the window, which moves the run widget's choice with it.
+    let now = configuration.name.clone();
+    if now != name {
+        if dialog.env_for.as_deref() == Some(name.as_str()) {
+            dialog.env_for = Some(now.clone());
+        }
+        dialog.chosen = Some(now.clone());
+        outcome.renamed = Some((name, now.clone()));
+    }
     if save {
-        configurations.promote(&name);
+        configurations.promote(&now);
+        dialog.choose(now);
         outcome.changed = true;
     }
 }

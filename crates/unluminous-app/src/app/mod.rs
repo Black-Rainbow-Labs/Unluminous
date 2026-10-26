@@ -661,6 +661,10 @@ pub fn hold_the_keyboard(ui: &mut egui::Ui) {
     // And what a field's right click menu asked for, on the same terms and on the same frame: the box
     // has to hold the keyboard before the event is pushed, or nothing reads it. `task-2009`.
     apply_what_a_fields_menu_asked_for(ui);
+    let copy = ui.ctx().data_mut(|data| data.remove_temp::<bool>(copy_next_frame_key()));
+    if copy == Some(true) {
+        ui.ctx().input_mut(|input| input.events.push(egui::Event::Copy));
+    }
     let id = egui::Id::new(KEYBOARD_HOLDER);
     if text_box_has_the_keyboard(ui.ctx()) || a_modal_has_the_keyboard(ui.ctx()) {
         ui.memory_mut(|memory| memory.surrender_focus(id));
@@ -686,6 +690,19 @@ pub fn hold_the_keyboard(ui: &mut egui::Ui) {
             },
         );
     });
+}
+
+fn copy_next_frame_key() -> egui::Id {
+    egui::Id::new("unluminous-copy-on-the-next-frame")
+}
+
+/// Send the frame after this one the copy event `Ctrl+C` makes, for words that answer that event rather
+/// than a menu entry (`task-2374`). [`hold_the_keyboard`] pushes it, before anything is drawn.
+///
+/// @param ctx - the window's context
+pub fn copy_on_the_next_frame(ctx: &egui::Context) {
+    ctx.data_mut(|data| data.insert_temp(copy_next_frame_key(), true));
+    ctx.request_repaint();
 }
 
 /// Turn what a field's right click menu asked for into the event `egui::TextEdit` already answers.

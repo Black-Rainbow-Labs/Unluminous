@@ -331,6 +331,21 @@ fn login() -> Option<Arc<Vec<(String, String)>>> {
     }
 }
 
+/// Whether asking for the login shell's environment now would wait for the first read to finish.
+///
+/// `login` waits up to [`PATIENCE`] for that read, which is right for starting an agent and wrong for
+/// anything asked while a frame is being drawn (`task-2374`: *"there was a flash after a brief period where
+/// the ui did not respond"*). The chat pane asked whether its agents are installed from inside its drawing,
+/// so on a Mac whose profile is slow the window stood still until the shell answered. Such a question asks
+/// this first and keeps its last answer while it is true.
+pub fn would_wait() -> bool {
+    STARTED.load(std::sync::atomic::Ordering::SeqCst)
+        && matches!(
+            *LOGIN.lock().unwrap_or_else(std::sync::PoisonError::into_inner),
+            Reading::Running { retrying: false }
+        )
+}
+
 /// `login` first, then every folder in `process` that `login` has not already named.
 ///
 /// Pure, so the ordering and the removing of repeats are tested without a shell and without touching

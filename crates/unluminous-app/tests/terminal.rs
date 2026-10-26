@@ -970,6 +970,43 @@ fn the_environment_table_adds_edits_and_deletes_variables_and_stores_only_those_
     assert_eq!(configuration.environment(), vec![("DEBUG".to_owned(), "orphan".to_owned())]);
 }
 
+/// Typing the name of a second configuration renames that one, a letter at a time, and the run widget
+/// follows the new name. `task-2374`: the dialog held its choice by name, so the first letter typed made a
+/// name nothing held and the dialog chose the first configuration, and the next letters rewrote its name.
+/// A name that is another configuration's on the way, `Unnamed` between `Unnamed 2` and `Unnamed X`, is
+/// the case a lookup by name gets wrong even after it follows the rename.
+#[test]
+fn typing_a_second_configurations_name_renames_that_one_and_the_widget_follows_it() {
+    let mut harness = harness("");
+    harness.state_mut().run_configurations.add_permanent(configuration("Unnamed", "cargo run"));
+    harness.state_mut().run_selected = Some("Unnamed".to_owned());
+    choose(&mut harness, Action::Run(RunAction::Edit));
+    harness.get_by_label("Add").click();
+    steady(&mut harness);
+    assert_eq!(harness.state().run_dialog.chosen.as_deref(), Some("Unnamed 2"));
+    harness.state_mut().run_selected = Some("Unnamed 2".to_owned());
+    harness.get_by_label("Run configuration name").click();
+    steady(&mut harness);
+    harness.key_press(egui::Key::End);
+    steady(&mut harness);
+    for _ in 0..2 {
+        harness.key_press(egui::Key::Backspace);
+        steady(&mut harness);
+    }
+    for letter in [" ", "X"] {
+        harness.get_by_label("Run configuration name").type_text(letter);
+        steady(&mut harness);
+    }
+    let names: Vec<String> =
+        harness.state().run_configurations.permanent().iter().map(|c| c.name.clone()).collect();
+    assert_eq!(names, ["Unnamed", "Unnamed X"], "the first configuration keeps its name");
+    assert_eq!(harness.state().run_dialog.chosen.as_deref(), Some("Unnamed X"));
+    assert_eq!(harness.state().run_selected.as_deref(), Some("Unnamed X"), "the widget follows");
+    harness.get_by_label("Done").click();
+    steady(&mut harness);
+    assert_eq!(harness.state().run_selected.as_deref(), Some("Unnamed X"));
+}
+
 /// A key typed one letter at a time keeps every letter, a space included. `task-2287`: the table read its
 /// rows back out of the stored text on every frame, and reading trims, so a space typed at the end of a key
 /// was taken away before the next letter arrived.

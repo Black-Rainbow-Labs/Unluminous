@@ -147,9 +147,13 @@ pub fn handle_input(
     if crate::app::a_modal_has_the_keyboard(ui.ctx()) {
         return outcome;
     }
+    // Words in a chat message, the preview or a comment were selected by the last press, so a copy is
+    // theirs and not the document's. See [`words_hold_the_selection`]. `task-2374`.
+    let words_elsewhere = words_hold_the_selection(ui.ctx()).is_some();
     let events = ui.input(|input| input.events.clone());
     for event in events {
         match event {
+            egui::Event::Copy if words_elsewhere => {}
             egui::Event::Text(text) if !text.chars().any(|c| c.is_control()) => {
                 // A single space over a selection is an indent of one space per line, the same
                 // rule the `Tab` key follows: the selection is what makes the key an indent
@@ -383,6 +387,17 @@ pub fn handle_pointer(
 ) -> PointerOutcome {
     let mut outcome = PointerOutcome::default();
     let mut changed = false;
+    // A second or third press selects the word or the line on the press, and a drag after it goes by words
+    // or lines. See [`multi_press`].
+    if let Some(made) = multi_press(response, layout, document.text(), text_origin) {
+        if let Some(selection) = made {
+            let offset = selection.anchor;
+            document.apply(Command::PlaceCaret { offset, extend: false });
+            let head = selection.head;
+            outcome.changed = document.apply(Command::PlaceCaret { offset: head, extend: true });
+        }
+        return outcome;
+    }
     let position =
         response.interact_pointer_pos().or_else(|| response.hover_pos()).map(|p| p - text_origin);
     if let Some(local) = position {
@@ -882,6 +897,152 @@ pub fn paint_text(
     count
 }
 
+/// The presses of the primary button made in a row: when the last one was, where, and how many there
+/// have been. Kept in egui's memory under [`presses_key`] and brought up to date once a pass.
+#[derive(Clone, Copy, Debug, Default)]
+struct Presses {
+    /// The pass this was last brought up to date in.
+    pass: u64,
+    /// The input time of the last press.
+    time: f64,
+    /// Where the last press was, in the window's points.
+    at: Pos2,
+    /// One for a single press, two for the second of a double click, three for a triple.
+    count: u8,
+}
+
+fn presses_key() -> egui::Id {
+    egui::Id::new("unluminous-presses-in-a-row")
+}
+
+fn words_holder_key() -> egui::Id {
+    egui::Id::new("unluminous-words-hold-the-selection")
+}
+
+/// Which words that can be read but not typed into took the last press of the primary button: a chat
+/// message, the Markdown preview, a ticket's comment (`task-2374`).
+///
+/// The selection a person made last is the one a copy is about. Words like these are not an egui widget that
+/// holds the keyboard, so nothing else said that they were the last thing selected: the editing area, which
+/// still held the window's keyboard, answered `Ctrl+C` with its own line as well, and on macOS `Edit -> Copy`,
+/// which is what `Cmd+C` is there, went to the document and never reached the words. Set by [`read_pointer`]
+/// on the press, and cleared by the next press anywhere, at the top of the frame in [`presses_in_a_row`].
+pub fn words_hold_the_selection(ctx: &egui::Context) -> Option<egui::Id> {
+    ctx.data(|data| data.get_temp::<egui::Id>(words_holder_key()))
+}
+
+/// How many presses in a row the latest press of the primary button is: one, two for the second press of
+/// a double click, three for the third (`task-2374`).
+///
+/// **Counted on the press, not on the release.** egui calls a click a double click when the second click
+/// is *released*, so a word appeared under the pointer only after the button came back up, and a drag after
+/// the second press selected letters instead of words. Every editor and browser selects the word on the
+/// second press and extends by whole words while the button is held, and *"I also still find it difficult
+/// to select pieces of text through double click"* was the difference. Two presses are a pair when the
+/// second comes within egui's `max_double_click_delay` of the first, which the window sets to the operating
+/// system's own interval, and within `max_click_dist` of it.
+///
+/// It is idempotent within a pass, so the window calls it once at the top of a frame, which keeps the
+/// count right for presses no text area was drawn under, and every text area may ask it again.
+pub fn presses_in_a_row(ctx: &egui::Context) -> u8 {
+    let pass = ctx.cumulative_pass_nr();
+    let key = presses_key();
+    let mut presses = ctx.data(|data| data.get_temp::<Presses>(key)).unwrap_or_default();
+    if presses.pass == pass {
+        return presses.count;
+    }
+    // Every press in the frame, not only the last: a slow frame can hold both presses of a double click.
+    let (pressed, time) = ctx.input(|input| {
+        let pressed: Vec<Pos2> = input
+            .events
+            .iter()
+            .filter_map(|event| match event {
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    ..
+                } => Some(*pos),
+                _ => None,
+            })
+            .collect();
+        (pressed, input.time)
+    });
+    let options = ctx.options(|options| options.input_options.clone());
+    presses.pass = pass;
+    if !pressed.is_empty() {
+        // A new press: whichever words it lands on say so while they are drawn this frame.
+        ctx.data_mut(|data| data.remove::<egui::Id>(words_holder_key()));
+    }
+    for at in pressed {
+        let close = presses.at.distance(at) <= options.max_click_dist;
+        let soon = time - presses.time < options.max_double_click_delay;
+        presses.count = match presses.count > 0 && close && soon {
+            true => (presses.count + 1).min(3),
+            false => 1,
+        };
+        presses.time = time;
+        presses.at = at;
+    }
+    ctx.data_mut(|data| data.insert_temp(key, presses));
+    presses.count
+}
+
+/// What a double or triple press does in a text area: the word or the line under the second or third press,
+/// and while the button is held, whole words or lines out to the pointer.
+///
+/// `None` when the latest press was a single one, which the caller handles as a click or a drag. `Some(None)`
+/// when this is a run of presses but nothing changes this frame, such as the release that ends it, which
+/// must not put a caret down where the word was just selected.
+pub fn multi_press(
+    response: &egui::Response,
+    layout: &Layout,
+    text: &Rope,
+    text_origin: Pos2,
+) -> Option<Option<Selection>> {
+    let count = presses_in_a_row(&response.ctx);
+    if count < 2 {
+        return None;
+    }
+    let key = response.id.with("multi-press-unit");
+    // The time of the press that made the count, which is what ties a remembered word to this run of presses
+    // rather than to an older one in the same area.
+    let pressed_at = response.ctx.data(|data| data.get_temp::<Presses>(presses_key()))?.time;
+    // A press and its release can arrive in one frame, in which case the area was clicked rather than held.
+    let pressed_here = response.ctx.input(|input| input.pointer.primary_pressed())
+        && (response.is_pointer_button_down_on() || response.clicked());
+    let unit_at = |offset: usize| match count {
+        2 => word_at(text, offset),
+        _ => {
+            let line = text.line_range(text.byte_to_line(offset));
+            line.start..line.end.min(text.len_bytes())
+        }
+    };
+    let pointer = response.interact_pointer_pos().or_else(|| response.hover_pos());
+    if pressed_here {
+        let local = pointer? - text_origin;
+        let unit = unit_at(layout.character_at(local.x, local.y));
+        response.ctx.data_mut(|data| data.insert_temp(key, (unit.clone(), pressed_at)));
+        return Some(Some(Selection::new(unit.start, unit.end)));
+    }
+    // A run of presses that began in another area is not this one's to act on.
+    let (anchor, at) =
+        response.ctx.data(|data| data.get_temp::<(std::ops::Range<usize>, f64)>(key))?;
+    if at != pressed_at {
+        return None;
+    }
+    if !response.is_pointer_button_down_on() && !response.dragged() {
+        // The release that ends the press, which egui reports as a click: the word stays selected.
+        return (response.clicked() || response.drag_stopped()).then_some(None);
+    }
+    let local = pointer? - text_origin;
+    let unit = unit_at(layout.character_at(local.x, local.y));
+    Some(Some(match unit.start >= anchor.start {
+        true => Selection::new(anchor.start, unit.end.max(anchor.end)),
+        false => Selection::new(anchor.end, unit.start),
+    }))
+}
+
 /// What the pointer did in a page that can be read but not typed into.
 ///
 /// The Markdown preview is the one such page. It is a real `Layout` over a real rope — the same two
@@ -898,6 +1059,14 @@ pub fn read_pointer(
     text_origin: Pos2,
     selection: Selection,
 ) -> Option<Selection> {
+    if response.is_pointer_button_down_on()
+        && response.ctx.input(|input| input.pointer.primary_pressed())
+    {
+        response.ctx.data_mut(|data| data.insert_temp(words_holder_key(), response.id));
+    }
+    if let Some(made) = multi_press(response, layout, text, text_origin) {
+        return made;
+    }
     let pointer = response.interact_pointer_pos()?;
     let local = pointer - text_origin;
     let offset = layout.offset_at(local.x, local.y);

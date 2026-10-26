@@ -806,6 +806,11 @@ impl UnluminousApp {
                     if let Some(text) = self.preview_selected_text() {
                         ctx.copy_text(text);
                     }
+                } else if crate::components::editor_view::words_hold_the_selection(ctx).is_some() {
+                    // Words in a chat message or a ticket's comment were selected last. They answer the
+                    // copy event that `Ctrl+C` makes on Windows, so `Cmd+C`, which reaches this entry on
+                    // macOS, sends them the same event on the next frame. `task-2374`.
+                    crate::app::copy_on_the_next_frame(ctx);
                 } else if !self.document().selection().is_empty() {
                     ctx.copy_text(self.document().selected_text());
                 }

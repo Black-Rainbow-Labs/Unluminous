@@ -250,6 +250,37 @@ impl RunConfigurations {
         self.temporary.get_mut(at)
     }
 
+    /// The configuration at `at` in the list `origin` names, if there is one.
+    ///
+    /// What the dialog edits through, because while a name is being typed it can match another
+    /// configuration's name for a keystroke, and a lookup by name would then answer the other one.
+    pub fn at(&self, origin: Origin, at: usize) -> Option<&Configuration> {
+        match origin {
+            Origin::Permanent => self.permanent.get(at),
+            Origin::Temporary => self.temporary.get(at),
+            Origin::Suggested => None,
+        }
+    }
+
+    /// The same, to be edited.
+    pub fn at_mut(&mut self, origin: Origin, at: usize) -> Option<&mut Configuration> {
+        match origin {
+            Origin::Permanent => self.permanent.get_mut(at),
+            Origin::Temporary => self.temporary.get_mut(at),
+            Origin::Suggested => None,
+        }
+    }
+
+    /// Where the configuration of this name is held: which list, and how far down it. Permanents
+    /// first, as [`RunConfigurations::find`] does.
+    pub fn position(&self, name: &str) -> Option<(Origin, usize)> {
+        if let Some(at) = self.permanent.iter().position(|held| held.name == name) {
+            return Some((Origin::Permanent, at));
+        }
+        let at = self.temporary.iter().position(|held| held.name == name)?;
+        Some((Origin::Temporary, at))
+    }
+
     /// Keep a configuration for good. A name that is already permanent is replaced rather than
     /// added a second time, because two rows with one name is a list nobody can choose from.
     pub fn add_permanent(&mut self, configuration: Configuration) {

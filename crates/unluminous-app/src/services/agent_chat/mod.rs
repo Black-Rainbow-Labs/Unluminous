@@ -1430,6 +1430,11 @@ impl AgentChat {
     /// rule about a frame costing what is on the screen broken by a directory listing.
     pub fn readiness(&mut self) -> Vec<Option<String>> {
         let stale = self.readiness_taken.is_none_or(|at| at.elapsed() >= READINESS);
+        // Asked while the pane is drawn, so it never waits for the login shell: the last answer stands
+        // until the shell has been read. See `login_shell::would_wait`.
+        if crate::services::login_shell::would_wait() {
+            return self.readiness.clone();
+        }
         if stale || self.readiness.len() != self.configuration.providers.len() {
             // Built once for the whole list rather than once a row: it allocates the profile.
             let environment = Self::the_environment();
@@ -1459,7 +1464,7 @@ impl AgentChat {
     /// file system.
     pub fn shapes_available(&mut self) -> Vec<&'static str> {
         let stale = self.shapes_taken.is_none_or(|at| at.elapsed() >= READINESS);
-        if stale {
+        if stale && !crate::services::login_shell::would_wait() {
             let environment = Self::the_environment();
             self.shapes = unluminous_chat::provider::WIRES
                 .iter()
@@ -2275,8 +2280,9 @@ impl AgentChat {
         if let Err(problem) = self.store.write(&self.session.chat) {
             self.problem = Some(problem);
         }
-        self.store.tidy(self.configuration.history);
-        self.refresh_the_history();
+        // One reading of the folder for both: what is past the limit is thrown away and the rest is the
+        // history. It used to be read and parsed twice at the end of every turn, on the window's thread.
+        self.history = self.store.tidy(self.configuration.history);
     }
 
     fn refresh_the_history(&mut self) {

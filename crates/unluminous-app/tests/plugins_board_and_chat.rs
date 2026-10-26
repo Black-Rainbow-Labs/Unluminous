@@ -3770,6 +3770,140 @@ fn a_drag_over_an_answer_selects_only_the_words_it_crossed() {
     assert!(down.len() < words.len() / 2, "two lines, not the whole answer: {down:?}");
 }
 
+/// Find a point on the last message's words the way a click finds one, by clicking down the pane until a
+/// click puts a caret in that message.
+fn a_point_on_the_answer(harness: &mut Harness<'static, UnluminousApp>) -> egui::Pos2 {
+    let pane = harness.state().plugin_pane_area_for("agent-chat/chat").expect("the chat pane");
+    let mut y = pane.top() + 120.0;
+    while y < pane.bottom() - 120.0 {
+        let at = egui::pos2(pane.left() + 40.0, y);
+        click_at(harness, at);
+        let mut landed = false;
+        with_the_chat(harness, |chat| {
+            let answer = chat.chat().messages.last().expect("the answer").id;
+            landed = chat.ui.selection.is_some_and(|selected| selected.message == answer);
+        });
+        if landed {
+            return at + egui::vec2(0.0, 3.0);
+        }
+        y += 4.0;
+    }
+    panic!("no point over the answer's words");
+}
+
+/// `task-2374`: *"I should be able to select partial text of a message in agent chat and copy it through
+/// keyboard shortcut."* Part of an answer is dragged over after the prompt box has been typed into, and the
+/// copy takes the words dragged over: as the `Copy` event egui makes of `Ctrl+C`, and as `Edit -> Copy`, which
+/// is what `Cmd+C` is on macOS, where the menu bar takes the chord before the window sees a key.
+#[test]
+fn part_of_an_answer_is_copied_by_the_keyboard_after_the_prompt_was_typed_into() {
+    let words = "alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima mike \
+                 november oscar papa quebec romeo sierra tango uniform victor whiskey xray yankee";
+    let mut harness = a_chat(&[
+        (unluminous_chat::Role::User, "Read me the alphabet."),
+        (unluminous_chat::Role::Assistant, words),
+    ]);
+    steady(&mut harness);
+    let start = a_point_on_the_answer(&mut harness);
+    for how in ["the copy event", "the Edit menu"] {
+        harness.get_by_label("Message").click();
+        steady(&mut harness);
+        harness.get_by_label("Message").type_text("draft");
+        steady(&mut harness);
+        drag_from(&mut harness, start, start + egui::vec2(60.0, 0.0));
+        steady(&mut harness);
+        let selected = chat_selection(&mut harness).unwrap_or_default();
+        assert!(!selected.is_empty() && words.contains(selected.as_str()), "{selected:?}");
+        let got = match how {
+            "the copy event" => copied(&mut harness),
+            _ => {
+                let ctx = harness.ctx.clone();
+                harness.state_mut().run_action(unluminous_app::app::actions::Action::Copy, &ctx);
+                let mut got = String::new();
+                for _ in 0..4 {
+                    harness.step();
+                    if let Some(text) =
+                        harness.output().platform_output.commands.iter().find_map(|command| {
+                            match command {
+                                egui::OutputCommand::CopyText(text) => Some(text.clone()),
+                                _ => None,
+                            }
+                        })
+                    {
+                        got = text;
+                        break;
+                    }
+                }
+                got
+            }
+        };
+        assert_eq!(got, selected, "{how} copies the words dragged over");
+    }
+}
+
+/// One frame `dt` seconds after the last, carrying `events`. The harness otherwise calls every frame a
+/// quarter of a second, which is too slow for the two presses of a double click.
+fn a_frame_after(harness: &mut Harness<'static, UnluminousApp>, dt: f64, events: &[egui::Event]) {
+    let now = harness.ctx.input(|input| input.time) + dt;
+    harness.input_mut().time = Some(now);
+    harness.input_mut().events.extend(events.iter().cloned());
+    harness.step();
+}
+
+/// `task-2374`: *"I also still find it difficult to select pieces of text through double click."* The word is
+/// selected on the second **press**, as every editor and browser does it, rather than when the button comes
+/// back up, and a drag with the button still down after it takes whole words. egui calls a double click a
+/// double click on the release, so the word appeared only after letting go and a drag selected letters.
+#[test]
+fn a_second_press_selects_the_word_and_a_drag_after_it_takes_whole_words() {
+    let words = "alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima mike \
+                 november oscar papa quebec romeo sierra tango uniform victor whiskey xray yankee";
+    let mut harness = a_chat(&[
+        (unluminous_chat::Role::User, "Read me the alphabet."),
+        (unluminous_chat::Role::Assistant, words),
+    ]);
+    steady(&mut harness);
+    let at = a_point_on_the_answer(&mut harness) + egui::vec2(30.0, 0.0);
+    let whole = |selected: &str| format!(" {words} ").contains(&format!(" {} ", selected.trim()));
+    let press = |pressed| egui::Event::PointerButton {
+        pos: at,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: Modifiers::default(),
+    };
+    a_frame_after(&mut harness, 1.0, &[egui::Event::PointerMoved(at)]);
+    a_frame_after(&mut harness, 0.05, &[press(true)]);
+    a_frame_after(&mut harness, 0.05, &[press(false)]);
+    a_frame_after(&mut harness, 0.05, &[press(true)]);
+    let word = chat_selection(&mut harness).unwrap_or_default();
+    assert!(!word.trim().is_empty() && !word.contains(' ') && whole(&word), "one word: {word:?}");
+    for step in 1..=4 {
+        let to = at + egui::vec2(25.0 * step as f32, 0.0);
+        a_frame_after(&mut harness, 0.05, &[egui::Event::PointerMoved(to)]);
+    }
+    let dragged = chat_selection(&mut harness).unwrap_or_default();
+    assert!(dragged.starts_with(&word) && dragged.len() > word.len(), "{word:?} then {dragged:?}");
+    assert!(whole(&dragged), "whole words: {dragged:?}");
+    let to = at + egui::vec2(100.0, 0.0);
+    let release = egui::Event::PointerButton {
+        pos: to,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::default(),
+    };
+    a_frame_after(&mut harness, 0.05, &[release]);
+    steady(&mut harness);
+    assert_eq!(chat_selection(&mut harness).unwrap_or_default(), dragged, "letting go keeps it");
+    // A double click with no drag keeps the word after the button comes up.
+    a_frame_after(&mut harness, 1.0, &[egui::Event::PointerMoved(at)]);
+    a_frame_after(&mut harness, 0.05, &[press(true)]);
+    a_frame_after(&mut harness, 0.05, &[press(false)]);
+    a_frame_after(&mut harness, 0.05, &[press(true)]);
+    a_frame_after(&mut harness, 0.05, &[press(false)]);
+    steady(&mut harness);
+    assert_eq!(chat_selection(&mut harness).unwrap_or_default(), word);
+}
+
 /// `task-2269`, the case the report was about: words selected in an answer while the agent is still writing the
 /// next one. The conversation follows a streaming answer by staying at the bottom, so every frame of the drag moved
 /// the words up under the pointer and the selection grew past what was dragged over. While a drag is selecting,

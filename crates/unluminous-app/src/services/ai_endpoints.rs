@@ -358,6 +358,10 @@ impl Readiness {
     /// Why each of `providers` cannot answer, or `None` for one that can.
     pub fn rows(&mut self, providers: &[Provider]) -> Vec<Option<String>> {
         let stale = self.rows_taken.is_none_or(|at| at.elapsed() >= READINESS);
+        // Asked while the page is drawn, so never while the login shell is still being read. `task-2374`.
+        if crate::services::login_shell::would_wait() {
+            return self.rows.clone();
+        }
         if stale || self.rows.len() != providers.len() {
             let environment = crate::services::agent_chat::AgentChat::the_environment();
             self.rows = providers.iter().map(|provider| provider.why_not(&environment)).collect();
@@ -370,7 +374,7 @@ impl Readiness {
     /// shape only when the program is installed.
     pub fn shapes(&mut self) -> Vec<&'static str> {
         let stale = self.shapes_taken.is_none_or(|at| at.elapsed() >= READINESS);
-        if stale {
+        if stale && !crate::services::login_shell::would_wait() {
             let environment = crate::services::agent_chat::AgentChat::the_environment();
             self.shapes = WIRES
                 .iter()

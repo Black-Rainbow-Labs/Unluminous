@@ -2707,6 +2707,29 @@ its own custom layout (same behavior as if they were open in different windows).
   Tab`, `Next Project Tab` and `Previous Project Tab` (`Ctrl`/`Cmd`+`Alt`+`PageDown`/`PageUp`) are the agent's half.
   `tests/project_tabs.rs` is the tests.
 
+## What `task-2374` changed, and the rules it left
+
+- **A press outside a text box takes the keyboard from it** (`let_a_press_elsewhere_take_the_focus`, egui's
+  `SurrenderFocusOn::Presses`). egui's default lets go only on a *click* elsewhere, and a drag is not a click, so
+  words dragged over in a chat answer left the prompt box focused and `Ctrl`/`Cmd`+`C` copied the prompt box's
+  empty selection. Several comments in `controls.rs` and `app/mod.rs` say egui surrenders on a press; it does now.
+- **Words that are read rather than typed say they took the last press** (`editor_view::words_hold_the_selection`,
+  set by `read_pointer`). While they hold it the editing area does not answer the copy event, and `Edit -> Copy`,
+  which is `Cmd+C` on macOS, sends the copy event on the next frame (`app::copy_on_the_next_frame`) so the chat,
+  the preview and a ticket's comments answer it the way they answer `Ctrl+C` on Windows.
+- **A double click selects the word on the second press**, and a drag with the button still down goes by whole
+  words; a third press takes the line. `editor_view::presses_in_a_row` counts presses from the frame's own
+  events, and `multi_press` is what `read_pointer` and `handle_pointer` ask first. egui's `double_clicked` is
+  reported on the release, which is where the word used to appear.
+- **The run dialog finds the configuration it edits by its place as well as its name** (`RunDialog::chosen_at`,
+  `locate`), because every keystroke in `Name` renames it and a name part way through can be another
+  configuration's. A rename is reported as `DialogOutcome::renamed`, and the window moves `run_selected` with it.
+- **Nothing asked while a pane is drawn waits for the login shell** (`login_shell::would_wait`). The chat pane's
+  "is this agent installed" check ran inside its drawing and waited up to eleven seconds for the first read of
+  the profile on macOS. It keeps its last answer until the read is done.
+- **The frame trace writes `atlas`**, egui's glyph atlas fill in percent: at 80 epaint rebuilds every glyph in
+  one frame.
+
 ## What `task-2340` changed, and the rules it left
 
 - **A conversation keeps the model it was started with.** `AgentChat::provider` is the conversation's own endpoint
