@@ -6915,6 +6915,12 @@ release again. The rules:
   seconds` for a test that needs splitting.
 - **Every picture is rendered through `common::PatientRenderer`**: at most four renders in flight in a binary,
   and a render that failed (`PollError` under load, never a picture that differs) tried three times.
+- **wgpu-hal is vendored (`vendor/wgpu-hal`, `task-2369`) so a shader FXC compiled is cached as bytes.** FXC's
+  `ID3DBlob` counts its references without atomics, and wgpu's per device shader cache cloned one blob for every
+  thread making the same pipeline, so the blob was freed while cached. A window binary then aborted with
+  `misaligned pointer dereference` in `windows_core::Interface::assume_vtable`, or ended with no message. A
+  binary that ends either way again is a COM object shared between threads; `vendor/wgpu-hal/UNLUMINOUS.md` has
+  the measurement and `many_threads_make_renderers_on_the_shared_devices_at_once` is the test.
 - **Dependencies are optimized in test builds** (`[profile.test.package."*"] opt-level = 2`); our crates are not.
   A window test spends its time in egui, `vello_cpu`, `rux` and `image`, and unoptimized one frame of a busy page
   took seconds. The whole window suite went from 9.6 to 4.0 minutes with every picture unchanged.
