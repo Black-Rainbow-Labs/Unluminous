@@ -279,6 +279,7 @@ pub fn show(
         let sheet = &book.session.book.sheets[book.view.sheet];
         book.view.axes(sheet, revision);
     }
+    crate::services::spreadsheet::print::gap_the_axes(book);
     let layout = Layout::of(area, book, zoom);
     let mut panes = layout.panes(book);
     book.view.drawn = Some(layout.cells);

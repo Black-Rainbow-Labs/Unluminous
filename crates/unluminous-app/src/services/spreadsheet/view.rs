@@ -250,6 +250,8 @@ pub struct Axes {
     pub sheet: usize,
     pub columns: Axis,
     pub rows: Axis,
+    /// Whether the page layout view's gaps between pages have been put into these axes.
+    pub paged: bool,
 }
 
 /// What a tab is looking at.
@@ -463,6 +465,7 @@ impl View {
                 sheet: self.sheet,
                 columns: Axis::columns(sheet),
                 rows: Axis::rows(sheet),
+                paged: false,
             });
         }
         self.axes.as_ref().expect("just built")
