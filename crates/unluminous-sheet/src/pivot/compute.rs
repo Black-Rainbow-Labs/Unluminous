@@ -238,17 +238,13 @@ impl<'a> Calc<'a> {
             }
             if ok {
                 let text = self.label(field, i);
-                ok = pf
-                    .filters
-                    .iter()
-                    .filter(|f| !f.kind.is_value())
-                    .all(|f| match f.kind {
-                        FilterKind::DateBetween => {
-                            let item = self.cache.fields[field].items().get(entry.x);
-                            date_matches(f, item.and_then(super::cache::CacheValue::number))
-                        }
-                        _ => caption_matches(f, &text),
-                    });
+                ok = pf.filters.iter().filter(|f| !f.kind.is_value()).all(|f| match f.kind {
+                    FilterKind::DateBetween => {
+                        let item = self.cache.fields[field].items().get(entry.x);
+                        date_matches(f, item.and_then(super::cache::CacheValue::number))
+                    }
+                    _ => caption_matches(f, &text),
+                });
             }
             out.push(ok);
         }

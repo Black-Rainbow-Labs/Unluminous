@@ -33,5 +33,9 @@ fn main() {
         let path = folder.join(format!("type-{}.xlsx", ty.name()));
         std::fs::write(&path, unluminous_sheet::xlsx::write(&one.book).unwrap()).unwrap();
     }
-    std::fs::write(folder.join("all-types.xlsx"), unluminous_sheet::xlsx::write(&all.book).unwrap()).unwrap();
+    std::fs::write(
+        folder.join("all-types.xlsx"),
+        unluminous_sheet::xlsx::write(&all.book).unwrap(),
+    )
+    .unwrap();
 }

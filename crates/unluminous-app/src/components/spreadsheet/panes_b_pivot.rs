@@ -351,7 +351,12 @@ fn slicers(ui: &egui::Ui, book: &mut Book, frame: Frame, look: &Look<'_>, words:
                 ui.label(egui::RichText::new(&name).strong().color(look.palette.text_strong));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if button(ui, "\u{2715}", &format!("Clear filter {name}")) {
-                        words.push(vec!["slicer".into(), "select".into(), name.clone(), "all".into()]);
+                        words.push(vec![
+                            "slicer".into(),
+                            "select".into(),
+                            name.clone(),
+                            "all".into(),
+                        ]);
                     }
                 });
             });
@@ -409,7 +414,12 @@ fn timelines(ui: &egui::Ui, book: &mut Book, frame: Frame, look: &Look<'_>, word
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new(&name).strong().color(look.palette.text_strong));
                 if button(ui, "All periods", &format!("All periods {name}")) {
-                    words.push(vec!["timeline".into(), "select".into(), name.clone(), "all".into()]);
+                    words.push(vec![
+                        "timeline".into(),
+                        "select".into(),
+                        name.clone(),
+                        "all".into(),
+                    ]);
                 }
             });
             ui.horizontal_wrapped(|ui| {

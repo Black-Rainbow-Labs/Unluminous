@@ -325,7 +325,12 @@ fn paper_pages(ui: &egui::Ui, book: &Book, frame: Frame, look: &Look<'_>, layout
         for r in without(*paper, *body) {
             painter.rect_filled(r, 0, Color32::WHITE);
         }
-        painter.rect_stroke(*paper, 0, Stroke::new(1.0, Color32::from_gray(0xC0)), egui::StrokeKind::Inside);
+        painter.rect_stroke(
+            *paper,
+            0,
+            Stroke::new(1.0, Color32::from_gray(0xC0)),
+            egui::StrokeKind::Inside,
+        );
         margin_text(&painter, *paper, *body, page, z, look);
     }
 }
@@ -374,7 +379,6 @@ fn without(rect: Rect, hole: Rect) -> Vec<Rect> {
     add(Rect::from_min_max(Pos2::new(hole.max.x, hole.min.y), Pos2::new(rect.max.x, hole.max.y)));
     out
 }
-
 
 fn line(painter: &egui::Painter, a: Pos2, b: Pos2, color: Color32, solid: bool) {
     if solid {

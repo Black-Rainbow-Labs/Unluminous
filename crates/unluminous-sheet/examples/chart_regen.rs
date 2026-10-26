@@ -10,15 +10,17 @@ fn main() {
     let mode = args.next().unwrap_or_else(|| "classic".to_owned());
     std::fs::create_dir_all(&folder).unwrap();
     let book = unluminous_sheet::xlsx::read(&std::fs::read(&input).unwrap()).unwrap();
-    let write = |name: &str, pick: &dyn Fn(usize, usize, &unluminous_sheet::model::Chart) -> bool| {
-        let mut copy = book.clone();
-        for (s, sheet) in copy.sheets.iter_mut().enumerate() {
-            for (c, chart) in sheet.charts.iter_mut().enumerate() {
-                chart.spec.dirty = pick(s, c, chart);
+    let write =
+        |name: &str, pick: &dyn Fn(usize, usize, &unluminous_sheet::model::Chart) -> bool| {
+            let mut copy = book.clone();
+            for (s, sheet) in copy.sheets.iter_mut().enumerate() {
+                for (c, chart) in sheet.charts.iter_mut().enumerate() {
+                    chart.spec.dirty = pick(s, c, chart);
+                }
             }
-        }
-        std::fs::write(folder.join(name), unluminous_sheet::xlsx::write(&copy).unwrap()).unwrap();
-    };
+            std::fs::write(folder.join(name), unluminous_sheet::xlsx::write(&copy).unwrap())
+                .unwrap();
+        };
     match mode.as_str() {
         "classic" => write("classic.xlsx", &|_, _, c| c.spec.ex.is_none()),
         "ex" => write("ex.xlsx", &|_, _, c| c.spec.ex.is_some()),

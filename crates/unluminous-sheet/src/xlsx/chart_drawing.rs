@@ -220,8 +220,17 @@ fn qualified_name(root: &Node) -> String {
 
 /// One anchor holding a chart by its relationship id.
 pub fn anchor_xml(chart: &Chart, rel_id: &str, shape_id: u32) -> String {
-    let name = chart.spec.name.clone().unwrap_or_else(|| format!("Chart {}", shape_id.saturating_sub(999).max(1)));
-    let descr = chart.spec.alt_text.as_deref().map(|d| format!(" descr=\"{}\"", escape(d))).unwrap_or_default();
+    let name = chart
+        .spec
+        .name
+        .clone()
+        .unwrap_or_else(|| format!("Chart {}", shape_id.saturating_sub(999).max(1)));
+    let descr = chart
+        .spec
+        .alt_text
+        .as_deref()
+        .map(|d| format!(" descr=\"{}\"", escape(d)))
+        .unwrap_or_default();
     let edit_as = chart.spec.anchor_edit_as.as_deref().unwrap_or("oneCell");
     let frame = if chart.spec.ex.is_some() {
         format!(
@@ -279,7 +288,9 @@ mod tests {
         chart.to = (CellRef::new(20, 12), 0, 0);
         chart.spec.moved = true;
         let moved = rebuild(Some(DRAWING), &rel(), "xl/drawings/drawing1.xml", &[chart], &[], "");
-        assert!(moved.xml.contains("<xdr:twoCellAnchor editAs=\"oneCell\"><xdr:from><xdr:col>6</xdr:col>"));
+        assert!(moved
+            .xml
+            .contains("<xdr:twoCellAnchor editAs=\"oneCell\"><xdr:from><xdr:col>6</xdr:col>"));
         assert!(moved.xml.contains("r:id=\"rId1\""));
         assert!(Document::parse(&moved.xml).is_ok());
         let removed = rebuild(

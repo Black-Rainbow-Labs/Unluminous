@@ -111,9 +111,9 @@ impl Measurer {
             .entry(key)
             .or_insert_with(|| crate::services::word::commands::pdf_face(style))
             .clone();
-        let parsed = face.as_ref().and_then(|(bytes, index)| {
-            FontRef::try_from_slice_and_index(bytes, *index).ok()
-        });
+        let parsed = face
+            .as_ref()
+            .and_then(|(bytes, index)| FontRef::try_from_slice_and_index(bytes, *index).ok());
         let mut at = x;
         let mut out = Vec::new();
         for c in text.chars() {

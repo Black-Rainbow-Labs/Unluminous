@@ -957,7 +957,9 @@ pub fn export_to(doc: &mut Doc, kind: &str, to: Option<&Path>) -> Result<String,
 }
 
 /// The font file a style prints with, found the same way the window finds it.
-pub(crate) fn pdf_face(style: &unluminous_core::CharStyle) -> Option<unluminous_word::pdf::FaceBytes> {
+pub(crate) fn pdf_face(
+    style: &unluminous_core::CharStyle,
+) -> Option<unluminous_word::pdf::FaceBytes> {
     thread_local! {
         static DATABASE: std::cell::RefCell<Option<fontdb::Database>> = const { std::cell::RefCell::new(None) };
     }

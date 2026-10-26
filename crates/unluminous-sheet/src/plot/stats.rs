@@ -1,7 +1,9 @@
 //! The statistics behind the newer chart types and error bars: histogram bins, Pareto percentages, box and
 //! whisker quartiles, waterfall running totals, and the size of error bars.
 
-use crate::chartspec::{BinBy, Binning, BoxOptions, ErrorAmount, ErrorBars, ErrorSides, ErrorSource};
+use crate::chartspec::{
+    BinBy, Binning, BoxOptions, ErrorAmount, ErrorBars, ErrorSides, ErrorSource,
+};
 use crate::functions::stats::{percentile_exc, percentile_inc};
 
 /// Which kind of bin a histogram bar is.
@@ -67,14 +69,26 @@ pub fn histogram(values: &[f64], options: &Binning) -> Vec<Bin> {
     let mut bins = Vec::new();
     if let Some(u) = options.underflow {
         let count = values.iter().filter(|v| **v < u).count();
-        bins.push(Bin { from: f64::NEG_INFINITY, to: u, count, kind: BinKind::Underflow, label: format!("\u{2264}{}", number_text(u)) });
+        bins.push(Bin {
+            from: f64::NEG_INFINITY,
+            to: u,
+            count,
+            kind: BinKind::Underflow,
+            label: format!("\u{2264}{}", number_text(u)),
+        });
     }
     if !inner.is_empty() {
         bins.extend(normal_bins(&inner, options));
     }
     if let Some(o) = options.overflow {
         let count = values.iter().filter(|v| **v > o).count();
-        bins.push(Bin { from: o, to: f64::INFINITY, count, kind: BinKind::Overflow, label: format!(">{}", number_text(o)) });
+        bins.push(Bin {
+            from: o,
+            to: f64::INFINITY,
+            count,
+            kind: BinKind::Overflow,
+            label: format!(">{}", number_text(o)),
+        });
     }
     bins
 }
@@ -95,7 +109,11 @@ fn normal_bins(inner: &[f64], options: &Binning) -> Vec<Bin> {
     let mut bins = Vec::new();
     for i in 0..count {
         let from = min + width * i as f64;
-        let to = if i + 1 == count && matches!(options.by, BinBy::Count(_)) { max } else { from + width };
+        let to = if i + 1 == count && matches!(options.by, BinBy::Count(_)) {
+            max
+        } else {
+            from + width
+        };
         let contains = |v: f64| {
             if options.right_closed {
                 (v > from && v <= to) || (i == 0 && v == from)
@@ -127,7 +145,13 @@ fn categorical(values: &[f64]) -> Vec<Bin> {
     for v in sorted {
         match bins.last_mut() {
             Some(b) if b.from == v => b.count += 1,
-            _ => bins.push(Bin { from: v, to: v, count: 1, kind: BinKind::Normal, label: number_text(v) }),
+            _ => bins.push(Bin {
+                from: v,
+                to: v,
+                count: 1,
+                kind: BinKind::Normal,
+                label: number_text(v),
+            }),
         }
     }
     bins
@@ -179,7 +203,11 @@ pub fn box_stats(values: &[f64], options: &BoxOptions) -> Option<BoxStats> {
     }
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let q = |k: f64| {
-        let r = if options.exclusive_median { percentile_exc(&sorted, k) } else { percentile_inc(&sorted, k) };
+        let r = if options.exclusive_median {
+            percentile_exc(&sorted, k)
+        } else {
+            percentile_inc(&sorted, k)
+        };
         r.ok()
     };
     // Exclusive quartiles are undefined for very small groups; Excel then falls back to the data's ends.
@@ -189,7 +217,8 @@ pub fn box_stats(values: &[f64], options: &BoxOptions) -> Option<BoxStats> {
     let median = percentile_inc(&sorted, 0.5).unwrap_or(first);
     let q3 = q(0.75).unwrap_or(last);
     let fence = 1.5 * (q3 - q1);
-    let inside: Vec<f64> = sorted.iter().copied().filter(|v| *v >= q1 - fence && *v <= q3 + fence).collect();
+    let inside: Vec<f64> =
+        sorted.iter().copied().filter(|v| *v >= q1 - fence && *v <= q3 + fence).collect();
     let outliers = sorted.iter().copied().filter(|v| *v < q1 - fence || *v > q3 + fence).collect();
     Some(BoxStats {
         q1,
@@ -237,7 +266,11 @@ pub fn waterfall(values: &[f64], totals: &[u32]) -> Vec<WaterfallBar> {
             }
             let start = running;
             running += v;
-            WaterfallBar { start, end: running, kind: if *v >= 0.0 { WaterfallKind::Increase } else { WaterfallKind::Decrease } }
+            WaterfallBar {
+                start,
+                end: running,
+                kind: if *v >= 0.0 { WaterfallKind::Increase } else { WaterfallKind::Decrease },
+            }
         })
         .collect()
 }
@@ -250,7 +283,11 @@ pub struct ErrorAmounts {
 }
 
 /// The size of error bars for points: `custom` gives the numbers of a custom plus and minus.
-pub fn error_amounts(bars: &ErrorBars, values: &[Option<f64>], custom: (Vec<f64>, Vec<f64>)) -> ErrorAmounts {
+pub fn error_amounts(
+    bars: &ErrorBars,
+    values: &[Option<f64>],
+    custom: (Vec<f64>, Vec<f64>),
+) -> ErrorAmounts {
     let defined: Vec<f64> = values.iter().flatten().copied().collect();
     let amount = bars.value.unwrap_or(1.0);
     let each = |i: usize, y: f64| -> (f64, f64) {
@@ -303,7 +340,12 @@ mod tests {
     #[test]
     fn overflow_and_underflow_bins_take_the_ends() {
         let values = [1.0, 2.0, 5.0, 6.0, 7.0, 20.0, 30.0];
-        let options = Binning { by: BinBy::Count(2), overflow: Some(10.0), underflow: Some(2.0), ..Binning::default() };
+        let options = Binning {
+            by: BinBy::Count(2),
+            overflow: Some(10.0),
+            underflow: Some(2.0),
+            ..Binning::default()
+        };
         let bins = histogram(&values, &options);
         assert_eq!(bins.first().unwrap().kind, BinKind::Underflow);
         assert_eq!(bins.first().unwrap().count, 1);
@@ -323,7 +365,9 @@ mod tests {
     #[test]
     fn a_box_has_quartiles_whiskers_and_outliers() {
         let values = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 40.0];
-        let inclusive = box_stats(&values, &BoxOptions { exclusive_median: false, ..BoxOptions::default() }).unwrap();
+        let inclusive =
+            box_stats(&values, &BoxOptions { exclusive_median: false, ..BoxOptions::default() })
+                .unwrap();
         assert_eq!((inclusive.q1, inclusive.median, inclusive.q3), (3.0, 5.0, 7.0));
         assert_eq!(inclusive.outliers, vec![40.0]);
         assert_eq!(inclusive.high, 8.0);
@@ -344,9 +388,17 @@ mod tests {
         let values = [Some(10.0), Some(20.0), Some(30.0)];
         let fixed = ErrorBars { value: Some(2.0), ..ErrorBars::default() };
         assert_eq!(error_amounts(&fixed, &values, (vec![], vec![])).plus, vec![2.0, 2.0, 2.0]);
-        let percent = ErrorBars { amount: ErrorAmount::Percentage, value: Some(10.0), ..ErrorBars::default() };
+        let percent = ErrorBars {
+            amount: ErrorAmount::Percentage,
+            value: Some(10.0),
+            ..ErrorBars::default()
+        };
         assert_eq!(error_amounts(&percent, &values, (vec![], vec![])).minus, vec![1.0, 2.0, 3.0]);
-        let sd = ErrorBars { amount: ErrorAmount::StandardDeviation, value: Some(1.0), ..ErrorBars::default() };
+        let sd = ErrorBars {
+            amount: ErrorAmount::StandardDeviation,
+            value: Some(1.0),
+            ..ErrorBars::default()
+        };
         assert_eq!(error_amounts(&sd, &values, (vec![], vec![])).plus[0], 10.0);
     }
 }

@@ -79,15 +79,29 @@ pub struct PlotAxis {
 /// The figures behind a `chartEx` chart.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExtendedPlot {
-    Histogram { bins: Vec<Bin> },
-    Pareto { rows: Vec<(String, f64, f64)> },
-    BoxWhisker { boxes: Vec<(String, BoxStats)> },
-    Waterfall { bars: Vec<(String, WaterfallBar)> },
-    Funnel { items: Vec<(String, f64)> },
+    Histogram {
+        bins: Vec<Bin>,
+    },
+    Pareto {
+        rows: Vec<(String, f64, f64)>,
+    },
+    BoxWhisker {
+        boxes: Vec<(String, BoxStats)>,
+    },
+    Waterfall {
+        bars: Vec<(String, WaterfallBar)>,
+    },
+    Funnel {
+        items: Vec<(String, f64)>,
+    },
     /// A treemap or sunburst: each leaf with the path of names above it.
-    Hierarchy { leaves: Vec<(Vec<String>, f64)> },
+    Hierarchy {
+        leaves: Vec<(Vec<String>, f64)>,
+    },
     /// A map chart is drawn as a card naming its regions.
-    Map { regions: Vec<(String, f64)> },
+    Map {
+        regions: Vec<(String, f64)>,
+    },
 }
 
 /// Everything a drawing needs for one chart.
@@ -127,7 +141,12 @@ fn number_of(v: &Value, blanks: Blanks) -> Option<f64> {
 
 /// Keep what a mask lets through.
 fn keep<T: Clone>(items: &[T], mask: &[bool]) -> Vec<T> {
-    items.iter().zip(mask.iter().chain(std::iter::repeat(&true))).filter(|(_, k)| **k).map(|(i, _)| i.clone()).collect()
+    items
+        .iter()
+        .zip(mask.iter().chain(std::iter::repeat(&true)))
+        .filter(|(_, k)| **k)
+        .map(|(i, _)| i.clone())
+        .collect()
 }
 
 /// Read one series from the cells now.
@@ -136,7 +155,8 @@ fn read_series(book: &Workbook, sheet: usize, chart: &Chart, index: usize) -> Pl
     let spec = &chart.spec;
     let blanks = spec.blanks_as();
     let values = chartdata::resolve(book, sheet, &s.values);
-    let cats = s.categories.as_deref().map(|c| chartdata::resolve(book, sheet, c)).unwrap_or_default();
+    let cats =
+        s.categories.as_deref().map(|c| chartdata::resolve(book, sheet, c)).unwrap_or_default();
     let sizes = s.sizes.as_deref().map(|c| chartdata::resolve(book, sheet, c)).unwrap_or_default();
     let n = values.values.len();
     let mut mask: Vec<bool> = (0..n)
@@ -156,7 +176,9 @@ fn read_series(book: &Workbook, sheet: usize, chart: &Chart, index: usize) -> Pl
     } else {
         (1..=ys.len()).map(|i| i.to_string()).collect()
     };
-    let numeric_cats = cats.values.len() == n && n > 0 && cats.values.iter().all(|v| matches!(v, Value::Number(_)));
+    let numeric_cats = cats.values.len() == n
+        && n > 0
+        && cats.values.iter().all(|v| matches!(v, Value::Number(_)));
     let x: Vec<f64> = if scatter && numeric_cats {
         keep(&cats.values.iter().map(|v| v.as_number().unwrap_or(0.0)).collect::<Vec<_>>(), &mask)
     } else if numeric_cats && cats.dates {
@@ -164,7 +186,8 @@ fn read_series(book: &Workbook, sheet: usize, chart: &Chart, index: usize) -> Pl
     } else {
         (1..=ys.len()).map(|i| i as f64).collect()
     };
-    let sizes_v: Vec<Option<f64>> = keep(&sizes.values.iter().map(|v| number_of(v, Blanks::Gap)).collect::<Vec<_>>(), &mask);
+    let sizes_v: Vec<Option<f64>> =
+        keep(&sizes.values.iter().map(|v| number_of(v, Blanks::Gap)).collect::<Vec<_>>(), &mask);
     let name = text_of(book, sheet, &s.name, format!("Series{}", index + 1));
     PlotSeries {
         index,
@@ -186,18 +209,29 @@ fn read_series(book: &Workbook, sheet: usize, chart: &Chart, index: usize) -> Pl
 fn stack(chart: &Chart, series: &mut [PlotSeries]) {
     for (g, group) in chart.spec.groups.iter().enumerate() {
         if !matches!(group.grouping, Grouping::Stacked | Grouping::PercentStacked)
-            || matches!(group.kind, GroupKind::Pie | GroupKind::Doughnut | GroupKind::OfPie | GroupKind::Stock)
+            || matches!(
+                group.kind,
+                GroupKind::Pie | GroupKind::Doughnut | GroupKind::OfPie | GroupKind::Stock
+            )
         {
             continue;
         }
         let members: Vec<usize> = (0..series.len()).filter(|i| series[*i].group == g).collect();
         let points = members.iter().map(|i| series[*i].values.len()).max().unwrap_or(0);
         for p in 0..points {
-            let total: f64 = members.iter().filter_map(|i| series[*i].values.get(p).copied().flatten()).map(f64::abs).sum();
+            let total: f64 = members
+                .iter()
+                .filter_map(|i| series[*i].values.get(p).copied().flatten())
+                .map(f64::abs)
+                .sum();
             let (mut up, mut down) = (0.0, 0.0);
             for &i in &members {
                 let Some(Some(v)) = series[i].values.get(p).copied() else { continue };
-                let scale = if group.grouping == Grouping::PercentStacked && total != 0.0 { 1.0 / total } else { 1.0 };
+                let scale = if group.grouping == Grouping::PercentStacked && total != 0.0 {
+                    1.0 / total
+                } else {
+                    1.0
+                };
                 let v = v * scale;
                 let (base, top) = if v >= 0.0 {
                     let b = up;
@@ -221,7 +255,11 @@ fn add_fits(book: &Workbook, sheet: usize, chart: &Chart, series: &mut [PlotSeri
         let source = &chart.series[s.index];
         for t in &source.fmt.trendlines {
             let pairs: Vec<(f64, f64)> =
-                s.x.iter().copied().zip(s.values.iter()).filter_map(|(x, y)| y.map(|y| (x, y))).collect();
+                s.x.iter()
+                    .copied()
+                    .zip(s.values.iter())
+                    .filter_map(|(x, y)| y.map(|y| (x, y)))
+                    .collect();
             let (xs, ys): (Vec<f64>, Vec<f64>) = pairs.into_iter().unzip();
             if let Some(fit) = trend::fit(t, &xs, &ys, &s.name) {
                 s.trendlines.push(fit);
@@ -237,7 +275,8 @@ fn add_fits(book: &Workbook, sheet: usize, chart: &Chart, series: &mut [PlotSeri
                 Some(ErrorSource::Numbers(n)) => n.clone(),
                 None => Vec::new(),
             };
-            let amounts = stats::error_amounts(bars, &s.values, (custom(&bars.plus), custom(&bars.minus)));
+            let amounts =
+                stats::error_amounts(bars, &s.values, (custom(&bars.plus), custom(&bars.minus)));
             s.error_bars.push(ErrorResult {
                 direction: bars.direction.unwrap_or(ErrorDirection::Y),
                 amounts,
@@ -256,7 +295,12 @@ fn extent(values: impl Iterator<Item = f64>) -> Option<(f64, f64)> {
 }
 
 /// The data extents along the Y (or X) direction of the series on an axis.
-fn data_extent(chart: &Chart, series: &[PlotSeries], axis: &Axis, horizontal_x: bool) -> Option<(f64, f64)> {
+fn data_extent(
+    chart: &Chart,
+    series: &[PlotSeries],
+    axis: &Axis,
+    horizontal_x: bool,
+) -> Option<(f64, f64)> {
     let mut points: Vec<f64> = Vec::new();
     for s in series {
         let group = chart.spec.groups.get(s.group)?;
@@ -308,9 +352,18 @@ fn tick_text(value: f64, axis: &Axis, source_format: &str) -> String {
 }
 
 /// The scale of a value axis and whether the axis belongs to a 100 percent stacked group.
-fn value_axis_scale(chart: &Chart, series: &[PlotSeries], axis: &Axis, is_x_of_scatter: bool, length: f64) -> (AxisScale, bool) {
+fn value_axis_scale(
+    chart: &Chart,
+    series: &[PlotSeries],
+    axis: &Axis,
+    is_x_of_scatter: bool,
+    length: f64,
+) -> (AxisScale, bool) {
     let spec = &chart.spec;
-    let percent = spec.groups.iter().any(|g| g.axes.contains(&axis.id) && g.grouping == Grouping::PercentStacked);
+    let percent = spec
+        .groups
+        .iter()
+        .any(|g| g.axes.contains(&axis.id) && g.grouping == Grouping::PercentStacked);
     let (lo, hi) = data_extent(chart, series, axis, is_x_of_scatter).unwrap_or((0.0, 1.0));
     let fixed = fixed_of(axis);
     let scale = if percent {
@@ -329,9 +382,17 @@ fn value_axis_scale(chart: &Chart, series: &[PlotSeries], axis: &Axis, is_x_of_s
 }
 
 /// The figures of one axis: its scale and ticks for a value axis, its labels for a category axis.
-fn plot_axis(chart: &Chart, series: &[PlotSeries], size: PlotSize, format: &str, axis: &Axis) -> PlotAxis {
+fn plot_axis(
+    chart: &Chart,
+    series: &[PlotSeries],
+    size: PlotSize,
+    format: &str,
+    axis: &Axis,
+) -> PlotAxis {
     let spec = &chart.spec;
-    let scatter = spec.groups.iter().any(|g| g.axes.contains(&axis.id) && matches!(g.kind, GroupKind::Scatter | GroupKind::Bubble));
+    let scatter = spec.groups.iter().any(|g| {
+        g.axes.contains(&axis.id) && matches!(g.kind, GroupKind::Scatter | GroupKind::Bubble)
+    });
     let is_x_of_scatter = scatter && spec.groups.iter().any(|g| g.axes.first() == Some(&axis.id));
     let horizontal = axis.position == AxisPosition::Bottom || axis.position == AxisPosition::Top;
     let length = if horizontal { size.width } else { size.height };
@@ -347,8 +408,12 @@ fn plot_axis(chart: &Chart, series: &[PlotSeries], size: PlotSize, format: &str,
     };
     if axis.kind == AxisKind::Value {
         let (scale, percent) = value_axis_scale(chart, series, axis, is_x_of_scatter, length);
-        let tick_format = if percent && axis.num_fmt.as_ref().is_none_or(|f| f.1) { "0%" } else { format };
-        pa.ticks = scale::ticks(&scale).into_iter().map(|v| (v, tick_text(v, axis, tick_format))).collect();
+        let tick_format =
+            if percent && axis.num_fmt.as_ref().is_none_or(|f| f.1) { "0%" } else { format };
+        pa.ticks = scale::ticks(&scale)
+            .into_iter()
+            .map(|v| (v, tick_text(v, axis, tick_format)))
+            .collect();
         pa.scale = Some(scale);
     } else {
         let longest = series
@@ -378,8 +443,15 @@ fn set_cross_points(spec: &ChartSpec, out: &mut [PlotAxis]) {
 }
 
 /// The figures of every axis of a chart: scales, ticks, categories and crossing points.
-fn plot_axes(book: &Workbook, chart: &Chart, series: &[PlotSeries], size: PlotSize, format: &str) -> Vec<PlotAxis> {
-    let mut out: Vec<PlotAxis> = chart.spec.axes.iter().map(|axis| plot_axis(chart, series, size, format, axis)).collect();
+fn plot_axes(
+    book: &Workbook,
+    chart: &Chart,
+    series: &[PlotSeries],
+    size: PlotSize,
+    format: &str,
+) -> Vec<PlotAxis> {
+    let mut out: Vec<PlotAxis> =
+        chart.spec.axes.iter().map(|axis| plot_axis(chart, series, size, format, axis)).collect();
     let _ = book;
     set_cross_points(&chart.spec, &mut out);
     out
@@ -404,8 +476,10 @@ pub fn plot(book: &Workbook, sheet: usize, chart: &Chart, size: PlotSize) -> Plo
         out.extended = Some(extended(book, sheet, chart));
         return out;
     }
-    let mut series: Vec<PlotSeries> =
-        (0..chart.series.len()).filter(|i| !chart.series[*i].fmt.filtered).map(|i| read_series(book, sheet, chart, i)).collect();
+    let mut series: Vec<PlotSeries> = (0..chart.series.len())
+        .filter(|i| !chart.series[*i].fmt.filtered)
+        .map(|i| read_series(book, sheet, chart, i))
+        .collect();
     stack(chart, &mut series);
     add_fits(book, sheet, chart, &mut series);
     let format = chart
@@ -419,7 +493,13 @@ pub fn plot(book: &Workbook, sheet: usize, chart: &Chart, size: PlotSize) -> Plo
 }
 
 /// The boxes of a box and whisker chart, grouping the values by their labels.
-fn box_whisker_plot(pairs: Vec<(String, f64)>, cats: &Resolved, values: &Resolved, numbers: &[f64], options: &BoxOptions) -> ExtendedPlot {
+fn box_whisker_plot(
+    pairs: Vec<(String, f64)>,
+    cats: &Resolved,
+    values: &Resolved,
+    numbers: &[f64],
+    options: &BoxOptions,
+) -> ExtendedPlot {
     let mut groups: Vec<(String, Vec<f64>)> = Vec::new();
     for (label, v) in pairs {
         match groups.iter_mut().find(|(l, _)| *l == label) {
@@ -427,11 +507,16 @@ fn box_whisker_plot(pairs: Vec<(String, f64)>, cats: &Resolved, values: &Resolve
             None => groups.push((label, vec![v])),
         }
     }
-    if cats.texts.is_empty() || groups.len() == values.values.len() && groups.iter().all(|g| g.1.len() == 1) {
+    if cats.texts.is_empty()
+        || groups.len() == values.values.len() && groups.iter().all(|g| g.1.len() == 1)
+    {
         groups = vec![(String::new(), numbers.to_vec())];
     }
     ExtendedPlot::BoxWhisker {
-        boxes: groups.into_iter().filter_map(|(l, v)| stats::box_stats(&v, options).map(|b| (l, b))).collect(),
+        boxes: groups
+            .into_iter()
+            .filter_map(|(l, v)| stats::box_stats(&v, options).map(|b| (l, b)))
+            .collect(),
     }
 }
 
@@ -441,7 +526,8 @@ fn hierarchy_plot(pairs: Vec<(String, f64)>, cats: &Resolved, values: &Resolved)
     let leaves = if cols > 1 && rows as usize * cols as usize == cats.texts.len() {
         (0..rows as usize)
             .map(|r| {
-                let path = (0..cols as usize).map(|c| cats.texts[r * cols as usize + c].clone()).collect();
+                let path =
+                    (0..cols as usize).map(|c| cats.texts[r * cols as usize + c].clone()).collect();
                 (path, values.values.get(r).and_then(Value::as_number).unwrap_or(0.0))
             })
             .collect()
@@ -456,7 +542,8 @@ fn extended(book: &Workbook, sheet: usize, chart: &Chart) -> ExtendedPlot {
     let ex = chart.spec.ex.clone().unwrap_or_default();
     let first = ex.series.first().cloned().unwrap_or_default();
     let s = chart.series.get(first.data);
-    let values: Resolved = s.map(|s| chartdata::resolve(book, sheet, &s.values)).unwrap_or_default();
+    let values: Resolved =
+        s.map(|s| chartdata::resolve(book, sheet, &s.values)).unwrap_or_default();
     let cats: Resolved = s
         .and_then(|s| s.categories.as_deref())
         .map(|c| chartdata::resolve(book, sheet, c))
@@ -468,7 +555,11 @@ fn extended(book: &Workbook, sheet: usize, chart: &Chart) -> ExtendedPlot {
         (1..=values.values.len()).map(|i| i.to_string()).collect()
     };
     let pairs = || -> Vec<(String, f64)> {
-        labels.iter().cloned().zip(values.values.iter().map(|v| v.as_number().unwrap_or(0.0))).collect()
+        labels
+            .iter()
+            .cloned()
+            .zip(values.values.iter().map(|v| v.as_number().unwrap_or(0.0)))
+            .collect()
     };
     match first.layout {
         ExLayout::ClusteredColumn if ex.series.iter().any(|e| e.layout == ExLayout::ParetoLine) => {
@@ -478,9 +569,13 @@ fn extended(book: &Workbook, sheet: usize, chart: &Chart) -> ExtendedPlot {
         ExLayout::ClusteredColumn | ExLayout::ParetoLine => ExtendedPlot::Histogram {
             bins: stats::histogram(&numbers, &first.binning.unwrap_or_default()),
         },
-        ExLayout::BoxWhisker => {
-            box_whisker_plot(pairs(), &cats, &values, &numbers, &first.box_options.unwrap_or_default())
-        }
+        ExLayout::BoxWhisker => box_whisker_plot(
+            pairs(),
+            &cats,
+            &values,
+            &numbers,
+            &first.box_options.unwrap_or_default(),
+        ),
         ExLayout::Waterfall => {
             let nums: Vec<f64> = pairs().iter().map(|p| p.1).collect();
             let bars = stats::waterfall(&nums, &first.subtotals);

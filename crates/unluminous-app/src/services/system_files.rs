@@ -377,7 +377,7 @@ mod platform {
     }
 
     pub fn pointer(context: &egui::Context) -> Option<egui::Pos2> {
-        let inside =context.input(|input| input.viewport().inner_rect)?;
+        let inside = context.input(|input| input.viewport().inner_rect)?;
         let at = pointer_on_screen()?;
         Some(egui::pos2(at.x - inside.min.x, at.y - inside.min.y))
     }

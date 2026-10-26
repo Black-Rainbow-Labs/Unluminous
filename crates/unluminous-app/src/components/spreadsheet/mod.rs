@@ -17,12 +17,12 @@ pub mod keys_b;
 pub mod menus;
 pub mod objects;
 pub mod objects_c;
-pub mod sparkline;
 pub mod overlay_a;
 pub mod panes_a;
 pub mod panes_b;
 pub mod panes_b_pivot;
 pub mod preview;
+pub mod sparkline;
 
 use egui::{CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 use unluminous_sheet::coord::{column_name, CellRef};
@@ -202,7 +202,13 @@ fn draw(
     after_the_grid(ui, book, look, &mut out, asked);
     if let Some(col) = book.view.audit.open_filter.take() {
         book.filter_values = filter_values(book, col);
-        let header = unluminous_sheet::coord::CellRef::new(book.session.book.sheets[book.view.sheet].filter.as_ref().map_or(0, |f| f.range.first.row), col);
+        let header = unluminous_sheet::coord::CellRef::new(
+            book.session.book.sheets[book.view.sheet]
+                .filter
+                .as_ref()
+                .map_or(0, |f| f.range.first.row),
+            col,
+        );
         book.view.filter_menu = Some((col, grid::filter_button(book, frame, header).left_bottom()));
     }
     if book.view.edit.as_ref().is_some_and(|e| !e.in_bar) {
@@ -248,7 +254,13 @@ fn is_a_chart_sheet(book: &Book) -> bool {
 
 /// Draw a chart sheet's one chart over the whole area. A press chooses the chart and a right click opens
 /// its menu, so every chart command is on a chart sheet as it is on a chart over cells.
-fn show_a_chart_sheet(ui: &egui::Ui, area: Rect, book: &mut Book, look: &Look<'_>, asked: &mut Asked) {
+fn show_a_chart_sheet(
+    ui: &egui::Ui,
+    area: Rect,
+    book: &mut Book,
+    look: &Look<'_>,
+    asked: &mut Asked,
+) {
     let ink = grid::Ink::of(look, book.view.paper);
     let (pressed, menu) = chart::show_chart_sheet(ui, book, area, &ink, look);
     if pressed {

@@ -386,9 +386,11 @@ fn text_condition(kind: &str, text: &str) -> Result<(String, String), String> {
         "not-ends" => ("notEqual", format!("*{text}")),
         "contains" => ("equal", format!("*{text}*")),
         "not-contains" => ("notEqual", format!("*{text}*")),
-        other => return Err(format!(
+        other => {
+            return Err(format!(
             "a text filter is equals, begins, ends, contains or their not- forms, not `{other}`"
-        )),
+        ))
+        }
     };
     Ok((op.to_owned(), value))
 }

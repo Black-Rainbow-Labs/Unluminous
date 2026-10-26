@@ -356,12 +356,15 @@ impl Layout {
         } else {
             Rect::from_min_max(Pos2::new(area.left() + rw, area.top() + ch), area.max)
         };
-        let split = sheet.frozen.is_none().then_some(sheet.view.split.as_ref()).flatten().map(|sp| {
-            // A split is saved in twentieths of a point from the window's top left, headers included.
-            let x = if sp.x > 0.0 { (sp.x as f32 / 20.0 - rw / zoom).max(8.0) * zoom } else { 0.0 };
-            let y = if sp.y > 0.0 { (sp.y as f32 / 20.0 - ch / zoom).max(8.0) * zoom } else { 0.0 };
-            Vec2::new(x.min(cells.width() - 8.0), y.min(cells.height() - 8.0))
-        });
+        let split =
+            sheet.frozen.is_none().then_some(sheet.view.split.as_ref()).flatten().map(|sp| {
+                // A split is saved in twentieths of a point from the window's top left, headers included.
+                let x =
+                    if sp.x > 0.0 { (sp.x as f32 / 20.0 - rw / zoom).max(8.0) * zoom } else { 0.0 };
+                let y =
+                    if sp.y > 0.0 { (sp.y as f32 / 20.0 - ch / zoom).max(8.0) * zoom } else { 0.0 };
+                Vec2::new(x.min(cells.width() - 8.0), y.min(cells.height() - 8.0))
+            });
         Layout { area, cells, zoom, rtl, headings, split }
     }
 
@@ -996,7 +999,12 @@ fn read_the_pointer(
                 if let Some(to) = fill_target(book.view.range(), target) {
                     if modifiers.command {
                         // Ctrl with the fill handle turns a series into a copy and a copy into a series.
-                        out.words.push(vec!["fill-handle".to_owned(), to.a1(), "series".to_owned(), "control".to_owned()]);
+                        out.words.push(vec![
+                            "fill-handle".to_owned(),
+                            to.a1(),
+                            "series".to_owned(),
+                            "control".to_owned(),
+                        ]);
                     } else {
                         out.acts.push(Act::FillTo(to));
                     }

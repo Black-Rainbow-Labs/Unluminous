@@ -641,7 +641,9 @@ fn pick_from_list(sheet: &mut Spreadsheet) -> Result<Answer, String> {
     let book = sheet.current_book()?;
     let at = book.view.cursor;
     if let Some(filter) = &book.session.book.sheets[book.view.sheet].filter {
-        if at.row == filter.range.first.row && (filter.range.first.col..=filter.range.last.col).contains(&at.col) {
+        if at.row == filter.range.first.row
+            && (filter.range.first.col..=filter.range.last.col).contains(&at.col)
+        {
             book.view.audit.open_filter = Some(at.col);
             return Ok(Answer::said("Filter menu"));
         }
