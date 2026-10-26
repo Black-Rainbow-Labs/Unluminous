@@ -32,11 +32,14 @@ const KNOWN_DIFFERENCES: &[(&str, &str)] = &[
     ("pages-times.json/fit-2x3", FIT_IN_ANOTHER_FONT),
 ];
 
-/// The three 2 by 3 sheets: Excel's scale is the largest that fits (46, 50 and 47) while the estimate in
-/// `pages::paginate` is one lower, and no allowance or boundary term reproduces all four fonts. The two 1 by 1 sheets:
-/// Excel's PDF for Aptos Narrow shows 106 pixel columns, which is 23%, the paginator's scale, so the scale is right
-/// and only the break after the data is not listed by Excel (it is listed for Arial at 25%, and leaving it out when
-/// less than 30 pixels remain breaks Calibri's margins-asym sheet).
+/// Excel's PDFs for the fit sheets give the scales it used, read from the column pitch: 1 by 1 is 23% (Aptos Narrow
+/// and Times New Roman), 25% (Arial), 24% (Calibri) and 18% (Consolas), all the paginator's scale, so for those two
+/// sheets only the break after the data differs: Excel lists none for Aptos Narrow and Times New Roman and lists one
+/// for Arial. 2 by 3 is 46% (Aptos Narrow), 50% (Arial), 47% (Times New Roman), 48% (Calibri) and 37% (Consolas).
+/// Those are the largest scales that fit except for Calibri, which is one lower, and the paginator's estimate is
+/// one lower than Excel's for the three sheets here. No allowance and boundary term, rounded up, down or to the
+/// nearest, reproduces all five fonts, and leaving out the break when under 30 pixels remain breaks Calibri's
+/// margins-asym sheet.
 const FIT_IN_ANOTHER_FONT: &str = "Excel's fitted scale or its trailing break differs from the paginator's";
 
 /// The one based rows or columns of a list of breaks in Excel's answer.
