@@ -438,7 +438,12 @@ pub fn paint_page(painter: &egui::Painter, rect: Rect, page: &unluminous_word::l
                     Color32::from_rgb(c.r, c.g, c.b),
                 );
             }
-            Item::Picture { .. } | Item::Placeholder { .. } => {}
+            // A sheet's printout makes none of the Word only items, and pictures are drawn by the grid.
+            Item::Picture { .. }
+            | Item::Placeholder { .. }
+            | Item::Shape { .. }
+            | Item::TableEdge { .. }
+            | Item::Object { .. } => {}
         }
     }
 }

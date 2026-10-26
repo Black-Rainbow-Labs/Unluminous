@@ -184,6 +184,7 @@ fn blank(layout: &PageLayout, number: u32, items: Vec<Item>) -> PdfPage {
         carets: Vec::new(),
         first: None,
         background: None,
+        notes: Vec::new(),
     }
 }
 
