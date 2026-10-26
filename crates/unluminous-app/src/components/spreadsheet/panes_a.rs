@@ -3,7 +3,7 @@
 //! stored box, and the button offered after a calculated column is filled. Each one asks for a change by
 //! pushing the words of a verb, as a menu entry does, so a press and an agent's call are the same call.
 
-use egui::{Align2, Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
+use egui::{Align2, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
 use super::grid::Frame;
 use crate::services::plugin_ui::Look;
