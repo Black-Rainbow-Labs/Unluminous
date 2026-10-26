@@ -7428,6 +7428,35 @@ every editing operation as an undoable `edit::Session` call. Seven rules:
 are `unluminous-cli/src/plugins.rs`'s `SPREADSHEET`. `crates/unluminous-app/tests/spreadsheet.rs` is the window
 tests, and the agent study's `s37-spreadsheet` watches a model add a column to a CSV file.
 
+### Round 2 brought the workbook to Excel parity (`task-2360`)
+
+`tasks/task-2357-spreadsheet-round2-tdd.md` is the design. What it added, and the rules it left:
+
+- **More formats are read, and `.ods` is written.** `.xls` (BIFF8 inside the compound file in `cfb.rs`, read by
+  `xls/`), `.xlsb` (`xlsb/`), `.ods` (`ods/`, read and written), and the text formats `fixedwidth.rs`, `html.rs`,
+  `json.rs` and `xml2003.rs`. `save` on a workbook from a format this version does not write is refused with the `.xlsx` name to `save-as`, and `save-as` to `.html` or `.pdf` exports.
+- **Charts are drawn from numbers Excel was asked for.** `plot::plot` gives a drawing its series, axes and the
+  `chartEx` statistics; `plot/scale.rs` was fitted to 210 axis scales Excel reported (207 match) and
+  `plot/trend.rs` to 175 trendline labels (166 exact). The answers are the `.jsonl` files beside
+  `tests/chart_oracle.rs`, which lists every case that does not match by id. A `chartEx` part made here is
+  written with its style and colors parts and `_xlchart.v1.N` names, or Excel refuses to open the file.
+  `components/spreadsheet/chart_paint.rs` draws every type and decides nothing about the workbook.
+- **Pivot tables, slicers and timelines** are `pivot/` and `slicers.rs`; **Goal Seek, data tables and
+  scenarios** are `whatif.rs`; **protection** is `protect.rs`; **pictures, shapes, text boxes** are `objects/`;
+  **sparklines and icon sets** are `edit/sparklines.rs` and `conditional.rs`. Each has its API notes in
+  `crates/unluminous-sheet/docs/` and its Excel scripts in `tools/excel-oracle/`.
+- **Pages are Excel's pages.** `pages/paginate.rs` breaks a sheet into printed pages and `tests/pages.rs`
+  compares 123 sheets with the page counts and scales Excel's own PDFs show. Excel does not take the largest
+  fit to page scale that fits, so the paginator applies the estimate cap it measured; three 2 by 3 sheets in
+  Aptos Narrow, Arial and Times New Roman are in `KNOWN_DIFFERENCES`. Print preview draws those pages, and
+  PDF export goes through `crates/unluminous-word/src/pdf.rs`.
+- **Page Layout view puts the page gaps into the row and column axes**, so the grid, the pointer and the
+  selection need no second set of coordinates; the paper is drawn over the gaps.
+- **The app's round 2 verbs live in `services/spreadsheet/verbs_<area>.rs` and their menu levels in
+  `catalogue_<area>.rs`**, each chained with one line from `verbs::run` and the tree. Add a new area the same
+  way, with a row in `SPREADSHEET` for every verb.
+- **Still not in this version**: running VBA macros, Power Query, Solver, SmartArt and form controls.
+
 ## A notebook is one document of percent cells, and the kernel is spoken to through Python
 
 Opening a `.ipynb` file opens a notebook tab: code, Markdown and raw cells, run against a Jupyter
