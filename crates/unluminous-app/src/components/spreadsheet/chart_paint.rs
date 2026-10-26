@@ -433,6 +433,7 @@ fn legend_entries(plot: &Plot, chart: &Chart, colours: &Colours) -> Vec<(String,
     out
 }
 
+/// Draw the legend and return the room that is left for the chart.
 fn draw_legend(
     painter: &egui::Painter,
     body: Rect,
@@ -462,47 +463,84 @@ fn draw_legend(
         legend.position,
         LegendPosition::Left | LegendPosition::Right | LegendPosition::TopRight
     );
-    let draw_entry = |at: Pos2, name: &str, colour: Color32| {
-        painter.rect_filled(
-            Rect::from_min_size(Pos2::new(at.x, at.y + 2.0), Vec2::splat(key)),
-            1,
-            colour,
-        );
-        painter.text(
-            Pos2::new(at.x + key + 4.0, at.y),
+    let kit = LegendKit { painter, font, text: colours.text, key, row };
+    if vertical {
+        return legend_down_the_side(&kit, body, legend, &entries, &widths);
+    }
+    legend_along_the_edge(&kit, body, legend, &entries, &widths)
+}
+
+/// What drawing a legend needs: the painter, the text font and colour, the key square size and row height.
+struct LegendKit<'a> {
+    painter: &'a egui::Painter,
+    font: FontId,
+    text: Color32,
+    key: f32,
+    row: f32,
+}
+
+impl LegendKit<'_> {
+    /// Draw one legend entry: a colour key with the name beside it.
+    fn entry(&self, at: Pos2, name: &str, colour: Color32) {
+        let key = Rect::from_min_size(Pos2::new(at.x, at.y + 2.0), Vec2::splat(self.key));
+        self.painter.rect_filled(key, 1, colour);
+        self.painter.text(
+            Pos2::new(at.x + self.key + 4.0, at.y),
             egui::Align2::LEFT_TOP,
             name,
-            font.clone(),
-            colours.text,
+            self.font.clone(),
+            self.text,
         );
-    };
-    if vertical {
-        let width = widths.iter().copied().fold(0.0, f32::max) + key + 12.0;
-        let (x, rest) = match legend.position {
-            LegendPosition::Left => (
-                body.left(),
-                Rect::from_min_max(Pos2::new(body.left() + width, body.top()), body.max),
-            ),
-            _ => (
-                body.right() - width,
-                Rect::from_min_max(body.min, Pos2::new(body.right() - width, body.bottom())),
-            ),
-        };
-        let y0 = body.center().y - row * entries.len() as f32 / 2.0;
-        for (i, (name, colour)) in entries.iter().enumerate() {
-            draw_entry(Pos2::new(x, y0 + row * i as f32), name, *colour);
-        }
-        return if legend.overlay { body } else { rest };
     }
+}
+
+/// Draw a legend as a column at the left or right of the body; returns the room left for the chart.
+fn legend_down_the_side(
+    kit: &LegendKit,
+    body: Rect,
+    legend: &Legend,
+    entries: &[(String, Color32)],
+    widths: &[f32],
+) -> Rect {
+    let width = widths.iter().copied().fold(0.0, f32::max) + kit.key + 12.0;
+    let (x, rest) = match legend.position {
+        LegendPosition::Left => {
+            (body.left(), Rect::from_min_max(Pos2::new(body.left() + width, body.top()), body.max))
+        }
+        _ => (
+            body.right() - width,
+            Rect::from_min_max(body.min, Pos2::new(body.right() - width, body.bottom())),
+        ),
+    };
+    let y0 = body.center().y - kit.row * entries.len() as f32 / 2.0;
+    for (i, (name, colour)) in entries.iter().enumerate() {
+        kit.entry(Pos2::new(x, y0 + kit.row * i as f32), name, *colour);
+    }
+    if legend.overlay {
+        body
+    } else {
+        rest
+    }
+}
+
+/// Draw a legend as a row along the top or bottom of the body; returns the room left for the chart.
+fn legend_along_the_edge(
+    kit: &LegendKit,
+    body: Rect,
+    legend: &Legend,
+    entries: &[(String, Color32)],
+    widths: &[f32],
+) -> Rect {
+    let (key, row) = (kit.key, kit.row);
     let total: f32 = widths.iter().map(|w| w + key + 16.0).sum();
     let mut x = body.center().x - total.min(body.width()) / 2.0;
     let y =
         if legend.position == LegendPosition::Top { body.top() + 2.0 } else { body.bottom() - row };
-    for ((name, colour), w) in entries.iter().zip(&widths) {
+    for ((name, colour), w) in entries.iter().zip(widths) {
         if x + w + key > body.right() {
             break;
         }
-        draw_entry(Pos2::new(x, y), name, *colour);
+        kit.entry(Pos2::new(x, y), name, *colour);
         x += w + key + 16.0;
     }
     if legend.overlay {
@@ -988,6 +1026,7 @@ fn draw_group(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_bars(
     painter: &egui::Painter,
     f: &Frame2d,
@@ -1034,13 +1073,18 @@ fn draw_bars(
                 .find(|p| p.index as usize == i)
                 .and_then(|p| fill_of(&p.sp_pr, &colours.accents))
                 .unwrap_or(colour);
-            if !no_fill(&fmt.sp_pr) {
-                painter.rect_filled(rect, 0, fill);
-            }
-            if depth > 0.0 {
-                draw_depth(painter, rect, depth, fill);
-            }
+            paint_bar(painter, rect, fill, !no_fill(&fmt.sp_pr), depth);
         }
+    }
+}
+
+/// Paint one bar: its front when the series has a fill, then its depth faces for a 3D chart.
+fn paint_bar(painter: &egui::Painter, rect: Rect, fill: Color32, filled: bool, depth: f32) {
+    if filled {
+        painter.rect_filled(rect, 0, fill);
+    }
+    if depth > 0.0 {
+        draw_depth(painter, rect, depth, fill);
     }
 }
 
@@ -1147,23 +1191,31 @@ fn draw_lines(
         }
     }
     if group.hi_low_lines || group.drop_lines {
-        let all: Vec<&&PlotSeries> = members.iter().collect();
-        let n = all.iter().map(|s| s.values.len()).max().unwrap_or(0);
-        for i in 0..n {
-            let ys: Vec<f64> =
-                all.iter().filter_map(|s| s.values.get(i).copied().flatten()).collect();
-            if let (Some(lo), Some(hi)) =
-                (ys.iter().copied().reduce(f64::min), ys.iter().copied().reduce(f64::max))
-            {
-                let x = members[0].x.get(i).copied().unwrap_or(0.0);
-                let a = map.point(
-                    x,
-                    if group.drop_lines { map.value.map_or(0.0, |v| v.0) } else { lo },
-                    i,
-                );
-                let b = map.point(x, hi, i);
-                painter.line_segment([a, b], Stroke::new(m.line(), colours.dim));
-            }
+        draw_hi_low_lines(painter, map, members, group, colours, m);
+    }
+}
+
+/// Draw the high low lines (lowest to highest value) or the drop lines (axis to highest value) of a
+/// line group at each category.
+fn draw_hi_low_lines(
+    painter: &egui::Painter,
+    map: &Mapper,
+    members: &[&PlotSeries],
+    group: &Group,
+    colours: &Colours,
+    m: &Metrics,
+) {
+    let n = members.iter().map(|s| s.values.len()).max().unwrap_or(0);
+    for i in 0..n {
+        let ys: Vec<f64> =
+            members.iter().filter_map(|s| s.values.get(i).copied().flatten()).collect();
+        if let (Some(lo), Some(hi)) =
+            (ys.iter().copied().reduce(f64::min), ys.iter().copied().reduce(f64::max))
+        {
+            let x = members[0].x.get(i).copied().unwrap_or(0.0);
+            let from = if group.drop_lines { map.value.map_or(0.0, |v| v.0) } else { lo };
+            let (a, b) = (map.point(x, from, i), map.point(x, hi, i));
+            painter.line_segment([a, b], Stroke::new(m.line(), colours.dim));
         }
     }
 }
@@ -1222,6 +1274,26 @@ pub fn catmull(points: &[Pos2]) -> Vec<Pos2> {
     out
 }
 
+/// The marker symbols drawn as strokes: a diagonal cross, a plus, or both together for a star.
+fn draw_cross_marker(
+    painter: &egui::Painter,
+    at: Pos2,
+    symbol: Option<&str>,
+    r: f32,
+    colour: Color32,
+) {
+    let s = Stroke::new(1.5, colour);
+    if symbol == Some("x") || symbol == Some("star") {
+        painter.line_segment([at + Vec2::new(-r, -r), at + Vec2::new(r, r)], s);
+        painter.line_segment([at + Vec2::new(-r, r), at + Vec2::new(r, -r)], s);
+    }
+    if symbol == Some("plus") || symbol == Some("star") {
+        painter.line_segment([at + Vec2::new(-r, 0.0), at + Vec2::new(r, 0.0)], s);
+        painter.line_segment([at + Vec2::new(0.0, -r), at + Vec2::new(0.0, r)], s);
+    }
+}
+
+/// Draw one point marker of the given symbol name, centred on a point.
 fn draw_marker(
     painter: &egui::Painter,
     at: Pos2,
@@ -1253,17 +1325,7 @@ fn draw_marker(
                 Stroke::NONE,
             ));
         }
-        "x" | "plus" | "star" => {
-            let s = Stroke::new(1.5, colour);
-            if symbol == Some("x") || symbol == Some("star") {
-                painter.line_segment([at + Vec2::new(-r, -r), at + Vec2::new(r, r)], s);
-                painter.line_segment([at + Vec2::new(-r, r), at + Vec2::new(r, -r)], s);
-            }
-            if symbol == Some("plus") || symbol == Some("star") {
-                painter.line_segment([at + Vec2::new(-r, 0.0), at + Vec2::new(r, 0.0)], s);
-                painter.line_segment([at + Vec2::new(0.0, -r), at + Vec2::new(0.0, r)], s);
-            }
-        }
+        "x" | "plus" | "star" => draw_cross_marker(painter, at, symbol, r, colour),
         "dash" => {
             painter.line_segment(
                 [at + Vec2::new(-r, 0.0), at + Vec2::new(r, 0.0)],
@@ -1365,42 +1427,52 @@ fn draw_stock(
             [Pos2::new(x, map.point(0.0, h, i).y), Pos2::new(x, map.point(0.0, l, i).y)],
             Stroke::new(m.line() * 1.2, ink),
         );
-        match open.and_then(|o| o.values[i]) {
-            Some(o) if group.up_down_bars.is_some() => {
-                let (top, bottom) = (map.point(0.0, o.max(c), i).y, map.point(0.0, o.min(c), i).y);
-                let rect = Rect::from_min_max(
-                    Pos2::new(x - band * 0.25, top),
-                    Pos2::new(x + band * 0.25, bottom.max(top + 1.0)),
-                );
-                let fill = if c >= o { colours.paper } else { colours.text };
-                painter.rect(rect, 0, fill, Stroke::new(m.line(), ink), egui::StrokeKind::Inside);
-            }
-            Some(o) => {
-                painter.line_segment(
-                    [
-                        Pos2::new(x - band * 0.2, map.point(0.0, o, i).y),
-                        Pos2::new(x, map.point(0.0, o, i).y),
-                    ],
-                    Stroke::new(m.line(), ink),
-                );
-                painter.line_segment(
-                    [
-                        Pos2::new(x, map.point(0.0, c, i).y),
-                        Pos2::new(x + band * 0.2, map.point(0.0, c, i).y),
-                    ],
-                    Stroke::new(m.line(), ink),
-                );
-            }
-            None => {
-                painter.line_segment(
-                    [
-                        Pos2::new(x, map.point(0.0, c, i).y),
-                        Pos2::new(x + band * 0.2, map.point(0.0, c, i).y),
-                    ],
-                    Stroke::new(m.line(), ink),
-                );
-            }
+        let open_value = open.and_then(|o| o.values[i]);
+        let stick =
+            StockStick { x, band, close: c, index: i, up_down: group.up_down_bars.is_some() };
+        draw_stock_open_close(painter, map, &stick, open_value, colours, m);
+    }
+}
+
+/// Where the stick of one stock chart point stands, and what it closed at.
+struct StockStick {
+    x: f32,
+    band: f32,
+    close: f64,
+    index: usize,
+    up_down: bool,
+}
+
+/// Draw the open and close of a stock point: an up or down bar, or ticks to the left and right.
+fn draw_stock_open_close(
+    painter: &egui::Painter,
+    map: &Mapper,
+    k: &StockStick,
+    open: Option<f64>,
+    colours: &Colours,
+    m: &Metrics,
+) {
+    let (x, band, c, i) = (k.x, k.band, k.close, k.index);
+    let ink = colours.text;
+    let tick = |from: f32, to: f32, value: f64| {
+        let y = map.point(0.0, value, i).y;
+        painter.line_segment([Pos2::new(from, y), Pos2::new(to, y)], Stroke::new(m.line(), ink));
+    };
+    match open {
+        Some(o) if k.up_down => {
+            let (top, bottom) = (map.point(0.0, o.max(c), i).y, map.point(0.0, o.min(c), i).y);
+            let rect = Rect::from_min_max(
+                Pos2::new(x - band * 0.25, top),
+                Pos2::new(x + band * 0.25, bottom.max(top + 1.0)),
+            );
+            let fill = if c >= o { colours.paper } else { colours.text };
+            painter.rect(rect, 0, fill, Stroke::new(m.line(), ink), egui::StrokeKind::Inside);
         }
+        Some(o) => {
+            tick(x - band * 0.2, x, o);
+            tick(x, x + band * 0.2, c);
+        }
+        None => tick(x, x + band * 0.2, c),
     }
 }
 
@@ -1414,43 +1486,65 @@ fn draw_overlays(
     colours: &Colours,
     m: &Metrics,
 ) {
+    draw_trendlines(painter, map, s, chart, colours, m);
+    for e in &s.error_bars {
+        draw_error_bars(painter, map, s, e, colours, m);
+    }
+    let labels = chart.series[s.index].fmt.labels.as_ref().or(group.labels.as_ref());
+    if let Some(l) = labels.filter(|l| !l.delete && l.fields.shows_anything()) {
+        draw_labels(painter, map, s, group, l, colours, m);
+    }
+}
+
+/// The screen point of one trendline sample: category charts fit against 1, 2, 3, so an X is already a
+/// band position there.
+fn trend_point(map: &Mapper, x: f64, y: f64) -> Pos2 {
+    if map.x_scale.is_some() {
+        return map.point(x, y, 0);
+    }
+    let fx = (x as f32 - 0.5) / map.cat_count.max(1) as f32;
+    let fy = map.v(y);
+    Pos2::new(
+        map.inner.left() + map.inner.width() * fx,
+        map.inner.bottom() - map.inner.height() * fy,
+    )
+}
+
+/// The equation and R squared text a trendline asks to show, empty when it shows neither.
+fn trend_text(t: &unluminous_sheet::plot::TrendResult, spec: &Trendline) -> String {
+    let mut text = String::new();
+    if spec.show_equation {
+        text.push_str(&t.equation);
+    }
+    if spec.show_r_squared {
+        if let Some(r2) = t.r_squared {
+            if !text.is_empty() {
+                text.push('\n');
+            }
+            text.push_str(&unluminous_sheet::plot::equation::r_squared(r2));
+        }
+    }
+    text
+}
+
+/// Draw the trendlines of a series, with their equation text at the end of each.
+fn draw_trendlines(
+    painter: &egui::Painter,
+    map: &Mapper,
+    s: &PlotSeries,
+    chart: &Chart,
+    colours: &Colours,
+    m: &Metrics,
+) {
     let colour = series_colour(chart, s, colours);
-    let source = &chart.series[s.index];
-    for (t, spec) in s.trendlines.iter().zip(&source.fmt.trendlines) {
-        let points: Vec<Pos2> = t
-            .samples
-            .iter()
-            .map(|(x, y)| {
-                // Category charts fit against 1, 2, 3, so an X is already a band position.
-                if map.x_scale.is_some() {
-                    map.point(*x, *y, 0)
-                } else {
-                    let fx = (*x as f32 - 0.5) / map.cat_count.max(1) as f32;
-                    let fy = map.v(*y);
-                    Pos2::new(
-                        map.inner.left() + map.inner.width() * fx,
-                        map.inner.bottom() - map.inner.height() * fy,
-                    )
-                }
-            })
-            .collect();
+    for (t, spec) in s.trendlines.iter().zip(&chart.series[s.index].fmt.trendlines) {
+        let points: Vec<Pos2> = t.samples.iter().map(|(x, y)| trend_point(map, *x, *y)).collect();
         painter.add(Shape::line(
             points.clone(),
             Stroke::new(1.5 * m.zoom.max(0.7), colour.gamma_multiply(0.8)),
         ));
         if (spec.show_equation || spec.show_r_squared) && !t.equation.is_empty() {
-            let mut text = String::new();
-            if spec.show_equation {
-                text.push_str(&t.equation);
-            }
-            if spec.show_r_squared {
-                if let Some(r2) = t.r_squared {
-                    if !text.is_empty() {
-                        text.push('\n');
-                    }
-                    text.push_str(&unluminous_sheet::plot::equation::r_squared(r2));
-                }
-            }
+            let text = trend_text(t, spec);
             if let Some(last) = points.last() {
                 painter.text(
                     Pos2::new(last.x.min(map.inner.right() - 4.0), last.y - 4.0),
@@ -1462,33 +1556,36 @@ fn draw_overlays(
             }
         }
     }
-    for e in &s.error_bars {
-        for (i, v) in s.values.iter().enumerate() {
-            let Some(v) = v else { continue };
-            let plus = e.amounts.plus.get(i).copied().unwrap_or(0.0);
-            let minus = e.amounts.minus.get(i).copied().unwrap_or(0.0);
-            let x = s.x[i];
-            let (a, b) = if e.direction == ErrorDirection::X {
-                (map.point(x - minus, *v, i), map.point(x + plus, *v, i))
-            } else {
-                (map.point(x, v - minus, i), map.point(x, v + plus, i))
-            };
-            painter.line_segment([a, b], Stroke::new(m.line(), colours.text));
-            if !e.no_cap {
-                let cap = 3.0 * m.zoom;
-                let (da, db) = if e.direction == ErrorDirection::X {
-                    (Vec2::new(0.0, cap), Vec2::new(0.0, cap))
-                } else {
-                    (Vec2::new(cap, 0.0), Vec2::new(cap, 0.0))
-                };
-                painter.line_segment([a - da, a + da], Stroke::new(m.line(), colours.text));
-                painter.line_segment([b - db, b + db], Stroke::new(m.line(), colours.text));
-            }
+}
+
+/// Draw one error bar set of a series: a line for each value, with caps unless the set has none.
+fn draw_error_bars(
+    painter: &egui::Painter,
+    map: &Mapper,
+    s: &PlotSeries,
+    e: &unluminous_sheet::plot::ErrorResult,
+    colours: &Colours,
+    m: &Metrics,
+) {
+    let stroke = Stroke::new(m.line(), colours.text);
+    let along_x = e.direction == ErrorDirection::X;
+    for (i, v) in s.values.iter().enumerate() {
+        let Some(v) = v else { continue };
+        let plus = e.amounts.plus.get(i).copied().unwrap_or(0.0);
+        let minus = e.amounts.minus.get(i).copied().unwrap_or(0.0);
+        let x = s.x[i];
+        let (a, b) = if along_x {
+            (map.point(x - minus, *v, i), map.point(x + plus, *v, i))
+        } else {
+            (map.point(x, v - minus, i), map.point(x, v + plus, i))
+        };
+        painter.line_segment([a, b], stroke);
+        if !e.no_cap {
+            let cap = 3.0 * m.zoom;
+            let d = if along_x { Vec2::new(0.0, cap) } else { Vec2::new(cap, 0.0) };
+            painter.line_segment([a - d, a + d], stroke);
+            painter.line_segment([b - d, b + d], stroke);
         }
-    }
-    let labels = source.fmt.labels.as_ref().or(group.labels.as_ref());
-    if let Some(l) = labels.filter(|l| !l.delete && l.fields.shows_anything()) {
-        draw_labels(painter, map, s, group, l, colours, m);
     }
 }
 
@@ -1508,17 +1605,7 @@ fn draw_labels(
             continue;
         }
         let f = point_label.map_or(&l.fields, |p| &p.fields);
-        let mut parts = Vec::new();
-        if f.show_series {
-            parts.push(s.name.clone());
-        }
-        if f.show_category {
-            parts.push(s.labels.get(i).cloned().unwrap_or_default());
-        }
-        if f.show_value {
-            parts.push(unluminous_sheet::numfmt::general(*v, 8));
-        }
-        let text = parts.join(f.separator.as_deref().unwrap_or(", "));
+        let text = label_text(s, i, *v, f);
         if text.is_empty() {
             continue;
         }
@@ -1527,29 +1614,52 @@ fn draw_labels(
         } else {
             *v
         };
-        let at = map.point(s.x[i], y, i);
-        let (pos, anchor) = match (f.position, group.kind == GroupKind::Bar) {
-            (Some(LabelPosition::Center), _) => {
-                (map.point(s.x[i], (s.base[i] + y) / 2.0, i), egui::Align2::CENTER_CENTER)
-            }
-            (Some(LabelPosition::InsideEnd), true) => {
-                (Pos2::new(at.x, at.y + 3.0), egui::Align2::CENTER_TOP)
-            }
-            (Some(LabelPosition::Below), _) => {
-                (Pos2::new(at.x, at.y + 4.0), egui::Align2::CENTER_TOP)
-            }
-            (Some(LabelPosition::Left), _) => {
-                (Pos2::new(at.x - 5.0, at.y), egui::Align2::RIGHT_CENTER)
-            }
-            (Some(LabelPosition::Right), _) => {
-                (Pos2::new(at.x + 5.0, at.y), egui::Align2::LEFT_CENTER)
-            }
-            _ => (Pos2::new(at.x, at.y - 3.0), egui::Align2::CENTER_BOTTOM),
-        };
+        let (pos, anchor) = label_place(map, s, group, f, i, y);
         painter.text(pos, anchor, text, m.label(), colours.text);
     }
 }
 
+/// The words of a data label: the series name, category and value it asks to show, joined.
+fn label_text(s: &PlotSeries, i: usize, v: f64, f: &LabelFields) -> String {
+    let mut parts = Vec::new();
+    if f.show_series {
+        parts.push(s.name.clone());
+    }
+    if f.show_category {
+        parts.push(s.labels.get(i).cloned().unwrap_or_default());
+    }
+    if f.show_value {
+        parts.push(unluminous_sheet::numfmt::general(v, 8));
+    }
+    parts.join(f.separator.as_deref().unwrap_or(", "))
+}
+
+/// Where a data label goes and which corner of its text sits there.
+fn label_place(
+    map: &Mapper,
+    s: &PlotSeries,
+    group: &Group,
+    f: &LabelFields,
+    i: usize,
+    y: f64,
+) -> (Pos2, egui::Align2) {
+    let at = map.point(s.x[i], y, i);
+    match (f.position, group.kind == GroupKind::Bar) {
+        (Some(LabelPosition::Center), _) => {
+            (map.point(s.x[i], (s.base[i] + y) / 2.0, i), egui::Align2::CENTER_CENTER)
+        }
+        (Some(LabelPosition::InsideEnd), true) => {
+            (Pos2::new(at.x, at.y + 3.0), egui::Align2::CENTER_TOP)
+        }
+        (Some(LabelPosition::Below), _) => (Pos2::new(at.x, at.y + 4.0), egui::Align2::CENTER_TOP),
+        (Some(LabelPosition::Left), _) => (Pos2::new(at.x - 5.0, at.y), egui::Align2::RIGHT_CENTER),
+        (Some(LabelPosition::Right), _) => (Pos2::new(at.x + 5.0, at.y), egui::Align2::LEFT_CENTER),
+        _ => (Pos2::new(at.x, at.y - 3.0), egui::Align2::CENTER_BOTTOM),
+    }
+}
+
+/// The table of values under a chart, with its borders and labels.
+#[allow(clippy::too_many_arguments)]
 fn draw_data_table(
     painter: &egui::Painter,
     body: Rect,
@@ -1561,46 +1671,42 @@ fn draw_data_table(
     m: &Metrics,
 ) {
     let rows = plot.series.len() + 1;
-    let row_h = 14.0 * m.zoom;
-    let top = inner.bottom() + 16.0 * m.zoom;
     let cats: Vec<String> = plot.series.first().map(|s| s.labels.clone()).unwrap_or_default();
     let cols = cats.len().max(1);
-    let col_w = inner.width() / cols as f32;
-    let stroke = Stroke::new(m.line(), colours.grid);
-    for r in 0..=rows {
-        if table.horizontal_borders || (table.outline && (r == 0 || r == rows)) {
-            painter.line_segment(
-                [
-                    Pos2::new(inner.left(), top + row_h * r as f32),
-                    Pos2::new(inner.right(), top + row_h * r as f32),
-                ],
-                stroke,
-            );
-        }
-    }
-    for c in 0..=cols {
-        if table.vertical_borders || (table.outline && (c == 0 || c == cols)) {
-            painter.line_segment(
-                [
-                    Pos2::new(inner.left() + col_w * c as f32, top),
-                    Pos2::new(inner.left() + col_w * c as f32, top + row_h * rows as f32),
-                ],
-                stroke,
-            );
-        }
-    }
+    let grid = TableGrid {
+        inner,
+        top: inner.bottom() + 16.0 * m.zoom,
+        row_h: 14.0 * m.zoom,
+        col_w: inner.width() / cols as f32,
+        rows,
+        cols,
+    };
+    draw_table_borders(painter, &grid, table, Stroke::new(m.line(), colours.grid));
     for (c, label) in cats.iter().enumerate() {
         painter.text(
-            Pos2::new(inner.left() + col_w * (c as f32 + 0.5), top + row_h / 2.0),
+            grid.cell_centre(c, 0.5),
             egui::Align2::CENTER_CENTER,
             unluminous_sheet_trim(label, 8),
             m.label(),
             colours.text,
         );
     }
+    draw_table_series_rows(painter, &grid, plot, colours, m);
+    let _ = (body, chart);
+}
+
+/// Draw the series rows of a data table: each series' name at the left and its values in the cells.
+fn draw_table_series_rows(
+    painter: &egui::Painter,
+    grid: &TableGrid,
+    plot: &Plot,
+    colours: &Colours,
+    m: &Metrics,
+) {
+    let inner = grid.inner;
     for (r, s) in plot.series.iter().enumerate() {
         painter.text(
-            Pos2::new(inner.left() - 4.0, top + row_h * (r as f32 + 1.5)),
+            Pos2::new(inner.left() - 4.0, grid.top + grid.row_h * (r as f32 + 1.5)),
             egui::Align2::RIGHT_CENTER,
             unluminous_sheet_trim(&s.name, 12),
             m.label(),
@@ -1609,10 +1715,7 @@ fn draw_data_table(
         for (c, v) in s.values.iter().enumerate() {
             if let Some(v) = v {
                 painter.text(
-                    Pos2::new(
-                        inner.left() + col_w * (c as f32 + 0.5),
-                        top + row_h * (r as f32 + 1.5),
-                    ),
+                    grid.cell_centre(c, r as f32 + 1.5),
                     egui::Align2::CENTER_CENTER,
                     unluminous_sheet::numfmt::general(*v, 8),
                     m.label(),
@@ -1621,11 +1724,46 @@ fn draw_data_table(
             }
         }
     }
-    let _ = (body, chart);
+}
+
+/// The place and size of the cells of a data table under the plot.
+struct TableGrid {
+    inner: Rect,
+    top: f32,
+    row_h: f32,
+    col_w: f32,
+    rows: usize,
+    cols: usize,
+}
+
+impl TableGrid {
+    /// The middle of column `c` at a height of `row` row heights below the top of the table.
+    fn cell_centre(&self, c: usize, row: f32) -> Pos2 {
+        Pos2::new(self.inner.left() + self.col_w * (c as f32 + 0.5), self.top + self.row_h * row)
+    }
+}
+
+/// Draw the horizontal and vertical borders of a data table as its options ask.
+fn draw_table_borders(painter: &egui::Painter, g: &TableGrid, table: &DataTable, stroke: Stroke) {
+    let inner = g.inner;
+    for r in 0..=g.rows {
+        if table.horizontal_borders || (table.outline && (r == 0 || r == g.rows)) {
+            let y = g.top + g.row_h * r as f32;
+            painter.line_segment([Pos2::new(inner.left(), y), Pos2::new(inner.right(), y)], stroke);
+        }
+    }
+    for c in 0..=g.cols {
+        if table.vertical_borders || (table.outline && (c == 0 || c == g.cols)) {
+            let x = inner.left() + g.col_w * c as f32;
+            let bottom = g.top + g.row_h * g.rows as f32;
+            painter.line_segment([Pos2::new(x, g.top), Pos2::new(x, bottom)], stroke);
+        }
+    }
 }
 
 // --- Pie, doughnut, radar, surface -------------------------------------------------------------------
 
+/// Pies and doughnuts, and the pair of pies of a pie of pie chart.
 fn draw_pies(
     painter: &egui::Painter,
     body: Rect,
@@ -1638,21 +1776,11 @@ fn draw_pies(
     let Some(series) = plot.series.first() else { return };
     let values: Vec<f64> = series.values.iter().map(|v| v.unwrap_or(0.0)).collect();
     let n = values.len();
-    let tail = if group.kind == GroupKind::OfPie {
-        ((n as f32 / 3.0).ceil() as usize).clamp(1, n.saturating_sub(1).max(1))
-    } else {
-        0
-    };
+    let tail = if group.kind == GroupKind::OfPie { of_pie_tail(n) } else { 0 };
     let (first_pie, second_pie): (Vec<usize>, Vec<usize>) =
         ((0..n - tail).collect(), (n - tail..n).collect());
     let squash = if group.three_d { 0.62 } else { 1.0 };
-    let (main_area, side_area) = if second_pie.is_empty() {
-        (body, None)
-    } else {
-        let w = body.width() * 0.55;
-        let side = Rect::from_min_max(Pos2::new(body.left() + w, body.top()), body.max);
-        (Rect::from_min_size(body.min, Vec2::new(w, body.height())), Some(side))
-    };
+    let (main_area, side_area) = pie_areas(body, !second_pie.is_empty());
     let mut primary = values.clone();
     if !second_pie.is_empty() {
         let other: f64 = second_pie.iter().map(|i| values[*i].max(0.0)).sum();
@@ -1669,18 +1797,8 @@ fn draw_pies(
         three_d: group.three_d,
     };
     let first = group.first_slice_angle.unwrap_or(0) as f32;
-    pie(
-        painter,
-        &main,
-        &primary,
-        first,
-        chart,
-        series,
-        &first_pie,
-        !second_pie.is_empty(),
-        colours,
-        m,
-    );
+    let has_second = !second_pie.is_empty();
+    pie(painter, &main, &primary, first, chart, series, &first_pie, has_second, colours, m);
     if let Some(side) = side_area {
         let rest: Vec<f64> = second_pie.iter().map(|i| values[*i]).collect();
         let r2 =
@@ -1688,6 +1806,21 @@ fn draw_pies(
         let small = PieGeometry { centre: side.center(), radius: r2, hole: 0.0, ..main };
         pie(painter, &small, &rest, 0.0, chart, series, &second_pie, false, colours, m);
     }
+}
+
+/// How many of the last slices a pie of pie chart moves into its second pie: a third, at least one.
+fn of_pie_tail(n: usize) -> usize {
+    ((n as f32 / 3.0).ceil() as usize).clamp(1, n.saturating_sub(1).max(1))
+}
+
+/// The room for the main pie and, when there is a second pie, the room beside it.
+fn pie_areas(body: Rect, has_second: bool) -> (Rect, Option<Rect>) {
+    if !has_second {
+        return (body, None);
+    }
+    let w = body.width() * 0.55;
+    let side = Rect::from_min_max(Pos2::new(body.left() + w, body.top()), body.max);
+    (Rect::from_min_size(body.min, Vec2::new(w, body.height())), Some(side))
 }
 
 /// Where and how big a pie is drawn.
@@ -1851,6 +1984,7 @@ fn draw_pie_labels(
     }
 }
 
+/// A radar chart: rings for the value ticks, a spoke for each category and a polygon for each series.
 fn draw_radar(
     painter: &egui::Painter,
     body: Rect,
@@ -1864,69 +1998,35 @@ fn draw_radar(
     if count < 3 {
         return;
     }
-    let centre = body.center();
-    let radius = body.width().min(body.height()) / 2.0 - 18.0 * m.zoom;
     let value_axis = plot.axes.iter().find(|a| a.kind == AxisKind::Value);
     let (min, max) = value_axis.and_then(|a| a.scale).map_or((0.0, 1.0), |s| (s.min, s.max));
-    let ring = |frac: f32| -> Vec<Pos2> {
-        (0..count)
-            .map(|i| {
-                geo::on_circle(
-                    centre,
-                    radius * frac,
-                    std::f64::consts::TAU * i as f64 / count as f64,
-                )
-            })
-            .collect()
+    let frame = RadarFrame {
+        centre: body.center(),
+        radius: body.width().min(body.height()) / 2.0 - 18.0 * m.zoom,
+        count,
+        min,
     };
     if let Some(a) = value_axis {
         for (v, _) in &a.ticks {
-            let frac = geo::along(*v, min, max, false, false);
-            painter.add(Shape::closed_line(ring(frac), Stroke::new(m.line(), colours.grid)));
+            let ring = frame.ring(geo::along(*v, min, max, false, false));
+            painter.add(Shape::closed_line(ring, Stroke::new(m.line(), colours.grid)));
         }
     }
-    for i in 0..count {
-        let angle = std::f64::consts::TAU * i as f64 / count as f64;
-        painter.line_segment(
-            [centre, geo::on_circle(centre, radius, angle)],
-            Stroke::new(m.line(), colours.grid),
-        );
-        let label = plot.series[0].labels.get(i).cloned().unwrap_or_default();
-        let p = geo::on_circle(centre, radius + 8.0 * m.zoom, angle);
-        painter.text(
-            p,
-            egui::Align2::CENTER_CENTER,
-            unluminous_sheet_trim(&label, 10),
-            m.label(),
-            colours.dim,
-        );
-    }
+    draw_radar_spokes(painter, &frame, plot, colours, m);
     for s in &plot.series {
         let colour = series_colour(chart, s, colours);
         let pts: Vec<Pos2> = (0..count)
-            .map(|i| {
-                geo::on_circle(
-                    centre,
-                    radius
-                        * geo::along(
-                            s.values.get(i).copied().flatten().unwrap_or(min),
-                            min,
-                            max,
-                            false,
-                            false,
-                        ),
-                    std::f64::consts::TAU * i as f64 / count as f64,
-                )
-            })
+            .map(|i| frame.point(i, geo::along(frame.value(s, i), min, max, false, false)))
             .collect();
-        if group.radar_style.as_deref() == Some("filled") {
+        let style = group.radar_style.as_deref();
+        if style == Some("filled") {
             for i in 0..pts.len() {
-                let tri = vec![centre, pts[i], pts[(i + 1) % pts.len()]];
+                let tri = vec![frame.centre, pts[i], pts[(i + 1) % pts.len()]];
                 painter.add(Shape::convex_polygon(tri, colour.gamma_multiply(0.55), Stroke::NONE));
             }
         }
         painter.add(Shape::closed_line(pts.clone(), Stroke::new(2.0 * m.zoom.max(0.7), colour)));
-        if group.radar_style.as_deref() == Some("marker") {
+        if style == Some("marker") {
             for p in pts {
                 painter.circle_filled(p, 3.0 * m.zoom, colour);
             }
@@ -1934,6 +2034,56 @@ fn draw_radar(
     }
 }
 
+/// The centre, radius, spoke count and lowest value a radar chart is drawn with.
+struct RadarFrame {
+    centre: Pos2,
+    radius: f32,
+    count: usize,
+    min: f64,
+}
+
+impl RadarFrame {
+    /// The point on spoke `i` at a fraction of the radius.
+    fn point(&self, i: usize, frac: f32) -> Pos2 {
+        let angle = std::f64::consts::TAU * i as f64 / self.count as f64;
+        geo::on_circle(self.centre, self.radius * frac, angle)
+    }
+
+    /// The closed outline that joins every spoke at a fraction of the radius.
+    fn ring(&self, frac: f32) -> Vec<Pos2> {
+        (0..self.count).map(|i| self.point(i, frac)).collect()
+    }
+
+    /// A series' value on spoke `i`, the axis minimum where it has none.
+    fn value(&self, s: &PlotSeries, i: usize) -> f64 {
+        s.values.get(i).copied().flatten().unwrap_or(self.min)
+    }
+}
+
+/// Draw the spokes of a radar chart with the category name beyond the end of each.
+fn draw_radar_spokes(
+    painter: &egui::Painter,
+    frame: &RadarFrame,
+    plot: &Plot,
+    colours: &Colours,
+    m: &Metrics,
+) {
+    for i in 0..frame.count {
+        painter
+            .line_segment([frame.centre, frame.point(i, 1.0)], Stroke::new(m.line(), colours.grid));
+        let label = plot.series[0].labels.get(i).cloned().unwrap_or_default();
+        let beyond = 1.0 + 8.0 * m.zoom / frame.radius;
+        painter.text(
+            frame.point(i, beyond),
+            egui::Align2::CENTER_CENTER,
+            unluminous_sheet_trim(&label, 10),
+            m.label(),
+            colours.dim,
+        );
+    }
+}
+
+/// A surface chart: the grid of values filled in bands of colour, flat or tilted.
 fn draw_surface(
     painter: &egui::Painter,
     body: Rect,
@@ -1957,37 +2107,71 @@ fn draw_surface(
         colours.series(band)
     };
     let wire = group.wireframe;
-    let three_d = group.three_d;
-    let area = body.shrink(12.0 * m.zoom);
-    let value = |r: usize, c: usize| plot.series[r].values.get(c).copied().flatten().unwrap_or(min);
-    // Top view fills the plot; the 3D view tilts it into an oblique projection.
-    let point = |r: usize, c: usize| -> Pos2 {
-        let (fx, fy) = (c as f32 / (cols - 1) as f32, r as f32 / (rows - 1) as f32);
-        if three_d {
-            let lift = geo::along(value(r, c), min, max, false, false) * area.height() * 0.45;
-            let x = area.left()
-                + area.width() * 0.1
-                + fx * area.width() * 0.62
-                + fy * area.width() * 0.25;
-            let y = area.bottom() - area.height() * 0.1 - fy * area.height() * 0.28 - lift;
-            Pos2::new(x, y)
-        } else {
-            Pos2::new(area.left() + area.width() * fx, area.top() + area.height() * (1.0 - fy))
-        }
+    let view = SurfaceView {
+        plot,
+        area: body.shrink(12.0 * m.zoom),
+        rows,
+        cols,
+        min,
+        max,
+        three_d: group.three_d,
     };
     for r in 0..rows - 1 {
         for c in 0..cols - 1 {
-            let quad = vec![point(r, c), point(r, c + 1), point(r + 1, c + 1), point(r + 1, c)];
-            let mean =
-                (value(r, c) + value(r, c + 1) + value(r + 1, c) + value(r + 1, c + 1)) / 4.0;
+            let quad = view.cell(r, c);
+            let mean = view.mean_of_cell(r, c);
             let fill = if wire { Color32::TRANSPARENT } else { colour_of(mean) };
-            let convex = Shape::convex_polygon(
-                quad.clone(),
-                fill,
-                Stroke::new(m.line(), if wire { colours.dim } else { shade(colour_of(mean), 0.6) }),
-            );
-            painter.add(convex);
+            let edge = if wire { colours.dim } else { shade(colour_of(mean), 0.6) };
+            painter.add(Shape::convex_polygon(quad, fill, Stroke::new(m.line(), edge)));
         }
+    }
+}
+
+/// The grid of values a surface chart is drawn from, and where each grid point lands on the screen.
+struct SurfaceView<'a> {
+    plot: &'a Plot,
+    area: Rect,
+    rows: usize,
+    cols: usize,
+    min: f64,
+    max: f64,
+    three_d: bool,
+}
+
+impl SurfaceView<'_> {
+    /// The four screen corners of the grid cell whose top left grid point is at a row and column.
+    fn cell(&self, r: usize, c: usize) -> Vec<Pos2> {
+        vec![self.point(r, c), self.point(r, c + 1), self.point(r + 1, c + 1), self.point(r + 1, c)]
+    }
+
+    /// The mean of the four values at the corners of a grid cell.
+    fn mean_of_cell(&self, r: usize, c: usize) -> f64 {
+        (self.value(r, c) + self.value(r, c + 1) + self.value(r + 1, c) + self.value(r + 1, c + 1))
+            / 4.0
+    }
+
+    /// The value at a row and column, the axis minimum where there is none.
+    fn value(&self, r: usize, c: usize) -> f64 {
+        self.plot.series[r].values.get(c).copied().flatten().unwrap_or(self.min)
+    }
+
+    /// The screen point of a grid point: the top view fills the plot, the 3D view tilts it into an
+    /// oblique projection.
+    fn point(&self, r: usize, c: usize) -> Pos2 {
+        let area = self.area;
+        let (fx, fy) = (c as f32 / (self.cols - 1) as f32, r as f32 / (self.rows - 1) as f32);
+        if !self.three_d {
+            return Pos2::new(
+                area.left() + area.width() * fx,
+                area.top() + area.height() * (1.0 - fy),
+            );
+        }
+        let lift =
+            geo::along(self.value(r, c), self.min, self.max, false, false) * area.height() * 0.45;
+        let x =
+            area.left() + area.width() * 0.1 + fx * area.width() * 0.62 + fy * area.width() * 0.25;
+        let y = area.bottom() - area.height() * 0.1 - fy * area.height() * 0.28 - lift;
+        Pos2::new(x, y)
     }
 }
 
@@ -2078,64 +2262,83 @@ fn draw_boxes(
     colours: &Colours,
     m: &Metrics,
 ) {
+    let (lo, hi) = box_range(boxes);
+    let frame = BoxFrame { plot, lo, hi, band: plot.width() / boxes.len().max(1) as f32 };
+    for (i, (label, b)) in boxes.iter().enumerate() {
+        draw_one_box(painter, &frame, i, label, b, options, colours, m);
+    }
+}
+
+/// The plot rectangle, value range and band width the boxes of a box and whisker chart are placed in.
+struct BoxFrame {
+    plot: Rect,
+    lo: f64,
+    hi: f64,
+    band: f32,
+}
+
+impl BoxFrame {
+    /// The screen height of a value.
+    fn y(&self, v: f64) -> f32 {
+        self.plot.bottom() - self.plot.height() * ((v - self.lo) / (self.hi - self.lo)) as f32
+    }
+}
+
+/// The lowest and highest value to show for some boxes, with a margin of five percent.
+fn box_range(boxes: &[(String, BoxStats)]) -> (f64, f64) {
     let ends: Vec<f64> = boxes.iter().flat_map(|b| [b.1.minimum, b.1.maximum]).collect();
     let (lo, hi) = (
         ends.iter().copied().fold(f64::MAX, f64::min),
         ends.iter().copied().fold(f64::MIN, f64::max),
     );
-    let (lo, hi) = if lo >= hi {
+    if lo >= hi {
         (lo - 1.0, hi + 1.0)
     } else {
         (lo - (hi - lo) * 0.05, hi + (hi - lo) * 0.05)
-    };
-    let y = |v: f64| plot.bottom() - plot.height() * ((v - lo) / (hi - lo)) as f32;
-    let band = plot.width() / boxes.len().max(1) as f32;
+    }
+}
+
+/// Draw one box with its whiskers, median, mean marker, outliers and category label.
+#[allow(clippy::too_many_arguments)]
+fn draw_one_box(
+    painter: &egui::Painter,
+    f: &BoxFrame,
+    i: usize,
+    label: &str,
+    b: &BoxStats,
+    options: &BoxOptions,
+    colours: &Colours,
+    m: &Metrics,
+) {
+    let y = |v: f64| f.y(v);
     let line = Stroke::new(m.line(), colours.text);
-    for (i, (label, b)) in boxes.iter().enumerate() {
-        let cx = plot.left() + band * (i as f32 + 0.5);
-        let half = band * 0.28;
-        painter.line_segment([Pos2::new(cx, y(b.low)), Pos2::new(cx, y(b.q1))], line);
-        painter.line_segment([Pos2::new(cx, y(b.q3)), Pos2::new(cx, y(b.high))], line);
-        for edge in [b.low, b.high] {
-            painter.line_segment(
-                [Pos2::new(cx - half / 2.0, y(edge)), Pos2::new(cx + half / 2.0, y(edge))],
-                line,
-            );
-        }
-        let body = Rect::from_min_max(Pos2::new(cx - half, y(b.q3)), Pos2::new(cx + half, y(b.q1)));
-        painter.rect(
-            body,
-            0,
-            colours.series(i).gamma_multiply(0.8),
-            line,
-            egui::StrokeKind::Inside,
-        );
+    let cx = f.plot.left() + f.band * (i as f32 + 0.5);
+    let half = f.band * 0.28;
+    painter.line_segment([Pos2::new(cx, y(b.low)), Pos2::new(cx, y(b.q1))], line);
+    painter.line_segment([Pos2::new(cx, y(b.q3)), Pos2::new(cx, y(b.high))], line);
+    for edge in [b.low, b.high] {
         painter.line_segment(
-            [Pos2::new(cx - half, y(b.median)), Pos2::new(cx + half, y(b.median))],
-            Stroke::new(1.5 * m.zoom.max(0.7), colours.text),
-        );
-        if options.mean_marker {
-            painter.text(
-                Pos2::new(cx, y(b.mean)),
-                egui::Align2::CENTER_CENTER,
-                "\u{D7}",
-                m.font(12.0),
-                colours.text,
-            );
-        }
-        if options.outlier_points {
-            for o in &b.outliers {
-                painter.circle_stroke(Pos2::new(cx, y(*o)), 3.0 * m.zoom, line);
-            }
-        }
-        painter.text(
-            Pos2::new(cx, plot.bottom() + 3.0),
-            egui::Align2::CENTER_TOP,
-            label,
-            m.label(),
-            colours.dim,
+            [Pos2::new(cx - half / 2.0, y(edge)), Pos2::new(cx + half / 2.0, y(edge))],
+            line,
         );
     }
+    let body = Rect::from_min_max(Pos2::new(cx - half, y(b.q3)), Pos2::new(cx + half, y(b.q1)));
+    painter.rect(body, 0, colours.series(i).gamma_multiply(0.8), line, egui::StrokeKind::Inside);
+    painter.line_segment(
+        [Pos2::new(cx - half, y(b.median)), Pos2::new(cx + half, y(b.median))],
+        Stroke::new(1.5 * m.zoom.max(0.7), colours.text),
+    );
+    if options.mean_marker {
+        let at = Pos2::new(cx, y(b.mean));
+        painter.text(at, egui::Align2::CENTER_CENTER, "\u{D7}", m.font(12.0), colours.text);
+    }
+    if options.outlier_points {
+        for o in &b.outliers {
+            painter.circle_stroke(Pos2::new(cx, y(*o)), 3.0 * m.zoom, line);
+        }
+    }
+    let at = Pos2::new(cx, f.plot.bottom() + 3.0);
+    painter.text(at, egui::Align2::CENTER_TOP, label, m.label(), colours.dim);
 }
 
 /// Floating bars joined by the running total.
@@ -2237,23 +2440,7 @@ fn draw_columns(
         unluminous_sheet::plot::Fixed::default(),
         plot.height() as f64,
     );
-    for (v, text) in unluminous_sheet::plot::scale::ticks(&scale)
-        .into_iter()
-        .map(|v| (v, unluminous_sheet::numfmt::general(v, 8)))
-    {
-        let y = plot.bottom() - plot.height() * geo::along(v, scale.min, scale.max, false, false);
-        painter.line_segment(
-            [Pos2::new(plot.left(), y), Pos2::new(plot.right(), y)],
-            Stroke::new(m.line(), colours.grid),
-        );
-        painter.text(
-            Pos2::new(plot.left() - 4.0, y),
-            egui::Align2::RIGHT_CENTER,
-            text,
-            m.label(),
-            colours.dim,
-        );
-    }
+    draw_column_gridlines(painter, plot, &scale, colours, m);
     let band = plot.width() / values.len().max(1) as f32;
     for (i, v) in values.iter().enumerate() {
         let w = band * (1.0 - gap.max(0.05));
@@ -2278,6 +2465,32 @@ fn draw_columns(
     plot
 }
 
+/// Draw the horizontal gridlines of a column plot with their value labels at the left.
+fn draw_column_gridlines(
+    painter: &egui::Painter,
+    plot: Rect,
+    scale: &unluminous_sheet::plot::AxisScale,
+    colours: &Colours,
+    m: &Metrics,
+) {
+    for v in unluminous_sheet::plot::scale::ticks(scale) {
+        let text = unluminous_sheet::numfmt::general(v, 8);
+        let y = plot.bottom() - plot.height() * geo::along(v, scale.min, scale.max, false, false);
+        painter.line_segment(
+            [Pos2::new(plot.left(), y), Pos2::new(plot.right(), y)],
+            Stroke::new(m.line(), colours.grid),
+        );
+        painter.text(
+            Pos2::new(plot.left() - 4.0, y),
+            egui::Align2::RIGHT_CENTER,
+            text,
+            m.label(),
+            colours.dim,
+        );
+    }
+}
+
+/// A treemap or a sunburst of the leaves of a hierarchy.
 fn draw_hierarchy(
     painter: &egui::Painter,
     area: Rect,
@@ -2292,73 +2505,89 @@ fn draw_hierarchy(
         .as_ref()
         .and_then(|e| e.series.first())
         .is_some_and(|s| s.layout == ExLayout::Sunburst);
-    // Group the leaves by their first level.
+    let parents = group_by_first_level(leaves);
+    let totals: Vec<f64> = parents.iter().map(|p| p.1.iter().map(|l| l.1.max(0.0)).sum()).collect();
+    if sunburst {
+        draw_sunburst(painter, area, &parents, &totals, colours, m);
+    } else {
+        draw_treemap(painter, area, &parents, &totals, colours, m);
+    }
+}
+
+/// The leaves of a hierarchy grouped under their first level, in the order the first levels appear.
+fn group_by_first_level(leaves: &[(Vec<String>, f64)]) -> Vec<(String, Vec<(String, f64)>)> {
     let mut parents: Vec<(String, Vec<(String, f64)>)> = Vec::new();
     for (path, v) in leaves {
         let top = path.first().cloned().unwrap_or_default();
         let leaf = path.last().cloned().unwrap_or_default();
         match parents.iter_mut().find(|p| p.0 == top) {
             Some(p) => p.1.push((leaf, *v)),
-            None => parents.push((top, vec![(path.last().cloned().unwrap_or_default(), *v)])),
+            None => parents.push((top, vec![(leaf, *v)])),
         }
     }
-    let totals: Vec<f64> = parents.iter().map(|p| p.1.iter().map(|l| l.1.max(0.0)).sum()).collect();
-    if sunburst {
-        let centre = area.center();
-        let radius = area.width().min(area.height()) / 2.0 - 4.0;
-        let spans = geo::slices(&totals, 0.0);
-        for (pi, (parent, children)) in parents.iter().enumerate() {
-            ring_segment(
-                painter,
-                centre,
-                radius * 0.25,
-                radius * 0.55,
-                spans[pi].0,
-                spans[pi].1,
-                colours.series(pi),
-                colours,
-            );
-            let leaf_spans = geo::slices(&children.iter().map(|c| c.1).collect::<Vec<_>>(), 0.0);
-            for (ci, (name, _)) in children.iter().enumerate() {
-                let (a, b) = (
-                    spans[pi].0
-                        + leaf_spans[ci].0 * (spans[pi].1 - spans[pi].0) / std::f64::consts::TAU,
-                    spans[pi].0
-                        + leaf_spans[ci].1 * (spans[pi].1 - spans[pi].0) / std::f64::consts::TAU,
-                );
-                ring_segment(
-                    painter,
-                    centre,
-                    radius * 0.55,
-                    radius,
-                    a,
-                    b,
-                    lighten(colours.series(pi), 0.3),
-                    colours,
-                );
-                if children.len() == 1 && name == parent {
-                    continue;
-                }
-            }
-            let mid = (spans[pi].0 + spans[pi].1) / 2.0;
-            painter.text(
-                geo::on_circle(centre, radius * 0.4, mid),
-                egui::Align2::CENTER_CENTER,
-                unluminous_sheet_trim(parent, 8),
-                m.label(),
-                Color32::WHITE,
-            );
-        }
-        return;
-    }
-    let outer = geo::treemap(&totals, area);
+    parents
+}
+
+/// Draw a sunburst: an inner ring of first levels and an outer ring of their leaves.
+fn draw_sunburst(
+    painter: &egui::Painter,
+    area: Rect,
+    parents: &[(String, Vec<(String, f64)>)],
+    totals: &[f64],
+    colours: &Colours,
+    m: &Metrics,
+) {
+    let centre = area.center();
+    let radius = area.width().min(area.height()) / 2.0 - 4.0;
+    let spans = geo::slices(totals, 0.0);
     for (pi, (parent, children)) in parents.iter().enumerate() {
+        let (from, to) = spans[pi];
+        ring_segment(
+            painter,
+            centre,
+            radius * 0.25,
+            radius * 0.55,
+            from,
+            to,
+            colours.series(pi),
+            colours,
+        );
+        let leaf_spans = geo::slices(&children.iter().map(|c| c.1).collect::<Vec<_>>(), 0.0);
+        for leaf in &leaf_spans {
+            let (a, b) = (
+                from + leaf.0 * (to - from) / std::f64::consts::TAU,
+                from + leaf.1 * (to - from) / std::f64::consts::TAU,
+            );
+            let leaf_colour = lighten(colours.series(pi), 0.3);
+            ring_segment(painter, centre, radius * 0.55, radius, a, b, leaf_colour, colours);
+        }
+        painter.text(
+            geo::on_circle(centre, radius * 0.4, (from + to) / 2.0),
+            egui::Align2::CENTER_CENTER,
+            unluminous_sheet_trim(parent, 8),
+            m.label(),
+            Color32::WHITE,
+        );
+    }
+}
+
+/// Draw a treemap: a rectangle for each first level, cut into a cell for each leaf.
+fn draw_treemap(
+    painter: &egui::Painter,
+    area: Rect,
+    parents: &[(String, Vec<(String, f64)>)],
+    totals: &[f64],
+    colours: &Colours,
+    m: &Metrics,
+) {
+    let outer = geo::treemap(totals, area);
+    for (pi, (_, children)) in parents.iter().enumerate() {
         let r = outer[pi];
         if r == Rect::NOTHING {
             continue;
         }
         let inner = geo::treemap(&children.iter().map(|c| c.1).collect::<Vec<_>>(), r.shrink(1.0));
-        for (ci, (name, v)) in children.iter().enumerate() {
+        for (ci, (name, _)) in children.iter().enumerate() {
             let cell = inner[ci];
             if cell == Rect::NOTHING {
                 continue;
@@ -2379,9 +2608,7 @@ fn draw_hierarchy(
                     Color32::WHITE,
                 );
             }
-            let _ = v;
         }
-        let _ = parent;
     }
 }
 

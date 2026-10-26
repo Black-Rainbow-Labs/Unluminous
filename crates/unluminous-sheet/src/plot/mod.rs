@@ -307,55 +307,61 @@ fn tick_text(value: f64, axis: &Axis, source_format: &str) -> String {
     crate::numfmt::Format::parse(code).render(&Value::Number(value), false, 11).text
 }
 
-fn plot_axes(book: &Workbook, chart: &Chart, series: &[PlotSeries], size: PlotSize, format: &str) -> Vec<PlotAxis> {
+/// The scale of a value axis and whether the axis belongs to a 100 percent stacked group.
+fn value_axis_scale(chart: &Chart, series: &[PlotSeries], axis: &Axis, is_x_of_scatter: bool, length: f64) -> (AxisScale, bool) {
     let spec = &chart.spec;
-    let mut out = Vec::new();
-    for axis in &spec.axes {
-        let scatter = spec.groups.iter().any(|g| g.axes.contains(&axis.id) && matches!(g.kind, GroupKind::Scatter | GroupKind::Bubble));
-        let is_x_of_scatter = scatter && spec.groups.iter().any(|g| g.axes.first() == Some(&axis.id));
-        let horizontal = axis.position == AxisPosition::Bottom || axis.position == AxisPosition::Top;
-        let length = if horizontal { size.width } else { size.height };
-        let value_like = axis.kind == AxisKind::Value;
-        let mut pa = PlotAxis {
-            id: axis.id,
-            kind: axis.kind,
-            scale: None,
-            ticks: Vec::new(),
-            minor_ticks: Vec::new(),
-            categories: Vec::new(),
-            cross_at: 0.0,
-            reverse: axis.reverse,
-        };
-        if value_like {
-            let percent = spec.groups.iter().any(|g| g.axes.contains(&axis.id) && g.grouping == Grouping::PercentStacked);
-            let (lo, hi) = data_extent(chart, series, axis, is_x_of_scatter).unwrap_or((0.0, 1.0));
-            let fixed = fixed_of(axis);
-            let scale = if percent {
-                // A 100 percent chart runs from 0 to 100 percent in tenths, whatever the data.
-                AxisScale {
-                    min: fixed.min.unwrap_or(0.0),
-                    max: fixed.max.unwrap_or(1.0),
-                    major: fixed.major.unwrap_or(if length < 150.0 { 0.2 } else { 0.1 }),
-                    minor: fixed.minor.unwrap_or(0.02),
-                    log: false,
-                }
-            } else {
-                scale::value_scale(lo, hi, fixed, length)
-            };
-            let tick_format = if percent && axis.num_fmt.as_ref().is_none_or(|f| f.1) { "0%" } else { format };
-            pa.ticks = scale::ticks(&scale).into_iter().map(|v| (v, tick_text(v, axis, tick_format))).collect();
-            pa.scale = Some(scale);
-        } else {
-            let longest = series
-                .iter()
-                .filter(|s| spec.groups.get(s.group).is_some_and(|g| g.axes.contains(&axis.id)))
-                .max_by_key(|s| s.labels.len());
-            pa.categories = longest.map(|s| s.labels.clone()).unwrap_or_default();
+    let percent = spec.groups.iter().any(|g| g.axes.contains(&axis.id) && g.grouping == Grouping::PercentStacked);
+    let (lo, hi) = data_extent(chart, series, axis, is_x_of_scatter).unwrap_or((0.0, 1.0));
+    let fixed = fixed_of(axis);
+    let scale = if percent {
+        // A 100 percent chart runs from 0 to 100 percent in tenths, whatever the data.
+        AxisScale {
+            min: fixed.min.unwrap_or(0.0),
+            max: fixed.max.unwrap_or(1.0),
+            major: fixed.major.unwrap_or(if length < 150.0 { 0.2 } else { 0.1 }),
+            minor: fixed.minor.unwrap_or(0.02),
+            log: false,
         }
-        out.push(pa);
+    } else {
+        scale::value_scale(lo, hi, fixed, length)
+    };
+    (scale, percent)
+}
+
+/// The figures of one axis: its scale and ticks for a value axis, its labels for a category axis.
+fn plot_axis(chart: &Chart, series: &[PlotSeries], size: PlotSize, format: &str, axis: &Axis) -> PlotAxis {
+    let spec = &chart.spec;
+    let scatter = spec.groups.iter().any(|g| g.axes.contains(&axis.id) && matches!(g.kind, GroupKind::Scatter | GroupKind::Bubble));
+    let is_x_of_scatter = scatter && spec.groups.iter().any(|g| g.axes.first() == Some(&axis.id));
+    let horizontal = axis.position == AxisPosition::Bottom || axis.position == AxisPosition::Top;
+    let length = if horizontal { size.width } else { size.height };
+    let mut pa = PlotAxis {
+        id: axis.id,
+        kind: axis.kind,
+        scale: None,
+        ticks: Vec::new(),
+        minor_ticks: Vec::new(),
+        categories: Vec::new(),
+        cross_at: 0.0,
+        reverse: axis.reverse,
+    };
+    if axis.kind == AxisKind::Value {
+        let (scale, percent) = value_axis_scale(chart, series, axis, is_x_of_scatter, length);
+        let tick_format = if percent && axis.num_fmt.as_ref().is_none_or(|f| f.1) { "0%" } else { format };
+        pa.ticks = scale::ticks(&scale).into_iter().map(|v| (v, tick_text(v, axis, tick_format))).collect();
+        pa.scale = Some(scale);
+    } else {
+        let longest = series
+            .iter()
+            .filter(|s| spec.groups.get(s.group).is_some_and(|g| g.axes.contains(&axis.id)))
+            .max_by_key(|s| s.labels.len());
+        pa.categories = longest.map(|s| s.labels.clone()).unwrap_or_default();
     }
-    let _ = book;
-    // Where each axis is crossed by the other: the value on the crossing axis.
+    pa
+}
+
+/// Set where each axis is crossed by the other: the value on the crossing axis.
+fn set_cross_points(spec: &ChartSpec, out: &mut [PlotAxis]) {
     let scales: Vec<(u32, Option<AxisScale>)> = out.iter().map(|a| (a.id, a.scale)).collect();
     for (i, axis) in spec.axes.iter().enumerate() {
         let other = scales.iter().find(|(id, _)| *id == axis.cross_axis).and_then(|(_, s)| *s);
@@ -369,6 +375,13 @@ fn plot_axes(book: &Workbook, chart: &Chart, series: &[PlotSeries], size: PlotSi
             _ => 0.0,
         };
     }
+}
+
+/// The figures of every axis of a chart: scales, ticks, categories and crossing points.
+fn plot_axes(book: &Workbook, chart: &Chart, series: &[PlotSeries], size: PlotSize, format: &str) -> Vec<PlotAxis> {
+    let mut out: Vec<PlotAxis> = chart.spec.axes.iter().map(|axis| plot_axis(chart, series, size, format, axis)).collect();
+    let _ = book;
+    set_cross_points(&chart.spec, &mut out);
     out
 }
 
@@ -405,6 +418,39 @@ pub fn plot(book: &Workbook, sheet: usize, chart: &Chart, size: PlotSize) -> Plo
     out
 }
 
+/// The boxes of a box and whisker chart, grouping the values by their labels.
+fn box_whisker_plot(pairs: Vec<(String, f64)>, cats: &Resolved, values: &Resolved, numbers: &[f64], options: &BoxOptions) -> ExtendedPlot {
+    let mut groups: Vec<(String, Vec<f64>)> = Vec::new();
+    for (label, v) in pairs {
+        match groups.iter_mut().find(|(l, _)| *l == label) {
+            Some(g) => g.1.push(v),
+            None => groups.push((label, vec![v])),
+        }
+    }
+    if cats.texts.is_empty() || groups.len() == values.values.len() && groups.iter().all(|g| g.1.len() == 1) {
+        groups = vec![(String::new(), numbers.to_vec())];
+    }
+    ExtendedPlot::BoxWhisker {
+        boxes: groups.into_iter().filter_map(|(l, v)| stats::box_stats(&v, options).map(|b| (l, b))).collect(),
+    }
+}
+
+/// The leaves of a treemap or sunburst: each row's category cells make its path.
+fn hierarchy_plot(pairs: Vec<(String, f64)>, cats: &Resolved, values: &Resolved) -> ExtendedPlot {
+    let (rows, cols) = cats.shape;
+    let leaves = if cols > 1 && rows as usize * cols as usize == cats.texts.len() {
+        (0..rows as usize)
+            .map(|r| {
+                let path = (0..cols as usize).map(|c| cats.texts[r * cols as usize + c].clone()).collect();
+                (path, values.values.get(r).and_then(Value::as_number).unwrap_or(0.0))
+            })
+            .collect()
+    } else {
+        pairs.into_iter().map(|(l, v)| (vec![l], v)).collect()
+    };
+    ExtendedPlot::Hierarchy { leaves }
+}
+
 /// The figures of a `chartEx` chart.
 fn extended(book: &Workbook, sheet: usize, chart: &Chart) -> ExtendedPlot {
     let ex = chart.spec.ex.clone().unwrap_or_default();
@@ -433,20 +479,7 @@ fn extended(book: &Workbook, sheet: usize, chart: &Chart) -> ExtendedPlot {
             bins: stats::histogram(&numbers, &first.binning.unwrap_or_default()),
         },
         ExLayout::BoxWhisker => {
-            let options = first.box_options.unwrap_or_default();
-            let mut groups: Vec<(String, Vec<f64>)> = Vec::new();
-            for (label, v) in pairs() {
-                match groups.iter_mut().find(|(l, _)| *l == label) {
-                    Some(g) => g.1.push(v),
-                    None => groups.push((label, vec![v])),
-                }
-            }
-            if cats.texts.is_empty() || groups.len() == values.values.len() && groups.iter().all(|g| g.1.len() == 1) {
-                groups = vec![(String::new(), numbers.clone())];
-            }
-            ExtendedPlot::BoxWhisker {
-                boxes: groups.into_iter().filter_map(|(l, v)| stats::box_stats(&v, &options).map(|b| (l, b))).collect(),
-            }
+            box_whisker_plot(pairs(), &cats, &values, &numbers, &first.box_options.unwrap_or_default())
         }
         ExLayout::Waterfall => {
             let nums: Vec<f64> = pairs().iter().map(|p| p.1).collect();
@@ -454,20 +487,7 @@ fn extended(book: &Workbook, sheet: usize, chart: &Chart) -> ExtendedPlot {
             ExtendedPlot::Waterfall { bars: labels.into_iter().zip(bars).collect() }
         }
         ExLayout::Funnel => ExtendedPlot::Funnel { items: pairs() },
-        ExLayout::Treemap | ExLayout::Sunburst => {
-            let (rows, cols) = cats.shape;
-            let leaves = if cols > 1 && rows as usize * cols as usize == cats.texts.len() {
-                (0..rows as usize)
-                    .map(|r| {
-                        let path = (0..cols as usize).map(|c| cats.texts[r * cols as usize + c].clone()).collect();
-                        (path, values.values.get(r).and_then(Value::as_number).unwrap_or(0.0))
-                    })
-                    .collect()
-            } else {
-                pairs().into_iter().map(|(l, v)| (vec![l], v)).collect()
-            };
-            ExtendedPlot::Hierarchy { leaves }
-        }
+        ExLayout::Treemap | ExLayout::Sunburst => hierarchy_plot(pairs(), &cats, &values),
         ExLayout::RegionMap => ExtendedPlot::Map { regions: pairs() },
     }
 }

@@ -301,51 +301,61 @@ pub fn layout_series(
     let name = &book.sheets[sheet].name;
     let top = range.first.row + u32::from(shape.header_row);
     let left = range.first.col + u32::from(shape.label_column);
-    let mut out = Vec::new();
     match shape.plot_by {
-        PlotBy::Columns => {
-            let categories = shape.label_column.then(|| {
-                absolute(
-                    name,
-                    Range::new(
-                        CellRef::new(top, range.first.col),
-                        CellRef::new(range.last.row, range.first.col),
-                    ),
-                )
-            });
-            for col in left..=range.last.col {
-                let values = absolute(
-                    name,
-                    Range::new(CellRef::new(top, col), CellRef::new(range.last.row, col)),
-                );
-                let title = shape
-                    .header_row
-                    .then(|| absolute(name, Range::cell(CellRef::new(range.first.row, col))));
-                out.push(ChartSeries::new(title, categories.clone(), values));
-            }
-        }
-        PlotBy::Rows => {
-            // By rows, the first row's cells are the categories and the first column's are the names.
-            let categories = shape.header_row.then(|| {
-                absolute(
-                    name,
-                    Range::new(
-                        CellRef::new(range.first.row, left),
-                        CellRef::new(range.first.row, range.last.col),
-                    ),
-                )
-            });
-            for row in top..=range.last.row {
-                let values = absolute(
-                    name,
-                    Range::new(CellRef::new(row, left), CellRef::new(row, range.last.col)),
-                );
-                let title = shape
-                    .label_column
-                    .then(|| absolute(name, Range::cell(CellRef::new(row, range.first.col))));
-                out.push(ChartSeries::new(title, categories.clone(), values));
-            }
-        }
+        PlotBy::Columns => series_by_columns(name, range, shape, top, left),
+        PlotBy::Rows => series_by_rows(name, range, shape, top, left),
+    }
+}
+
+/// One series for each column of the selection, after the label column when there is one.
+fn series_by_columns(
+    name: &str,
+    range: Range,
+    shape: Shape,
+    top: u32,
+    left: u32,
+) -> Vec<ChartSeries> {
+    let categories = shape.label_column.then(|| {
+        absolute(
+            name,
+            Range::new(
+                CellRef::new(top, range.first.col),
+                CellRef::new(range.last.row, range.first.col),
+            ),
+        )
+    });
+    let mut out = Vec::new();
+    for col in left..=range.last.col {
+        let values =
+            absolute(name, Range::new(CellRef::new(top, col), CellRef::new(range.last.row, col)));
+        let title = shape
+            .header_row
+            .then(|| absolute(name, Range::cell(CellRef::new(range.first.row, col))));
+        out.push(ChartSeries::new(title, categories.clone(), values));
+    }
+    out
+}
+
+/// One series for each row of the selection, after the header row when there is one.
+fn series_by_rows(name: &str, range: Range, shape: Shape, top: u32, left: u32) -> Vec<ChartSeries> {
+    // By rows, the first row's cells are the categories and the first column's are the names.
+    let categories = shape.header_row.then(|| {
+        absolute(
+            name,
+            Range::new(
+                CellRef::new(range.first.row, left),
+                CellRef::new(range.first.row, range.last.col),
+            ),
+        )
+    });
+    let mut out = Vec::new();
+    for row in top..=range.last.row {
+        let values =
+            absolute(name, Range::new(CellRef::new(row, left), CellRef::new(row, range.last.col)));
+        let title = shape
+            .label_column
+            .then(|| absolute(name, Range::cell(CellRef::new(row, range.first.col))));
+        out.push(ChartSeries::new(title, categories.clone(), values));
     }
     out
 }

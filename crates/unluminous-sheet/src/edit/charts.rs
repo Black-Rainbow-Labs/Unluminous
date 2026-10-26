@@ -997,71 +997,7 @@ impl Session {
         format: ElementFormat,
     ) -> Result<(), String> {
         self.change_chart("Format chart element", sheet, index, |chart| {
-            let text = wants_text(&format);
-            match element {
-                ChartElement::ChartArea => {
-                    let raw = &mut chart.spec.raw;
-                    raw.sp_pr = merge_sp_pr(&raw.sp_pr, format.fill, format.line);
-                    if text {
-                        raw.tx_pr = merge_tx_pr(&raw.tx_pr, &format);
-                    }
-                }
-                ChartElement::PlotArea => {
-                    let raw = &mut chart.spec.raw;
-                    raw.plot_sp_pr = merge_sp_pr(&raw.plot_sp_pr, format.fill, format.line);
-                }
-                ChartElement::Title => {
-                    let t = &mut chart.spec.title;
-                    t.sp_pr = merge_sp_pr(&t.sp_pr, format.fill, format.line);
-                    if text {
-                        t.tx_pr = merge_tx_pr(&t.tx_pr, &format);
-                    }
-                }
-                ChartElement::Legend => {
-                    let l = chart.spec.legend.as_mut().ok_or("The chart has no legend.")?;
-                    l.sp_pr = merge_sp_pr(&l.sp_pr, format.fill, format.line);
-                    if text {
-                        l.tx_pr = merge_tx_pr(&l.tx_pr, &format);
-                    }
-                }
-                ChartElement::Axis(which) | ChartElement::AxisTitle(which) => {
-                    let id = axis_id(chart, which).ok_or("The chart has no such axis.")?;
-                    let a = chart.spec.axis_mut(id).ok_or("The chart has no such axis.")?;
-                    if matches!(element, ChartElement::AxisTitle(_)) {
-                        let t = a.title.as_mut().ok_or("The axis has no title.")?;
-                        t.format.sp_pr = merge_sp_pr(&t.format.sp_pr, format.fill, format.line);
-                        if text {
-                            t.format.tx_pr = merge_tx_pr(&t.format.tx_pr, &format);
-                        }
-                    } else {
-                        if format.fill.is_some() || format.line.is_some() {
-                            a.sp_pr = merge_sp_pr(&a.sp_pr, format.fill, format.line);
-                        }
-                        if text {
-                            a.tx_pr = merge_tx_pr(&a.tx_pr, &format);
-                        }
-                    }
-                }
-                ChartElement::DataLabels(series) => {
-                    let range: Vec<usize> = match series {
-                        Some(s) if s < chart.series.len() => vec![s],
-                        Some(_) => return Err("There is no such series.".to_owned()),
-                        None => (0..chart.series.len()).collect(),
-                    };
-                    for i in range {
-                        let l = chart.series[i]
-                            .fmt
-                            .labels
-                            .as_mut()
-                            .ok_or("The series has no data labels.")?;
-                        l.fields.sp_pr = merge_sp_pr(&l.fields.sp_pr, format.fill, format.line);
-                        if text {
-                            l.fields.tx_pr = merge_tx_pr(&l.fields.tx_pr, &format);
-                        }
-                    }
-                }
-            }
-            Ok(())
+            format_element(chart, element, format)
         })
     }
 
@@ -1536,12 +1472,169 @@ fn drop_empty_groups(chart: &mut Chart) {
         .retain(|a| ids.contains(&a.id) || chart.spec.groups.iter().all(|g| g.axes.is_empty()));
 }
 
+/// Merge a format into the fill, border and text properties of one element.
+fn merge_into_element(
+    sp_pr: &mut Option<String>,
+    tx_pr: &mut Option<String>,
+    format: &ElementFormat,
+) {
+    *sp_pr = merge_sp_pr(sp_pr, format.fill, format.line);
+    if wants_text(format) {
+        *tx_pr = merge_tx_pr(tx_pr, format);
+    }
+}
+
+/// Format an axis, or the title of an axis, with the fill, border and text of a format.
+fn format_axis_element(
+    chart: &mut Chart,
+    element: ChartElement,
+    which: AxisSelector,
+    format: &ElementFormat,
+) -> Result<(), String> {
+    let id = axis_id(chart, which).ok_or("The chart has no such axis.")?;
+    let a = chart.spec.axis_mut(id).ok_or("The chart has no such axis.")?;
+    if matches!(element, ChartElement::AxisTitle(_)) {
+        let t = a.title.as_mut().ok_or("The axis has no title.")?;
+        merge_into_element(&mut t.format.sp_pr, &mut t.format.tx_pr, format);
+    } else {
+        if format.fill.is_some() || format.line.is_some() {
+            a.sp_pr = merge_sp_pr(&a.sp_pr, format.fill, format.line);
+        }
+        if wants_text(format) {
+            a.tx_pr = merge_tx_pr(&a.tx_pr, format);
+        }
+    }
+    Ok(())
+}
+
+/// Format the data labels of one series, or of every series when none is named.
+fn format_data_labels(
+    chart: &mut Chart,
+    series: Option<usize>,
+    format: &ElementFormat,
+) -> Result<(), String> {
+    let range: Vec<usize> = match series {
+        Some(s) if s < chart.series.len() => vec![s],
+        Some(_) => return Err("There is no such series.".to_owned()),
+        None => (0..chart.series.len()).collect(),
+    };
+    for i in range {
+        let l = chart.series[i].fmt.labels.as_mut().ok_or("The series has no data labels.")?;
+        merge_into_element(&mut l.fields.sp_pr, &mut l.fields.tx_pr, format);
+    }
+    Ok(())
+}
+
+/// Format an element of the chart with the fill, border and text of a format.
+fn format_element(
+    chart: &mut Chart,
+    element: ChartElement,
+    format: ElementFormat,
+) -> Result<(), String> {
+    match element {
+        ChartElement::ChartArea => {
+            let raw = &mut chart.spec.raw;
+            merge_into_element(&mut raw.sp_pr, &mut raw.tx_pr, &format);
+        }
+        ChartElement::PlotArea => {
+            let raw = &mut chart.spec.raw;
+            raw.plot_sp_pr = merge_sp_pr(&raw.plot_sp_pr, format.fill, format.line);
+        }
+        ChartElement::Title => {
+            let t = &mut chart.spec.title;
+            merge_into_element(&mut t.sp_pr, &mut t.tx_pr, &format);
+        }
+        ChartElement::Legend => {
+            let l = chart.spec.legend.as_mut().ok_or("The chart has no legend.")?;
+            merge_into_element(&mut l.sp_pr, &mut l.tx_pr, &format);
+        }
+        ChartElement::Axis(which) | ChartElement::AxisTitle(which) => {
+            format_axis_element(chart, element, which, &format)?;
+        }
+        ChartElement::DataLabels(series) => format_data_labels(chart, series, &format)?,
+    }
+    Ok(())
+}
+
 fn series_is_secondary(chart: &Chart, series: usize) -> Result<bool, String> {
     let s = chart.series.get(series).ok_or("There is no such series.")?;
     if chart.spec.ex.is_some() {
         return Err("This type of chart cannot be combined with another.".to_owned());
     }
     Ok(chart.spec.is_secondary(s.group))
+}
+
+/// Refuse a retype that Excel would refuse: the target group cannot sit beside the other series.
+fn check_can_combine(chart: &Chart, series: usize, target: &Group) -> Result<(), String> {
+    let other_kinds =
+        chart.series.iter().enumerate().filter(|(i, _)| *i != series).any(|(_, s)| {
+            chart.spec.groups.get(s.group).is_some_and(|g| {
+                (g.three_d || target.three_d)
+                    && (g.kind != target.kind || g.three_d != target.three_d)
+                    || (g.horizontal != target.horizontal
+                        && g.kind == GroupKind::Bar
+                        && target.kind == GroupKind::Bar)
+            })
+        });
+    let refused = other_kinds
+        || (target.three_d && chart.series.len() > 1)
+        || (!target.kind.has_axes() && chart.series.len() > 1);
+    if refused {
+        return Err("Some chart types cannot be combined with other chart types. Select a different chart type.".to_owned());
+    }
+    Ok(())
+}
+
+/// Choose the axes the target group draws against, adding secondary axes when they are asked for.
+fn choose_target_axes(chart: &mut Chart, target: &mut Group, secondary: bool) {
+    let scatter = matches!(target.kind, GroupKind::Scatter | GroupKind::Bubble);
+    if secondary {
+        target.axes = chartbuild::add_secondary_axes(&mut chart.spec, scatter);
+    } else if chart.spec.groups.is_empty() || target.axes.is_empty() {
+        target.axes = chartbuild::primary_axes();
+    } else {
+        target.axes = chart
+            .spec
+            .groups
+            .first()
+            .map(|g| g.axes.clone())
+            .filter(|a| !chart.spec.is_secondary(0) && !a.is_empty())
+            .unwrap_or_else(chartbuild::primary_axes);
+    }
+}
+
+/// Add to the chart the axes the target group names that the chart does not have yet.
+fn add_missing_axes(chart: &mut Chart, ty: ChartType, target: &Group) {
+    for id in &target.axes {
+        if chart.spec.axis(*id).is_none() {
+            for axis in built_axes(ty) {
+                if axis.id == *id {
+                    chart.spec.axes.push(axis);
+                }
+            }
+        }
+    }
+}
+
+/// The index of the chart's group that matches the target, which is added when none matches.
+fn group_index_for(chart: &mut Chart, target: Group) -> usize {
+    let same = |g: &Group| {
+        g.kind == target.kind
+            && g.three_d == target.three_d
+            && g.horizontal == target.horizontal
+            && g.grouping == target.grouping
+            && g.scatter_style == target.scatter_style
+            && g.radar_style == target.radar_style
+            && g.of_pie == target.of_pie
+            && g.axes == target.axes
+    };
+    match chart.spec.groups.iter().position(same) {
+        Some(at) => at,
+        None => {
+            chart.spec.groups.push(target);
+            chart.spec.groups.len() - 1
+        }
+    }
 }
 
 /// Draw one series as another type, on the primary or secondary axis, in a group of its own if no group
@@ -1559,62 +1652,10 @@ fn retype_series(
     let Some(mut target) = built.groups.into_iter().next() else {
         return Err("Unknown chart type.".to_owned());
     };
-    let other_kinds =
-        chart.series.iter().enumerate().filter(|(i, _)| *i != series).any(|(_, s)| {
-            chart.spec.groups.get(s.group).is_some_and(|g| {
-                (g.three_d || target.three_d)
-                    && (g.kind != target.kind || g.three_d != target.three_d)
-                    || (g.horizontal != target.horizontal
-                        && g.kind == GroupKind::Bar
-                        && target.kind == GroupKind::Bar)
-            })
-        });
-    if other_kinds || (target.three_d && chart.series.len() > 1) {
-        return Err("Some chart types cannot be combined with other chart types. Select a different chart type.".to_owned());
-    }
-    if !target.kind.has_axes() && chart.series.len() > 1 {
-        return Err("Some chart types cannot be combined with other chart types. Select a different chart type.".to_owned());
-    }
-    let scatter = matches!(target.kind, GroupKind::Scatter | GroupKind::Bubble);
-    if secondary {
-        target.axes = chartbuild::add_secondary_axes(&mut chart.spec, scatter);
-    } else if chart.spec.groups.is_empty() || target.axes.is_empty() {
-        target.axes = chartbuild::primary_axes();
-    } else {
-        target.axes = chart
-            .spec
-            .groups
-            .first()
-            .map(|g| g.axes.clone())
-            .filter(|a| !chart.spec.is_secondary(0) && !a.is_empty())
-            .unwrap_or_else(chartbuild::primary_axes);
-    }
-    for id in &target.axes {
-        if chart.spec.axis(*id).is_none() {
-            for axis in built_axes(ty) {
-                if axis.id == *id {
-                    chart.spec.axes.push(axis);
-                }
-            }
-        }
-    }
-    let same = |g: &Group| {
-        g.kind == target.kind
-            && g.three_d == target.three_d
-            && g.horizontal == target.horizontal
-            && g.grouping == target.grouping
-            && g.scatter_style == target.scatter_style
-            && g.radar_style == target.radar_style
-            && g.of_pie == target.of_pie
-            && g.axes == target.axes
-    };
-    let at = match chart.spec.groups.iter().position(same) {
-        Some(at) => at,
-        None => {
-            chart.spec.groups.push(target);
-            chart.spec.groups.len() - 1
-        }
-    };
+    check_can_combine(chart, series, &target)?;
+    choose_target_axes(chart, &mut target, secondary);
+    add_missing_axes(chart, ty, &target);
+    let at = group_index_for(chart, target);
     chart.series[series].group = at;
     chartbuild::style_series(ty, &mut chart.series[series]);
     drop_empty_groups(chart);

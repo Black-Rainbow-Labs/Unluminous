@@ -33,11 +33,42 @@ impl<'a> Writer<'a> {
     /// The part a chart is written to, with its content type.
     fn chart_bytes(&self, chart: &Chart) -> Vec<u8> {
         if chart.spec.ex.is_some() {
-            return crate::xlsx::chartex::write(chart).into_bytes();
+            let base = self.ex_name_base();
+            let refs = self.ex_refs();
+            let name_of = move |r: &str| match refs.iter().position(|x| x == r) {
+                Some(i) => format!("_xlchart.v1.{}", base + i),
+                None => r.to_owned(),
+            };
+            return crate::xlsx::chartex::write(chart, &name_of).into_bytes();
         }
         let book = self.book;
         let resolve = move |f: &str| crate::chartdata::resolve(book, 0, f);
         crate::xlsx::chart_write::chart_xml(chart, &crate::xlsx::chart_write::Env { resolve: &resolve }).into_bytes()
+    }
+
+    /// The next free number for an `_xlchart.v1.N` name, after the ones the file already has.
+    pub(super) fn ex_name_base(&self) -> usize {
+        let used = self.book.names.iter().filter_map(|n| n.name.strip_prefix("_xlchart.v1.")?.parse::<usize>().ok());
+        used.max().map_or(0, |m| m + 1)
+    }
+
+    /// The distinct ranges the extended charts written from the model refer to, in the order they are named.
+    pub(super) fn ex_refs(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for chart in self.book.sheets.iter().flat_map(|s| s.charts.iter()) {
+            if chart.spec.ex.is_none() || !(chart.new || chart.spec.dirty) {
+                continue;
+            }
+            for s in &chart.series {
+                let name = s.name.iter().filter(|n| !n.starts_with('"'));
+                for r in s.categories.iter().chain(std::iter::once(&s.values)).chain(name) {
+                    if !out.contains(r) {
+                        out.push(r.clone());
+                    }
+                }
+            }
+        }
+        out
     }
 
     /// Charts read from the file and changed since are written from the model over the part they came from.
@@ -62,22 +93,12 @@ impl<'a> Writer<'a> {
         r: &str,
         raw_drawing: String,
     ) -> String {
-        let book = self.book;
         let changed = sheet.charts.iter().any(|c| c.new || c.spec.moved) || !sheet.chart_removed.is_empty();
         if !changed {
             return raw_drawing;
         }
         let existing = sheet.raw.rels.iter().find(|x| x.kind == REL_DRAWING).cloned();
-        let (drawing_part, old_rels, old_xml) = match &existing {
-            Some(rel) => {
-                let path = resolve(part, &rel.target);
-                let text = |p: &str| book.kept.get(p).map(|b| String::from_utf8_lossy(b).into_owned());
-                let xml = text(&path);
-                let old_rels = parse_rels(&text(&rels_path(&path)).unwrap_or_default());
-                (path, old_rels, xml)
-            }
-            None => (self.fresh("xl/drawings/drawing{}.xml"), Vec::new(), None),
-        };
+        let (drawing_part, old_rels, old_xml) = self.drawing_source(&existing, part);
         self.taken.insert(drawing_part.clone());
         let mut new_rels = old_rels.clone();
         let mut anchors = String::new();
@@ -94,16 +115,22 @@ impl<'a> Writer<'a> {
         self.add(&rels_path(&drawing_part), None, write_rels(&built.rels).into_bytes());
         match existing {
             Some(_) => raw_drawing,
-            None => {
-                let id = next_id(rels);
-                rels.push(Relationship {
-                    id: id.clone(),
-                    kind: REL_DRAWING.to_owned(),
-                    target: relative(part, &drawing_part),
-                    external: false,
-                });
-                format!("<drawing {r}:id=\"{id}\"/>")
+            None => relate_new_drawing(rels, part, &drawing_part, r),
+        }
+    }
+
+    /// The part, relationships and XML of the drawing a sheet already has, or a fresh part with none.
+    fn drawing_source(&mut self, existing: &Option<Relationship>, part: &str) -> (String, Vec<Relationship>, Option<String>) {
+        let book = self.book;
+        match existing {
+            Some(rel) => {
+                let path = resolve(part, &rel.target);
+                let text = |p: &str| book.kept.get(p).map(|b| String::from_utf8_lossy(b).into_owned());
+                let xml = text(&path);
+                let old_rels = parse_rels(&text(&rels_path(&path)).unwrap_or_default());
+                (path, old_rels, xml)
             }
+            None => (self.fresh("xl/drawings/drawing{}.xml"), Vec::new(), None),
         }
     }
 
@@ -152,6 +179,18 @@ impl<'a> Writer<'a> {
         self.add(&rels_path(&part), None, write_rels(&sheet_rels).into_bytes());
         part
     }
+}
+
+/// Relate a sheet to a drawing part that was just made, and return the `drawing` element naming it.
+fn relate_new_drawing(rels: &mut Vec<Relationship>, part: &str, drawing_part: &str, r: &str) -> String {
+    let id = next_id(rels);
+    rels.push(Relationship {
+        id: id.clone(),
+        kind: REL_DRAWING.to_owned(),
+        target: relative(part, drawing_part),
+        external: false,
+    });
+    format!("<drawing {r}:id=\"{id}\"/>")
 }
 
 /// The anchor of the chart on a chart sheet, which Excel fills the window with.

@@ -154,10 +154,8 @@ fn read_space(xml: &str, root: Node, spec: &mut ChartSpec) {
     raw_part.user_shapes = raw_child(xml, root, "userShapes");
     raw_part.ext = raw_child(xml, root, "extLst");
     raw_part.namespaces = super::namespaces_of(root).into_iter().collect();
-    raw_part.ignorable = root
-        .attributes()
-        .find(|a| a.name() == "Ignorable")
-        .map(|a| a.value().to_owned());
+    raw_part.ignorable =
+        root.attributes().find(|a| a.name() == "Ignorable").map(|a| a.value().to_owned());
     spec.pivot = raw_part.pivot_source.is_some();
     spec.rounded_corners = flag(root, "roundedCorners");
     spec.style = read_style(root);
@@ -343,7 +341,11 @@ fn split_filtered<'a, 'b>(xml: &str, group: Node<'a, 'b>) -> (Option<String>, Ve
     for ext in children(list, "ext") {
         let holders: Vec<Node> = ext
             .children()
-            .filter(|c| c.is_element() && c.tag_name().name().starts_with("filtered") && c.tag_name().name().ends_with("Series"))
+            .filter(|c| {
+                c.is_element()
+                    && c.tag_name().name().starts_with("filtered")
+                    && c.tag_name().name().ends_with("Series")
+            })
             .collect();
         if holders.is_empty() {
             kept.push_str(raw(xml, ext));
@@ -376,7 +378,8 @@ fn read_series(xml: &str, ser: Node, kind: GroupKind) -> ChartSeries {
     };
     let (ext, hidden_cells) = split_category_filter(xml, ser);
     fmt.ext = ext;
-    fmt.filtered_categories = hidden_cells.iter().filter_map(|c| category_position(categories.as_deref(), c)).collect();
+    fmt.filtered_categories =
+        hidden_cells.iter().filter_map(|c| category_position(categories.as_deref(), c)).collect();
     fmt.points = children(ser, "dPt").map(|p| read_point(xml, p)).collect();
     fmt.trendlines = children(ser, "trendline").map(|t| read_trendline(xml, t)).collect();
     fmt.error_bars = children(ser, "errBars").map(|e| read_error_bars(xml, e, scatter)).collect();
@@ -399,12 +402,16 @@ fn split_category_filter(xml: &str, ser: Node) -> (Option<String>, Vec<String>) 
     let mut kept = String::new();
     let mut cells = Vec::new();
     for ext in children(list, "ext") {
-        let holder = ext.children().find(|c| c.is_element() && c.tag_name().name() == "categoryFilterExceptions");
+        let holder = ext
+            .children()
+            .find(|c| c.is_element() && c.tag_name().name() == "categoryFilterExceptions");
         match holder {
             Some(h) => cells.extend(
                 h.children()
                     .filter(|c| c.is_element())
-                    .filter_map(|e| e.children().find(|c| c.is_element() && c.tag_name().name() == "sqref"))
+                    .filter_map(|e| {
+                        e.children().find(|c| c.is_element() && c.tag_name().name() == "sqref")
+                    })
                     .filter_map(|n| n.text().map(str::to_owned)),
             ),
             None => kept.push_str(raw(xml, ext)),
@@ -474,9 +481,8 @@ fn read_error_source(n: Node) -> Option<ErrorSource> {
         return Some(ErrorSource::Range(f.text().unwrap_or("").trim().to_owned()));
     }
     let lit = child(n, "numLit")?;
-    let numbers = children(lit, "pt")
-        .filter_map(|pt| child(pt, "v")?.text()?.trim().parse().ok())
-        .collect();
+    let numbers =
+        children(lit, "pt").filter_map(|pt| child(pt, "v")?.text()?.trim().parse().ok()).collect();
     Some(ErrorSource::Numbers(numbers))
 }
 
@@ -553,6 +559,7 @@ fn read_gridlines(xml: &str, n: Node) -> Gridlines {
     Gridlines { sp_pr: raw_child(xml, n, "spPr") }
 }
 
+/// Read an axis: its scale, position, gridlines, title, number format and tick marks, then its crossing.
 fn read_axis(xml: &str, node: Node) -> Axis {
     let kind = match node.tag_name().name() {
         "valAx" => AxisKind::Value,
@@ -587,6 +594,12 @@ fn read_axis(xml: &str, node: Node) -> Axis {
     a.tick_labels = val(node, "tickLblPos").map(TickLabels::from_xml).unwrap_or_default();
     a.sp_pr = raw_child(xml, node, "spPr");
     a.tx_pr = raw_child(xml, node, "txPr");
+    read_axis_crossing(xml, node, &mut a);
+    a
+}
+
+/// Read what an axis says about where it crosses the other axis, its units and its labels.
+fn read_axis_crossing(xml: &str, node: Node, a: &mut Axis) {
     a.cross_axis = number(node, "crossAx").unwrap_or(0);
     a.crosses = match (val(node, "crosses"), number::<f64>(node, "crossesAt")) {
         (_, Some(at)) => Crosses::At(at),
@@ -608,7 +621,6 @@ fn read_axis(xml: &str, node: Node) -> Axis {
     a.major_time_unit = val(node, "majorTimeUnit").and_then(TimeUnit::from_xml);
     a.minor_time_unit = val(node, "minorTimeUnit").and_then(TimeUnit::from_xml);
     a.ext = raw_child(xml, node, "extLst");
-    a
 }
 
 #[cfg(test)]

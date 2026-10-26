@@ -991,71 +991,79 @@ impl ChartType {
         ChartType::Map,
     ];
 
+    /// Every type with its Excel `XlChartType` number and its command word.
+    const TABLE: [(ChartType, i32, &'static str); 61] = [
+        (ChartType::ColumnClustered, 51, "column"),
+        (ChartType::ColumnStacked, 52, "column-stacked"),
+        (ChartType::ColumnStacked100, 53, "column-stacked-100"),
+        (ChartType::Column3DClustered, 54, "column-3d-clustered"),
+        (ChartType::Column3DStacked, 55, "column-3d-stacked"),
+        (ChartType::Column3DStacked100, 56, "column-3d-stacked-100"),
+        (ChartType::Column3D, -4100, "column-3d"),
+        (ChartType::BarClustered, 57, "bar"),
+        (ChartType::BarStacked, 58, "bar-stacked"),
+        (ChartType::BarStacked100, 59, "bar-stacked-100"),
+        (ChartType::Bar3DClustered, 60, "bar-3d-clustered"),
+        (ChartType::Bar3DStacked, 61, "bar-3d-stacked"),
+        (ChartType::Bar3DStacked100, 62, "bar-3d-stacked-100"),
+        (ChartType::Line, 4, "line"),
+        (ChartType::LineStacked, 63, "line-stacked"),
+        (ChartType::LineStacked100, 64, "line-stacked-100"),
+        (ChartType::LineMarkers, 65, "line-markers"),
+        (ChartType::LineMarkersStacked, 66, "line-markers-stacked"),
+        (ChartType::LineMarkersStacked100, 67, "line-markers-stacked-100"),
+        (ChartType::Line3D, -4101, "line-3d"),
+        (ChartType::Pie, 5, "pie"),
+        (ChartType::PieExploded, 69, "pie-exploded"),
+        (ChartType::Pie3D, -4102, "pie-3d"),
+        (ChartType::Pie3DExploded, 70, "pie-3d-exploded"),
+        (ChartType::PieOfPie, 68, "pie-of-pie"),
+        (ChartType::BarOfPie, 71, "bar-of-pie"),
+        (ChartType::Doughnut, -4120, "doughnut"),
+        (ChartType::DoughnutExploded, 80, "doughnut-exploded"),
+        (ChartType::Area, 1, "area"),
+        (ChartType::AreaStacked, 76, "area-stacked"),
+        (ChartType::AreaStacked100, 77, "area-stacked-100"),
+        (ChartType::Area3D, -4098, "area-3d"),
+        (ChartType::Area3DStacked, 78, "area-3d-stacked"),
+        (ChartType::Area3DStacked100, 79, "area-3d-stacked-100"),
+        (ChartType::ScatterMarkers, -4169, "scatter"),
+        (ChartType::ScatterSmooth, 72, "scatter-smooth"),
+        (ChartType::ScatterSmoothNoMarkers, 73, "scatter-smooth-no-markers"),
+        (ChartType::ScatterLines, 74, "scatter-lines"),
+        (ChartType::ScatterLinesNoMarkers, 75, "scatter-lines-no-markers"),
+        (ChartType::Bubble, 15, "bubble"),
+        (ChartType::Bubble3D, 87, "bubble-3d"),
+        (ChartType::StockHlc, 88, "stock-hlc"),
+        (ChartType::StockOhlc, 89, "stock-ohlc"),
+        (ChartType::StockVhlc, 90, "stock-vhlc"),
+        (ChartType::StockVohlc, 91, "stock-vohlc"),
+        (ChartType::Surface, 83, "surface"),
+        (ChartType::SurfaceWireframe, 84, "surface-wireframe"),
+        (ChartType::SurfaceTopView, 85, "contour"),
+        (ChartType::SurfaceTopViewWireframe, 86, "contour-wireframe"),
+        (ChartType::Radar, -4151, "radar"),
+        (ChartType::RadarMarkers, 81, "radar-markers"),
+        (ChartType::RadarFilled, 82, "radar-filled"),
+        (ChartType::Treemap, 117, "treemap"),
+        (ChartType::Sunburst, 120, "sunburst"),
+        (ChartType::Histogram, 118, "histogram"),
+        (ChartType::Pareto, 122, "pareto"),
+        (ChartType::BoxWhisker, 121, "box-whisker"),
+        (ChartType::Waterfall, 119, "waterfall"),
+        (ChartType::Funnel, 123, "funnel"),
+        (ChartType::Map, 140, "map"),
+        (ChartType::Combo, -4111, "combo"),
+    ];
+
+    /// The row of the table that describes the type.
+    fn row(self) -> (ChartType, i32, &'static str) {
+        Self::TABLE.iter().copied().find(|row| row.0 == self).expect("every type has a row")
+    }
+
     /// The name a command word uses: lower case words joined by dashes.
     pub fn name(self) -> &'static str {
-        match self {
-            ChartType::ColumnClustered => "column",
-            ChartType::ColumnStacked => "column-stacked",
-            ChartType::ColumnStacked100 => "column-stacked-100",
-            ChartType::Column3DClustered => "column-3d-clustered",
-            ChartType::Column3DStacked => "column-3d-stacked",
-            ChartType::Column3DStacked100 => "column-3d-stacked-100",
-            ChartType::Column3D => "column-3d",
-            ChartType::BarClustered => "bar",
-            ChartType::BarStacked => "bar-stacked",
-            ChartType::BarStacked100 => "bar-stacked-100",
-            ChartType::Bar3DClustered => "bar-3d-clustered",
-            ChartType::Bar3DStacked => "bar-3d-stacked",
-            ChartType::Bar3DStacked100 => "bar-3d-stacked-100",
-            ChartType::Line => "line",
-            ChartType::LineStacked => "line-stacked",
-            ChartType::LineStacked100 => "line-stacked-100",
-            ChartType::LineMarkers => "line-markers",
-            ChartType::LineMarkersStacked => "line-markers-stacked",
-            ChartType::LineMarkersStacked100 => "line-markers-stacked-100",
-            ChartType::Line3D => "line-3d",
-            ChartType::Pie => "pie",
-            ChartType::PieExploded => "pie-exploded",
-            ChartType::Pie3D => "pie-3d",
-            ChartType::Pie3DExploded => "pie-3d-exploded",
-            ChartType::PieOfPie => "pie-of-pie",
-            ChartType::BarOfPie => "bar-of-pie",
-            ChartType::Doughnut => "doughnut",
-            ChartType::DoughnutExploded => "doughnut-exploded",
-            ChartType::Area => "area",
-            ChartType::AreaStacked => "area-stacked",
-            ChartType::AreaStacked100 => "area-stacked-100",
-            ChartType::Area3D => "area-3d",
-            ChartType::Area3DStacked => "area-3d-stacked",
-            ChartType::Area3DStacked100 => "area-3d-stacked-100",
-            ChartType::ScatterMarkers => "scatter",
-            ChartType::ScatterSmooth => "scatter-smooth",
-            ChartType::ScatterSmoothNoMarkers => "scatter-smooth-no-markers",
-            ChartType::ScatterLines => "scatter-lines",
-            ChartType::ScatterLinesNoMarkers => "scatter-lines-no-markers",
-            ChartType::Bubble => "bubble",
-            ChartType::Bubble3D => "bubble-3d",
-            ChartType::StockHlc => "stock-hlc",
-            ChartType::StockOhlc => "stock-ohlc",
-            ChartType::StockVhlc => "stock-vhlc",
-            ChartType::StockVohlc => "stock-vohlc",
-            ChartType::Surface => "surface",
-            ChartType::SurfaceWireframe => "surface-wireframe",
-            ChartType::SurfaceTopView => "contour",
-            ChartType::SurfaceTopViewWireframe => "contour-wireframe",
-            ChartType::Radar => "radar",
-            ChartType::RadarMarkers => "radar-markers",
-            ChartType::RadarFilled => "radar-filled",
-            ChartType::Treemap => "treemap",
-            ChartType::Sunburst => "sunburst",
-            ChartType::Histogram => "histogram",
-            ChartType::Pareto => "pareto",
-            ChartType::BoxWhisker => "box-whisker",
-            ChartType::Waterfall => "waterfall",
-            ChartType::Funnel => "funnel",
-            ChartType::Map => "map",
-            ChartType::Combo => "combo",
-        }
+        self.row().2
     }
 
     /// The type a command word names.
@@ -1066,69 +1074,7 @@ impl ChartType {
 
     /// Excel's `XlChartType` number for the type.
     pub fn excel_number(self) -> i32 {
-        match self {
-            ChartType::ColumnClustered => 51,
-            ChartType::ColumnStacked => 52,
-            ChartType::ColumnStacked100 => 53,
-            ChartType::Column3DClustered => 54,
-            ChartType::Column3DStacked => 55,
-            ChartType::Column3DStacked100 => 56,
-            ChartType::Column3D => -4100,
-            ChartType::BarClustered => 57,
-            ChartType::BarStacked => 58,
-            ChartType::BarStacked100 => 59,
-            ChartType::Bar3DClustered => 60,
-            ChartType::Bar3DStacked => 61,
-            ChartType::Bar3DStacked100 => 62,
-            ChartType::Line => 4,
-            ChartType::LineStacked => 63,
-            ChartType::LineStacked100 => 64,
-            ChartType::LineMarkers => 65,
-            ChartType::LineMarkersStacked => 66,
-            ChartType::LineMarkersStacked100 => 67,
-            ChartType::Line3D => -4101,
-            ChartType::Pie => 5,
-            ChartType::PieExploded => 69,
-            ChartType::Pie3D => -4102,
-            ChartType::Pie3DExploded => 70,
-            ChartType::PieOfPie => 68,
-            ChartType::BarOfPie => 71,
-            ChartType::Doughnut => -4120,
-            ChartType::DoughnutExploded => 80,
-            ChartType::Area => 1,
-            ChartType::AreaStacked => 76,
-            ChartType::AreaStacked100 => 77,
-            ChartType::Area3D => -4098,
-            ChartType::Area3DStacked => 78,
-            ChartType::Area3DStacked100 => 79,
-            ChartType::ScatterMarkers => -4169,
-            ChartType::ScatterSmooth => 72,
-            ChartType::ScatterSmoothNoMarkers => 73,
-            ChartType::ScatterLines => 74,
-            ChartType::ScatterLinesNoMarkers => 75,
-            ChartType::Bubble => 15,
-            ChartType::Bubble3D => 87,
-            ChartType::StockHlc => 88,
-            ChartType::StockOhlc => 89,
-            ChartType::StockVhlc => 90,
-            ChartType::StockVohlc => 91,
-            ChartType::Surface => 83,
-            ChartType::SurfaceWireframe => 84,
-            ChartType::SurfaceTopView => 85,
-            ChartType::SurfaceTopViewWireframe => 86,
-            ChartType::Radar => -4151,
-            ChartType::RadarMarkers => 81,
-            ChartType::RadarFilled => 82,
-            ChartType::Treemap => 117,
-            ChartType::Sunburst => 120,
-            ChartType::Histogram => 118,
-            ChartType::Pareto => 122,
-            ChartType::BoxWhisker => 121,
-            ChartType::Waterfall => 119,
-            ChartType::Funnel => 123,
-            ChartType::Map => 140,
-            ChartType::Combo => -4111,
-        }
+        self.row().1
     }
 
     /// Whether the type is one of the Office 2016 types held in a `chartEx` part.
@@ -1420,76 +1366,101 @@ impl ExSpec {
 }
 
 impl Group {
-    /// The type of chart this group alone makes.
-    pub fn chart_type(&self) -> ChartType {
-        use ChartType as T;
-        let grouping = self.grouping;
-        let pick = |clustered, stacked, percent| match grouping {
+    /// Picks the clustered, stacked or percent stacked type to match the group's grouping.
+    fn pick_by_grouping(
+        &self,
+        clustered: ChartType,
+        stacked: ChartType,
+        percent: ChartType,
+    ) -> ChartType {
+        match self.grouping {
             Grouping::Stacked => stacked,
             Grouping::PercentStacked => percent,
             _ => clustered,
-        };
+        }
+    }
+
+    /// The type of a bar group, which is a column chart unless it runs horizontally.
+    fn bar_chart_type(&self) -> ChartType {
+        use ChartType as T;
+        match (self.three_d, self.horizontal) {
+            (false, true) => {
+                self.pick_by_grouping(T::BarClustered, T::BarStacked, T::BarStacked100)
+            }
+            (false, false) => {
+                self.pick_by_grouping(T::ColumnClustered, T::ColumnStacked, T::ColumnStacked100)
+            }
+            (true, true) => {
+                self.pick_by_grouping(T::Bar3DClustered, T::Bar3DStacked, T::Bar3DStacked100)
+            }
+            (true, false) if self.grouping == Grouping::Standard => T::Column3D,
+            (true, false) => self.pick_by_grouping(
+                T::Column3DClustered,
+                T::Column3DStacked,
+                T::Column3DStacked100,
+            ),
+        }
+    }
+
+    /// The type of a flat line group, which depends on whether it draws markers.
+    fn line_chart_type(&self) -> ChartType {
+        use ChartType as T;
+        let markers = self.marker != Some(false);
+        match (markers, self.grouping) {
+            (false, Grouping::Stacked) => T::LineStacked,
+            (false, Grouping::PercentStacked) => T::LineStacked100,
+            (false, _) => T::Line,
+            (true, Grouping::Stacked) => T::LineMarkersStacked,
+            (true, Grouping::PercentStacked) => T::LineMarkersStacked100,
+            (true, _) => T::LineMarkers,
+        }
+    }
+
+    /// The type of a scatter group from its style word.
+    fn scatter_chart_type(&self) -> ChartType {
+        use ChartType as T;
+        match self.scatter_style.as_deref() {
+            Some("smoothMarker") => T::ScatterSmooth,
+            Some("smooth") => T::ScatterSmoothNoMarkers,
+            Some("lineMarker") => T::ScatterLines,
+            Some("line") => T::ScatterLinesNoMarkers,
+            _ => T::ScatterMarkers,
+        }
+    }
+
+    /// The type of a radar group from its style word.
+    fn radar_chart_type(&self) -> ChartType {
+        use ChartType as T;
+        match self.radar_style.as_deref() {
+            Some("filled") => T::RadarFilled,
+            Some("marker") => T::RadarMarkers,
+            _ => T::Radar,
+        }
+    }
+
+    /// The type of chart this group alone makes.
+    pub fn chart_type(&self) -> ChartType {
+        use ChartType as T;
         match (self.kind, self.three_d) {
-            (GroupKind::Bar, false) if self.horizontal => {
-                pick(T::BarClustered, T::BarStacked, T::BarStacked100)
-            }
-            (GroupKind::Bar, false) => {
-                pick(T::ColumnClustered, T::ColumnStacked, T::ColumnStacked100)
-            }
-            (GroupKind::Bar, true) if self.horizontal => {
-                pick(T::Bar3DClustered, T::Bar3DStacked, T::Bar3DStacked100)
-            }
-            (GroupKind::Bar, true) => {
-                if grouping == Grouping::Standard {
-                    T::Column3D
-                } else {
-                    pick(T::Column3DClustered, T::Column3DStacked, T::Column3DStacked100)
-                }
-            }
+            (GroupKind::Bar, _) => self.bar_chart_type(),
             (GroupKind::Line, true) => T::Line3D,
-            (GroupKind::Line, false) => {
-                let markers = self.marker != Some(false);
-                match (markers, grouping) {
-                    (false, Grouping::Stacked) => T::LineStacked,
-                    (false, Grouping::PercentStacked) => T::LineStacked100,
-                    (false, _) => T::Line,
-                    (true, Grouping::Stacked) => T::LineMarkersStacked,
-                    (true, Grouping::PercentStacked) => T::LineMarkersStacked100,
-                    (true, _) => T::LineMarkers,
-                }
-            }
+            (GroupKind::Line, false) => self.line_chart_type(),
             (GroupKind::Stock, _) => T::StockHlc,
-            (GroupKind::Area, false) => pick(T::Area, T::AreaStacked, T::AreaStacked100),
-            (GroupKind::Area, true) => pick(T::Area3D, T::Area3DStacked, T::Area3DStacked100),
+            (GroupKind::Area, false) => {
+                self.pick_by_grouping(T::Area, T::AreaStacked, T::AreaStacked100)
+            }
+            (GroupKind::Area, true) => {
+                self.pick_by_grouping(T::Area3D, T::Area3DStacked, T::Area3DStacked100)
+            }
             (GroupKind::Pie, false) => T::Pie,
             (GroupKind::Pie, true) => T::Pie3D,
             (GroupKind::Doughnut, _) => T::Doughnut,
-            (GroupKind::OfPie, _) => {
-                if self.of_pie == OfPieKind::Bar {
-                    T::BarOfPie
-                } else {
-                    T::PieOfPie
-                }
-            }
-            (GroupKind::Scatter, _) => match self.scatter_style.as_deref() {
-                Some("smoothMarker") => T::ScatterSmooth,
-                Some("smooth") => T::ScatterSmoothNoMarkers,
-                Some("lineMarker") => T::ScatterLines,
-                Some("line") => T::ScatterLinesNoMarkers,
-                _ => T::ScatterMarkers,
-            },
-            (GroupKind::Bubble, _) => {
-                if self.bubble_3d {
-                    T::Bubble3D
-                } else {
-                    T::Bubble
-                }
-            }
-            (GroupKind::Radar, _) => match self.radar_style.as_deref() {
-                Some("filled") => T::RadarFilled,
-                Some("marker") => T::RadarMarkers,
-                _ => T::Radar,
-            },
+            (GroupKind::OfPie, _) if self.of_pie == OfPieKind::Bar => T::BarOfPie,
+            (GroupKind::OfPie, _) => T::PieOfPie,
+            (GroupKind::Scatter, _) => self.scatter_chart_type(),
+            (GroupKind::Bubble, _) if self.bubble_3d => T::Bubble3D,
+            (GroupKind::Bubble, _) => T::Bubble,
+            (GroupKind::Radar, _) => self.radar_chart_type(),
             (GroupKind::Surface, three_d) => match (three_d, self.wireframe) {
                 (true, false) => T::Surface,
                 (true, true) => T::SurfaceWireframe,

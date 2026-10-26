@@ -101,8 +101,16 @@ fn area(grouping: Grouping, three_d: bool) -> Group {
 
 /// The chart groups and axes for a type.
 pub fn build(ty: ChartType) -> Built {
+    build_bar_family(ty)
+        .or_else(|| build_line_area_family(ty))
+        .or_else(|| build_point_family(ty))
+        .unwrap_or_else(|| build_extended_family(ty))
+}
+
+/// The groups and axes of a column or bar type, or `None` for any other type.
+fn build_bar_family(ty: ChartType) -> Option<Built> {
     use ChartType as T;
-    match ty {
+    Some(match ty {
         T::ColumnClustered | T::ColumnStacked | T::ColumnStacked100 => {
             flat(bar(false, grouping_of(ty), false), cat_val(true))
         }
@@ -113,6 +121,15 @@ pub fn build(ty: ChartType) -> Built {
         T::BarClustered | T::BarStacked | T::BarStacked100 => {
             flat(bar(true, grouping_of(ty), false), horizontal_axes())
         }
+        T::Combo => flat(bar(false, Grouping::Clustered, false), cat_val(true)),
+        _ => return None,
+    })
+}
+
+/// The groups and axes of a line, pie or area type, or `None` for any other type.
+fn build_line_area_family(ty: ChartType) -> Option<Built> {
+    use ChartType as T;
+    Some(match ty {
         T::Line
         | T::LineMarkers
         | T::LineStacked
@@ -136,6 +153,14 @@ pub fn build(ty: ChartType) -> Built {
             let axes = if grouping == Grouping::Standard { cat_val_ser() } else { cat_val(true) };
             three_d(area(grouping, true), axes, VIEW_3D_PERSPECTIVE)
         }
+        _ => return None,
+    })
+}
+
+/// The groups and axes of a scatter, bubble, stock, surface or radar type, or `None` otherwise.
+fn build_point_family(ty: ChartType) -> Option<Built> {
+    use ChartType as T;
+    Some(match ty {
         T::ScatterMarkers
         | T::ScatterSmooth
         | T::ScatterSmoothNoMarkers
@@ -148,16 +173,13 @@ pub fn build(ty: ChartType) -> Built {
             surface(ty)
         }
         T::Radar | T::RadarMarkers | T::RadarFilled => flat(radar(ty), cat_val(true)),
-        T::Treemap
-        | T::Sunburst
-        | T::Histogram
-        | T::Pareto
-        | T::BoxWhisker
-        | T::Waterfall
-        | T::Funnel
-        | T::Map => Built { ex: Some(build_ex(ty)), ..empty() },
-        T::Combo => flat(bar(false, Grouping::Clustered, false), cat_val(true)),
-    }
+        _ => return None,
+    })
+}
+
+/// The chart of an Office 2016 type, which has only a `chartEx` description.
+fn build_extended_family(ty: ChartType) -> Built {
+    Built { ex: Some(build_ex(ty)), ..empty() }
 }
 
 fn empty() -> Built {
@@ -370,8 +392,8 @@ fn scatter_axes() -> Vec<Axis> {
     vec![x, y]
 }
 
-/// The `chartEx` details of a new chart of an extended type.
-fn build_ex(ty: ChartType) -> ExSpec {
+/// The first series of a new chart of an extended type.
+fn ex_first_series(ty: ChartType) -> ExSeries {
     let layout = match ty {
         ChartType::Treemap => ExLayout::Treemap,
         ChartType::Sunburst => ExLayout::Sunburst,
@@ -389,19 +411,23 @@ fn build_ex(ty: ChartType) -> ExSpec {
         ChartType::Treemap => series.parent_labels = Some("overlapping".to_owned()),
         _ => {}
     }
-    let mut ex = ExSpec { legend: false, series: vec![series], ..ExSpec::default() };
-    let axis = |id, value| ExAxis {
-        id,
-        value_axis: value,
-        tick_labels: true,
-        major_gridlines: value,
-        ..ExAxis::default()
-    };
+    series
+}
+
+/// An axis of an extended chart with tick labels, and gridlines when it is the value axis.
+fn ex_axis(id: u32, value: bool) -> ExAxis {
+    ExAxis { id, value_axis: value, tick_labels: true, major_gridlines: value, ..ExAxis::default() }
+}
+
+/// A category axis of an extended chart whose bars are separated by the given gap width.
+fn ex_gapped_axis(gap: &str) -> ExAxis {
+    ExAxis { gap_width: Some(gap.to_owned()), ..ex_axis(0, false) }
+}
+
+/// Add the axes, and for a Pareto chart the cumulative line series, to a new extended chart.
+fn ex_add_axes(ty: ChartType, ex: &mut ExSpec) {
     match ty {
-        ChartType::Histogram => {
-            ex.axes =
-                vec![ExAxis { gap_width: Some("0".to_owned()), ..axis(0, false) }, axis(1, true)]
-        }
+        ChartType::Histogram => ex.axes = vec![ex_gapped_axis("0"), ex_axis(1, true)],
         ChartType::Pareto => {
             let mut line = ex.series[0].clone();
             line.layout = ExLayout::ParetoLine;
@@ -410,24 +436,22 @@ fn build_ex(ty: ChartType) -> ExSpec {
             line.format_index = 1;
             ex.series.push(line);
             ex.axes = vec![
-                ExAxis { gap_width: Some("0.00999999978".to_owned()), ..axis(0, false) },
-                axis(1, true),
-                ExAxis { num_fmt: None, ..axis(2, true) },
+                ex_gapped_axis("0.00999999978"),
+                ex_axis(1, true),
+                ExAxis { num_fmt: None, ..ex_axis(2, true) },
             ];
         }
-        ChartType::Waterfall => {
-            ex.axes =
-                vec![ExAxis { gap_width: Some("0.5".to_owned()), ..axis(0, false) }, axis(1, true)]
-        }
-        ChartType::BoxWhisker => {
-            ex.axes =
-                vec![ExAxis { gap_width: Some("1".to_owned()), ..axis(0, false) }, axis(1, true)]
-        }
-        ChartType::Funnel => {
-            ex.axes = vec![ExAxis { gap_width: Some("0.06".to_owned()), ..axis(0, false) }]
-        }
+        ChartType::Waterfall => ex.axes = vec![ex_gapped_axis("0.5"), ex_axis(1, true)],
+        ChartType::BoxWhisker => ex.axes = vec![ex_gapped_axis("1"), ex_axis(1, true)],
+        ChartType::Funnel => ex.axes = vec![ex_gapped_axis("0.06")],
         _ => {}
     }
+}
+
+/// The `chartEx` details of a new chart of an extended type.
+fn build_ex(ty: ChartType) -> ExSpec {
+    let mut ex = ExSpec { legend: false, series: vec![ex_first_series(ty)], ..ExSpec::default() };
+    ex_add_axes(ty, &mut ex);
     ex
 }
 
@@ -477,14 +501,9 @@ pub fn style_series(ty: ChartType, s: &mut ChartSeries) {
     }
 }
 
-/// Make a chart a chart of one type: its groups and axes are replaced, the series are kept, and the
-/// titles and options of its axes are kept where the new axes are of the same kind.
-pub fn apply_type(chart: &mut Chart, ty: ChartType) {
-    let built = build(ty);
-    let old_axes = std::mem::take(&mut chart.spec.axes);
-    chart.spec.groups = built.groups;
-    chart.spec.axes = built.axes;
-    for axis in &mut chart.spec.axes {
+/// Copy the titles and options of the old axes onto the new axes of the same kind and position.
+fn keep_axis_settings(old_axes: &[Axis], axes: &mut [Axis]) {
+    for axis in axes {
         if let Some(old) =
             old_axes.iter().find(|o| o.kind == axis.kind && o.position == axis.position)
         {
@@ -502,8 +521,11 @@ pub fn apply_type(chart: &mut Chart, ty: ChartType) {
             axis.minor_gridlines = old.minor_gridlines.clone();
         }
     }
-    chart.spec.raw.view_3d = built.view_3d;
-    if built.floor_and_walls {
+}
+
+/// Give a three dimensional chart plain floor and walls, or take them away from a flat one.
+fn set_floor_and_walls(chart: &mut Chart, present: bool) {
+    if present {
         let wall = "<c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>";
         chart.spec.raw.floor = Some(format!("<c:floor><c:thickness val=\"0\"/>{wall}</c:floor>"));
         chart.spec.raw.side_wall =
@@ -515,13 +537,10 @@ pub fn apply_type(chart: &mut Chart, ty: ChartType) {
         chart.spec.raw.side_wall = None;
         chart.spec.raw.back_wall = None;
     }
-    chart.spec.ex = built.ex;
-    for (i, s) in chart.series.iter_mut().enumerate() {
-        s.group = 0;
-        s.fmt.idx = Some(i as u32);
-        s.fmt.order = Some(i as u32);
-        style_series(ty, s);
-    }
+}
+
+/// Give an extended chart one copy of its template series for each series of the chart.
+fn repeat_ex_series(chart: &mut Chart) {
     if let Some(ex) = &mut chart.spec.ex {
         let template = ex.series.clone();
         ex.series = Vec::new();
@@ -535,6 +554,26 @@ pub fn apply_type(chart: &mut Chart, ty: ChartType) {
             }
         }
     }
+}
+
+/// Make a chart a chart of one type: its groups and axes are replaced, the series are kept, and the
+/// titles and options of its axes are kept where the new axes are of the same kind.
+pub fn apply_type(chart: &mut Chart, ty: ChartType) {
+    let built = build(ty);
+    let old_axes = std::mem::take(&mut chart.spec.axes);
+    chart.spec.groups = built.groups;
+    chart.spec.axes = built.axes;
+    keep_axis_settings(&old_axes, &mut chart.spec.axes);
+    chart.spec.raw.view_3d = built.view_3d;
+    set_floor_and_walls(chart, built.floor_and_walls);
+    chart.spec.ex = built.ex;
+    for (i, s) in chart.series.iter_mut().enumerate() {
+        s.group = 0;
+        s.fmt.idx = Some(i as u32);
+        s.fmt.order = Some(i as u32);
+        style_series(ty, s);
+    }
+    repeat_ex_series(chart);
     chart.spec.dirty = true;
     chart.sync_kind();
 }

@@ -4,8 +4,8 @@
 //! here or changed here. Whatever the model keeps as raw XML goes back where the schema wants it.
 
 use super::escape;
-use crate::chartspec::*;
 use crate::chartdata::Resolved;
+use crate::chartspec::*;
 use crate::model::{Chart, ChartSeries};
 use crate::value::Value;
 
@@ -49,7 +49,11 @@ impl Env<'_> {
             return String::new();
         }
         let code = if r.format.is_empty() { "General" } else { r.format.as_str() };
-        let mut out = format!("<c:numCache><c:formatCode>{}</c:formatCode><c:ptCount val=\"{}\"/>", escape(code), r.values.len());
+        let mut out = format!(
+            "<c:numCache><c:formatCode>{}</c:formatCode><c:ptCount val=\"{}\"/>",
+            escape(code),
+            r.values.len()
+        );
         for (i, v) in r.values.iter().enumerate() {
             if let Value::Number(n) = v {
                 out.push_str(&format!("<c:pt idx=\"{i}\"><c:v>{n}</c:v></c:pt>"));
@@ -129,7 +133,9 @@ fn root_open(spec: &ChartSpec) -> String {
     if let Some(ignorable) = &spec.raw.ignorable {
         out.push_str(&format!(" mc:Ignorable=\"{}\"", escape(ignorable)));
         if !namespaces.iter().any(|(p, _)| p == "mc") {
-            out.push_str(" xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\"");
+            out.push_str(
+                " xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\"",
+            );
         }
     }
     out.push('>');
@@ -195,9 +201,7 @@ fn tx_xml(text: &str, format: &TitleFormat) -> String {
 
 /// The words in a kept `c:tx` element.
 fn rich_words(rich: &str) -> String {
-    let wrapped = format!(
-        "<w xmlns:c=\"{CHART_NS}\" xmlns:a=\"{DRAWING_NS}\">{rich}</w>"
-    );
+    let wrapped = format!("<w xmlns:c=\"{CHART_NS}\" xmlns:a=\"{DRAWING_NS}\">{rich}</w>");
     let Ok(doc) = roxmltree::Document::parse(&wrapped) else { return String::new() };
     super::chart_read::rich_text(doc.root_element())
 }
@@ -225,7 +229,9 @@ fn axis_title_xml(title: &AxisTitle) -> String {
 fn legend_xml(legend: &Legend) -> String {
     let mut out = format!("<c:legend><c:legendPos val=\"{}\"/>", legend.position.xml());
     for entry in &legend.deleted_entries {
-        out.push_str(&format!("<c:legendEntry><c:idx val=\"{entry}\"/><c:delete val=\"1\"/></c:legendEntry>"));
+        out.push_str(&format!(
+            "<c:legendEntry><c:idx val=\"{entry}\"/><c:delete val=\"1\"/></c:legendEntry>"
+        ));
     }
     out.push_str(opt(&legend.layout));
     out.push_str(&bool_val("overlay", legend.overlay));
@@ -271,9 +277,10 @@ fn data_table_xml(t: &DataTable) -> String {
 fn series_ids(chart: &Chart) -> Vec<(u32, u32)> {
     let usable = {
         let mut seen = std::collections::HashSet::new();
-        chart.series.iter().all(|s| {
-            matches!((s.fmt.idx, s.fmt.order), (Some(i), Some(_)) if seen.insert(i))
-        })
+        chart
+            .series
+            .iter()
+            .all(|s| matches!((s.fmt.idx, s.fmt.order), (Some(i), Some(_)) if seen.insert(i)))
     };
     chart
         .series
@@ -286,7 +293,13 @@ fn series_ids(chart: &Chart) -> Vec<(u32, u32)> {
         .collect()
 }
 
-fn group_xml(chart: &Chart, index: usize, g: &Group, ids: &[(u32, u32)], is_text: TextTest) -> String {
+fn group_xml(
+    chart: &Chart,
+    index: usize,
+    g: &Group,
+    ids: &[(u32, u32)],
+    is_text: TextTest,
+) -> String {
     let element = g.kind.element(g.three_d);
     let mut out = format!("<c:{element}>");
     let members: Vec<usize> = chart
@@ -315,7 +328,13 @@ fn group_xml(chart: &Chart, index: usize, g: &Group, ids: &[(u32, u32)], is_text
 }
 
 /// A group's extension list: its kept extensions and its filtered series.
-fn group_ext(chart: &Chart, index: usize, ids: &[(u32, u32)], kept: Option<&str>, is_text: TextTest) -> String {
+fn group_ext(
+    chart: &Chart,
+    index: usize,
+    ids: &[(u32, u32)],
+    kept: Option<&str>,
+    is_text: TextTest,
+) -> String {
     let filtered: Vec<usize> = chart
         .series
         .iter()
@@ -434,7 +453,9 @@ fn hi_low_lines(g: &Group) -> String {
 fn up_down_bars(g: &Group) -> String {
     match g.up_down_bars {
         Some(w) => g.raw_lines[2].clone().unwrap_or_else(|| {
-            format!("<c:upDownBars><c:gapWidth val=\"{w}\"/><c:upBars/><c:downBars/></c:upDownBars>")
+            format!(
+                "<c:upDownBars><c:gapWidth val=\"{w}\"/><c:upBars/><c:downBars/></c:upDownBars>"
+            )
         }),
         None => String::new(),
     }
@@ -498,7 +519,9 @@ fn of_pie_tail(g: &Group) -> String {
 
 fn bubble_tail(g: &Group) -> String {
     let mut out = g.bubble_scale.map(|s| num_val("bubbleScale", s)).unwrap_or_default();
-    out.push_str(&g.show_negative_bubbles.map(|n| bool_val("showNegBubbles", n)).unwrap_or_default());
+    out.push_str(
+        &g.show_negative_bubbles.map(|n| bool_val("showNegBubbles", n)).unwrap_or_default(),
+    );
     if let Some(r) = &g.size_represents {
         out.push_str(&format!("<c:sizeRepresents val=\"{r}\"/>"));
     }
@@ -542,16 +565,29 @@ fn literal_xml(tag: &str, inner: &str) -> String {
 
 fn name_xml(name: &str, filtered: bool, env: TextTest) -> String {
     if filtered && !name.starts_with('"') {
-        return format!("<c:tx>{}</c:tx>", data_xml("x", name, true, true, env).replace("<c:x>", "").replace("</c:x>", ""));
+        return format!(
+            "<c:tx>{}</c:tx>",
+            data_xml("x", name, true, true, env).replace("<c:x>", "").replace("</c:x>", "")
+        );
     }
     if let Some(text) = name.strip_prefix('"').and_then(|n| n.strip_suffix('"')) {
         return format!("<c:tx><c:v>{}</c:v></c:tx>", escape(&text.replace("\"\"", "\"")));
     }
-    format!("<c:tx><c:strRef><c:f>{}</c:f>{}</c:strRef></c:tx>", escape(name), env.string_cache(name))
+    format!(
+        "<c:tx><c:strRef><c:f>{}</c:f>{}</c:strRef></c:tx>",
+        escape(name),
+        env.string_cache(name)
+    )
 }
 
 /// One series, with its elements in the order its kind's schema gives them.
-fn series_xml(s: &ChartSeries, kind: GroupKind, ids: (u32, u32), tag: &str, is_text: TextTest) -> String {
+fn series_xml(
+    s: &ChartSeries,
+    kind: GroupKind,
+    ids: (u32, u32),
+    tag: &str,
+    is_text: TextTest,
+) -> String {
     let filtered = tag == "c15:ser";
     let mut out = format!("<{tag}><c:idx val=\"{}\"/><c:order val=\"{}\"/>", ids.0, ids.1);
     if let Some(name) = &s.name {
@@ -572,7 +608,9 @@ fn series_options(s: &ChartSeries, kind: GroupKind) -> String {
     let mut out = String::new();
     match kind {
         GroupKind::Bar | GroupKind::Bubble => {
-            out.push_str(&f.invert_if_negative.map(|v| bool_val("invertIfNegative", v)).unwrap_or_default());
+            out.push_str(
+                &f.invert_if_negative.map(|v| bool_val("invertIfNegative", v)).unwrap_or_default(),
+            );
             if kind == GroupKind::Bar {
                 out.push_str(opt(&f.picture_options));
             }
@@ -583,7 +621,8 @@ fn series_options(s: &ChartSeries, kind: GroupKind) -> String {
         }
         _ => {}
     }
-    let has_marker = matches!(kind, GroupKind::Line | GroupKind::Stock | GroupKind::Radar | GroupKind::Scatter);
+    let has_marker =
+        matches!(kind, GroupKind::Line | GroupKind::Stock | GroupKind::Radar | GroupKind::Scatter);
     if let (true, Some(m)) = (has_marker, &f.marker) {
         out.push_str(&marker_xml(m));
     }
@@ -598,7 +637,14 @@ fn series_decorations(s: &ChartSeries, kind: GroupKind) -> String {
     if kind != GroupKind::Surface {
         out.push_str(&f.labels.as_ref().map(labels_xml).unwrap_or_default());
     }
-    let fitted = !matches!(kind, GroupKind::Pie | GroupKind::Doughnut | GroupKind::OfPie | GroupKind::Radar | GroupKind::Surface);
+    let fitted = !matches!(
+        kind,
+        GroupKind::Pie
+            | GroupKind::Doughnut
+            | GroupKind::OfPie
+            | GroupKind::Radar
+            | GroupKind::Surface
+    );
     if fitted {
         f.trendlines.iter().for_each(|t| out.push_str(&trendline_xml(t)));
         f.error_bars.iter().for_each(|e| out.push_str(&error_bars_xml(e, kind)));
@@ -856,14 +902,9 @@ fn gridlines_xml(tag: &str, g: &Option<Gridlines>) -> String {
     }
 }
 
-fn axis_xml(a: &Axis, spec: &ChartSpec) -> String {
-    let tag = match a.kind {
-        AxisKind::Category => "catAx",
-        AxisKind::Value => "valAx",
-        AxisKind::Date => "dateAx",
-        AxisKind::Series => "serAx",
-    };
-    let mut out = format!("<c:{tag}><c:axId val=\"{}\"/><c:scaling>", a.id);
+/// The `scaling` element of an axis: log base, direction and limits.
+fn axis_scaling_xml(a: &Axis) -> String {
+    let mut out = String::from("<c:scaling>");
     if let Some(base) = a.log_base {
         out.push_str(&num_val("logBase", f64_text(base)));
     }
@@ -878,6 +919,31 @@ fn axis_xml(a: &Axis, spec: &ChartSpec) -> String {
         out.push_str(&num_val("min", f64_text(min)));
     }
     out.push_str("</c:scaling>");
+    out
+}
+
+/// The elements saying which axis crosses this one and where.
+fn axis_crossing_xml(a: &Axis) -> String {
+    let mut out = num_val("crossAx", a.cross_axis);
+    match a.crosses {
+        Crosses::Automatic => out.push_str("<c:crosses val=\"autoZero\"/>"),
+        Crosses::Minimum => out.push_str("<c:crosses val=\"min\"/>"),
+        Crosses::Maximum => out.push_str("<c:crosses val=\"max\"/>"),
+        Crosses::At(at) => out.push_str(&num_val("crossesAt", f64_text(at))),
+    }
+    out
+}
+
+/// The XML of one axis element.
+fn axis_xml(a: &Axis, spec: &ChartSpec) -> String {
+    let tag = match a.kind {
+        AxisKind::Category => "catAx",
+        AxisKind::Value => "valAx",
+        AxisKind::Date => "dateAx",
+        AxisKind::Series => "serAx",
+    };
+    let mut out = format!("<c:{tag}><c:axId val=\"{}\"/>", a.id);
+    out.push_str(&axis_scaling_xml(a));
     out.push_str(&bool_val("delete", a.deleted));
     out.push_str(&format!("<c:axPos val=\"{}\"/>", a.position.xml()));
     out.push_str(&gridlines_xml("majorGridlines", &a.major_gridlines));
@@ -897,13 +963,7 @@ fn axis_xml(a: &Axis, spec: &ChartSpec) -> String {
     out.push_str(&format!("<c:tickLblPos val=\"{}\"/>", a.tick_labels.xml()));
     out.push_str(opt(&a.sp_pr));
     out.push_str(opt(&a.tx_pr));
-    out.push_str(&num_val("crossAx", a.cross_axis));
-    match a.crosses {
-        Crosses::Automatic => out.push_str("<c:crosses val=\"autoZero\"/>"),
-        Crosses::Minimum => out.push_str("<c:crosses val=\"min\"/>"),
-        Crosses::Maximum => out.push_str("<c:crosses val=\"max\"/>"),
-        Crosses::At(at) => out.push_str(&num_val("crossesAt", f64_text(at))),
-    }
+    out.push_str(&axis_crossing_xml(a));
     out.push_str(&axis_tail(a, spec));
     out.push_str(opt(&a.ext));
     out.push_str(&format!("</c:{tag}>"));
@@ -916,7 +976,11 @@ fn axis_tail(a: &Axis, spec: &ChartSpec) -> String {
         AxisKind::Value => value_axis_tail(a, spec),
         AxisKind::Category => category_axis_tail(a),
         AxisKind::Date => date_axis_tail(a),
-        AxisKind::Series => format!("{}{}", opt_num("tickLblSkip", a.label_skip), opt_num("tickMarkSkip", a.mark_skip)),
+        AxisKind::Series => format!(
+            "{}{}",
+            opt_num("tickLblSkip", a.label_skip),
+            opt_num("tickMarkSkip", a.mark_skip)
+        ),
     }
 }
 
@@ -946,7 +1010,8 @@ fn value_axis_tail(a: &Axis, spec: &ChartSpec) -> String {
 }
 
 fn category_axis_tail(a: &Axis) -> String {
-    let align = a.label_align.as_ref().map(|v| format!("<c:lblAlgn val=\"{v}\"/>")).unwrap_or_default();
+    let align =
+        a.label_align.as_ref().map(|v| format!("<c:lblAlgn val=\"{v}\"/>")).unwrap_or_default();
     format!(
         "{}{align}{}{}{}{}",
         opt_bool("auto", a.auto),
@@ -958,7 +1023,9 @@ fn category_axis_tail(a: &Axis) -> String {
 }
 
 fn date_axis_tail(a: &Axis) -> String {
-    let unit = |tag: &str, u: Option<TimeUnit>| u.map(|u| format!("<c:{tag} val=\"{}\"/>", u.xml())).unwrap_or_default();
+    let unit = |tag: &str, u: Option<TimeUnit>| {
+        u.map(|u| format!("<c:{tag} val=\"{}\"/>", u.xml())).unwrap_or_default()
+    };
     format!(
         "{}{}{}{}{}{}{}",
         opt_bool("auto", a.auto),
@@ -974,7 +1041,9 @@ fn date_axis_tail(a: &Axis) -> String {
 /// Whether a value axis crosses between categories when nothing says: area and scatter charts cross at them.
 fn between_by_default(a: &Axis, spec: &ChartSpec) -> bool {
     let kinds = spec.groups.iter().filter(|g| g.axes.contains(&a.id)).map(|g| g.kind);
-    !kinds.into_iter().any(|k| matches!(k, GroupKind::Area | GroupKind::Scatter | GroupKind::Bubble))
+    !kinds
+        .into_iter()
+        .any(|k| matches!(k, GroupKind::Area | GroupKind::Scatter | GroupKind::Bubble))
 }
 
 #[cfg(test)]
@@ -1014,7 +1083,8 @@ mod tests {
         chart.series[0].fmt.error_bars.push(ErrorBars::default());
         chart.spec.legend = Some(Legend::default());
         chart.spec.data_table = Some(DataTable::default());
-        chart.spec.axes[1].title = Some(AxisTitle { text: "Units".to_owned(), ..AxisTitle::default() });
+        chart.spec.axes[1].title =
+            Some(AxisTitle { text: "Units".to_owned(), ..AxisTitle::default() });
         chart.spec.axes[1].log_base = Some(10.0);
         chart.spec.axes[1].min = Some(1.0);
         let xml = chart_xml(&chart, &Env { resolve: &|_| Resolved::default() });

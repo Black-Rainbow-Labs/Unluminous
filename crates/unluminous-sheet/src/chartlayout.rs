@@ -1348,6 +1348,58 @@ pub fn layout_count(ty: ChartType) -> u32 {
     layouts_for(ty).map_or(0, |l| l.len() as u32)
 }
 
+/// The data labels a quick layout puts on each series of a chart of the given type, if any.
+fn layout_data_labels(ty: ChartType, layout: &Layout) -> Option<DataLabels> {
+    layout.labels.map(|(position, value, category, percent, series)| DataLabels {
+        fields: LabelFields {
+            position: Some(position).filter(|_| {
+                !matches!(
+                    ty,
+                    ChartType::Pie3D
+                        | ChartType::Pie3DExploded
+                        | ChartType::Doughnut
+                        | ChartType::DoughnutExploded
+                )
+            }),
+            show_value: value,
+            show_category: category,
+            show_percent: percent,
+            show_series: series,
+            ..LabelFields::default()
+        },
+        show_leader_lines: matches!(ty, ChartType::Pie | ChartType::PieExploded).then_some(true),
+        ..DataLabels::default()
+    })
+}
+
+/// Set the data labels and trendlines of every series to what a quick layout says.
+fn set_series_labels(chart: &mut Chart, ty: ChartType, layout: &Layout) {
+    for s in &mut chart.series {
+        s.fmt.labels = layout_data_labels(ty, layout);
+        if !layout.trendline {
+            s.fmt.trendlines.clear();
+        }
+    }
+    if layout.trendline {
+        if let Some(s) = chart.series.first_mut().filter(|s| s.fmt.trendlines.is_empty()) {
+            s.fmt.trendlines.push(Trendline::default());
+        }
+    }
+}
+
+/// Set the drop lines of every group, and the gap and overlap of clustered flat bar groups.
+fn set_group_options(chart: &mut Chart, layout: &Layout) {
+    for g in &mut chart.spec.groups {
+        g.drop_lines = layout.drop_lines;
+        if let (GroupKind::Bar, false, Some((gap, overlap))) = (g.kind, g.three_d, layout.gap) {
+            if g.grouping == Grouping::Clustered {
+                g.gap_width = Some(gap);
+                g.overlap = Some(overlap);
+            }
+        }
+    }
+}
+
 /// Apply quick layout `n` (counted from 1) to a chart: titles, legend, labels, axes and gridlines switch to
 /// what the layout says, and the chart's formatting is left alone.
 pub fn apply(chart: &mut Chart, n: u32) -> Result<(), String> {
@@ -1362,48 +1414,9 @@ pub fn apply(chart: &mut Chart, n: u32) -> Result<(), String> {
         .legend
         .map(|p| Legend { position: p, ..chart.spec.legend.take().unwrap_or_default() });
     chart.spec.data_table = layout.data_table.then(DataTable::default);
-    for s in &mut chart.series {
-        s.fmt.labels =
-            layout.labels.map(|(position, value, category, percent, series)| DataLabels {
-                fields: LabelFields {
-                    position: Some(position).filter(|_| {
-                        !matches!(
-                            ty,
-                            ChartType::Pie3D
-                                | ChartType::Pie3DExploded
-                                | ChartType::Doughnut
-                                | ChartType::DoughnutExploded
-                        )
-                    }),
-                    show_value: value,
-                    show_category: category,
-                    show_percent: percent,
-                    show_series: series,
-                    ..LabelFields::default()
-                },
-                show_leader_lines: matches!(ty, ChartType::Pie | ChartType::PieExploded)
-                    .then_some(true),
-                ..DataLabels::default()
-            });
-        if !layout.trendline {
-            s.fmt.trendlines.clear();
-        }
-    }
-    if layout.trendline {
-        if let Some(s) = chart.series.first_mut().filter(|s| s.fmt.trendlines.is_empty()) {
-            s.fmt.trendlines.push(Trendline::default());
-        }
-    }
+    set_series_labels(chart, ty, layout);
     set_axes(chart, layout);
-    for g in &mut chart.spec.groups {
-        g.drop_lines = layout.drop_lines;
-        if let (GroupKind::Bar, false, Some((gap, overlap))) = (g.kind, g.three_d, layout.gap) {
-            if g.grouping == Grouping::Clustered {
-                g.gap_width = Some(gap);
-                g.overlap = Some(overlap);
-            }
-        }
-    }
+    set_group_options(chart, layout);
     Ok(())
 }
 

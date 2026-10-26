@@ -69,11 +69,11 @@ impl Chart {
 }
 
 impl ChartKind {
-    /// The coarse family a precise chart type belongs to.
-    pub fn of_type(t: ChartType) -> Self {
+    /// The coarse family of a type drawn on category axes: column, bar, line, area, pie or doughnut.
+    fn of_category_type(t: ChartType) -> Option<Self> {
         use ChartKind as K;
         use ChartType as T;
-        match t {
+        Some(match t {
             T::ColumnClustered
             | T::ColumnStacked
             | T::ColumnStacked100
@@ -108,6 +108,15 @@ impl ChartKind {
                 K::Pie
             }
             T::Doughnut | T::DoughnutExploded => K::Doughnut,
+            _ => return None,
+        })
+    }
+
+    /// The coarse family of a scatter, surface, radar or Office 2016 type, or a combination.
+    fn of_other_type(t: ChartType) -> Self {
+        use ChartKind as K;
+        use ChartType as T;
+        match t {
             T::ScatterMarkers
             | T::ScatterSmooth
             | T::ScatterSmoothNoMarkers
@@ -127,7 +136,12 @@ impl ChartKind {
             T::Waterfall => K::Other("waterfall"),
             T::Funnel => K::Other("funnel"),
             T::Map => K::Other("map"),
-            T::Combo => K::Other("combo"),
+            _ => K::Other("combo"),
         }
+    }
+
+    /// The coarse family a precise chart type belongs to.
+    pub fn of_type(t: ChartType) -> Self {
+        Self::of_category_type(t).unwrap_or_else(|| Self::of_other_type(t))
     }
 }

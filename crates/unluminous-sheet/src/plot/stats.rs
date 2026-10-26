@@ -70,45 +70,52 @@ pub fn histogram(values: &[f64], options: &Binning) -> Vec<Bin> {
         bins.push(Bin { from: f64::NEG_INFINITY, to: u, count, kind: BinKind::Underflow, label: format!("\u{2264}{}", number_text(u)) });
     }
     if !inner.is_empty() {
-        let min = inner.iter().copied().fold(f64::MAX, f64::min);
-        let max = inner.iter().copied().fold(f64::MIN, f64::max);
-        let width = match options.by {
-            BinBy::Width(w) if w > 0.0 => w,
-            BinBy::Count(c) if c > 0 => ((max - min) / f64::from(c)).max(f64::MIN_POSITIVE),
-            _ => automatic_width(&inner),
-        };
-        let count = match options.by {
-            BinBy::Count(c) if c > 0 => c as usize,
-            _ => (((max - min) / width).ceil() as usize).max(1),
-        };
-        for i in 0..count {
-            let from = min + width * i as f64;
-            let to = if i + 1 == count && matches!(options.by, BinBy::Count(_)) { max } else { from + width };
-            let contains = |v: f64| {
-                if options.right_closed {
-                    (v > from && v <= to) || (i == 0 && v == from)
-                } else {
-                    (v >= from && v < to) || (i + 1 == count && v == to)
-                }
-            };
-            let n = inner.iter().filter(|v| contains(**v)).count();
-            let (open, close) = if options.right_closed {
-                (if i == 0 { "[" } else { "(" }, "]")
-            } else {
-                ("[", if i + 1 == count { "]" } else { ")" })
-            };
-            bins.push(Bin {
-                from,
-                to,
-                count: n,
-                kind: BinKind::Normal,
-                label: format!("{open}{}, {}{close}", number_text(from), number_text(to)),
-            });
-        }
+        bins.extend(normal_bins(&inner, options));
     }
     if let Some(o) = options.overflow {
         let count = values.iter().filter(|v| **v > o).count();
         bins.push(Bin { from: o, to: f64::INFINITY, count, kind: BinKind::Overflow, label: format!(">{}", number_text(o)) });
+    }
+    bins
+}
+
+/// The bins between the underflow and overflow limits: a count of values and a label for each.
+fn normal_bins(inner: &[f64], options: &Binning) -> Vec<Bin> {
+    let min = inner.iter().copied().fold(f64::MAX, f64::min);
+    let max = inner.iter().copied().fold(f64::MIN, f64::max);
+    let width = match options.by {
+        BinBy::Width(w) if w > 0.0 => w,
+        BinBy::Count(c) if c > 0 => ((max - min) / f64::from(c)).max(f64::MIN_POSITIVE),
+        _ => automatic_width(inner),
+    };
+    let count = match options.by {
+        BinBy::Count(c) if c > 0 => c as usize,
+        _ => (((max - min) / width).ceil() as usize).max(1),
+    };
+    let mut bins = Vec::new();
+    for i in 0..count {
+        let from = min + width * i as f64;
+        let to = if i + 1 == count && matches!(options.by, BinBy::Count(_)) { max } else { from + width };
+        let contains = |v: f64| {
+            if options.right_closed {
+                (v > from && v <= to) || (i == 0 && v == from)
+            } else {
+                (v >= from && v < to) || (i + 1 == count && v == to)
+            }
+        };
+        let n = inner.iter().filter(|v| contains(**v)).count();
+        let (open, close) = if options.right_closed {
+            (if i == 0 { "[" } else { "(" }, "]")
+        } else {
+            ("[", if i + 1 == count { "]" } else { ")" })
+        };
+        bins.push(Bin {
+            from,
+            to,
+            count: n,
+            kind: BinKind::Normal,
+            label: format!("{open}{}, {}{close}", number_text(from), number_text(to)),
+        });
     }
     bins
 }

@@ -120,6 +120,33 @@ fn read_axis(xml: &str, a: Node) -> ExAxis {
     }
 }
 
+/// Read the position, number format, visibility and text properties of a series' data labels.
+fn read_series_labels(xml: &str, labels: Node, e: &mut ExSeries) {
+    e.label_position = attr(labels, "pos").map(str::to_owned);
+    e.label_num_fmt = child(labels, "numFmt").and_then(|n| attr(n, "formatCode")).map(str::to_owned);
+    e.labels = child(labels, "visibility").map(|v| {
+        (
+            flag_attr(v, "seriesName").unwrap_or(false),
+            flag_attr(v, "categoryName").unwrap_or(false),
+            flag_attr(v, "value").unwrap_or(false),
+        )
+    });
+    e.tx_pr = child(labels, "txPr").map(|n| raw(xml, n).to_owned());
+}
+
+/// Read the formatting of the individual data points of a series.
+fn read_series_points(xml: &str, s: Node) -> Vec<(u32, String)> {
+    children(s, "dataPt")
+        .map(|p| {
+            (
+                attr(p, "idx").and_then(|v| v.parse().ok()).unwrap_or(0),
+                child(p, "spPr").map(|n| raw(xml, n).to_owned()).unwrap_or_default(),
+            )
+        })
+        .collect()
+}
+
+/// Read one series of a `chartEx` part into the extended description and the model series it uses.
 fn read_series(
     xml: &str,
     s: Node,
@@ -154,25 +181,9 @@ fn read_series(
     });
     e.data = index;
     if let Some(labels) = child(s, "dataLabels") {
-        e.label_position = attr(labels, "pos").map(str::to_owned);
-        e.label_num_fmt = child(labels, "numFmt").and_then(|n| attr(n, "formatCode")).map(str::to_owned);
-        e.labels = child(labels, "visibility").map(|v| {
-            (
-                flag_attr(v, "seriesName").unwrap_or(false),
-                flag_attr(v, "categoryName").unwrap_or(false),
-                flag_attr(v, "value").unwrap_or(false),
-            )
-        });
-        e.tx_pr = child(labels, "txPr").map(|n| raw(xml, n).to_owned());
+        read_series_labels(xml, labels, &mut e);
     }
-    e.points = children(s, "dataPt")
-        .map(|p| {
-            (
-                attr(p, "idx").and_then(|v| v.parse().ok()).unwrap_or(0),
-                child(p, "spPr").map(|n| raw(xml, n).to_owned()).unwrap_or_default(),
-            )
-        })
-        .collect();
+    e.points = read_series_points(xml, s);
     if let Some(pr) = child(s, "layoutPr") {
         read_layout_options(pr, &mut e);
     }
@@ -223,7 +234,8 @@ fn num(v: f64) -> String {
 }
 
 /// Write a `chartEx` part.
-pub fn write(chart: &crate::model::Chart) -> String {
+/// `name_of` turns a range into the `_xlchart.v1.N` defined name Excel expects in place of a direct reference.
+pub fn write(chart: &crate::model::Chart, name_of: &dyn Fn(&str) -> String) -> String {
     let Some(ex) = &chart.spec.ex else { return String::new() };
     let mut out = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r\n");
     out.push_str(&format!("<cx:chartSpace xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:cx=\"{CX_NS}\">"));
@@ -231,19 +243,19 @@ pub fn write(chart: &crate::model::Chart) -> String {
     for (i, s) in chart.series.iter().enumerate() {
         out.push_str(&format!("<cx:data id=\"{i}\">"));
         if let Some(c) = &s.categories {
-            out.push_str(&format!("<cx:strDim type=\"cat\"><cx:f>{}</cx:f></cx:strDim>", escape(c)));
+            out.push_str(&format!("<cx:strDim type=\"cat\"><cx:f>{}</cx:f></cx:strDim>", escape(&name_of(c))));
         }
         let kind = match ex.series.first().map(|e| e.layout) {
             Some(ExLayout::Treemap | ExLayout::Sunburst) => "size",
             _ => "val",
         };
-        out.push_str(&format!("<cx:numDim type=\"{kind}\"><cx:f>{}</cx:f></cx:numDim></cx:data>", escape(&s.values)));
+        out.push_str(&format!("<cx:numDim type=\"{kind}\"><cx:f>{}</cx:f></cx:numDim></cx:data>", escape(&name_of(&s.values))));
     }
     out.push_str("</cx:chartData><cx:chart>");
     out.push_str(&title_xml(chart, ex));
     out.push_str("<cx:plotArea><cx:plotAreaRegion>");
     for (i, e) in ex.series.iter().enumerate() {
-        out.push_str(&series_xml(chart, e, i));
+        out.push_str(&series_xml(chart, e, i, name_of));
     }
     out.push_str("</cx:plotAreaRegion>");
     for a in &ex.axes {
@@ -302,7 +314,7 @@ fn axis_xml(a: &ExAxis) -> String {
     out
 }
 
-fn series_xml(chart: &crate::model::Chart, e: &ExSeries, position: usize) -> String {
+fn series_xml(chart: &crate::model::Chart, e: &ExSeries, position: usize, name_of: &dyn Fn(&str) -> String) -> String {
     let data = chart.series.get(e.data);
     let mut out = format!("<cx:series layoutId=\"{}\"", e.layout.id());
     if e.hidden {
@@ -317,7 +329,7 @@ fn series_xml(chart: &crate::model::Chart, e: &ExSeries, position: usize) -> Str
     if let Some(name) = data.and_then(|d| d.name.as_ref()) {
         out.push_str(&match name.strip_prefix('"').and_then(|n| n.strip_suffix('"')) {
             Some(t) => format!("<cx:tx><cx:txData><cx:v>{}</cx:v></cx:txData></cx:tx>", escape(t)),
-            None => format!("<cx:tx><cx:txData><cx:f>{}</cx:f></cx:txData></cx:tx>", escape(name)),
+            None => format!("<cx:tx><cx:txData><cx:f>{}</cx:f></cx:txData></cx:tx>", escape(&name_of(name))),
         });
     }
     out.push_str(e.sp_pr.as_deref().unwrap_or(""));
@@ -348,40 +360,48 @@ fn series_xml(chart: &crate::model::Chart, e: &ExSeries, position: usize) -> Str
     out
 }
 
+/// The visibility and statistics elements of a box and whisker series.
+fn box_options_xml(o: &BoxOptions) -> String {
+    format!(
+        "<cx:visibility meanLine=\"{}\" meanMarker=\"{}\" nonoutliers=\"{}\" outliers=\"{}\"/><cx:statistics quartileMethod=\"{}\"/>",
+        u8::from(o.mean_line),
+        u8::from(o.mean_marker),
+        u8::from(o.inner_points),
+        u8::from(o.outlier_points),
+        if o.exclusive_median { "exclusive" } else { "inclusive" }
+    )
+}
+
+/// The binning element of a histogram series: the closed side, the limits and the bin size or count.
+fn binning_xml(b: &Binning) -> String {
+    let mut attrs = format!(" intervalClosed=\"{}\"", if b.right_closed { "r" } else { "l" });
+    if let Some(u) = b.underflow {
+        attrs.push_str(&format!(" underflow=\"{}\"", num(u)));
+    }
+    if let Some(o) = b.overflow {
+        attrs.push_str(&format!(" overflow=\"{}\"", num(o)));
+    }
+    match b.by {
+        BinBy::Width(w) => format!("<cx:binning{attrs}><cx:binSize val=\"{}\"/></cx:binning>", num(w)),
+        BinBy::Count(c) => format!("<cx:binning{attrs}><cx:binCount val=\"{c}\"/></cx:binning>"),
+        _ => format!("<cx:binning{attrs}/>"),
+    }
+}
+
+/// The `layoutPr` element of a series, holding the options that belong to its layout.
 fn layout_xml(e: &ExSeries) -> String {
     let mut inner = String::new();
     if let Some(p) = &e.parent_labels {
         inner.push_str(&format!("<cx:parentLabelLayout val=\"{p}\"/>"));
     }
     if let Some(o) = &e.box_options {
-        inner.push_str(&format!(
-            "<cx:visibility meanLine=\"{}\" meanMarker=\"{}\" nonoutliers=\"{}\" outliers=\"{}\"/>",
-            u8::from(o.mean_line),
-            u8::from(o.mean_marker),
-            u8::from(o.inner_points),
-            u8::from(o.outlier_points)
-        ));
-        inner.push_str(&format!(
-            "<cx:statistics quartileMethod=\"{}\"/>",
-            if o.exclusive_median { "exclusive" } else { "inclusive" }
-        ));
+        inner.push_str(&box_options_xml(o));
     }
     if e.aggregation {
         inner.push_str("<cx:aggregation/>");
     }
     if let Some(b) = &e.binning {
-        let mut attrs = format!(" intervalClosed=\"{}\"", if b.right_closed { "r" } else { "l" });
-        if let Some(u) = b.underflow {
-            attrs.push_str(&format!(" underflow=\"{}\"", num(u)));
-        }
-        if let Some(o) = b.overflow {
-            attrs.push_str(&format!(" overflow=\"{}\"", num(o)));
-        }
-        match b.by {
-            BinBy::Width(w) => inner.push_str(&format!("<cx:binning{attrs}><cx:binSize val=\"{}\"/></cx:binning>", num(w))),
-            BinBy::Count(c) => inner.push_str(&format!("<cx:binning{attrs}><cx:binCount val=\"{c}\"/></cx:binning>")),
-            _ => inner.push_str(&format!("<cx:binning{attrs}/>")),
-        }
+        inner.push_str(&binning_xml(b));
     }
     if e.layout == ExLayout::Waterfall {
         inner.push_str("<cx:subtotals>");

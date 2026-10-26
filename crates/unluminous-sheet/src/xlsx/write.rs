@@ -496,6 +496,16 @@ impl<'a> Writer<'a> {
                 });
             }
         }
+        let base = self.ex_name_base();
+        for (i, r) in self.ex_refs().into_iter().enumerate() {
+            names.push(DefinedName {
+                name: format!("_xlchart.v1.{}", base + i),
+                scope: None,
+                formula: r,
+                hidden: true,
+                attrs: Vec::new(),
+            });
+        }
         names.sort_by(|a, b| {
             a.name
                 .to_ascii_lowercase()
