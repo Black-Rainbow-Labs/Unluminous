@@ -77,6 +77,9 @@ pub fn grid(ctx: &egui::Context, book: &mut Book, copied: Option<&str>, keys: &m
                 let ours = copied.is_some_and(|c| same_text(c, &text));
                 keys.acts.push(if ours {
                     Act::Paste(PasteMode::All)
+                } else if let Some(html) = crate::services::system_files::clipboard_html() {
+                    // A table copied from a browser or from Excel: cells and formats, not the plain text.
+                    Act::PasteHtml(html)
                 } else {
                     Act::PasteText(text)
                 });

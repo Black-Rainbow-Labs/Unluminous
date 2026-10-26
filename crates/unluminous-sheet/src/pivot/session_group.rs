@@ -163,7 +163,7 @@ impl Session {
     }
 
     /// List all the items of a field in a table, the way a field put on an axis does.
-    fn fill_items(&mut self, t: usize, field: usize) {
+    pub(crate) fn fill_items(&mut self, t: usize, field: usize) {
         let cache_index = self.book.pivots.tables[t].cache;
         self.book.pivots.caches[cache_index].ensure_shared(field);
         let count = self.book.pivots.caches[cache_index].fields[field].items().len();

@@ -252,6 +252,10 @@ fn page_marks(ui: &egui::Ui, book: &Book, frame: Frame, look: &Look<'_>) {
         return;
     }
     let layout = cached_layout(ui, book);
+    if kind == ViewKind::PageLayout {
+        paper_pages(ui, book, frame, look, &layout);
+        return;
+    }
     let painter = ui.painter().with_clip_rect(frame.cells);
     let blue = Color32::from_rgb(0x1F, 0x6F, 0xD0);
     for area in &layout.areas {
@@ -278,20 +282,61 @@ fn page_marks(ui: &egui::Ui, book: &Book, frame: Frame, look: &Look<'_>) {
     }
     for page in &layout.pages {
         let rect = frame.range(book, page.body);
-        if kind == ViewKind::PageBreakPreview {
-            let size = (rect.width().min(rect.height()) / 3.0).clamp(18.0, 120.0);
-            painter.text(
-                rect.center(),
-                Align2::CENTER_CENTER,
-                format!("Page {}", page.number),
-                egui::FontId::proportional(size),
-                look.palette.text_faint.gamma_multiply(0.45),
-            );
-        } else {
-            page_layout_strips(&painter, rect, page, look);
-        }
+        let size = (rect.width().min(rect.height()) / 3.0).clamp(18.0, 120.0);
+        painter.text(
+            rect.center(),
+            Align2::CENTER_CENTER,
+            format!("Page {}", page.number),
+            egui::FontId::proportional(size),
+            look.palette.text_faint.gamma_multiply(0.45),
+        );
     }
 }
+
+/// The page layout view: each page of the paginator as its own sheet of paper on a grey desk, a gap between
+/// the sheets, the margins drawn as a faint frame and the header and footer areas inside them. The desk
+/// covers the grid and scrolls with the wheel.
+fn paper_pages(ui: &egui::Ui, book: &Book, frame: Frame, look: &Look<'_>, layout: &PageLayout) {
+    let pages = cached_pages(ui, book, layout);
+    let area = frame.cells;
+    let painter = ui.painter().with_clip_rect(area);
+    painter.rect_filled(area, 0, look.palette.control);
+    let id = egui::Id::new(("spreadsheet-paper-scroll", &book.key));
+    let mut offset: f32 = ui.data(|d| d.get_temp(id)).unwrap_or(0.0);
+    if ui.rect_contains_pointer(area) {
+        offset -= ui.input(|i| i.smooth_scroll_delta.y);
+    }
+    let widest = pages.pages.iter().map(|p| p.width).fold(1.0_f32, f32::max);
+    let scale = ((area.width() - 40.0) / widest).clamp(0.2, 1.5);
+    let total: f32 = pages.pages.iter().map(|p| p.height * scale + PAPER_GAP).sum::<f32>() + PAPER_GAP;
+    offset = offset.clamp(0.0, (total - area.height()).max(0.0));
+    ui.data_mut(|d| d.insert_temp(id, offset));
+    let mut top = area.top() + PAPER_GAP - offset;
+    for page in &pages.pages {
+        let size = Vec2::new(page.width * scale, page.height * scale);
+        let left = area.center().x - size.x / 2.0;
+        let sheet = Rect::from_min_size(Pos2::new(left, top), size);
+        top += size.y + PAPER_GAP;
+        if sheet.bottom() < area.top() || sheet.top() > area.bottom() {
+            continue;
+        }
+        painter.rect_filled(sheet.translate(Vec2::new(2.0, 3.0)), 0, Color32::from_black_alpha(60));
+        paint_page(&painter, sheet, page);
+        let body = Rect::from_min_size(
+            sheet.min + Vec2::new(page.body.x * scale, page.body.y * scale),
+            Vec2::new(page.body.w * scale, page.body.h * scale),
+        );
+        painter.rect_stroke(
+            body,
+            0,
+            Stroke::new(1.0, Color32::from_gray(0xC8)),
+            egui::StrokeKind::Inside,
+        );
+    }
+}
+
+/// The gap between two sheets of paper in the page layout view.
+const PAPER_GAP: f32 = 18.0;
 
 fn line(painter: &egui::Painter, a: Pos2, b: Pos2, color: Color32, solid: bool) {
     if solid {
@@ -299,39 +344,6 @@ fn line(painter: &egui::Painter, a: Pos2, b: Pos2, color: Color32, solid: bool) 
     } else {
         painter.extend(egui::Shape::dashed_line(&[a, b], Stroke::new(1.0, color), 6.0, 4.0));
     }
-}
-
-/// The header above a page's cells and the footer below them, in the page layout view.
-fn page_layout_strips(
-    painter: &egui::Painter,
-    rect: Rect,
-    page: &unluminous_sheet::pages::layout::Page,
-    look: &Look<'_>,
-) {
-    use unluminous_sheet::pages::headerfooter::Sections;
-    let join = |s: &Sections| {
-        [&s.left, &s.center, &s.right]
-            .iter()
-            .map(|runs| Sections::plain(runs))
-            .filter(|t| !t.is_empty())
-            .collect::<Vec<_>>()
-            .join("   ")
-    };
-    let font = egui::FontId::proportional(10.0);
-    painter.text(
-        rect.left_top() + Vec2::new(4.0, -4.0),
-        Align2::LEFT_BOTTOM,
-        join(&page.header),
-        font.clone(),
-        look.palette.text_dim,
-    );
-    painter.text(
-        rect.left_bottom() + Vec2::new(4.0, 4.0),
-        Align2::LEFT_TOP,
-        join(&page.footer),
-        font,
-        look.palette.text_dim,
-    );
 }
 
 /// The print preview's pages as the PDF writer has them, made again only when the workbook changed.

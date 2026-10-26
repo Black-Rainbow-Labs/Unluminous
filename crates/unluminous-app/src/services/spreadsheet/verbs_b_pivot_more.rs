@@ -12,7 +12,6 @@ use unluminous_sheet::pivot::SortType;
 
 use super::verbs_a::{after, flag, Out};
 use super::verbs_b_pivot::{field_in, func_of, table_of};
-use super::view_b::{Slicer, Timeline};
 use super::{Book, Spreadsheet};
 use crate::services::plugin_ui::Answer;
 
@@ -20,16 +19,10 @@ fn said(text: impl Into<String>) -> Answer {
     Answer::said(text)
 }
 
-/// Whether a name typed matches a stored one; a menu writes spaces as underscores.
-fn same_name(stored: &str, typed: &str) -> bool {
-    stored.eq_ignore_ascii_case(typed) || stored.replace(' ', "_").eq_ignore_ascii_case(typed)
-}
-
 /// Run `slicer`, `timeline` and `getpivotdata`.
 pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Option<Out> {
     Some(match verb {
-        "slicer" => slicer(sheet, args),
-        "timeline" => timeline(sheet, args),
+        "slicer" | "timeline" => super::verbs_b_slicers::run(sheet, verb, args),
         _ => getpivotdata(sheet, args),
     })
 }
@@ -335,202 +328,6 @@ fn calculated_item(book: &mut Book, t: usize, args: &[String]) -> Result<String,
     let name = args.get(1).ok_or("calculated-item takes a name and a formula")?;
     book.session.pivot_add_calculated_item(t, f, name, &args[2..].join(" "))?;
     Ok(format!("Added the calculated item {name}"))
-}
-
-// ------------------------------------------------------------------------------------------------ slicers
-
-/// `slicer add <field> [in <pivot>] [at <cell>] [name <n>]`, `slicer list`, `slicer select <name> <item>,<item>|all`,
-/// `slicer delete <name>`.
-fn slicer(sheet: &mut Spreadsheet, args: &[String]) -> Out {
-    let book = sheet.current_book()?;
-    let how = args.first().map(String::as_str).unwrap_or("list");
-    let rest = args.get(1..).unwrap_or(&[]);
-    match how {
-        "add" => add_slicer(book, rest),
-        "list" => {
-            let list: Vec<_> =
-                book.view.lane_b.slicers.iter().map(|s| slicer_json(book, s)).collect();
-            Ok(said(format!("{} slicers", list.len())).with(json!(list)))
-        }
-        "select" => select_in_slicer(book, rest),
-        "delete" => {
-            let name = rest.first().ok_or("delete takes the slicer's name")?;
-            book.view.lane_b.slicers.retain(|s| !same_name(&s.name, name));
-            Ok(said(format!("Deleted {name}")))
-        }
-        other => Err(format!("slicer takes add, list, select or delete; got `{other}`")),
-    }
-}
-
-fn add_slicer(book: &mut Book, args: &[String]) -> Out {
-    let (t, rest) = table_of(book, args)?;
-    let word = rest.first().ok_or("add takes the field to slice by")?;
-    let f = field_in(book, t, word)?;
-    let table = &book.session.book.pivots.tables[t];
-    let field = table.caption(&book.session.book.pivots.caches[table.cache], f);
-    let name = after(&rest, "name").map(str::to_owned).unwrap_or_else(|| field.clone());
-    let at = after(&rest, "at")
-        .and_then(|w| super::commands::parse_range(book, w))
-        .map_or(CellRef::new(1, table.location.last.col + 2), |(_, r)| r.first);
-    let slicer =
-        Slicer { name: name.clone(), pivot: table.name.clone(), field, sheet: book.view.sheet, at };
-    book.view.lane_b.slicers.retain(|s| !s.name.eq_ignore_ascii_case(&name));
-    book.view.lane_b.slicers.push(slicer.clone());
-    Ok(said(format!("Added the slicer {name}")).with(slicer_json(book, &slicer)))
-}
-
-fn table_named(book: &Book, name: &str) -> Result<usize, String> {
-    book.session.book.pivots.find(name).ok_or_else(|| format!("the PivotTable `{name}` is gone"))
-}
-
-/// A slicer as data: its field and each item with whether the pivot table shows it.
-pub fn slicer_json(book: &Book, s: &Slicer) -> serde_json::Value {
-    let Ok(t) = table_named(book, &s.pivot) else {
-        return json!({ "name": s.name, "pivot": s.pivot, "field": s.field, "items": [] });
-    };
-    let items = match field_in(book, t, &s.field) {
-        Ok(f) => {
-            let names = item_texts(book, t, f);
-            let table = &book.session.book.pivots.tables[t];
-            names
-                .iter()
-                .zip(&table.fields[f].items)
-                .map(|(n, e)| json!({ "name": n, "selected": !e.hidden }))
-                .collect()
-        }
-        Err(_) => Vec::new(),
-    };
-    json!({ "name": s.name, "pivot": s.pivot, "field": s.field, "sheet": book.session.book.sheets.get(s.sheet).map(|x| &x.name), "at": s.at.a1(), "items": items })
-}
-
-fn select_in_slicer(book: &mut Book, args: &[String]) -> Out {
-    let name = args.first().ok_or("select takes the slicer's name")?;
-    let s = book
-        .view
-        .lane_b
-        .slicers
-        .iter()
-        .find(|s| same_name(&s.name, name))
-        .cloned()
-        .ok_or_else(|| format!("there is no slicer `{name}`"))?;
-    let t = table_named(book, &s.pivot)?;
-    let f = field_in(book, t, &s.field)?;
-    let chosen = args.get(1).map(String::as_str).unwrap_or("all");
-    let wanted: Vec<usize> = if chosen == "all" || chosen == "clear" {
-        (0..item_texts(book, t, f).len()).collect()
-    } else {
-        chosen.split(',').map(|n| item_position(book, t, f, n.trim())).collect::<Result<_, _>>()?
-    };
-    for position in 0..item_texts(book, t, f).len() {
-        book.session.pivot_set_item_visible(t, f, position, wanted.contains(&position))?;
-    }
-    book.changed();
-    book.view.axes = None;
-    Ok(said(format!("{name}: {chosen}")).with(slicer_json(book, &s)))
-}
-
-// ---------------------------------------------------------------------------------------------- timelines
-
-/// `timeline add <date field> [in <pivot>] [at <cell>] [name <n>]`, `timeline list`,
-/// `timeline select <name> <from> <to>|all` (dates as `2026-01-31` or serials), `timeline delete <name>`.
-fn timeline(sheet: &mut Spreadsheet, args: &[String]) -> Out {
-    let book = sheet.current_book()?;
-    let how = args.first().map(String::as_str).unwrap_or("list");
-    let rest = args.get(1..).unwrap_or(&[]);
-    match how {
-        "add" => {
-            let (t, words) = table_of(book, rest)?;
-            let f = field_in(book, t, words.first().ok_or("add takes the date field")?)?;
-            let table = &book.session.book.pivots.tables[t];
-            let cache = &book.session.book.pivots.caches[table.cache];
-            if !cache.is_date_field(f) {
-                return Err(format!(
-                    "`{}` holds no dates, so a timeline cannot use it",
-                    table.caption(cache, f)
-                ));
-            }
-            let field = table.caption(cache, f);
-            let name = after(&words, "name").map(str::to_owned).unwrap_or_else(|| field.clone());
-            let at = after(&words, "at")
-                .and_then(|w| super::commands::parse_range(book, w))
-                .map_or(CellRef::new(1, table.location.last.col + 2), |(_, r)| r.first);
-            let made = Timeline {
-                name: name.clone(),
-                pivot: table.name.clone(),
-                field,
-                sheet: book.view.sheet,
-                at,
-                span: None,
-            };
-            book.view.lane_b.timelines.retain(|x| !x.name.eq_ignore_ascii_case(&name));
-            book.view.lane_b.timelines.push(made);
-            Ok(said(format!("Added the timeline {name}")))
-        }
-        "list" => {
-            let list: Vec<_> = book
-                .view
-                .lane_b
-                .timelines
-                .iter()
-                .map(|x| json!({ "name": x.name, "pivot": x.pivot, "field": x.field, "from": x.span.map(|s| s.0), "to": x.span.map(|s| s.1) }))
-                .collect();
-            Ok(said(format!("{} timelines", list.len())).with(json!(list)))
-        }
-        "select" => select_in_timeline(book, rest),
-        "delete" => {
-            let name = rest.first().ok_or("delete takes the timeline's name")?;
-            book.view.lane_b.timelines.retain(|x| !same_name(&x.name, name));
-            Ok(said(format!("Deleted {name}")))
-        }
-        other => Err(format!("timeline takes add, list, select or delete; got `{other}`")),
-    }
-}
-
-/// A date given as `2026-01-31` or as a serial number.
-fn date_of(word: &str) -> Result<f64, String> {
-    if let Ok(n) = word.parse::<f64>() {
-        return Ok(n);
-    }
-    unluminous_sheet::input::date_time_from_text(word, false)
-        .ok_or_else(|| format!("`{word}` is not a date"))
-}
-
-fn select_in_timeline(book: &mut Book, args: &[String]) -> Out {
-    let name = args.first().ok_or("select takes the timeline's name")?;
-    let index = book
-        .view
-        .lane_b
-        .timelines
-        .iter()
-        .position(|x| same_name(&x.name, name))
-        .ok_or_else(|| format!("there is no timeline `{name}`"))?;
-    let span = match args.get(1).map(String::as_str) {
-        Some("all") | None => None,
-        Some(from) => Some((
-            date_of(from)?,
-            date_of(args.get(2).ok_or("select takes a first and a last date")?)?,
-        )),
-    };
-    let x = book.view.lane_b.timelines[index].clone();
-    let t = table_named(book, &x.pivot)?;
-    let f = field_in(book, t, &x.field)?;
-    let table = &book.session.book.pivots.tables[t];
-    let cache = &book.session.book.pivots.caches[table.cache];
-    let shown: Vec<bool> = table.fields[f]
-        .items
-        .iter()
-        .map(|e| match (cache.fields[f].items().get(e.x), span) {
-            (Some(CacheValue::Date(d) | CacheValue::Number(d)), Some((a, b))) => *d >= a && *d <= b,
-            _ => true,
-        })
-        .collect();
-    for (position, visible) in shown.into_iter().enumerate() {
-        book.session.pivot_set_item_visible(t, f, position, visible)?;
-    }
-    book.view.lane_b.timelines[index].span = span;
-    book.changed();
-    book.view.axes = None;
-    Ok(said(format!("{name} set")))
 }
 
 // -------------------------------------------------------------------------------------------- GETPIVOTDATA

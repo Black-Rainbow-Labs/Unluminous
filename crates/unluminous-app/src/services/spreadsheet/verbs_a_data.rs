@@ -76,7 +76,7 @@ impl CellDisplay for RuleDisplay {
             return None;
         }
         let pick = self.rules.effect(book, self.now, at).icon?;
-        (!pick.hidden).then(|| (pick.set, pick.index as u32))
+        (!pick.hidden).then_some((pick.set, pick.index as u32))
     }
 }
 
@@ -778,7 +778,7 @@ fn table_named(book: &Book, rest: &[String]) -> Result<(String, usize), String> 
 
 fn total_function(word: &str) -> Result<TotalFunction, String> {
     TotalFunction::parse(word)
-        .or_else(|| match word {
+        .or(match word {
             "count-numbers" => Some(TotalFunction::CountNumbers),
             "stddev" => Some(TotalFunction::StdDev),
             _ => None,

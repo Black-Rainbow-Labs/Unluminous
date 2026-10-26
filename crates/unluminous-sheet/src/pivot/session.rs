@@ -157,6 +157,7 @@ impl Session {
         self.check_table(t)?;
         self.remember_whole("Delete PivotTable");
         let table = self.book.pivots.tables.remove(t);
+        self.forget_slicers_of(&table.name);
         self.clear_cells(table.sheet, table.full_range(), table.has_cells);
         self.book.pivots.removed_parts.push(table.part.clone());
         let cache = table.cache;

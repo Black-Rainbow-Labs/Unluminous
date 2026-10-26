@@ -282,15 +282,14 @@ fn styles_and_themes_are_applied_by_name() {
         .iter()
         .any(|s| s["name"] == "Mine"));
     go(&mut sheet, "style delete Mine");
-    assert_eq!(
+    assert!(
         go(&mut sheet, "styles").value["styles"]
             .as_array()
             .unwrap()
             .iter()
             .filter(|s| s["builtIn"] == json!(true))
             .count()
-            >= 47,
-        true
+            >= 47
     );
     go(&mut sheet, "theme Facet");
     assert!(go(&mut sheet, "theme").value["colors"]["slots"].as_array().unwrap().len() >= 12);

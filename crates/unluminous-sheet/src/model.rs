@@ -47,6 +47,8 @@ pub struct Workbook {
     pub persons_changed: bool,
     /// The pivot tables and the caches of data they summarise.
     pub pivots: crate::pivot::Pivots,
+    /// The slicers and timelines that filter the pivot tables.
+    pub slicers: crate::slicers::Slicers,
 }
 
 /// The calculation settings in `calcPr`.
