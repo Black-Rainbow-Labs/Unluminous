@@ -99,8 +99,8 @@ pub fn fill_of(sp_pr: &Option<String>, accents: &[Color32; 6]) -> Option<Color32
             "accent4" => accents[3],
             "accent5" => accents[4],
             "accent6" => accents[5],
-            "tx1" | "dk1" => Color32::BLACK,
-            "bg1" | "lt1" => Color32::WHITE,
+            "tx1" | "dk1" => crate::services::spreadsheet::excel_ink::THEME_DARK,
+            "bg1" | "lt1" => crate::services::spreadsheet::excel_ink::THEME_LIGHT,
             _ => Color32::GRAY,
         }
     } else {

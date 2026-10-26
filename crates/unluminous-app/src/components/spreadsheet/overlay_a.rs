@@ -65,15 +65,15 @@ pub fn data_bar(
 /// The colour of the nth icon of a set of `count`: red at the lowest, green at the highest.
 fn icon_colour(index: usize, count: usize) -> Color32 {
     if count < 2 {
-        return Color32::from_rgb(0x9B, 0x9B, 0x9B);
+        return crate::services::spreadsheet::excel_ink::ICON_NEUTRAL;
     }
     let t = index as f32 / (count - 1) as f32;
     if t < 0.34 {
-        Color32::from_rgb(0xE0, 0x4B, 0x4B)
+        crate::services::spreadsheet::excel_ink::ICON_LOW
     } else if t < 0.67 {
-        Color32::from_rgb(0xE8, 0xB8, 0x2E)
+        crate::services::spreadsheet::excel_ink::ICON_MIDDLE
     } else {
-        Color32::from_rgb(0x3C, 0xB3, 0x71)
+        crate::services::spreadsheet::excel_ink::ICON_HIGH
     }
 }
 
@@ -149,12 +149,20 @@ pub fn icon(painter: &egui::Painter, cell: Rect, pick: &IconPick) {
                 Pos2::new(x, box_.bottom() - h),
                 Pos2::new(x + side / count as f32 - 1.0, box_.bottom()),
             );
-            painter.rect_filled(bar, 0, if on { colour } else { Color32::from_gray(0xB0) });
+            painter.rect_filled(
+                bar,
+                0,
+                if on { colour } else { crate::services::spreadsheet::excel_ink::ICON_UNLIT },
+            );
         }
     } else {
         painter.circle_filled(c, r * 0.85, colour);
         if set.contains("Symbols") || set.contains("Signs") {
-            painter.circle_stroke(c, r * 0.85, Stroke::new(1.0, Color32::from_gray(0x40)));
+            painter.circle_stroke(
+                c,
+                r * 0.85,
+                Stroke::new(1.0, crate::services::spreadsheet::excel_ink::ICON_RIM),
+            );
         }
     }
 }
@@ -328,9 +336,9 @@ fn trace_arrows(ui: &egui::Ui, book: &Book, frame: super::grid::Frame) {
     let here = book.view.sheet;
     for a in arrows {
         let colour = if a.error {
-            Color32::from_rgb(0xD0, 0x30, 0x30)
+            crate::services::spreadsheet::excel_ink::ARROW_ERROR
         } else {
-            Color32::from_rgb(0x2A, 0x5F, 0xC9)
+            crate::services::spreadsheet::excel_ink::ARROW
         };
         let stroke = Stroke::new(1.5, colour);
         if a.to_sheet != here {
@@ -398,7 +406,7 @@ fn error_triangles(ui: &egui::Ui, book: &Book, frame: super::grid::Frame, out: &
         let corner = cell.left_top();
         painter.add(Shape::convex_polygon(
             vec![corner, corner + Vec2::new(size, 0.0), corner + Vec2::new(0.0, size)],
-            Color32::from_rgb(0x21, 0x9E, 0x5A),
+            crate::services::spreadsheet::excel_ink::ERROR_TRIANGLE,
             Stroke::NONE,
         ));
         let spot = Rect::from_min_size(corner, Vec2::splat(size + 3.0));

@@ -95,7 +95,15 @@ fn table_body(
     let cache = &book.session.book.pivots.caches[table.cache];
     let at = format!("in {}", table.name.replace(' ', "_"));
     ui.label(egui::RichText::new(&table.name).color(look.palette.text_dim));
-    ui.add(egui::TextEdit::singleline(search).hint_text("Search").desired_width(f32::INFINITY));
+    ui.add(
+        egui::TextEdit::singleline(search)
+            .hint_text(crate::components::controls::placeholder(
+                "Search",
+                &egui::TextStyle::Body.resolve(ui.style()),
+                ui.visuals().weak_text_color(),
+            ))
+            .desired_width(f32::INFINITY),
+    );
     ui.label("Choose fields to add to report:");
     egui::ScrollArea::vertical().id_salt("pivot-field-list").max_height(150.0).show(ui, |ui| {
         for f in 0..cache.fields.len() {

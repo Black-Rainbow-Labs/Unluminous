@@ -285,7 +285,13 @@ fn comments_body(ui: &mut egui::Ui, book: &Book, words: &mut Words) {
             let mut reply: String = ui.data_mut(|d| d.get_temp(key)).unwrap_or_default();
             ui.horizontal(|ui| {
                 ui.add(
-                    egui::TextEdit::singleline(&mut reply).hint_text("Reply").desired_width(150.0),
+                    egui::TextEdit::singleline(&mut reply)
+                        .hint_text(crate::components::controls::placeholder(
+                            "Reply",
+                            &egui::TextStyle::Body.resolve(ui.style()),
+                            ui.visuals().weak_text_color(),
+                        ))
+                        .desired_width(150.0),
                 );
                 if button(ui, "Send", &format!("Send reply on {cell}")) && !reply.trim().is_empty()
                 {
@@ -313,7 +319,11 @@ fn comments_body(ui: &mut egui::Ui, book: &Book, words: &mut Words) {
     ui.horizontal(|ui| {
         ui.add(
             egui::TextEdit::singleline(&mut text)
-                .hint_text("New comment on the active cell")
+                .hint_text(crate::components::controls::placeholder(
+                    "New comment on the active cell",
+                    &egui::TextStyle::Body.resolve(ui.style()),
+                    ui.visuals().weak_text_color(),
+                ))
                 .desired_width(190.0),
         );
         if button(ui, "New", "New comment") && !text.trim().is_empty() {
@@ -345,10 +355,22 @@ fn scenario_body(ui: &mut egui::Ui, book: &Book, words: &mut Words) {
     let key = egui::Id::new(("new-scenario", &book.key));
     let (mut name, mut values): (String, String) =
         ui.data_mut(|d| d.get_temp(key)).unwrap_or_default();
-    ui.add(egui::TextEdit::singleline(&mut name).hint_text("Scenario name").desired_width(280.0));
+    ui.add(
+        egui::TextEdit::singleline(&mut name)
+            .hint_text(crate::components::controls::placeholder(
+                "Scenario name",
+                &egui::TextStyle::Body.resolve(ui.style()),
+                ui.visuals().weak_text_color(),
+            ))
+            .desired_width(280.0),
+    );
     ui.add(
         egui::TextEdit::singleline(&mut values)
-            .hint_text("Values for the selected cells, separated by commas")
+            .hint_text(crate::components::controls::placeholder(
+                "Values for the selected cells, separated by commas",
+                &egui::TextStyle::Body.resolve(ui.style()),
+                ui.visuals().weak_text_color(),
+            ))
             .desired_width(280.0),
     );
     ui.horizontal(|ui| {
@@ -394,13 +416,13 @@ fn notes_at_their_box(ui: &egui::Ui, book: &Book, frame: Frame, words: &mut Word
         let cell = frame.cell(book, at);
         painter.line_segment(
             [cell.right_top(), rect.left_top()],
-            Stroke::new(1.0, Color32::from_gray(0x80)),
+            Stroke::new(1.0, crate::services::spreadsheet::excel_ink::NOTE_LEADER),
         );
-        painter.rect_filled(rect, 0, Color32::from_rgb(0xFF, 0xFF, 0xE1));
+        painter.rect_filled(rect, 0, crate::services::spreadsheet::excel_ink::NOTE_PAPER);
         painter.rect_stroke(
             rect,
             0,
-            Stroke::new(1.0, Color32::from_gray(0x60)),
+            Stroke::new(1.0, crate::services::spreadsheet::excel_ink::NOTE_EDGE),
             egui::StrokeKind::Inside,
         );
         let text = if note.author.is_empty() {
@@ -413,10 +435,10 @@ fn notes_at_their_box(ui: &egui::Ui, book: &Book, frame: Frame, words: &mut Word
             Align2::LEFT_TOP,
             text,
             egui::FontId::proportional((11.0 * z).clamp(8.0, 20.0)),
-            Color32::BLACK,
+            crate::services::spreadsheet::excel_ink::NOTE_INK,
         );
         let grip = Rect::from_min_size(rect.right_bottom() - Vec2::splat(10.0), Vec2::splat(10.0));
-        painter.rect_filled(grip, 0, Color32::from_gray(0x90));
+        painter.rect_filled(grip, 0, crate::services::spreadsheet::excel_ink::NOTE_GRIP);
         let body = ui.interact(rect, id.with("body"), Sense::drag());
         let corner = ui.interact(grip, id.with("grip"), Sense::drag());
         body.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Note box"));

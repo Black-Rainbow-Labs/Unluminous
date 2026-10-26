@@ -257,7 +257,7 @@ fn page_marks(ui: &egui::Ui, book: &Book, frame: Frame, look: &Look<'_>) {
         return;
     }
     let painter = ui.painter().with_clip_rect(frame.cells);
-    let blue = Color32::from_rgb(0x1F, 0x6F, 0xD0);
+    let blue = crate::services::spreadsheet::excel_ink::PAGE_BREAK;
     for area in &layout.areas {
         let whole = frame.range(book, area.range);
         for b in area
@@ -321,14 +321,18 @@ fn paper_pages(ui: &egui::Ui, book: &Book, frame: Frame, look: &Look<'_>, layout
         painter.rect_filled(r, 0, look.palette.control);
     }
     for (paper, body, page) in &papers {
-        painter.rect_filled(paper.translate(Vec2::new(2.0, 3.0)), 0, Color32::from_black_alpha(50));
+        painter.rect_filled(
+            paper.translate(Vec2::new(2.0, 3.0)),
+            0,
+            crate::services::spreadsheet::excel_ink::PAPER_SHADOW,
+        );
         for r in without(*paper, *body) {
-            painter.rect_filled(r, 0, Color32::WHITE);
+            painter.rect_filled(r, 0, crate::services::spreadsheet::excel_ink::PAPER);
         }
         painter.rect_stroke(
             *paper,
             0,
-            Stroke::new(1.0, Color32::from_gray(0xC0)),
+            Stroke::new(1.0, crate::services::spreadsheet::excel_ink::PAPER_EDGE),
             egui::StrokeKind::Inside,
         );
         margin_text(&painter, *paper, *body, page, z, look);
@@ -405,7 +409,7 @@ pub fn cached_pages(ui: &egui::Ui, book: &Book, layout: &PageLayout) -> Arc<Page
 
 /// Draw one page of a printout into a rectangle: the paper, then each item of the page.
 pub fn paint_page(painter: &egui::Painter, rect: Rect, page: &unluminous_word::layout::Page) {
-    painter.rect_filled(rect, 0, Color32::WHITE);
+    painter.rect_filled(rect, 0, crate::services::spreadsheet::excel_ink::PAPER);
     let scale = rect.width() / page.width.max(1.0);
     let at = |x: f32, y: f32| rect.min + Vec2::new(x * scale, y * scale);
     let painter = painter.with_clip_rect(rect);

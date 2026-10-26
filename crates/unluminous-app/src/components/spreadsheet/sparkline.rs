@@ -100,7 +100,11 @@ pub fn draw_sparkline(
         return;
     }
     let series = colour(&group.colors.series, theme, ink.accent);
-    let negative = colour(&group.colors.negative, theme, Color32::from_rgb(0xD0, 0, 0));
+    let negative = colour(
+        &group.colors.negative,
+        theme,
+        crate::services::spreadsheet::excel_ink::SPARK_NEGATIVE,
+    );
     if group.show_axis && data.axis_min < 0.0 && data.axis_max > 0.0 {
         let y = plot.top() + data.fraction_down(0.0) as f32 * plot.height();
         painter.line_segment(

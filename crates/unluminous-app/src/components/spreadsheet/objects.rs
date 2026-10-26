@@ -326,7 +326,7 @@ fn fill_colour(shape: &ShapeData, cx: &DrawContext) -> Color32 {
     match &shape.fill {
         Fill::None => Color32::TRANSPARENT,
         Fill::Solid(c) => colour(c, cx.theme),
-        Fill::Other => Color32::from_rgba_unmultiplied(128, 128, 128, 90),
+        Fill::Other => crate::services::spreadsheet::excel_ink::UNDRAWN_FILL,
         Fill::Inherit => {
             shape.style_fill.as_ref().map_or(Color32::TRANSPARENT, |c| colour(c, cx.theme))
         }
@@ -503,11 +503,10 @@ fn draw_picture(painter: &Painter, frame: Rect, object: &DrawingObject, texture:
         if object.flip_v {
             t.y = uv.top() + uv.bottom() - t.y;
         }
-        // any ground: the tint a picture is drawn with, which leaves its own colours as they are.
         mesh.vertices.push(egui::epaint::Vertex {
             pos: rotate_point(*p, c, object.rotation as f32),
             uv: t,
-            color: Color32::WHITE,
+            color: Color32::WHITE, // any ground: the tint a picture is drawn with keeps its own colours
         });
     }
     mesh.indices.extend([0, 1, 2, 0, 2, 3]);
@@ -575,11 +574,10 @@ fn draw_picture_from_part(
     texture: TextureId,
 ) {
     let mut mesh = Mesh::with_texture(texture);
-    // any ground: the tint a picture is drawn with, which leaves its own colours as they are.
     mesh.add_rect_with_uv(
         frame,
         Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
-        Color32::WHITE,
+        Color32::WHITE, // any ground: the tint a picture is drawn with keeps its own colours
     );
     let _ = object;
     painter.add(Shape::mesh(mesh));

@@ -40,7 +40,7 @@ pub fn show(ui: &egui::Ui, book: &mut Book, frame: Frame, look: &Look<'_>, words
             ui.painter().rect_filled(
                 at.translate(Vec2::new(3.0, 3.0)),
                 0,
-                egui::Color32::from_black_alpha(80),
+                crate::services::spreadsheet::excel_ink::PREVIEW_SHADOW,
             );
             paint_page(ui.painter(), at, page);
         } else {
