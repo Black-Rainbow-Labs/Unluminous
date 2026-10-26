@@ -323,6 +323,7 @@ pub fn book_menu(
     let width = 290.0;
     let screen = ctx.content_rect();
     let at = Pos2::new(at.x.min(screen.right() - width - 12.0), at.y);
+    let room = (screen.bottom() - at.y - 60.0).max(120.0);
     let shown = egui::Area::new(id).order(egui::Order::Foreground).fixed_pos(at).show(ctx, |ui| {
         controls::menu_frame(ui)
             .show(ui, |ui| {
@@ -340,28 +341,13 @@ pub fn book_menu(
                     response.request_focus();
                 }
                 ui.add_space(4.0);
-                if search.trim().is_empty() {
-                    popup_level(ui, look, items, id, 0, &mut drawn)
-                } else {
-                    let mut picked = None;
-                    if catalogue::search(items, search).is_empty() {
-                        ui.label(
-                            egui::RichText::new("Nothing matches").color(look.palette.text_dim),
-                        );
-                    }
-                    if let Some(p) = found_rows(ui, look, items, search) {
-                        picked = Some(p);
-                    }
-                    // Enter runs the first match.
-                    if picked.is_none() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                        if let Some((_, Item::Run { words, .. })) =
-                            catalogue::search(items, search).first()
-                        {
-                            picked = Some(Picked::Words(words.clone()));
-                        }
-                    }
-                    picked
-                }
+                // The list scrolls inside the room under the button. Taller than that, egui would push the
+                // whole menu up over the button that opened it, and the pointer resting there opened Edit.
+                egui::ScrollArea::vertical()
+                    .id_salt(id.with("rows"))
+                    .max_height(room)
+                    .show(ui, |ui| book_rows(ui, look, id, items, search, &mut drawn))
+                    .inner
             })
             .inner
     });
@@ -375,6 +361,36 @@ pub fn book_menu(
     });
     let escape = ctx.input(|i| i.key_pressed(egui::Key::Escape));
     (pressed_outside || escape).then_some(Picked::Close)
+}
+
+/// The workbook menu's rows under its search box: the tree's first level, or what the search found.
+fn book_rows(
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    id: egui::Id,
+    items: &[Item],
+    search: &str,
+    drawn: &mut Vec<Rect>,
+) -> Option<Picked> {
+    ui.spacing_mut().item_spacing.y = 0.0;
+    if search.trim().is_empty() {
+        popup_level(ui, look, items, id, 0, drawn)
+    } else {
+        let mut picked = None;
+        if catalogue::search(items, search).is_empty() {
+            ui.label(egui::RichText::new("Nothing matches").color(look.palette.text_dim));
+        }
+        if let Some(p) = found_rows(ui, look, items, search) {
+            picked = Some(p);
+        }
+        // Enter runs the first match.
+        if picked.is_none() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            if let Some((_, Item::Run { words, .. })) = catalogue::search(items, search).first() {
+                picked = Some(Picked::Words(words.clone()));
+            }
+        }
+        picked
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
