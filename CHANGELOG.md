@@ -6,7 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.16.1 — 2026-10-26
+## 1.16.2 — 2026-10-26
+
+- Cache FXC shaders as bytes in a vendored wgpu-hal, so threads sharing a device no longer free a cached ID3DBlob (`task-2369`)
+
+## 1.16.1 — 2026-10-25
 
 - The panel's rows wrap in a narrow panel instead of running past its edge (`task-2366`)
 
