@@ -697,6 +697,14 @@ impl TextRenderer {
         &self.families
     }
 
+    /// Whether any face of this family is installed or was added from a font folder.
+    pub fn has_family(&self, family: &str) -> bool {
+        self.database
+            .borrow()
+            .faces()
+            .any(|face| face.families.iter().any(|(name, _)| name.eq_ignore_ascii_case(family)))
+    }
+
     /// A monospaced family this system has, for setting code in the Markdown preview. `None` when it has
     /// none of them, in which case code is set in the ordinary family.
     /// The order is this list's own rather than the order the families are offered in, because for a

@@ -415,8 +415,20 @@ impl Session {
     }
 
     /// A line break (Shift+Enter), a page break (Ctrl+Enter) or a column break (Ctrl+Shift+Enter).
+    ///
+    /// A page break ends its paragraph, so it sits on a line of its own and what is typed next starts a
+    /// new paragraph on the next page. That is what Word has done since 2013 (task-2377 measured it
+    /// through COM), and a break left at the start of the next paragraph made a heading typed there,
+    /// which keeps with the paragraph after it, push itself a page further and leave a blank page.
     pub fn insert_break(&mut self, character: char) {
-        self.type_text(&character.to_string());
+        if character == crate::model::PAGE_BREAK {
+            self.type_text(&format!(
+                "{character}
+"
+            ));
+        } else {
+            self.type_text(&character.to_string());
+        }
     }
 
     // ---- Formatting ----
@@ -532,6 +544,12 @@ impl Session {
             Some("character") => self.format(move |rpr| props::set_val(rpr, "w:rStyle", Some(&id))),
             Some("paragraph") | None => self.change(Scope::Whole, move |document, selection, _| {
                 edit::format_paragraphs(document, &selection.anchor, &selection.head, &|ppr| {
+                    // Word drops the paragraph's own alignment, indents and spacing when a paragraph
+                    // style is applied, so the paragraph looks like the style (task-2377 measured a
+                    // right aligned, indented paragraph turned into Quote coming out centered).
+                    for direct in ["w:jc", "w:ind", "w:spacing"] {
+                        ppr.remove_children(direct);
+                    }
                     if id == "Normal" {
                         ppr.remove_children("w:pStyle");
                     } else {
@@ -705,8 +723,13 @@ impl Session {
         self.change(Scope::Story, move |document, selection, tracking| {
             // Backwards, so earlier offsets stay right.
             for found in matches.iter().rev() {
+                // The replacement takes the formatting of the first character it replaces, as Word's
+                // Replace All does, rather than that of the text in front of the match.
+                let (from, _) = found.ordered();
+                let props = position::paragraph(document, &from.story, &from.path)
+                    .map(|p| edit::props_at(p, (from.offset + 1).min(p.len())).0);
                 let at = edit::delete_range(document, &found.anchor, &found.head, tracking);
-                edit::insert_text(document, &at, &with, None, tracking);
+                edit::insert_text(document, &at, &with, props, tracking);
             }
             let len = position::paragraph(document, &selection.head.story, &selection.head.path)
                 .map_or(0, Paragraph::len);
@@ -788,6 +811,76 @@ mod tests {
             .into_iter()
             .map(|(_, p)| p.flat_text())
             .collect()
+    }
+
+    /// The paragraph style id and the direct `w:jc` of every body paragraph.
+    fn styles_and_alignment(session: &Session) -> Vec<(Option<String>, Option<String>)> {
+        position::paragraphs(&session.document.body)
+            .into_iter()
+            .map(|(_, p)| {
+                (
+                    p.props.val_of("w:pStyle").map(str::to_owned),
+                    p.props.val_of("w:jc").map(str::to_owned),
+                )
+            })
+            .collect()
+    }
+
+    /// Word puts a page break in a paragraph of its own and starts the next paragraph after it.
+    #[test]
+    fn a_page_break_ends_its_paragraph() {
+        let mut s = session();
+        s.type_text("Before\n");
+        s.insert_break(crate::model::PAGE_BREAK);
+        s.apply_style("Heading1").unwrap();
+        s.type_text("After");
+        assert_eq!(texts(&s), ["Before", "\u{c}", "After"]);
+        assert_eq!(styles_and_alignment(&s)[2].0.as_deref(), Some("Heading1"));
+    }
+
+    /// A list made from Normal paragraphs is List Paragraph, and taking the list off makes it Normal again.
+    #[test]
+    fn a_list_on_a_normal_paragraph_is_list_paragraph() {
+        let mut s = session();
+        s.type_text("one");
+        s.apply_style("Normal").unwrap();
+        s.format_paragraphs(|ppr| props::set_val(ppr, "w:pStyle", Some("Normal")));
+        s.toggle_list(crate::builtin::ListKind::Number);
+        assert_eq!(styles_and_alignment(&s)[0].0.as_deref(), Some("ListParagraph"));
+        s.toggle_list(crate::builtin::ListKind::Number);
+        assert_eq!(styles_and_alignment(&s)[0].0, None);
+    }
+
+    /// Applying a paragraph style drops the paragraph's own alignment, as Word does.
+    #[test]
+    fn a_paragraph_style_replaces_direct_alignment() {
+        let mut s = session();
+        s.type_text("quoted");
+        s.format_paragraphs(|ppr| props::set_val(ppr, "w:jc", Some("right")));
+        assert_eq!(styles_and_alignment(&s)[0].1.as_deref(), Some("right"));
+        s.apply_style("Quote").unwrap();
+        assert_eq!(styles_and_alignment(&s)[0], (Some("Quote".into()), None));
+    }
+
+    /// Replace All keeps the formatting of the text it replaces.
+    #[test]
+    fn replace_all_keeps_the_formatting_of_the_match() {
+        let mut s = session();
+        s.type_text("The Alta Via links");
+        s.select(Pos::new(vec![0], 4), Pos::new(vec![0], 12));
+        s.format(|rpr| props::set_on_off(rpr, "w:b", Some(true)));
+        assert_eq!(s.replace_all("Alta Via", "Alta Via 1 (AV1)", true, false), 1);
+        let paragraph = position::paragraph(&s.document, &StoryId::Body, &[0]).unwrap();
+        let bold: String = paragraph
+            .runs
+            .iter()
+            .filter(|r| r.props.child("w:b").is_some())
+            .filter_map(|r| match &r.content {
+                crate::model::Content::Text(text) => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(bold, "Alta Via 1 (AV1)");
     }
 
     #[test]

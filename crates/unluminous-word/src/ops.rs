@@ -102,7 +102,9 @@ impl Session {
                             .with_child(El::new("w:ilvl").with("w:val", level))
                             .with_child(El::new("w:numId").with("w:val", num.to_string())),
                     );
-                    if p.props.val_of("w:pStyle").is_none() {
+                    // Word's list buttons give a Normal paragraph the List Paragraph style, which is
+                    // what draws a list without the space Normal puts after each paragraph.
+                    if matches!(p.props.val_of("w:pStyle"), None | Some("Normal")) {
                         p.props.put(El::new("w:pStyle").with("w:val", "ListParagraph"));
                     }
                 }

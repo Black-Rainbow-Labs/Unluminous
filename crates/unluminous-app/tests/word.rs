@@ -486,6 +486,54 @@ fn the_style_chip_lists_the_styles_and_sets_one() {
 
 /// **The page, the words and the spelling are in the window's status bar, and a press on the page opens
 /// Go To.** The Word tab draws no strip of its own under the pages. `task-2366`.
+/// **The pages follow a caret an agent moved.** Typing a page break and a heading through `plugins run
+/// word` scrolls the view to the second page, as typing the same thing with the keyboard does, so a
+/// person watching an agent edit sees the edit. `task-2377`.
+#[test]
+fn the_pages_follow_the_caret_an_agent_moves() {
+    let (_, mut harness) = a_word_window("unluminous-word-follow", "blank.docx");
+    let before = view(&mut harness)["current"]["scroll"].as_f64().unwrap_or(0.0);
+    did(&mut harness, "plugins run word type First page");
+    did(&mut harness, "plugins run word insert page-break");
+    did(&mut harness, "plugins run word type Second page");
+    steady(&mut harness);
+    let after = view(&mut harness)["current"]["scroll"].as_f64().unwrap_or(0.0);
+    assert!(after > before + 100.0, "the view scrolled to the second page: {before} to {after}");
+}
+
+/// **`replace <find> -- <with> --all` replaces.** The `--` between the two halves was dropped with the
+/// flags, so every replace was refused for having no `--`. `task-2377`.
+#[test]
+fn replace_finds_the_separator_and_replaces_every_match() {
+    let (_, mut harness) = a_word_window("unluminous-word-replace", "blank.docx");
+    did(&mut harness, "plugins run word type Alta Via 1 and Alta Via 2 and Alta Via 1");
+    let answer = did(&mut harness, "plugins run word replace Alta Via 1 -- Alta Via 1 (AV1) --all");
+    assert_eq!(answer["replaced"], 2);
+    let text = paragraphs(&mut harness)[0]["text"].as_str().unwrap_or_default().to_owned();
+    assert_eq!(text, "Alta Via 1 (AV1) and Alta Via 2 and Alta Via 1 (AV1)");
+}
+
+/// **`toc insert 2` and `caption Table Quarterly sales` do what their reference says.** Both read their
+/// arguments one place too far along: `toc insert 2` was refused as "not 2", `toc update` inserted a
+/// second table, and `caption Table Quarterly sales` made a caption labelled `Quarterly`. `task-2377`.
+#[test]
+fn toc_and_caption_read_the_arguments_their_reference_shows() {
+    let (_, mut harness) = a_word_window("unluminous-word-toc-caption", "blank.docx");
+    did(&mut harness, "plugins run word style Heading 1");
+    did(&mut harness, "plugins run word type Route");
+    did(&mut harness, "plugins run word caption Table Quarterly sales");
+    let caption = paragraphs(&mut harness)
+        .into_iter()
+        .find(|p| p["style"] == "Caption")
+        .expect("a caption paragraph");
+    assert_eq!(caption["text"], "Table 1 Quarterly sales");
+    did(&mut harness, "plugins run word select 1 0");
+    did(&mut harness, "plugins run word toc insert 2 --no-links");
+    did(&mut harness, "plugins run word toc update");
+    let tocs = paragraphs(&mut harness).into_iter().filter(|p| p["style"] == "TOC 1").count();
+    assert_eq!(tocs, 1, "one table of contents with one entry, not a second table");
+}
+
 #[test]
 fn the_window_status_bar_says_the_page_and_opens_go_to() {
     let (_, mut harness) = a_word_window("unluminous-word-status", "styles.docx");

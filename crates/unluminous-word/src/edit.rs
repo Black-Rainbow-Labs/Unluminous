@@ -683,7 +683,6 @@ pub fn format_paragraphs(document: &mut Document, a: &Pos, b: &Pos, change: &dyn
 pub fn insert_block(document: &mut Document, at: &Pos, block: Block) -> Option<Vec<u32>> {
     let len = position::paragraph(document, &at.story, &at.path)?.len();
     let mut anchor = at.clone();
-    let empty = len == 0;
     if at.offset > 0 && at.offset < len {
         anchor = split_paragraph(document, at, None);
         let mut path = anchor.path.clone();
@@ -692,7 +691,10 @@ pub fn insert_block(document: &mut Document, at: &Pos, block: Block) -> Option<V
     }
     let blocks = position::story_mut(document, &at.story)?;
     let (container, index) = position::container_mut(blocks, &anchor.path)?;
-    let at_index = if at.offset == 0 && !empty { index } else { index + 1 };
+    // At the start of a paragraph, an empty one included, the block goes in front of it and the
+    // paragraph stays after the block, which is what Word's Insert Table does (task-2377 measured it
+    // through COM: a table inserted on an empty line leaves no empty line above it).
+    let at_index = if at.offset == 0 { index } else { index + 1 };
     container.insert(at_index, block);
     // A table must have a paragraph after it in a cell or at the end of the body.
     if container.get(at_index + 1).is_none() {
@@ -1118,5 +1120,19 @@ mod tests {
         assert_eq!(path, vec![1]);
         assert!(matches!(doc.body[1], Block::Table(_)));
         assert!(matches!(doc.body[2], Block::Paragraph(_)));
+    }
+
+    #[test]
+    fn a_table_on_an_empty_line_goes_in_front_of_it() {
+        let mut doc = document(&["before", ""]);
+        let path = insert_block(
+            &mut doc,
+            &Pos::new(vec![1], 0),
+            Block::Table(new_table(2, 3, 468.0, None)),
+        )
+        .unwrap();
+        assert_eq!(path, vec![1]);
+        assert!(matches!(doc.body[1], Block::Table(_)));
+        assert_eq!(doc.body.len(), 3, "the empty line is after the table, and there is no other");
     }
 }

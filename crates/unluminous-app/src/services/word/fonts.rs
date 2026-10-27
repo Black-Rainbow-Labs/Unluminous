@@ -20,11 +20,37 @@ type FaceKey = (Arc<str>, bool, bool);
 pub struct WordFonts<'a> {
     pub renderer: &'a TextRenderer,
     ratios: RefCell<HashMap<FaceKey, f32>>,
+    families: RefCell<HashMap<Arc<str>, Arc<str>>>,
 }
+
+/// The face Word draws a family this machine does not have in. Measured on task-2377: with only Office's
+/// Aptos downloaded, Word set every Aptos Display heading and the Title in Calibri, in its window and in
+/// the PDF it exported.
+const WORD_SUBSTITUTE: &str = "Calibri";
 
 impl<'a> WordFonts<'a> {
     pub fn new(renderer: &'a TextRenderer) -> Self {
-        WordFonts { renderer, ratios: RefCell::new(HashMap::new()) }
+        WordFonts {
+            renderer,
+            ratios: RefCell::new(HashMap::new()),
+            families: RefCell::new(HashMap::new()),
+        }
+    }
+
+    /// The family a run is drawn in: its own when this machine has it, and otherwise the face Word
+    /// substitutes, when that one is here.
+    fn family(&self, family: &Arc<str>) -> Arc<str> {
+        self.families
+            .borrow_mut()
+            .entry(Arc::clone(family))
+            .or_insert_with(|| {
+                if self.renderer.has_family(family) || !self.renderer.has_family(WORD_SUBSTITUTE) {
+                    Arc::clone(family)
+                } else {
+                    Arc::from(WORD_SUBSTITUTE)
+                }
+            })
+            .clone()
     }
 
     /// The style to ask the renderer for, for a run Word sets at `style.size` points.
@@ -33,10 +59,12 @@ impl<'a> WordFonts<'a> {
     /// the editor's letters keep their size while the interface round them grows. A page grows with the
     /// interface, so its letters have to as well, or a page at 125% holds a fifth more text than Word's.
     pub fn drawn(&self, style: &CharStyle) -> CharStyle {
+        let family = self.family(&style.family);
+        let style = CharStyle { family, ..style.clone() };
         let key = (Arc::clone(&style.family), style.bold, style.italic);
         let ratio =
-            *self.ratios.borrow_mut().entry(key).or_insert_with(|| self.renderer.em_ratio(style));
-        CharStyle { size: style.size * ratio * self.renderer.interface_zoom(), ..style.clone() }
+            *self.ratios.borrow_mut().entry(key).or_insert_with(|| self.renderer.em_ratio(&style));
+        CharStyle { size: style.size * ratio * self.renderer.interface_zoom(), ..style }
     }
 }
 
@@ -55,6 +83,7 @@ impl FontMetrics for WordFonts<'_> {
 
     /// The face's GPOS pairs, which is where Word reads kerning; the old `kern` table when it has none.
     fn kerning(&self, left: char, right: char, style: &CharStyle) -> f32 {
+        let style = &CharStyle { family: self.family(&style.family), ..style.clone() };
         match pairs_for(self.renderer, style) {
             Some(pairs) => pairs.points(
                 self.renderer.glyph_index(left, style),

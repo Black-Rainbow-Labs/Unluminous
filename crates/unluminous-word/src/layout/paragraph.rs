@@ -510,7 +510,9 @@ fn collect_atoms(
                 Some((ptr, d, i, index)) if ptr == key.0 && d == deleted && i == inserted => index,
                 _ => {
                     let mut resolved = ctx.resolver.run(&paragraph.props, &run.props, table_style);
-                    if run.link().is_some()
+                    // A link to a bookmark in the document, which is what each entry of a table of
+                    // contents is, is drawn in its own colour: Word's tables of contents are black.
+                    if run.link().is_some_and(|link| link.attr("w:anchor").is_none())
                         && run.props.val_of("w:rStyle").is_none()
                         && resolved.color.is_none()
                     {

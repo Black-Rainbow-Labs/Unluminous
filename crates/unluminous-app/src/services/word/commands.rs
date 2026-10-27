@@ -28,8 +28,10 @@ fn flag(arguments: &[String], name: &str) -> bool {
     arguments.iter().any(|a| a == name)
 }
 
+/// The arguments that are not flags. A bare `--` is kept, because it is what separates the two halves of
+/// `replace <find> -- <with>`; it used to be dropped with the flags, so no replace ever found it.
 fn words(arguments: &[String]) -> Vec<String> {
-    arguments.iter().filter(|a| !a.starts_with("--")).cloned().collect()
+    arguments.iter().filter(|a| *a == "--" || !a.starts_with("--")).cloned().collect()
 }
 
 fn points(text: Option<&String>) -> Result<f32, String> {
@@ -187,13 +189,14 @@ fn fields(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
 fn toc(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
     doc.ensure_pages();
     let pages = doc.pages.clone();
-    match arguments.get(1).map_or("insert", String::as_str) {
+    // `arguments` starts after the verb: `toc insert 2` is `["insert", "2"]`.
+    match arguments.first().map_or("insert", String::as_str) {
         "insert" => {
             let value = |name: &str| {
                 arguments.iter().position(|a| a == name).and_then(|i| arguments.get(i + 1)).cloned()
             };
             let options = unluminous_word::references::TocOptions {
-                levels: arguments.get(2).and_then(|n| n.parse().ok()).unwrap_or(3),
+                levels: arguments.get(1).and_then(|n| n.parse().ok()).unwrap_or(3),
                 page_numbers: !flag(arguments, "--no-pages"),
                 hyperlinks: !flag(arguments, "--no-links"),
                 leader: value("--leader").unwrap_or_else(|| "dot".into()),
@@ -418,7 +421,14 @@ pub fn run(word: &mut Word, command: &str, arguments: &[String]) -> Result<Answe
         _ => {}
     }
     let doc = word.current_doc()?;
-    document_command(doc, command, arguments)
+    let before = doc.session.selection.clone();
+    let answer = document_command(doc, command, arguments);
+    // A command that moved the caret shows where it went, as a key press does, so the page follows an
+    // agent typing the way it follows a person.
+    if answer.is_ok() && doc.session.selection != before {
+        doc.view.reveal = true;
+    }
+    answer
 }
 
 /// `autocorrect [<rule> on|off]`: the rules, or one switched, for every open document and the settings.
@@ -913,9 +923,10 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
         "caption" => {
             doc.ensure_pages();
             let pages = doc.pages.clone();
-            let label = arguments.get(1).cloned().unwrap_or_else(|| "Figure".into());
+            // `arguments` starts after the verb: `caption Table Sales --above` is the label `Table`.
+            let label = words(arguments).first().cloned().unwrap_or_else(|| "Figure".into());
             let below = !flag(arguments, "--above");
-            let text = words(arguments).get(2..).map(|w| w.join(" ")).unwrap_or_default();
+            let text = words(arguments).get(1..).map(|w| w.join(" ")).unwrap_or_default();
             doc.session.insert_caption(&label, &text, below, &pages);
             Ok(Answer::said(format!("{label} caption added")))
         }
@@ -2226,6 +2237,7 @@ pub fn view(word: &Word) -> serde_json::Value {
             "keyboard": d.keyboard.0,
             "fieldHasTheKeyboard": d.keyboard.1,
             "zoom": d.view.zoom,
+            "scroll": d.view.scroll,
             "panel": d.view.panel.iter().map(|l| l.name()).collect::<Vec<_>>(),
             "slash": d.view.slash.as_ref().map(|(_, q, _)| q.clone()),
             "palette": d.view.palette.as_ref().map(|(q, _)| q.clone()),
