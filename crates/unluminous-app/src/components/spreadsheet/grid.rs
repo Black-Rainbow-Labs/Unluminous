@@ -1662,11 +1662,12 @@ fn draw_cells(
         // is one of the window's own controls.
         let (fill, edge, arrow) = match ink.dark {
             true => (look.palette.control, look.palette.control_border, look.palette.text_dim),
-            false => (
-                Color32::WHITE,
-                Color32::from_rgb(0xAB, 0xAB, 0xAB),
-                Color32::from_rgb(0x44, 0x44, 0x44),
-            ),
+            false => {
+                use crate::services::spreadsheet::excel_ink::{
+                    FILTER_ARROW, FILTER_EDGE, FILTER_FACE,
+                };
+                (FILTER_FACE, FILTER_EDGE, FILTER_ARROW)
+            }
         };
         painter.rect(
             button,

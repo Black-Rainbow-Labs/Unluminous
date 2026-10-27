@@ -23,10 +23,11 @@ fn accent(book: &Book, index: usize) -> Color32 {
 
 /// The colours a chart is drawn in: the paper and ink of the sheet, and the theme's six accents.
 fn colours_of(book: &Book, ink: &Ink, look: &Look<'_>) -> Colours {
-    // On white paper a chart's words are Excel's grey, #595959, the title as well as the labels.
+    // On white paper a chart's words are Excel's grey, the title as well as the labels.
+    use crate::services::spreadsheet::excel_ink;
     let (text, dim) = match ink.dark {
         true => (ink.text, look.palette.text_dim),
-        false => (Color32::from_rgb(0x59, 0x59, 0x59), Color32::from_rgb(0x59, 0x59, 0x59)),
+        false => (excel_ink::CHART_TEXT, excel_ink::CHART_TEXT),
     };
     Colours {
         paper: ink.paper,

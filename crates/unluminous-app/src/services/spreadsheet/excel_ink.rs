@@ -51,3 +51,11 @@ pub const PAPER: Color32 = Color32::from_rgb(0xFF, 0xFF, 0xFF);
 pub const PAPER_EDGE: Color32 = Color32::from_gray(0xC0);
 /// The shadow under a page in print preview.
 pub const PREVIEW_SHADOW: Color32 = Color32::from_rgba_premultiplied(0, 0, 0, 80);
+/// A chart's title, axis labels and legend on white paper.
+pub const CHART_TEXT: Color32 = Color32::from_gray(0x59);
+/// A filter button's face on white paper.
+pub const FILTER_FACE: Color32 = Color32::from_gray(0xFF);
+/// A filter button's edge on white paper.
+pub const FILTER_EDGE: Color32 = Color32::from_gray(0xAB);
+/// The arrow on a filter button on white paper.
+pub const FILTER_ARROW: Color32 = Color32::from_gray(0x44);

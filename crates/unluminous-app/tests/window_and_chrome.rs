@@ -6684,6 +6684,7 @@ fn words_in_chips_tabs_and_rows_are_centred_by_their_ink() {
         "Mono",
         Some(egui::FontData::from_owned(face)),
         None,
+        None,
     );
     // (control, points left out at its left, points left out at its right): the icon in front of an
     // explorer row's name and the chevron at the end of the run chip are not words.
