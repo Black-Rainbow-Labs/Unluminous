@@ -6,6 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.18.0 — 2026-10-27
+
+- A drag while typing a formula points at the whole range, as Excel's Point mode does (`task-2382`)
+- The Excel conveniences a fluent Excel user reaches for (`task-2382`)
+- The spreadsheet tab is drawn in the window's design (`task-2382`)
+- CLAUDE.md says what the workbook design and Point mode left (`task-2382`)
+
 ## 1.17.4 — 2026-10-27
 
 - A workbook in Unluminous looks the way Excel draws it (`task-2378`)
