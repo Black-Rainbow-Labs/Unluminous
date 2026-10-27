@@ -7577,6 +7577,29 @@ tests, and the agent study's `s37-spreadsheet` watches a model add a column to a
   way, with a row in `SPREADSHEET` for every verb.
 - **Still not in this version**: running VBA macros, Power Query, Solver, SmartArt and form controls.
 
+### The workbook tab is in the window's design, and Point mode is Excel's (`task-2382`)
+
+`tasks/task-2382-spreadsheet-design-tdd.md` is the design. Rules it left:
+
+- **The tab's furniture is `components/spreadsheet/chrome.rs`, drawn with `components::word::kit`**, which both
+  the Word tab and the workbook tab use: the bar (carved name box, Insert Function, carved formula well, Format
+  and the workbook menu as round chips), the sheets as pills in one carved track, the Format panel's head, search
+  well and level rows, and `chrome::button` and `chrome::card` for the cards over the grid. Sizes are the
+  design's points times `Look::zoom`. A button whose word is a symbol is drawn as a mark (`mark_for_symbol`).
+- **The mode, the selection's figures and the zoom are in the window's status bar** (`services::spreadsheet::status`,
+  `UiProvider::tab_status`); a figure runs `copy-figure`, the zoom runs `zoom 100`.
+- **A pointing drag keeps where it started in `Drag::Point(cell, PointOver)`**, never in `GridOut`, which is
+  built new every frame: that is why `=SUM(` and a drag used to point at one cell. Shift and a click grows the
+  reference, Ctrl adds one after a comma, headers point at whole columns and rows.
+- **A reference's coloured outline is a handle** (`Drag::Finder`, `editor::finder_at`): its border carries it,
+  a corner resizes it, and `formula_text::replace_reference` keeps its sheet and `$` marks.
+- **A click on another sheet's tab while a formula takes a reference keeps the formula open**
+  (`point_on_another_sheet`); references get the sheet's name from `keys::pointing_prefix`, and the commit goes
+  back to `Edit::sheet`.
+- **A cell being typed into takes the keyboard back if its box lost it** while the tab has the keyboard, or
+  Escape and Enter reach nothing.
+- `where <cell>` says where a cell was drawn (egui points), which is how a window test aims the pointer.
+
 ## A notebook is one document of percent cells, and the kernel is spoken to through Python
 
 Opening a `.ipynb` file opens a notebook tab: code, Markdown and raw cells, run against a Jupyter
