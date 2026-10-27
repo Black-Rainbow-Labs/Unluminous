@@ -300,8 +300,15 @@ fn after_the_grid(
                 editor::cell_box_id(&book.key)
             };
             let caret = keys::caret_of(ctx, id).unwrap_or(edit.text.chars().count());
-            let (start, end) = match edit.pointing {
-                Some((start, end, _)) if end == caret => (start, end),
+            let (start, end) = match (edit.pointing, out.point_how) {
+                // The same drag moved on, or Shift grew it: in place of what it put in.
+                (Some((start, end, _)), grid::PointHow::Again) => (start, end),
+                // Ctrl adds another reference after the one pointed at, with a comma between.
+                (Some((_, end, _)), grid::PointHow::Add) => {
+                    let at = keys::put_text(edit, end, end, ",");
+                    (at, at)
+                }
+                (Some((start, end, _)), _) if end == caret => (start, end),
                 _ => (caret, caret),
             };
             let new_end = match &pivot_call {
@@ -980,12 +987,7 @@ pub fn summary_text(book: &Book) -> String {
 /// Excel's cell mode: what typing does now.
 pub fn mode_text(book: &Book) -> String {
     use crate::services::spreadsheet::view::SelectMode;
-    let mode = match &book.view.edit {
-        Some(edit) if edit.pointing.is_some() => "Point",
-        Some(edit) if edit.typed => "Enter",
-        Some(_) => "Edit",
-        None => "Ready",
-    };
+    let mode = book.view.mode();
     match book.view.selecting {
         SelectMode::Extend => format!("{mode}    Extend Selection"),
         SelectMode::Add => format!("{mode}    Add to Selection"),

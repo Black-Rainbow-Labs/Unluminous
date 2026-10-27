@@ -239,8 +239,63 @@ pub enum Drag {
     /// Carrying the chosen cells by their border: where in the range they were picked up, and whether the
     /// right button carries them, which asks what to do at the end.
     Move { rows: u32, cols: u32, right: bool },
-    /// Pointing at cells for a formula being typed.
-    Point,
+    /// Pointing at cells for a formula being typed: the cell the drag started from, and whether it is over
+    /// cells, whole columns or whole rows.
+    Point(CellRef, PointOver),
+}
+
+/// Where the grid was drawn on the last frame: the cells' area and how it was scrolled and zoomed, which is
+/// enough to say where a cell is on the screen without drawing again.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct OnScreen {
+    pub cells: egui::Rect,
+    pub zoom: f32,
+    pub frozen: (u32, u32),
+    pub scroll: egui::Vec2,
+    pub rtl: bool,
+}
+
+impl OnScreen {
+    /// A cell's rectangle on the screen, in egui's points.
+    pub fn cell(&self, axes: &Axes, at: CellRef) -> egui::Rect {
+        let shift_x = if at.col >= self.frozen.1 { self.scroll.x } else { 0.0 };
+        let shift_y = if at.row >= self.frozen.0 { self.scroll.y } else { 0.0 };
+        let width = axes.columns.size(at.col) * self.zoom;
+        let left = match self.rtl {
+            true => self.cells.right() - (axes.columns.start(at.col) - shift_x) * self.zoom - width,
+            false => self.cells.left() + (axes.columns.start(at.col) - shift_x) * self.zoom,
+        };
+        let top = self.cells.top() + (axes.rows.start(at.row) - shift_y) * self.zoom;
+        egui::Rect::from_min_size(
+            egui::pos2(left, top),
+            egui::vec2(width, axes.rows.size(at.row) * self.zoom),
+        )
+    }
+}
+
+/// What a drag that points at cells for a formula is choosing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PointOver {
+    Cells,
+    Columns,
+    Rows,
+}
+
+impl PointOver {
+    /// The range from where a pointing drag started to where the pointer is.
+    pub fn range(self, from: CellRef, to: CellRef) -> Range {
+        match self {
+            PointOver::Cells => Range::new(from, to),
+            PointOver::Columns => Range::new(
+                CellRef::new(0, from.col.min(to.col)),
+                CellRef::new(MAX_ROWS - 1, from.col.max(to.col)),
+            ),
+            PointOver::Rows => Range::new(
+                CellRef::new(from.row.min(to.row), 0),
+                CellRef::new(from.row.max(to.row), MAX_COLS - 1),
+            ),
+        }
+    }
 }
 
 /// The axes of a sheet, built for one revision of the workbook.
@@ -257,6 +312,8 @@ pub struct Axes {
 /// What a tab is looking at.
 #[derive(Debug, Clone)]
 pub struct View {
+    /// Where the grid was drawn last frame, which `where` answers from.
+    pub on_screen: Option<OnScreen>,
     pub sheet: usize,
     /// The active cell.
     pub cursor: CellRef,
@@ -338,6 +395,7 @@ pub enum SelectMode {
 impl Default for View {
     fn default() -> Self {
         Self {
+            on_screen: None,
             sheet: 0,
             cursor: CellRef::new(0, 0),
             anchor: CellRef::new(0, 0),
@@ -379,6 +437,17 @@ impl Default for View {
 }
 
 impl View {
+    /// Excel's cell mode: `Ready`, `Enter` while a cell is typed over, `Edit` after F2 or a double click,
+    /// `Point` while the pointer or the arrows put a reference into a formula.
+    pub fn mode(&self) -> &'static str {
+        match &self.edit {
+            Some(edit) if edit.pointing.is_some() => "Point",
+            Some(edit) if edit.typed => "Enter",
+            Some(_) => "Edit",
+            None => "Ready",
+        }
+    }
+
     /// The range being chosen now.
     pub fn range(&self) -> Range {
         self.held.unwrap_or(Range::new(self.anchor, self.cursor))

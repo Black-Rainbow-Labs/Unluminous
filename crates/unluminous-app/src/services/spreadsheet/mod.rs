@@ -42,6 +42,7 @@ pub mod verbs_b_pivot_more;
 pub mod verbs_b_slicers;
 pub mod verbs_c;
 pub mod verbs_c_spark;
+pub mod verbs_d;
 pub mod verbs_charts;
 pub mod verbs_charts_axis;
 pub mod verbs_charts_info;

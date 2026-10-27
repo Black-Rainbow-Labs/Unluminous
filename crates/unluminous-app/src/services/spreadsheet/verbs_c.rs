@@ -24,7 +24,8 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Option<Out> 
         "object" => Some(object(sheet, args)),
         "picture" => Some(picture(sheet, args)),
         "shape" => Some(shape(sheet, args)),
-        _ => super::verbs_c_spark::run(sheet, verb, args),
+        _ => super::verbs_c_spark::run(sheet, verb, args)
+            .or_else(|| super::verbs_d::run(sheet, verb, args)),
     }
 }
 

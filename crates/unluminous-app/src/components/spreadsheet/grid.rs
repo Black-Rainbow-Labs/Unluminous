@@ -19,7 +19,7 @@ use crate::services::spreadsheet::conditional::{Effect, Rules};
 use crate::services::spreadsheet::config::Paper;
 use crate::services::spreadsheet::display::{self, Across, Down, Rgb, Shown};
 use crate::services::spreadsheet::measure;
-use crate::services::spreadsheet::view::Drag;
+use crate::services::spreadsheet::view::{Drag, PointOver};
 use crate::services::spreadsheet::Book;
 
 /// The colours a sheet is drawn in, decided once a frame from the paper and the theme.
@@ -212,6 +212,8 @@ pub struct GridOut {
     pub edit: Option<CellRef>,
     /// A cell was clicked while a formula was being typed, to be put into it.
     pub point: Option<Range>,
+    /// How `point` goes into the formula.
+    pub point_how: PointHow,
     /// The right click menu asked for, where.
     pub menu: Option<Pos2>,
     /// A filter button was pressed on this column.
@@ -221,6 +223,18 @@ pub struct GridOut {
     pub words: Vec<Vec<String>>,
     /// A menu of commands to open where the pointer let go, as a right drag does.
     pub drop_menu: Option<(Pos2, Vec<crate::services::spreadsheet::catalogue::Item>)>,
+}
+
+/// How a reference the pointer chose goes into the formula being typed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum PointHow {
+    /// In place of the reference pointed at before, or at the caret.
+    #[default]
+    Fresh,
+    /// The same drag moved on: in place of the reference it put in, wherever the caret is.
+    Again,
+    /// Ctrl and a click: after the reference pointed at, with a comma between, as Excel does.
+    Add,
 }
 
 /// One cell's text, laid out, to draw after the fills and the borders.
@@ -306,6 +320,13 @@ pub fn show(
     panes = layout.panes(book);
     let main = panes.last().expect("at least one pane").frame;
     out.frame = Some(main);
+    book.view.on_screen = Some(crate::services::spreadsheet::view::OnScreen {
+        cells: main.cells,
+        zoom: main.zoom,
+        frozen: main.frozen,
+        scroll: main.scroll,
+        rtl: main.rtl,
+    });
     ui.painter_at(layout.cells).rect_filled(layout.cells, 0, ink.paper);
     let mut formats: HashMap<u32, Format> = HashMap::new();
     for (index, pane) in panes.iter().enumerate() {
@@ -654,6 +675,34 @@ fn read_the_wheel(
     *y = (*y - delta.y / zoom).clamp(0.0, max_y);
 }
 
+/// A press on the cells or the headers while a formula is being typed: the reference goes into the formula
+/// and a drag from here grows it, as in Excel's Point mode. Shift grows the reference pointed at before to
+/// the press, and Ctrl adds another after it.
+fn start_pointing(
+    book: &mut Book,
+    at: CellRef,
+    over: PointOver,
+    modifiers: egui::Modifiers,
+    out: &mut GridOut,
+) {
+    let before = book.view.edit.as_ref().and_then(|e| e.pointing).map(|(_, _, r)| r);
+    let (from, how) = match before {
+        Some(r) if modifiers.shift => {
+            // The corner of the old reference farthest from the press stays put.
+            let row = if at.row >= r.first.row { r.first.row } else { r.last.row };
+            let col = if at.col >= r.first.col { r.first.col } else { r.last.col };
+            (CellRef::new(row, col), PointHow::Again)
+        }
+        Some(_) if modifiers.command => (at, PointHow::Add),
+        _ => (at, PointHow::Fresh),
+    };
+    book.view.drag = Some(Drag::Point(from, over));
+    book.view.extra.clear();
+    out.point = Some(over.range(from, at));
+    out.point_how = how;
+    book.view.choices = false;
+}
+
 /// Presses, drags and double clicks on the cells and the headers.
 fn read_the_pointer(
     ui: &egui::Ui,
@@ -798,6 +847,31 @@ fn read_the_pointer(
             out.filter_menu = Some((col, p));
             return;
         }
+        if pointing && column_edge.is_none() && row_edge.is_none() {
+            let over = if in_columns {
+                Some(PointOver::Columns)
+            } else if in_rows {
+                Some(PointOver::Rows)
+            } else if frame.cells.contains(p) {
+                Some(PointOver::Cells)
+            } else {
+                None
+            };
+            if let Some(over) = over {
+                // A drag is read from where the button went down, which egui only calls a drag once the
+                // pointer has moved a little way from it.
+                let origin = ui
+                    .input(|i| i.pointer.press_origin())
+                    .filter(|_| response.drag_started())
+                    .map(|o| {
+                        let to_global = ui.ctx().layer_transform_to_global(ui.layer_id());
+                        to_global.map_or(o, |t| t.inverse() * o)
+                    })
+                    .map_or(at, |o| frame.at(book, o));
+                start_pointing(book, origin, over, modifiers, out);
+                return;
+            }
+        }
         if let Some(col) = column_edge {
             book.view.drag = Some(Drag::ColumnEdge(col, axes.columns.size(col)));
         } else if let Some(row) = row_edge {
@@ -833,13 +907,6 @@ fn read_the_pointer(
             }
             book.view.drag = Some(Drag::Rows(at.row));
         } else if frame.cells.contains(p) {
-            if pointing {
-                book.view.drag = Some(Drag::Point);
-                book.view.extra.clear();
-                out.point = Some(Range::cell(at));
-                book.view.choices = false;
-                return;
-            }
             // Ctrl and a link opens the link.
             if modifiers.command {
                 if let Some(link) = book.session.book.sheets[book.view.sheet]
@@ -895,10 +962,18 @@ fn read_the_pointer(
                 book.view.anchor = target;
                 scroll_by(book, push / frame.zoom);
             }
-            Some(Drag::Point) => {
-                if let Some(Range { first, .. }) = out.point {
-                    out.point = Some(Range::new(first, target));
+            Some(Drag::Point(from, over)) => {
+                let range = over.range(from, target);
+                if book.view.edit.as_ref().and_then(|e| e.pointing).map(|(_, _, r)| r) != Some(range)
+                {
+                    out.point = Some(range);
+                    out.point_how = PointHow::Again;
                 }
+                let push = match over {
+                    PointOver::Cells => push,
+                    PointOver::Columns => Vec2::new(push.x, 0.0),
+                    PointOver::Rows => Vec2::new(0.0, push.y),
+                };
                 scroll_by(book, push / frame.zoom);
             }
             Some(Drag::Columns(from)) => {

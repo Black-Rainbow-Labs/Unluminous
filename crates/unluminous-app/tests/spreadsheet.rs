@@ -276,3 +276,76 @@ fn f11_makes_a_chart_sheet_and_a_right_click_on_a_chart_opens_its_menu() {
     steady(&mut harness);
     harness.get_by_label("Chart 1");
 }
+
+/// Press at `from`, move to `to` in small steps the way a hand does, and let go, holding `modifiers`.
+fn drag_in_steps(
+    harness: &mut Harness<'static, UnluminousApp>,
+    from: egui::Pos2,
+    to: egui::Pos2,
+    modifiers: Modifiers,
+) {
+    harness.input_mut().events.push(egui::Event::ModifiersChanged(modifiers));
+    harness.input_mut().events.push(egui::Event::PointerMoved(from));
+    steady(harness);
+    harness.input_mut().events.push(egui::Event::PointerButton {
+        pos: from,
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers,
+    });
+    steady(harness);
+    for step in 1..=6 {
+        let p = from + (to - from) * (step as f32 / 6.0);
+        harness.input_mut().events.push(egui::Event::PointerMoved(p));
+        steady(harness);
+    }
+    harness.input_mut().events.push(egui::Event::PointerButton {
+        pos: to,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers,
+    });
+    steady(harness);
+    harness.input_mut().events.push(egui::Event::ModifiersChanged(Modifiers::NONE));
+    steady(harness);
+}
+
+/// Excel's Point mode: after `=SUM(` a drag over cells puts the whole range into the formula, a drag over
+/// column headers puts whole columns, Shift and a click grows the reference and Ctrl and a click adds
+/// another after a comma. `task-2382`.
+#[test]
+fn a_drag_while_typing_a_formula_points_at_the_whole_range() {
+    let (_, mut harness) = a_workbook_window("unluminous-sheet-point-drag", "prices.csv");
+    did(&mut harness, "plugins run spreadsheet select D2");
+    type_text(&mut harness, "=SUM(");
+    let b2 = did(&mut harness, "plugins run spreadsheet where B2");
+    let b4 = did(&mut harness, "plugins run spreadsheet where B4");
+    let at = |v: &serde_json::Value| {
+        egui::pos2(v["x"].as_f64().unwrap() as f32, v["y"].as_f64().unwrap() as f32)
+    };
+    drag_in_steps(&mut harness, at(&b2), at(&b4), Modifiers::NONE);
+    let v = view(&mut harness);
+    assert_eq!(v["current"]["editing"]["text"], "=SUM(B2:B4", "the drag points at B2:B4");
+    assert_eq!(v["current"]["mode"], "Point");
+    let c3 = did(&mut harness, "plugins run spreadsheet where C3");
+    drag_in_steps(&mut harness, at(&c3), at(&c3), Modifiers::SHIFT);
+    let v = view(&mut harness);
+    assert_eq!(v["current"]["editing"]["text"], "=SUM(B2:C3", "Shift and a click grows it from where it started");
+    let a2 = did(&mut harness, "plugins run spreadsheet where A2");
+    drag_in_steps(&mut harness, at(&a2), at(&a2), Modifiers::COMMAND);
+    let v = view(&mut harness);
+    assert_eq!(v["current"]["editing"]["text"], "=SUM(B2:C3,A2", "Ctrl and a click adds one");
+    type_text(&mut harness, ")");
+    press(&mut harness, egui::Key::Enter, Modifiers::NONE);
+    let cell = did(&mut harness, "plugins run spreadsheet cell D2");
+    assert_eq!(cell["value"], serde_json::json!(13.75));
+    // Whole columns from their headers.
+    did(&mut harness, "plugins run spreadsheet select E2");
+    type_text(&mut harness, "=SUM(");
+    let b1 = at(&did(&mut harness, "plugins run spreadsheet where B1"));
+    let c1 = at(&did(&mut harness, "plugins run spreadsheet where C1"));
+    let header = |p: egui::Pos2| p - egui::vec2(0.0, 19.0);
+    drag_in_steps(&mut harness, header(b1), header(c1), Modifiers::NONE);
+    let v = view(&mut harness);
+    assert_eq!(v["current"]["editing"]["text"], "=SUM(B:C", "the headers point at whole columns");
+}

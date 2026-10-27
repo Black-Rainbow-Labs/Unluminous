@@ -447,6 +447,7 @@ pub const SPREADSHEET: &[(&str, &str)] = &[
     ("names", "names [new <name> <refers-to> [scope]|edit <name> [scope] <refers-to>|delete <name> [scope]|paste [name]|from-selection [top] [left] [bottom] [right]]: Name Manager"),
     ("move-cells", "move-cells <to> [copy] [values|formats|link|hyperlink] [shift-down|shift-right]: carry the selection there"),
     ("fill-handle", "fill-handle <range> copy|series|formats|values|days|weekdays|months|years|linear|growth|flash"),
+    ("where", "where [cell]: where the cell was drawn, its middle and rectangle in egui points, to aim a pointer at it"),
     ("custom-list", "custom-list [add <a,b,c>|delete <n>]: the fill lists added to Excel's own"),
     ("freeze", "freeze [cell|off|rows <n>|columns <n>]"),
     ("gridlines", "gridlines on|off"),

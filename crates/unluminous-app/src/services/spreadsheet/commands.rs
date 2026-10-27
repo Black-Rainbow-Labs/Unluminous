@@ -1502,6 +1502,7 @@ pub fn view_value(sheet: &Spreadsheet) -> Json {
                 "sheets": book.session.book.sheets.iter().map(|s| s.name.clone()).collect::<Vec<_>>(),
                 "selection": selection_value(book),
                 "editing": v.edit.as_ref().map(|e| json!({ "cell": e.at.a1(), "text": e.text, "in_bar": e.in_bar })),
+                "mode": v.mode(),
                 "panel": v.panel.as_ref().map(|p| p.0.clone()),
                 "menu": v.menu.is_some(),
                 "book_menu": v.book_menu.clone(),
