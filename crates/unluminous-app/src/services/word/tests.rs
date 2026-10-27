@@ -126,7 +126,9 @@ fn an_agent_types_formats_and_undoes() {
     let first = &read.value[0];
     assert_eq!(first["text"], "Hello agent");
     assert_eq!(first["style"], "Heading 1");
-    assert_eq!(first["align"], "center");
+    // Applying a paragraph style takes the paragraph's own alignment off, which Word does too
+    // (task-2377 measured a centered paragraph made Heading 1 coming out left aligned in Word).
+    assert_eq!(first["align"], serde_json::Value::Null);
     assert_eq!(first["runs"][0]["bold"], true);
     assert_eq!(read.value[1]["text"], "Second paragraph");
     assert!(word.modified(&key));
