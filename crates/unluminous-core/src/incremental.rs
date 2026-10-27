@@ -547,6 +547,74 @@ mod tests {
         }
     }
 
+    /// The same fuzz over a configuration grammar, because `task-2384`'s keys and sections look back
+    /// along their line: an edit that joins two lines or moves a key's delimiter must still give the
+    /// tokens a whole reading gives.
+    #[test]
+    fn random_edits_to_a_configuration_file_agree_with_reading_the_whole_file() {
+        let grammar = Grammar {
+            line_comment: Some("#".to_owned()),
+            more_line_comments: vec![";".to_owned()],
+            strings: vec!['"'],
+            numbers: true,
+            keys: vec!['=', ':'],
+            sections: true,
+            keywords: vec!["export".to_owned()],
+            operators: "=:[]-".chars().collect(),
+            ..Default::default()
+        };
+        let pieces = [
+            "key = 1",
+            "[section]",
+            "- name: x",
+            "; note",
+            "export A=b",
+            "\n",
+            " ",
+            "=",
+            ":",
+            "[",
+            "]",
+            "#",
+            "\"v\"",
+            "url: http://h",
+        ];
+        let mut text = String::new();
+        for index in 0..60 {
+            text.push_str(pieces[index * 5 % pieces.len()]);
+            text.push('\n');
+        }
+        let mut cache = Tokens::default();
+        incrementally(&mut cache, &text, &grammar, Dirt::Clean);
+        let mut seed = 0x2384_u64;
+        let mut next = move || {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (seed >> 33) as usize
+        };
+        for round in 0..400 {
+            let at = next() % (text.len() + 1);
+            let dirt = if round % 3 != 0 {
+                let piece = pieces[next() % pieces.len()];
+                text.insert_str(at, piece);
+                Dirt::Clean.note(at, 0, piece.len())
+            } else {
+                let end = (at + 1 + next() % 10).min(text.len());
+                if end <= at {
+                    continue;
+                }
+                text.replace_range(at..end, "");
+                Dirt::Clean.note(at, end - at, 0)
+            };
+            let (read, update) = incrementally(&mut cache, &text, &grammar, dirt);
+            assert_eq!(
+                read,
+                whole(&text, &grammar),
+                "round {round}; changed was {:?}",
+                update.changed
+            );
+        }
+    }
+
     /// Several edits before one reading, over text that is not all one byte a character.
     ///
     /// **`task-1984` C22.** The fuzz above applies one edit and then reads, with a `Dirt` built from

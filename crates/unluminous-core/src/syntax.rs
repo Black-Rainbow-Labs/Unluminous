@@ -236,6 +236,31 @@ pub struct Grammar {
     /// language nothing claims. Checking it would mean one plugin refusing to load because another
     /// was switched off.
     pub raw_text: Vec<(String, Option<String>)>,
+    /// More openers of a comment that runs to the end of the line, beside [`Self::line_comment`].
+    ///
+    /// `language.more_line_comments`, `task-2384`. An INI file comments with `;` and with `#`, and a
+    /// batch file with `REM` and with `::`. Only the reading uses these: the comment toggle writes
+    /// [`Self::line_comment`], because a toggle has to write one marker and that is the one the
+    /// language's own documentation leads with. An opener that ends in a letter, such as `REM`, is a
+    /// comment only when the next character is not part of a word, so `REMOTE` stays a word.
+    pub more_line_comments: Vec<String>,
+    /// The characters that end a key at the head of a line: `=` in a `.env` file, `:` in YAML.
+    ///
+    /// `language.keys`, `task-2384`. A configuration file is a list of `name = value` lines, and the
+    /// name is the part a reader looks for. With this set, a run of characters at the head of a line
+    /// (after its indentation, a YAML `- ` list marker and any of the language's keywords, so
+    /// `export NAME=value` and `ENV NAME=value` read too) that is followed by one of these characters
+    /// is a [`Token::Type`]. A `:` counts only when a space, a tab, the end of the line, `=` or a
+    /// second `:` follows it, which is YAML's own rule and what keeps `https://` from making `https` a
+    /// key. Empty for every language that shipped before it.
+    pub keys: Vec<char>,
+    /// True when a line holding only `[name]` or `[[name]]` is a section header, drawn as a
+    /// [`Token::Keyword`].
+    ///
+    /// `language.sections`, `task-2384`, for INI, TOML, `.editorconfig` and `.gitconfig`. Only
+    /// whitespace may stand before the bracket and only whitespace or a comment after the closing
+    /// one, so a TOML array written across lines, whose rows end in a comma, is not a section.
+    pub sections: bool,
     /// What the completion tiers of `task-2231` read from the manifest: what reaches a member, how a
     /// type is written, which blocks hold members, and which language server answers for the language.
     /// Every key is optional and off unless a language names it.
@@ -540,6 +565,22 @@ fn read_from(
             at += length;
             continue;
         }
+        // `task-2384`. Both look back along the line, which keeps the reading a function of the text
+        // alone, so starting part way through a file still gives the tokens a whole reading gives.
+        if grammar.sections && at_line_head(text, at, grammar, false) {
+            if let Some(length) = section(rest, grammar) {
+                say!(at..at + length, Token::Keyword);
+                at += length;
+                continue;
+            }
+        }
+        if !grammar.keys.is_empty() && at_line_head(text, at, grammar, true) {
+            if let Some(length) = key(rest, grammar) {
+                say!(at..at + length, Token::Type);
+                at += length;
+                continue;
+            }
+        }
         if let Some(length) = string(rest, grammar) {
             say!(at..at + length, Token::String);
             at += length;
@@ -602,8 +643,9 @@ fn classify(word: &str, after: &str, grammar: &Grammar) -> Token {
 
 /// How long the comment at the start of `rest` is, if it starts with one.
 fn comment(rest: &str, grammar: &Grammar) -> Option<usize> {
-    if let Some(opener) = &grammar.line_comment {
-        if rest.starts_with(opener.as_str()) {
+    let openers = grammar.line_comment.iter().chain(grammar.more_line_comments.iter());
+    for opener in openers {
+        if line_comment_opens(rest, opener, grammar) {
             let end = rest.find('\n').unwrap_or(rest.len());
             return Some(end);
         }
@@ -618,6 +660,108 @@ fn comment(rest: &str, grammar: &Grammar) -> Option<usize> {
         Some(at) => Some(open.len() + at + close.len()),
         None => Some(rest.len()),
     }
+}
+
+/// True when `rest` starts with the line comment `opener`.
+///
+/// An opener that ends in a word character opens a comment only when no word character follows it,
+/// so a batch file's `REM` does not swallow `REMOTE`. Every opener that shipped before `task-2384`
+/// ends in punctuation, so this changes nothing about them.
+fn line_comment_opens(rest: &str, opener: &str, grammar: &Grammar) -> bool {
+    if opener.is_empty() || !rest.starts_with(opener) {
+        return false;
+    }
+    let ends_in_a_word =
+        opener.chars().last().is_some_and(|last| grammar.is_word_character(last, false));
+    !ends_in_a_word
+        || !rest[opener.len()..]
+            .chars()
+            .next()
+            .is_some_and(|next| grammar.is_word_character(next, false))
+}
+
+/// True when everything on this line before `at` may stand in front of a key or a section.
+///
+/// Indentation always may. For a key (`for_key`) so may a YAML `- ` list marker and any of the
+/// language's keywords, each followed by whitespace, which is how `export NAME=value` in a `.env`
+/// file and `ENV NAME=value` in a Dockerfile name a key. `at` itself must be where a token starts,
+/// which the caller guarantees.
+fn at_line_head(text: &str, at: usize, grammar: &Grammar, for_key: bool) -> bool {
+    // The cheap answer first, because this is asked at every token: a token that follows anything
+    // but whitespace on its line is never at the head of it.
+    if at > 0 && !matches!(text.as_bytes()[at - 1], b' ' | b'\t' | b'\n' | b'\r') {
+        return false;
+    }
+    let start = text[..at].rfind('\n').map_or(0, |newline| newline + 1);
+    let before = &text[start..at];
+    if before.trim().is_empty() {
+        return true;
+    }
+    if !for_key || !before.ends_with([' ', '\t']) {
+        return false;
+    }
+    before.split_whitespace().all(|part| part == "-" || grammar.is_keyword(part))
+}
+
+/// How long the key at the start of `rest` is, if a key delimiter follows it.
+///
+/// A key is a run of characters with no whitespace, no quote, no bracket and no delimiter in it,
+/// which is wide enough for `app.kubernetes.io/name` and `server.port` and narrow enough that a
+/// sentence is never one. See [`Grammar::keys`] for the rule about `:`.
+fn key(rest: &str, grammar: &Grammar) -> Option<usize> {
+    let mut end = 0;
+    for (index, character) in rest.char_indices() {
+        if character.is_whitespace()
+            || grammar.keys.contains(&character)
+            || grammar.strings.contains(&character)
+            || matches!(character, '[' | ']' | '{' | '}' | '(' | ')' | ',')
+        {
+            break;
+        }
+        end = index + character.len_utf8();
+    }
+    if end == 0 {
+        return None;
+    }
+    // A word the language lists keeps its own colour: `COPY --from=build` is a flag the Dockerfile
+    // names, not a key.
+    let word = &rest[..end];
+    if grammar.is_keyword(word) || grammar.is_builtin(word) || grammar.is_type(word) {
+        return None;
+    }
+    let after = &rest[end..];
+    let gap = after.len() - after.trim_start_matches([' ', '\t']).len();
+    let delimiter = after[gap..].chars().next()?;
+    if !grammar.keys.contains(&delimiter) {
+        return None;
+    }
+    if delimiter == ':' {
+        let following = after[gap + 1..].chars().next();
+        if !matches!(following, None | Some(' ' | '\t' | '\r' | '\n' | '=' | ':')) {
+            return None;
+        }
+    }
+    Some(end)
+}
+
+/// How long the section header at the start of `rest` is, if the line holds only one.
+///
+/// `[server]`, `[[bin]]` and `[*.md]`: the header runs to the last `]` on the line, and only
+/// whitespace or a comment may follow it.
+fn section(rest: &str, grammar: &Grammar) -> Option<usize> {
+    if !rest.starts_with('[') {
+        return None;
+    }
+    let line = &rest[..rest.find('\n').unwrap_or(rest.len())];
+    let close = line.rfind(']')?;
+    if close == 0 {
+        return None;
+    }
+    let after = line[close + 1..].trim_start();
+    if !after.is_empty() && comment(after, grammar).is_none() {
+        return None;
+    }
+    Some(close + 1)
 }
 
 /// How long the string at the start of `rest` is, if it starts with one.
@@ -1634,5 +1778,131 @@ mod tests {
             None,
             "a language that is not markup has no position"
         );
+    }
+
+    /// A configuration file's grammar: `#` and `;` comments, keys before `=` and `:`, sections, and
+    /// `export` as a keyword that may stand in front of a key. What `task-2384` added, in one value.
+    fn config() -> Grammar {
+        Grammar {
+            line_comment: Some("#".to_owned()),
+            more_line_comments: vec![";".to_owned()],
+            strings: vec!['"', '\''],
+            numbers: true,
+            keys: vec!['=', ':'],
+            sections: true,
+            keywords: vec!["export".to_owned()],
+            operators: "=:[]-".chars().collect(),
+            ..Default::default()
+        }
+    }
+
+    fn read<'a>(text: &'a str, grammar: &Grammar) -> Vec<(&'a str, Token)> {
+        let mut found = Vec::new();
+        scan(text, grammar, |range, token| found.push((&text[range], token)));
+        found
+    }
+
+    #[test]
+    fn a_name_at_the_head_of_a_line_before_a_delimiter_is_a_key() {
+        let found = read("name = Jason\n  port: 8080\nexport TOKEN=abc\n- item: 1\n", &config());
+        assert!(found.contains(&("name", Token::Type)), "{found:?}");
+        assert!(
+            found.contains(&("port", Token::Type)),
+            "indentation may stand before a key: {found:?}"
+        );
+        assert!(
+            found.contains(&("TOKEN", Token::Type)),
+            "a keyword may stand before a key: {found:?}"
+        );
+        assert!(found.contains(&("export", Token::Keyword)), "{found:?}");
+        assert!(
+            found.contains(&("item", Token::Type)),
+            "a list marker may stand before a key: {found:?}"
+        );
+        assert!(
+            found.contains(&("Jason", Token::Type)),
+            "a capital still reads as a type: {found:?}"
+        );
+        assert!(found.contains(&("8080", Token::Number)), "{found:?}");
+    }
+
+    #[test]
+    fn a_word_that_is_not_at_the_head_of_its_line_is_not_a_key() {
+        let found = read("a = b = c\nwords then key = 1\nurl: https://host:443/x\n", &config());
+        assert!(found.contains(&("a", Token::Type)), "{found:?}");
+        assert!(found.contains(&("b", Token::Text)), "only the first name on a line: {found:?}");
+        assert!(found.contains(&("words", Token::Text)), "a sentence is never a key: {found:?}");
+        assert!(found.contains(&("key", Token::Text)), "{found:?}");
+        assert!(found.contains(&("url", Token::Type)), "{found:?}");
+        assert!(
+            found.contains(&("https", Token::Text)),
+            "a colon before `//` does not end a key: {found:?}"
+        );
+    }
+
+    #[test]
+    fn a_colon_ends_a_key_only_before_a_space_or_the_end_of_the_line() {
+        let found = read("http://host\nkey:\nother:value\nmake := 1\n", &config());
+        assert!(found.contains(&("http", Token::Text)), "{found:?}");
+        assert!(found.contains(&("key", Token::Type)), "the end of the line counts: {found:?}");
+        assert!(
+            found.contains(&("other", Token::Text)),
+            "a colon with a value right after it is not one: {found:?}"
+        );
+        assert!(found.contains(&("make", Token::Type)), "`:=` ends a key: {found:?}");
+    }
+
+    #[test]
+    fn a_line_holding_only_a_bracketed_name_is_a_section() {
+        let found =
+            read("[server.production]\n[[bin]] # a note\n  [*.md]\n[1, 2],\nx = [a]\n", &config());
+        assert!(found.contains(&("[server.production]", Token::Keyword)), "{found:?}");
+        assert!(found.contains(&("[[bin]]", Token::Keyword)), "a comment may follow: {found:?}");
+        assert!(found.contains(&("# a note", Token::Comment)), "{found:?}");
+        assert!(found.contains(&("[*.md]", Token::Keyword)), "{found:?}");
+        assert!(
+            !found.iter().any(|(text, _)| *text == "[1, 2]"),
+            "a row of a multi line array is not one: {found:?}"
+        );
+        assert!(found.contains(&("[", Token::Operator)), "{found:?}");
+    }
+
+    #[test]
+    fn every_line_comment_opener_opens_a_comment() {
+        let found = read("# one\n; two\nkey = 1 ; three\n", &config());
+        assert!(found.contains(&("# one", Token::Comment)), "{found:?}");
+        assert!(found.contains(&("; two", Token::Comment)), "{found:?}");
+        assert!(found.contains(&("; three", Token::Comment)), "{found:?}");
+    }
+
+    #[test]
+    fn an_opener_that_ends_in_a_letter_needs_a_word_boundary_after_it() {
+        let batch = Grammar {
+            line_comment: Some("REM".to_owned()),
+            more_line_comments: vec!["::".to_owned()],
+            ..Default::default()
+        };
+        let found = read("REM a note\nREMOTE x\n:: another\nREM\n", &batch);
+        assert!(found.contains(&("REM a note", Token::Comment)), "{found:?}");
+        assert!(
+            found.contains(&("REMOTE", Token::Type)),
+            "a word that starts with the opener: {found:?}"
+        );
+        assert!(found.contains(&(":: another", Token::Comment)), "{found:?}");
+        assert!(
+            found.contains(&("REM", Token::Comment)),
+            "an opener at the end of the file: {found:?}"
+        );
+    }
+
+    #[test]
+    fn a_grammar_that_names_none_of_the_new_keys_reads_exactly_as_before() {
+        // The rule every key since `task-1671` has kept: `name = 1` in a language with no keys is the
+        // word, the operator and the number it always was.
+        let plain =
+            Grammar { operators: "=".chars().collect(), numbers: true, ..Default::default() };
+        let found = read("name = 1\n[section]\n", &plain);
+        assert!(found.contains(&("name", Token::Text)), "{found:?}");
+        assert!(found.contains(&("section", Token::Text)), "{found:?}");
     }
 }

@@ -210,6 +210,15 @@ pub fn language_grammar(values: &Values, name: &str) -> Result<Grammar, String> 
         // The two `task-1694` added, and the same rule a sixth time.
         markup: values.flag("language.markup").unwrap_or(false),
         raw_text: raw_text(values)?,
+        // The three `task-2384` added for configuration files, and the same rule a seventh time.
+        more_line_comments: list(values, "language.more_line_comments"),
+        keys: values
+            .text("language.keys")
+            .unwrap_or_default()
+            .split(',')
+            .filter_map(|character| character.trim().chars().next())
+            .collect(),
+        sections: values.flag("language.sections").unwrap_or(false),
         completion: completion_keys(values)?,
     })
 }

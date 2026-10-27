@@ -371,14 +371,23 @@ pub fn kind_name(path: Option<&Path>) -> &'static str {
     let Some(path) = path else {
         return "Plain text";
     };
-    if let Some(name) = path.file_name().and_then(|name| name.to_str()) {
-        if name.eq_ignore_ascii_case("Makefile") || name.eq_ignore_ascii_case("GNUmakefile") {
-            return "Makefile";
-        }
-        if name.eq_ignore_ascii_case("Dockerfile") {
-            return "Dockerfile";
+    let name =
+        path.file_name().and_then(|name| name.to_str()).unwrap_or_default().to_ascii_lowercase();
+    if let Some(kind) = kind_by_name(&name) {
+        return kind;
+    }
+    let by_extension = kind_by_extension(path);
+    // A name whose `*` stands for the extension, asked last, as `Plugins::for_path` asks it.
+    if by_extension == "Plain text" && !opens_its_own_way(path) {
+        if let Some(kind) = kind_by_open_name(&name) {
+            return kind;
         }
     }
+    by_extension
+}
+
+/// What the status bar calls a file by its extension alone.
+fn kind_by_extension(path: &Path) -> &'static str {
     if is_image(path) {
         return "Image";
     }
@@ -389,34 +398,163 @@ pub fn kind_name(path: Option<&Path>) -> &'static str {
         Some("txt" | "text") => "Plain text",
         Some("rs") => "Rust",
         Some("toml") => "TOML",
-        Some("json" | "jsonc" | "json5") => "JSON",
+        Some("json" | "jsonl" | "ndjson" | "geojson" | "webmanifest" | "har" | "avsc") => "JSON",
+        Some("jsonc" | "json5") => "JSON with Comments",
         Some("yaml" | "yml") => "YAML",
-        Some("xml") => "XML",
+        Some(
+            "xml" | "xsd" | "xsl" | "xslt" | "xaml" | "wsdl" | "plist" | "csproj" | "fsproj"
+            | "vbproj" | "vcxproj" | "proj" | "props" | "targets" | "nuspec" | "resx" | "iml"
+            | "pom" | "rss" | "atom" | "xliff" | "xlf" | "jelly" | "tld" | "xhtml",
+        ) => "XML",
         Some("html" | "htm") => "HTML",
         Some("css" | "scss" | "sass" | "less") => "CSS",
         Some("js" | "cjs" | "mjs" | "jsx") => "JavaScript",
         Some("ts" | "tsx") => "TypeScript",
         Some("py" | "pyi") => "Python",
-        Some("rb") => "Ruby",
+        Some("rb" | "rake" | "gemspec" | "ru") => "Ruby",
         Some("go") => "Go",
         Some("java") => "Java",
         Some("kt" | "kts") => "Kotlin",
         Some("swift") => "Swift",
         Some("c" | "h") => "C",
-        Some("cc" | "cpp" | "cxx" | "hpp" | "hh") => "C++",
-        Some("cs") => "C#",
-        Some("php") => "PHP",
+        Some(
+            "cc" | "cpp" | "cxx" | "c++" | "hpp" | "hh" | "hxx" | "h++" | "ipp" | "inl" | "tpp",
+        ) => "C++",
+        Some("cs" | "csx") => "C#",
+        Some("php" | "phtml") => "PHP",
         Some("lua") => "Lua",
+        Some("scala" | "sc") => "Scala",
+        Some("zig" | "zon") => "Zig",
+        Some("groovy" | "gradle" | "gvy" | "gy" | "gsh" | "jenkinsfile") => "Groovy",
         Some("sql") => "SQL",
-        Some("sh" | "bash" | "zsh" | "fish") => "Shell",
-        Some("ps1" | "bat" | "cmd") => "Batch",
+        Some("sh" | "bash" | "zsh" | "ksh" | "fish") => "Shell",
+        Some("ps1" | "psm1" | "psd1" | "ps1xml" | "pssc" | "psrc") => "PowerShell",
+        Some("bat" | "cmd") => "Batch",
+        Some("dockerfile" | "containerfile") => "Dockerfile",
+        Some("mk" | "mak" | "make") => "Makefile",
+        Some("cmake") => "CMake",
+        Some("tf" | "tfvars" | "hcl" | "nomad") => "HCL",
+        Some("proto") => "Protocol Buffers",
+        Some("graphql" | "graphqls" | "gql") => "GraphQL",
+        Some("env") => ".env",
+        Some("properties") => "Properties",
+        Some("ini" | "cfg" | "cnf" | "inf" | "desktop") => "INI",
+        Some("conf") => "Settings",
         Some("lock") => "Lock file",
         Some("log") => "Log",
         Some("csv" | "tsv") => "Table",
         Some("svg") => "SVG",
-        Some("ini" | "cfg" | "conf" | "env" | "properties") => "Settings",
         _ => "Plain text",
     }
+}
+
+/// What the status bar calls a file that is named for what it is rather than given an extension.
+///
+/// `task-2384`. The names the bundled plugins claim through `language.file_names`, so a Dockerfile, a
+/// `.env` file and a `.gitignore` are named in the status bar, and are not offered Bold and Italic as
+/// though they were prose. Asked before the extension, for the reason `Plugins::for_path` asks a name
+/// first: `tsconfig.json` and `Dockerfile.dev` are named by their name.
+///
+/// @param name - the file's name, in lower case
+fn kind_by_name(name: &str) -> Option<&'static str> {
+    let kind = match name {
+        "makefile" | "gnumakefile" => "Makefile",
+        "dockerfile" | "containerfile" => "Dockerfile",
+        ".env" => ".env",
+        _ if name.ends_with(".env.example") || name.ends_with(".env.sample") => ".env",
+        "cmakelists.txt" | "cmakecache.txt" => "CMake",
+        "jenkinsfile" => "Groovy",
+        "rakefile" | "gemfile" | "guardfile" | "podfile" | "vagrantfile" | "brewfile"
+        | "fastfile" | "appfile" | "dangerfile" | "berksfile" | "thorfile" | ".irbrc"
+        | ".pryrc" => "Ruby",
+        ".gitignore"
+        | ".dockerignore"
+        | ".npmignore"
+        | ".prettierignore"
+        | ".eslintignore"
+        | ".stylelintignore"
+        | ".hgignore"
+        | ".ignore"
+        | ".rgignore"
+        | ".gcloudignore"
+        | ".vscodeignore"
+        | ".helmignore"
+        | ".slugignore"
+        | ".cfignore"
+        | ".gitattributes"
+        | ".git-blame-ignore-revs" => "Ignore file",
+        ".editorconfig" | ".gitconfig" | "gitconfig" | ".gitmodules" | ".npmrc" | ".pypirc"
+        | ".wslconfig" | ".pylintrc" | ".flake8" | ".coveragerc" => "INI",
+        ".bashrc" | ".bash_profile" | ".bash_login" | ".bash_logout" | ".bash_aliases"
+        | ".profile" | ".zshrc" | ".zprofile" | ".zshenv" | ".zlogin" | ".zlogout" | ".kshrc"
+        | ".envrc" | "bashrc" | "zshrc" => "Shell",
+        "cargo.lock" | "pipfile" | "poetry.lock" | "uv.lock" => "TOML",
+        ".clang-format" | ".clang-tidy" | ".yamllint" | ".condarc" => "YAML",
+        "web.config" | "app.config" | "packages.config" | "nuget.config" => "XML",
+        ".terraformrc" | "terraform.rc" => "HCL",
+        "tsconfig.json" | "jsconfig.json" | ".eslintrc.json" | ".eslintrc" | ".babelrc"
+        | ".babelrc.json" | ".swcrc" | "devcontainer.json" | ".devcontainer.json"
+        | "settings.json" | "launch.json" | "tasks.json" | "extensions.json"
+        | "keybindings.json" | ".jshintrc" | ".jscsrc" | "api-extractor.json" | "typedoc.json"
+        | "turbo.json" | "deno.json" | "deno.jsonc" | "biome.json" => "JSON with Comments",
+        _ if (name.starts_with("tsconfig.") || name.starts_with("jsconfig."))
+            && name.ends_with(".json") =>
+        {
+            "JSON with Comments"
+        }
+        "composer.lock" | ".watchmanconfig" => "JSON",
+        _ => return None,
+    };
+    Some(kind)
+}
+
+/// The names whose `*` stands for the extension: `Dockerfile.dev`, `.env.local`, `Jenkinsfile.ci`.
+///
+/// @param name - the file's name, in lower case
+fn kind_by_open_name(name: &str) -> Option<&'static str> {
+    let starts = |prefix: &str| name.starts_with(prefix);
+    if starts("dockerfile.") || starts("containerfile.") {
+        return Some("Dockerfile");
+    }
+    if starts(".env.") {
+        return Some(".env");
+    }
+    if starts("jenkinsfile.") {
+        return Some("Groovy");
+    }
+    None
+}
+
+/// True for a file Unluminous opens its own way because of its extension: a picture, Markdown, a
+/// notebook, plain text, a table, a Word document, a workbook or a PDF.
+///
+/// A `language.file_names` pattern whose `*` stands for the extension never takes one of these, so
+/// `Dockerfile.md` keeps its Markdown preview and `.env.txt` stays plain text (`task-2384`).
+pub fn opens_its_own_way(path: &Path) -> bool {
+    is_image(path)
+        || is_markdown(Some(path))
+        || matches!(
+            extension(path).as_deref(),
+            Some(
+                "txt"
+                    | "text"
+                    | "ipynb"
+                    | "rst"
+                    | "adoc"
+                    | "csv"
+                    | "tsv"
+                    | "log"
+                    | "pdf"
+                    | "docx"
+                    | "dotx"
+                    | "docm"
+                    | "xlsx"
+                    | "xlsm"
+                    | "mmd"
+                    | "mermaid"
+                    | "realm"
+            )
+        )
 }
 
 /// True for the files the character and paragraph formatting is worth offering for.

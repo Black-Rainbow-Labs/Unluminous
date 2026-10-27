@@ -131,6 +131,148 @@ pub const ALL: &[(&str, &str, Option<&[u8]>)] = &[
         include_str!("../../../plugins/shell/plugin.conf"),
         Some(include_bytes!("../../../plugins/shell/icon.png")),
     ),
+    // `task-2384`. The configuration and build files an engineer opens every day. Each of the first
+    // five is claimed by name, through `language.file_names`, because Rust reads a Dockerfile, a
+    // `.env` file, a Makefile and a `.gitignore` as having no extension. `language.keys` and
+    // `language.sections` are what make the configuration files worth coloring. See
+    // `tasks/task-2384-common-file-types-tdd.md`.
+    (
+        "dockerfile",
+        include_str!("../../../plugins/dockerfile/plugin.conf"),
+        Some(include_bytes!("../../../plugins/dockerfile/icon.png")),
+    ),
+    (
+        "dotenv",
+        include_str!("../../../plugins/dotenv/plugin.conf"),
+        Some(include_bytes!("../../../plugins/dotenv/icon.png")),
+    ),
+    (
+        "makefile",
+        include_str!("../../../plugins/makefile/plugin.conf"),
+        Some(include_bytes!("../../../plugins/makefile/icon.png")),
+    ),
+    (
+        "cmake",
+        include_str!("../../../plugins/cmake/plugin.conf"),
+        Some(include_bytes!("../../../plugins/cmake/icon.png")),
+    ),
+    (
+        "ignore",
+        include_str!("../../../plugins/ignore/plugin.conf"),
+        Some(include_bytes!("../../../plugins/ignore/icon.png")),
+    ),
+    (
+        "ini",
+        include_str!("../../../plugins/ini/plugin.conf"),
+        Some(include_bytes!("../../../plugins/ini/icon.png")),
+    ),
+    (
+        "properties",
+        include_str!("../../../plugins/properties/plugin.conf"),
+        Some(include_bytes!("../../../plugins/properties/icon.png")),
+    ),
+    (
+        "xml",
+        include_str!("../../../plugins/xml/plugin.conf"),
+        Some(include_bytes!("../../../plugins/xml/icon.png")),
+    ),
+    (
+        "jsonc",
+        include_str!("../../../plugins/jsonc/plugin.conf"),
+        Some(include_bytes!("../../../plugins/jsonc/icon.png")),
+    ),
+    (
+        "hcl",
+        include_str!("../../../plugins/hcl/plugin.conf"),
+        Some(include_bytes!("../../../plugins/hcl/icon.png")),
+    ),
+    (
+        "protobuf",
+        include_str!("../../../plugins/protobuf/plugin.conf"),
+        Some(include_bytes!("../../../plugins/protobuf/icon.png")),
+    ),
+    (
+        "graphql",
+        include_str!("../../../plugins/graphql/plugin.conf"),
+        Some(include_bytes!("../../../plugins/graphql/icon.png")),
+    ),
+    (
+        "powershell",
+        include_str!("../../../plugins/powershell/plugin.conf"),
+        Some(include_bytes!("../../../plugins/powershell/icon.png")),
+    ),
+    (
+        "batch",
+        include_str!("../../../plugins/batch/plugin.conf"),
+        Some(include_bytes!("../../../plugins/batch/icon.png")),
+    ),
+    (
+        "groovy",
+        include_str!("../../../plugins/groovy/plugin.conf"),
+        Some(include_bytes!("../../../plugins/groovy/icon.png")),
+    ),
+    // `task-2384`. The languages the code index already read with no plugin behind them, so a `.go`
+    // file had Go to Definition and no colour. Each manifest's language keys are the index's own.
+    (
+        "go",
+        include_str!("../../../plugins/go/plugin.conf"),
+        Some(include_bytes!("../../../plugins/go/icon.png")),
+    ),
+    (
+        "java",
+        include_str!("../../../plugins/java/plugin.conf"),
+        Some(include_bytes!("../../../plugins/java/icon.png")),
+    ),
+    (
+        "kotlin",
+        include_str!("../../../plugins/kotlin/plugin.conf"),
+        Some(include_bytes!("../../../plugins/kotlin/icon.png")),
+    ),
+    (
+        "c",
+        include_str!("../../../plugins/c/plugin.conf"),
+        Some(include_bytes!("../../../plugins/c/icon.png")),
+    ),
+    (
+        "cpp",
+        include_str!("../../../plugins/cpp/plugin.conf"),
+        Some(include_bytes!("../../../plugins/cpp/icon.png")),
+    ),
+    (
+        "csharp",
+        include_str!("../../../plugins/csharp/plugin.conf"),
+        Some(include_bytes!("../../../plugins/csharp/icon.png")),
+    ),
+    (
+        "ruby",
+        include_str!("../../../plugins/ruby/plugin.conf"),
+        Some(include_bytes!("../../../plugins/ruby/icon.png")),
+    ),
+    (
+        "php",
+        include_str!("../../../plugins/php/plugin.conf"),
+        Some(include_bytes!("../../../plugins/php/icon.png")),
+    ),
+    (
+        "lua",
+        include_str!("../../../plugins/lua/plugin.conf"),
+        Some(include_bytes!("../../../plugins/lua/icon.png")),
+    ),
+    (
+        "swift",
+        include_str!("../../../plugins/swift/plugin.conf"),
+        Some(include_bytes!("../../../plugins/swift/icon.png")),
+    ),
+    (
+        "scala",
+        include_str!("../../../plugins/scala/plugin.conf"),
+        Some(include_bytes!("../../../plugins/scala/icon.png")),
+    ),
+    (
+        "zig",
+        include_str!("../../../plugins/zig/plugin.conf"),
+        Some(include_bytes!("../../../plugins/zig/icon.png")),
+    ),
     // The first plugin that is neither a language nor a pane: five palettes and nothing else. It
     // puts its mark in front of no file — what a theme looks like is the six swatches the Theme
     // page draws — but the marketplace lists it beside the others and a row with nothing where
@@ -290,8 +432,12 @@ mod tests {
         // word list for its type names — `int`, `timestamptz` and the rest are neither keywords nor
         // functions, and colouring them as identifiers made a `CREATE TABLE` read as a list of column
         // names with nothing to tell the two halves apart.
+        // The plugins `task-2384` added are not held to it: several of them read a hyphen as a letter
+        // or name a third word list, and each says why in its own manifest.
         let (plugins, _) = Plugins::load(None);
-        let older = |id: &str| id != "css" && id != "html" && id != "sql";
+        let older = |id: &str| {
+            id != "css" && id != "html" && id != "sql" && !ADDED_FOR_COMMON_FILE_TYPES.contains(&id)
+        };
         for plugin in plugins.all().iter().filter(|plugin| older(&plugin.id)) {
             assert!(plugin.grammar.word_characters.is_empty(), "{}", plugin.id);
             assert!(!plugin.grammar.hex_colors, "{}", plugin.id);
@@ -370,7 +516,10 @@ mod tests {
     fn the_older_plugins_ask_for_none_of_what_the_markup_added() {
         let (plugins, problems) = Plugins::load(None);
         assert!(problems.is_empty(), "{problems:?}");
-        for plugin in plugins.all().iter().filter(|plugin| plugin.id != "html") {
+        // XML (`task-2384`) is the second markup language, read by the same five states.
+        for plugin in
+            plugins.all().iter().filter(|plugin| plugin.id != "html" && plugin.id != "xml")
+        {
             assert!(!plugin.grammar.markup, "{} is not markup", plugin.id);
             assert!(plugin.grammar.raw_text.is_empty(), "{} names no raw text elements", plugin.id);
         }
@@ -774,14 +923,15 @@ mod tests {
         );
 
         use unluminous_core::syntax::{highlight, Token};
-        let source = "[server.production]\nport = 8080\n";
+        // `task-2384`: the header is one keyword, brackets and all, and the name before `=` is a key.
+        let source = "[server.production]\nport = 8080\n[[bin]]\n";
         let found: Vec<(&str, Token)> = highlight(source, &toml.grammar)
             .into_iter()
             .map(|(range, token)| (&source[range], token))
             .collect();
-        assert!(found.contains(&("[", Token::Operator)), "{found:?}");
-        assert!(found.contains(&(".", Token::Operator)), "{found:?}");
-        assert!(found.contains(&("]", Token::Operator)), "{found:?}");
+        assert!(found.contains(&("[server.production]", Token::Keyword)), "{found:?}");
+        assert!(found.contains(&("[[bin]]", Token::Keyword)), "{found:?}");
+        assert!(found.contains(&("port", Token::Type)), "{found:?}");
         assert!(found.contains(&("=", Token::Operator)), "{found:?}");
         assert!(found.contains(&("8080", Token::Number)), "{found:?}");
 
@@ -800,7 +950,7 @@ mod tests {
     }
 
     #[test]
-    fn the_yaml_plugin_reads_a_bare_word_as_the_same_kind_of_word_a_key_is() {
+    fn the_yaml_plugin_tells_a_key_from_a_bare_value() {
         let (plugins, problems) = Plugins::load(None);
         assert!(problems.is_empty(), "{problems:?}");
         let yaml = plugins.get("yaml").expect("the yaml plugin");
@@ -811,10 +961,10 @@ mod tests {
         let source = "name: Jason\nactive: true\ncount: 3\nnickname: ~\n";
         let mut found: Vec<(&str, Token)> = Vec::new();
         scan(source, &yaml.grammar, |range, token| found.push((&source[range], token)));
-        // The awkward case, read through the tokeniser rather than only described: a bare key and a
-        // bare value are not told apart, and a value starting with a capital letter reads as a type
-        // by the same heuristic every language here shares.
-        assert!(found.contains(&("name", Token::Text)), "a lowercase bare word is text: {found:?}");
+        // Until `task-2384` a bare key and a bare value were not told apart. A key is the first thing
+        // on its line before `: `, and a value starting with a capital letter still reads as a type
+        // by the heuristic every language here shares.
+        assert!(found.contains(&("name", Token::Type)), "a key: {found:?}");
         assert!(
             found.contains(&("Jason", Token::Type)),
             "a bare word starting with a capital reads as a type: {found:?}"
@@ -867,5 +1017,409 @@ mod tests {
             .map(|definition| &source[definition.name_range])
             .collect();
         assert_eq!(found, vec!["foo"], "the POSIX function shape is found with no keyword");
+    }
+
+    /// The plugins `task-2384` added. Held in one list so the tests that keep the older plugins as
+    /// they were can leave these out, and so the tests below can walk every one of them.
+    const ADDED_FOR_COMMON_FILE_TYPES: &[&str] = &[
+        "dockerfile",
+        "dotenv",
+        "makefile",
+        "cmake",
+        "ignore",
+        "ini",
+        "properties",
+        "xml",
+        "jsonc",
+        "hcl",
+        "protobuf",
+        "graphql",
+        "powershell",
+        "batch",
+        "groovy",
+        "go",
+        "java",
+        "kotlin",
+        "c",
+        "cpp",
+        "csharp",
+        "ruby",
+        "php",
+        "lua",
+        "swift",
+        "scala",
+        "zig",
+    ];
+
+    /// Which plugin the window gives each file to: the question that decides its colours and its icon.
+    #[test]
+    fn every_common_file_type_is_given_to_the_plugin_that_reads_it() {
+        let (plugins, problems) = Plugins::load(None);
+        assert!(problems.is_empty(), "{problems:?}");
+        let cases: &[(&str, &str)] = &[
+            ("Dockerfile", "dockerfile"),
+            ("dockerfile", "dockerfile"),
+            ("Dockerfile.dev", "dockerfile"),
+            ("Containerfile", "dockerfile"),
+            ("api.dockerfile", "dockerfile"),
+            (".env", "dotenv"),
+            (".env.local", "dotenv"),
+            (".env.production", "dotenv"),
+            ("app.env", "dotenv"),
+            ("Makefile", "makefile"),
+            ("GNUmakefile", "makefile"),
+            ("rules.mk", "makefile"),
+            ("CMakeLists.txt", "cmake"),
+            ("toolchain.cmake", "cmake"),
+            (".gitignore", "ignore"),
+            (".dockerignore", "ignore"),
+            (".gitattributes", "ignore"),
+            ("setup.cfg", "ini"),
+            ("tox.ini", "ini"),
+            (".editorconfig", "ini"),
+            (".gitconfig", "ini"),
+            (".npmrc", "ini"),
+            ("application.properties", "properties"),
+            ("pom.xml", "xml"),
+            ("App.csproj", "xml"),
+            ("MainWindow.xaml", "xml"),
+            ("web.config", "xml"),
+            ("tsconfig.json", "jsonc"),
+            ("tsconfig.build.json", "jsonc"),
+            ("settings.jsonc", "jsonc"),
+            ("config.json5", "jsonc"),
+            (".eslintrc", "jsonc"),
+            ("package.json", "json"),
+            ("events.jsonl", "json"),
+            ("main.tf", "hcl"),
+            ("prod.tfvars", "hcl"),
+            ("api.proto", "protobuf"),
+            ("schema.graphql", "graphql"),
+            ("query.gql", "graphql"),
+            ("build.ps1", "powershell"),
+            ("Module.psm1", "powershell"),
+            ("setup.bat", "batch"),
+            ("run.cmd", "batch"),
+            ("build.gradle", "groovy"),
+            ("Jenkinsfile", "groovy"),
+            ("build.gradle.kts", "kotlin"),
+            ("main.go", "go"),
+            ("App.java", "java"),
+            ("Main.kt", "kotlin"),
+            ("main.c", "c"),
+            ("main.h", "c"),
+            ("main.cpp", "cpp"),
+            ("main.hpp", "cpp"),
+            ("Program.cs", "csharp"),
+            ("app.rb", "ruby"),
+            ("Gemfile", "ruby"),
+            ("Rakefile", "ruby"),
+            ("index.php", "php"),
+            ("init.lua", "lua"),
+            ("App.swift", "swift"),
+            ("Main.scala", "scala"),
+            ("build.zig", "zig"),
+            ("docker-compose.yml", "yaml"),
+            (".clang-format", "yaml"),
+            ("Cargo.lock", "toml"),
+            ("Pipfile", "toml"),
+            (".bashrc", "shell"),
+            (".zshrc", "shell"),
+            ("deploy.ksh", "shell"),
+        ];
+        for (file, id) in cases {
+            let found = plugins.for_path(Path::new(file)).map(|plugin| plugin.id.as_str());
+            assert_eq!(found, Some(*id), "{file}");
+            assert!(
+                plugins.grammars().for_path(Path::new(file)).is_some(),
+                "{file} is colored by a grammar"
+            );
+        }
+        // A name is not an extension: these stay with nobody, or with the plugin that always had them.
+        for file in ["notes.txt", "Dockerfile.md", "README", "docker.env.md", ".env.txt"] {
+            let found = plugins.for_path(Path::new(file)).map(|plugin| plugin.id.as_str());
+            assert!(!matches!(found, Some("dockerfile" | "dotenv" | "cmake")), "{file}: {found:?}");
+            assert!(
+                plugins.grammars().for_path(Path::new(file)).is_none(),
+                "{file} is not coloured"
+            );
+        }
+        // A name whose `*` stands for the extension is asked after the extensions, so a Dockerfile
+        // written in YAML is YAML, and before nothing else.
+        assert_eq!(
+            plugins.for_path(Path::new("Dockerfile.yml")).map(|p| p.id.as_str()),
+            Some("yaml")
+        );
+        assert_eq!(
+            plugins.grammars().for_path(Path::new("tsconfig.json")).map(|g| g.line_comment.clone()),
+            Some(Some("//".to_owned())),
+            "the grammar list asks the name first too"
+        );
+    }
+
+    /// The status bar names every file a plugin claims, so none of them is offered Bold and Italic as
+    /// though it were prose. `file_kind::kind_name` is a table of its own, and this is what keeps it
+    /// and the manifests in step.
+    #[test]
+    fn every_file_a_new_plugin_claims_is_named_in_the_status_bar() {
+        use crate::services::file_kind::{formatting_applies, kind_name};
+        let (plugins, _) = Plugins::load(None);
+        for id in ADDED_FOR_COMMON_FILE_TYPES.iter().chain(&["json", "yaml", "toml", "shell"]) {
+            let plugin = plugins.get(id).unwrap_or_else(|| panic!("the {id} plugin"));
+            let names = plugin.file_names.iter().map(|name| name.replace('*', "x"));
+            let extensions = plugin.extensions.iter().map(|extension| format!("x.{extension}"));
+            for file in names.chain(extensions) {
+                let path = Path::new(&file);
+                assert_ne!(kind_name(Some(path)), "Plain text", "{id} claims {file}");
+                assert!(!formatting_applies(Some(path)), "{file} is not prose");
+            }
+        }
+    }
+
+    /// The twelve programming languages read exactly what the code index reads, so Go to Definition,
+    /// completion and folding in an open `.go` file are what they were before it had a plugin.
+    #[test]
+    fn the_programming_language_plugins_read_their_files_as_the_code_index_does() {
+        let (plugins, _) = Plugins::load(None);
+        for (id, manifest) in atrius_index::grammars::BUNDLED {
+            let Some(plugin) = plugins.get(id) else { continue };
+            if !ADDED_FOR_COMMON_FILE_TYPES.contains(id) {
+                continue;
+            }
+            let values = unluminous_core::manifest::Values::parse(manifest);
+            let index = unluminous_core::manifest::language_grammar(&values, &plugin.name)
+                .expect("the index's own manifest reads");
+            assert_eq!(plugin.grammar, index, "{id} reads differently from the index");
+            assert_eq!(plugin.theme.name, "Dracula", "{id} carries the bundled scheme");
+        }
+    }
+
+    /// One line of each new language, read by the tokeniser the window colours with.
+    #[test]
+    fn each_new_plugin_colors_what_its_description_says() {
+        use unluminous_core::syntax::{scan, Token};
+        let (plugins, _) = Plugins::load(None);
+        let cases: &[(&str, &str, &[(&str, Token)])] = &[
+            (
+                "dockerfile",
+                "FROM rust:1.85 AS build\n# a note\nENV PORT=8080\nCOPY --from=build /app /app\n",
+                &[
+                    ("FROM", Token::Keyword),
+                    ("AS", Token::Keyword),
+                    ("# a note", Token::Comment),
+                    ("PORT", Token::Type),
+                    ("--from", Token::Builtin),
+                ],
+            ),
+            (
+                "dotenv",
+                "# secrets\nDATABASE_URL=\"postgres://x\"\nexport TOKEN=abc\nPORT=8080\n",
+                &[
+                    ("# secrets", Token::Comment),
+                    ("DATABASE_URL", Token::Type),
+                    ("\"postgres://x\"", Token::String),
+                    ("export", Token::Keyword),
+                    ("TOKEN", Token::Type),
+                    ("PORT", Token::Type),
+                    ("8080", Token::Number),
+                ],
+            ),
+            (
+                "ini",
+                "; top\n[core]\neditor = vim\n# also a comment\n[remote \"origin\"]\n",
+                &[
+                    ("; top", Token::Comment),
+                    ("[core]", Token::Keyword),
+                    ("editor", Token::Type),
+                    ("# also a comment", Token::Comment),
+                    ("[remote \"origin\"]", Token::Keyword),
+                ],
+            ),
+            (
+                "properties",
+                "! old style\nserver.port=8080\nspring.main.lazy: true\n",
+                &[
+                    ("! old style", Token::Comment),
+                    ("server.port", Token::Type),
+                    ("spring.main.lazy", Token::Type),
+                    ("true", Token::Builtin),
+                ],
+            ),
+            (
+                "makefile",
+                ".PHONY: all\nOBJS := main.o\nall: $(OBJS)\n\t$(CC) -o app $(wildcard *.o)\n",
+                &[
+                    (".PHONY", Token::Keyword),
+                    ("OBJS", Token::Type),
+                    ("all", Token::Type),
+                    ("CC", Token::Builtin),
+                    ("wildcard", Token::Builtin),
+                ],
+            ),
+            (
+                "batch",
+                "@echo off\nREM build it\nset NAME=value\n:: another note\n",
+                &[
+                    ("echo", Token::Builtin),
+                    ("REM build it", Token::Comment),
+                    ("set", Token::Keyword),
+                    ("NAME", Token::Type),
+                    (":: another note", Token::Comment),
+                ],
+            ),
+            (
+                "powershell",
+                "<# block #>\nfunction Get-Thing { if ($x -eq $null) { return } }\n",
+                &[
+                    ("<# block #>", Token::Comment),
+                    ("function", Token::Keyword),
+                    ("-eq", Token::Builtin),
+                    ("$null", Token::Builtin),
+                    ("return", Token::Keyword),
+                ],
+            ),
+            (
+                "hcl",
+                "# one\n// two\nresource \"aws_instance\" \"web\" {\n  ami = var.ami\n}\n",
+                &[
+                    ("# one", Token::Comment),
+                    ("// two", Token::Comment),
+                    ("resource", Token::Keyword),
+                    ("ami", Token::Type),
+                    ("var", Token::Builtin),
+                ],
+            ),
+            (
+                "jsonc",
+                "{\n  // a comment\n  \"strict\": true\n}\n",
+                &[
+                    ("// a comment", Token::Comment),
+                    ("\"strict\"", Token::String),
+                    ("true", Token::Builtin),
+                ],
+            ),
+            (
+                "protobuf",
+                "syntax = \"proto3\";\nmessage User { string name = 1; }\n",
+                &[("syntax", Token::Keyword), ("message", Token::Keyword), ("string", Token::Type)],
+            ),
+            (
+                "graphql",
+                "type Query {\n  user(id: ID!): User @deprecated\n}\n",
+                &[("type", Token::Keyword), ("ID", Token::Type), ("@deprecated", Token::Builtin)],
+            ),
+            (
+                "ignore",
+                "# build output\ntarget/\n!keep.txt\n*.log\n",
+                &[
+                    ("# build output", Token::Comment),
+                    ("!", Token::Operator),
+                    ("*", Token::Operator),
+                ],
+            ),
+            (
+                "cmake",
+                "cmake_minimum_required(VERSION 3.20)\nif(WIN32)\nendif()\n",
+                &[
+                    ("cmake_minimum_required", Token::Builtin),
+                    ("if", Token::Keyword),
+                    ("3.20", Token::Number),
+                ],
+            ),
+            (
+                "groovy",
+                "plugins { id 'java' }\ndef greet() { println 'hi' }\n",
+                &[
+                    ("plugins", Token::Builtin),
+                    ("def", Token::Keyword),
+                    ("println", Token::Builtin),
+                ],
+            ),
+            (
+                "go",
+                "package main\nfunc main() { fmt.Println(\"hi\") }\n",
+                &[("package", Token::Keyword), ("func", Token::Keyword), ("\"hi\"", Token::String)],
+            ),
+        ];
+        for (id, source, expected) in cases {
+            let plugin = plugins.get(id).unwrap_or_else(|| panic!("the {id} plugin"));
+            let mut found: Vec<(&str, Token)> = Vec::new();
+            scan(source, &plugin.grammar, |range, token| found.push((&source[range], token)));
+            for wanted in *expected {
+                assert!(found.contains(wanted), "{id}: {wanted:?} in {found:?}");
+            }
+        }
+    }
+
+    /// XML is read by the markup states with no element of its own, so every tag is a type.
+    #[test]
+    fn the_xml_plugin_reads_tags_attributes_values_and_comments() {
+        use unluminous_core::syntax::{highlight, Token};
+        let (plugins, _) = Plugins::load(None);
+        let xml = plugins.get("xml").expect("the xml plugin");
+        assert!(xml.grammar.markup);
+        let source = "<?xml version=\"1.0\"?>\n<!-- a note -->\n<project xmlns:m=\"x\"><m:name>a &amp; b</m:name></project>\n";
+        let found: Vec<(&str, Token)> = highlight(source, &xml.grammar)
+            .into_iter()
+            .map(|(range, token)| (&source[range], token))
+            .collect();
+        assert!(found.contains(&("<!-- a note -->", Token::Comment)), "{found:?}");
+        assert!(found.contains(&("project", Token::Type)), "{found:?}");
+        assert!(
+            found.contains(&("m:name", Token::Type)),
+            "a prefix is part of the name: {found:?}"
+        );
+        assert!(found.contains(&("\"x\"", Token::String)), "{found:?}");
+    }
+
+    /// Definitions the new plugins promise, found by the reading Go to Definition uses.
+    #[test]
+    fn the_new_plugins_that_name_definers_find_their_definitions() {
+        let (plugins, _) = Plugins::load(None);
+        let cases: &[(&str, &str, &[&str])] = &[
+            (
+                "protobuf",
+                "message User {}\nenum Role {}\nservice Users { rpc Get(Req) returns (User); }\n",
+                &["User", "Role", "Users", "Get"],
+            ),
+            (
+                "graphql",
+                "type Query { a: Int }\ninput Filter { b: Int }\nfragment Parts on Query { a }\n",
+                &["Query", "Filter", "Parts"],
+            ),
+            ("powershell", "function Get-Thing { }\nclass Box { }\n", &["Get-Thing", "Box"]),
+        ];
+        for (id, source, names) in cases {
+            let plugin = plugins.get(id).unwrap_or_else(|| panic!("the {id} plugin"));
+            let found: Vec<&str> =
+                unluminous_core::symbols::file_definitions(source, &plugin.grammar)
+                    .into_iter()
+                    .map(|definition| &source[definition.name_range])
+                    .collect();
+            for name in *names {
+                assert!(found.contains(name), "{id}: {name} in {found:?}");
+            }
+        }
+    }
+
+    /// A pattern holds at most one `*` and no folder, and a manifest that breaks either is refused
+    /// with a sentence rather than loading as a plugin that claims nothing.
+    #[test]
+    fn a_file_name_pattern_is_one_name_with_at_most_one_star() {
+        use crate::services::plugins::name_matches;
+        assert!(name_matches("dockerfile", "dockerfile"));
+        assert!(name_matches("dockerfile.*", "dockerfile.dev"));
+        assert!(!name_matches("dockerfile.*", "dockerfile"));
+        assert!(name_matches(".env*", ".env"));
+        assert!(name_matches("*.env.example", "app.env.example"));
+        assert!(!name_matches("*.env.example", ".env"));
+        assert!(!name_matches("ab*ba", "aba"), "the two halves may not overlap");
+        let refused = |names: &str| {
+            let text = format!("plugin.id = a\nlanguage.file_names = {names}\n");
+            crate::services::plugins::parse(&crate::services::store::Values::parse(&text), false)
+        };
+        assert!(refused("Dockerfile").is_ok(), "a language may claim names and no extension");
+        assert!(refused("a*b*c").unwrap_err().contains("one `*`"));
+        assert!(refused("docker/Dockerfile").unwrap_err().contains("no folder"));
     }
 }

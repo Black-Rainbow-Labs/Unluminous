@@ -46,7 +46,16 @@ pub fn parse(values: &Values, bundled: bool) -> Result<Plugin, String> {
     // A language claiming no file type would never be used, which is what this has always said. A UI
     // plugin claims none by construction — Agent-Tasks is not a file type — so the check belongs to the
     // kind rather than to every manifest.
-    if kind == Kind::Language && extensions.is_empty() {
+    let file_names: Vec<String> =
+        list(values, "language.file_names").into_iter().map(|name| name.to_lowercase()).collect();
+    if let Some(bad) =
+        file_names.iter().find(|name| name.matches('*').count() > 1 || name.contains(['/', '\\']))
+    {
+        return Err(format!(
+            "language.file_names holds `{bad}`, and a file name may hold one `*` and no folder"
+        ));
+    }
+    if kind == Kind::Language && extensions.is_empty() && file_names.is_empty() {
         return Err(
             "language.extensions is empty, so nothing would ever use this plugin".to_owned()
         );
@@ -102,6 +111,7 @@ pub fn parse(values: &Values, bundled: bool) -> Result<Plugin, String> {
         kind,
         contributions,
         extensions,
+        file_names,
         renders,
         run_file: run_file(values)?,
         run_project: run_project(values)?,
@@ -212,6 +222,7 @@ fn contributions(values: &Values, kind: Kind) -> Result<Contributions, String> {
     if kind != Kind::Language {
         let language_only = [
             "language.extensions",
+            "language.file_names",
             "language.renders",
             "language.keywords",
             "language.line_comment",
@@ -432,6 +443,11 @@ const KNOWN_KEYS: &[(&str, &[&str])] = &[
             "hex_colors",
             "markup",
             "raw_text",
+            // `task-2384`: claiming a file by its name, and the three configuration file rules.
+            "file_names",
+            "more_line_comments",
+            "keys",
+            "sections",
             "renders",
             "definers",
             "brace_definitions",

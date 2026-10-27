@@ -108,6 +108,7 @@ impl Plugins {
     /// that changes which plugins there are or which of them are on.
     fn settle(&mut self) {
         let mut by_extension: Vec<(String, Grammar)> = Vec::new();
+        let mut by_name: Vec<(String, Grammar)> = Vec::new();
         // A language's grammar only: a ui plugin claims a file type to open it somewhere else, and a grammar
         // of nothing would colour the file as plain words if it were ever opened as text.
         for plugin in
@@ -118,6 +119,11 @@ impl Plugins {
                     continue; // the first plugin that claims an extension is the one `for_path` gives
                 }
                 by_extension.push((extension.clone(), plugin.grammar.clone()));
+            }
+            for name in &plugin.file_names {
+                if !by_name.iter().any(|(known, _)| known == name) {
+                    by_name.push((name.clone(), plugin.grammar.clone()));
+                }
             }
         }
         // **Every language the code index reads is a language completion reads** (`task-2231` G2).
@@ -146,7 +152,7 @@ impl Plugins {
                 by_extension.push((extension, grammar.clone()));
             }
         }
-        self.grammars = Grammars::of(by_extension);
+        self.grammars = Grammars::of(by_extension).with_names(by_name);
     }
 
     pub fn all(&self) -> &[Plugin] {
@@ -232,8 +238,19 @@ impl Plugins {
     }
 
     /// The plugin that claims `path`, if one does and it is switched on.
+    ///
+    /// A plugin that claims the file by its name wins over one that claims it by its extension
+    /// (`task-2384`), so `tsconfig.json` is JSON with comments and `docker-compose.yml` is still YAML.
     pub fn for_path(&self, path: &Path) -> Option<&Plugin> {
-        self.installed.iter().find(|plugin| plugin.enabled && plugin.claims(path))
+        let on = || self.installed.iter().filter(|plugin| plugin.enabled);
+        on().find(|plugin| plugin.claims_by_name(path, false))
+            .or_else(|| on().find(|plugin| plugin.claims_by_extension(path)))
+            .or_else(|| {
+                if crate::services::file_kind::opens_its_own_way(path) {
+                    return None;
+                }
+                on().find(|plugin| plugin.claims_by_name(path, true))
+            })
     }
 
     /// The core provider a switched on ui plugin opens `path` with, when one claims it through

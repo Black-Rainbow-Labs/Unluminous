@@ -7142,6 +7142,32 @@ A colour scheme **colours the tokens and not the editing area**. The window lett
 through is the whole character of the product, and a scheme that repaints the background opaque would
 trade that away to be a shade nearer a screenshot.
 
+### A plugin claims a file by its name too, and configuration files have keys (`task-2384`)
+
+`tasks/task-2384-common-file-types-tdd.md` is the design. Twenty seven plugins were added: Dockerfile, `.env`,
+Makefile, CMake, ignore files, INI, Properties, XML, JSON with Comments, HCL, Protocol Buffers, GraphQL,
+PowerShell, Batch and Groovy, and Go, Java, Kotlin, C, C++, C#, Ruby, PHP, Lua, Swift, Scala and Zig, whose
+language keys are the code index's own manifests so Go to Definition reads them as it did. Five rules:
+
+- **`language.file_names`** claims a file by its whole name, without regard to case, with at most one `*` and
+  no folder: `Dockerfile`, `.env.*`, `tsconfig.*.json`. A whole name beats an extension in `Plugins::for_path`
+  and `Grammars::for_path`. A name whose `*` stands for the extension (`types::ends_open`, `Dockerfile.*`) is
+  asked after every extension and never for a file `file_kind::opens_its_own_way`, so `Dockerfile.md` keeps
+  its preview. A language may claim names and no extension.
+- **`language.keys`** (delimiters such as `=, :`) makes the first thing on a line before one a key, drawn as
+  `Token::Type`. Indentation, `- ` list markers and the language's keywords may stand before it (`export
+  NAME=`, `ENV NAME=`); a `:` counts only before whitespace, the end of the line, `=` or `:`; a word the
+  language lists keeps its own colour.
+- **`language.sections`** makes a line holding only `[name]` or `[[name]]` one keyword.
+  **`language.more_line_comments`** adds comment openers beside `line_comment`, which is still the one the
+  toggle writes; an opener ending in a letter (`REM`) needs a word boundary after it.
+- **Keys and sections look back along their own line only**, so the incremental tokeniser still agrees with a
+  whole reading; `random_edits_to_a_configuration_file_agree_with_reading_the_whole_file` checks it.
+- **`file_kind::kind_name` is a table of its own and is kept in step by a test**:
+  `every_file_a_new_plugin_claims_is_named_in_the_status_bar` fails while a claimed name or extension is
+  "Plain text", which is also what keeps Bold and Italic off a `.gitignore`. Add a row there when a plugin
+  claims something new. A new plugin's icon is a generic mark, never the project's logo.
+
 ## Designer: a design is an HTML file, and a note is a thread on one of its elements
 
 `task-2254` is the work and `tasks/task-2254-designer-plugin-prd.md` and `-tdd.md` are the design. The

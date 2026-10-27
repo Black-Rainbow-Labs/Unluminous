@@ -326,6 +326,14 @@ pub struct Plugin {
     pub contributions: Contributions,
     /// The extensions it claims, without the dot, in lower case.
     pub extensions: Vec<String>,
+    /// The file names it claims, in lower case, each of which may hold one `*`: `dockerfile`,
+    /// `dockerfile.*`, `.env.*`, `cmakelists.txt`.
+    ///
+    /// `language.file_names`, `task-2384`. A Dockerfile, a Makefile and a `.gitignore` have no
+    /// extension Rust's `Path::extension` reports, so a plugin claiming them by extension never saw
+    /// them. A name beats an extension, in this plugin and across plugins, which is what makes
+    /// `tsconfig.json` JSON with comments while every other `.json` file is JSON.
+    pub file_names: Vec<String>,
     /// The built-in renderer this language's files are drawn with, if it has one.
     pub renders: Option<String>,
     /// How one file of this language is run, with `{file}` standing for the path — `node {file}`.
@@ -360,12 +368,65 @@ pub struct Plugin {
 }
 
 impl Plugin {
-    /// Whether this plugin claims `path`.
+    /// Whether this plugin claims `path`, by its file name or by its extension.
     pub fn claims(&self, path: &Path) -> bool {
+        self.claims_by_name(path, false)
+            || self.claims_by_extension(path)
+            || self.claims_by_name(path, true)
+    }
+
+    /// Whether one of this plugin's `language.file_names` matches the file's whole name.
+    ///
+    /// `open` asks about the patterns whose `*` stands for the extension, such as `Dockerfile.*`, and
+    /// otherwise about the rest, such as `Dockerfile` and `tsconfig.*.json`. The two are asked at
+    /// different moments: see [`ends_open`].
+    pub fn claims_by_name(&self, path: &Path, open: bool) -> bool {
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            return false;
+        };
+        let name = name.to_lowercase();
+        self.file_names
+            .iter()
+            .filter(|pattern| ends_open(pattern) == open)
+            .any(|pattern| name_matches(pattern, &name))
+    }
+
+    /// Whether this plugin claims the file's extension.
+    pub fn claims_by_extension(&self, path: &Path) -> bool {
         let Some(extension) = path.extension().and_then(|name| name.to_str()) else {
             return false;
         };
         let extension = extension.to_lowercase();
         self.extensions.contains(&extension)
+    }
+}
+
+/// True when a pattern's `*` stands for the file's extension: `Dockerfile.*`, `.env.*`.
+///
+/// Such a pattern says nothing about what kind of file the extension makes it, so it is asked
+/// **after** every extension claim and never for a document Unluminous opens its own way: `Dockerfile.dev`
+/// is a Dockerfile, while `Dockerfile.md` is Markdown and `Dockerfile.yml` is YAML. A pattern that
+/// names its extension, such as `tsconfig.*.json`, or no wildcard at all, is asked **before** them.
+///
+/// @param pattern - a `language.file_names` entry
+pub fn ends_open(pattern: &str) -> bool {
+    pattern.ends_with('*')
+}
+
+/// Whether a lower case file name matches a lower case `language.file_names` pattern.
+///
+/// A pattern is a whole name, or a name with one `*` standing for any run of characters, which may be
+/// empty: `dockerfile.*` matches `dockerfile.dev`, and `.env*` matches `.env` and `.env.local`. One star
+/// covers every name the bundled plugins claim, and a pattern language bigger than that would be a
+/// second glob syntax for a list nobody types often.
+///
+/// @param pattern - the pattern, already in lower case
+/// @param name - the file's name, already in lower case
+pub fn name_matches(pattern: &str, name: &str) -> bool {
+    match pattern.split_once('*') {
+        None => pattern == name,
+        Some((head, tail)) => {
+            name.len() >= head.len() + tail.len() && name.starts_with(head) && name.ends_with(tail)
+        }
     }
 }

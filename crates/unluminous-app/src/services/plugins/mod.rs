@@ -74,6 +74,6 @@ pub use registries::{
 };
 pub use store::{Plugins, FOLDER};
 pub use types::{
-    Contributions, Kind, MenuContribution, MenuItem, PageContribution, PaneContribution, Plugin,
-    RailGroup, Surface, Surfaces, SyntaxTheme, TabContribution,
+    name_matches, Contributions, Kind, MenuContribution, MenuItem, PageContribution,
+    PaneContribution, Plugin, RailGroup, Surface, Surfaces, SyntaxTheme, TabContribution,
 };

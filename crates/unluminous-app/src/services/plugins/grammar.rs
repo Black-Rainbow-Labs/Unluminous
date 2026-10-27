@@ -9,7 +9,7 @@ use std::path::Path;
 
 use unluminous_core::syntax::Grammar;
 
-use super::types::{Plugin, SyntaxTheme};
+use super::types::{ends_open, name_matches, Plugin, SyntaxTheme};
 
 /// Which grammar reads which extension, taken from the plugins that are switched on.
 ///
@@ -19,6 +19,8 @@ use super::types::{Plugin, SyntaxTheme};
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Grammars {
     by_extension: Vec<(String, Grammar)>,
+    /// `language.file_names` patterns, tried before any extension (`task-2384`).
+    by_name: Vec<(String, Grammar)>,
 }
 
 impl Grammars {
@@ -26,7 +28,15 @@ impl Grammars {
     ///
     /// Extensions are written without the dot, as `for_path` compares them.
     pub fn of(by_extension: Vec<(String, Grammar)>) -> Self {
-        Self { by_extension }
+        Self { by_extension, by_name: Vec::new() }
+    }
+
+    /// The same, with the file name patterns plugins claim, in lower case. A name is tried before
+    /// an extension, which is what makes `tsconfig.json` JSON with comments and `Dockerfile.dev` a
+    /// Dockerfile.
+    pub fn with_names(mut self, by_name: Vec<(String, Grammar)>) -> Self {
+        self.by_name = by_name;
+        self
     }
 
     /// The grammar that reads this file, if a plugin that is switched on claims it.
@@ -36,6 +46,29 @@ impl Grammars {
     /// comment. The project's index never reads a notebook through this, because on the disk a
     /// notebook is JSON — `services::symbol_index` leaves `.ipynb` files out. `task-2220`.
     pub fn for_path(&self, path: &Path) -> Option<&Grammar> {
+        // In the order `Plugins::for_path` asks, so a file's colours and its plugin always agree:
+        // a whole name, then the extension, then a name whose `*` stands for the extension.
+        let named = |open: bool| -> Option<&Grammar> {
+            let name = path.file_name().and_then(|name| name.to_str())?.to_lowercase();
+            self.by_name
+                .iter()
+                .filter(|(pattern, _)| ends_open(pattern) == open)
+                .find(|(pattern, _)| name_matches(pattern, &name))
+                .map(|(_, grammar)| grammar)
+        };
+        if self.by_name.is_empty() {
+            return self.by_extension(path);
+        }
+        named(false).or_else(|| self.by_extension(path)).or_else(|| {
+            match crate::services::file_kind::opens_its_own_way(path) {
+                true => None,
+                false => named(true),
+            }
+        })
+    }
+
+    /// The grammar the file's extension names, if a plugin claims it.
+    fn by_extension(&self, path: &Path) -> Option<&Grammar> {
         let mut extension = path.extension().and_then(|name| name.to_str())?.to_lowercase();
         if extension == "ipynb" {
             extension = "py".to_owned();
