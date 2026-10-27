@@ -334,6 +334,9 @@ pub struct Plugin {
     /// them. A name beats an extension, in this plugin and across plugins, which is what makes
     /// `tsconfig.json` JSON with comments while every other `.json` file is JSON.
     pub file_names: Vec<String>,
+    /// The same names as the manifest wrote them, `Dockerfile` rather than `dockerfile`, for the plugins
+    /// page to show.
+    pub file_names_as_written: Vec<String>,
     /// The built-in renderer this language's files are drawn with, if it has one.
     pub renders: Option<String>,
     /// How one file of this language is run, with `{file}` standing for the path — `node {file}`.

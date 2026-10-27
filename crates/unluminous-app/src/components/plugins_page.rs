@@ -492,9 +492,15 @@ fn overview_of(plugin: &Plugin) -> String {
     let mut lines = vec![plugin.description.clone()];
     match plugin.kind {
         crate::services::plugins::Kind::Language => {
-            let extensions: Vec<String> =
-                plugin.extensions.iter().map(|extension| format!(".{extension}")).collect();
-            lines.push(format!("Claims {}.", extensions.join(", ")));
+            // The names first, because a plugin that claims `Dockerfile` is about that file before it is
+            // about `.dockerfile` (`task-2384`).
+            let mut claimed: Vec<String> = plugin.file_names_as_written.clone();
+            for extension in plugin.extensions.iter().map(|extension| format!(".{extension}")) {
+                if !claimed.iter().any(|name| name.eq_ignore_ascii_case(&extension)) {
+                    claimed.push(extension);
+                }
+            }
+            lines.push(format!("Claims {}.", claimed.join(", ")));
             // The scheme that is actually colouring this language's files, which since `task-1776` is the
             // theme's when the theme names the nine tokens.
             let scheme = crate::services::plugins::scheme_of(plugin);

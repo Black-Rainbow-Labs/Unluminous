@@ -46,8 +46,9 @@ pub fn parse(values: &Values, bundled: bool) -> Result<Plugin, String> {
     // A language claiming no file type would never be used, which is what this has always said. A UI
     // plugin claims none by construction — Agent-Tasks is not a file type — so the check belongs to the
     // kind rather than to every manifest.
+    let file_names_as_written = list(values, "language.file_names");
     let file_names: Vec<String> =
-        list(values, "language.file_names").into_iter().map(|name| name.to_lowercase()).collect();
+        file_names_as_written.iter().map(|name| name.to_lowercase()).collect();
     if let Some(bad) =
         file_names.iter().find(|name| name.matches('*').count() > 1 || name.contains(['/', '\\']))
     {
@@ -112,6 +113,7 @@ pub fn parse(values: &Values, bundled: bool) -> Result<Plugin, String> {
         contributions,
         extensions,
         file_names,
+        file_names_as_written,
         renders,
         run_file: run_file(values)?,
         run_project: run_project(values)?,
