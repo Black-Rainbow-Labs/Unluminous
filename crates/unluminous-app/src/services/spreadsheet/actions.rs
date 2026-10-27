@@ -201,6 +201,49 @@ impl Act {
     }
 }
 
+/// AutoSum over a block, as Excel's AutoSum does with more than one cell chosen: a total under each column
+/// that has numbers, in the block's last row when that row is empty and in the row under the block when it
+/// is not. A block one row tall is added up across instead, into its last column or the column after it.
+pub fn autosum_totals(sheet: &Sheet, range: Range) -> Vec<(CellRef, String)> {
+    let number = |at: CellRef| matches!(sheet.value_at(at), Value::Number(_));
+    let empty = |at: CellRef| !sheet.cells.get(&(at.row, at.col)).is_some_and(|c| {
+        !c.value.is_empty() || c.formula.is_some()
+    });
+    let mut out = Vec::new();
+    if range.rows() == 1 {
+        let row = range.first.row;
+        let last = CellRef::new(row, range.last.col);
+        let (to, end) = match empty(last) && range.cols() > 1 {
+            true => (last, range.last.col - 1),
+            false => match last.offset(0, 1) {
+                Some(next) => (next, range.last.col),
+                None => return out,
+            },
+        };
+        let span = Range::new(CellRef::new(row, range.first.col), CellRef::new(row, end));
+        if span.cells().any(number) {
+            out.push((to, format!("=SUM({})", span.a1())));
+        }
+        return out;
+    }
+    let last_row_empty =
+        (range.first.col..=range.last.col).all(|c| empty(CellRef::new(range.last.row, c)));
+    let (total_row, end_row) = match last_row_empty {
+        true => (range.last.row, range.last.row - 1),
+        false if range.last.row + 1 < unluminous_sheet::coord::MAX_ROWS => {
+            (range.last.row + 1, range.last.row)
+        }
+        false => return out,
+    };
+    for col in range.first.col..=range.last.col {
+        let span = Range::new(CellRef::new(range.first.row, col), CellRef::new(end_row, col));
+        if span.cells().any(number) {
+            out.push((CellRef::new(total_row, col), format!("=SUM({})", span.a1())));
+        }
+    }
+    out
+}
+
 /// What a change answered: a line for the status bar.
 pub type Said = Result<String, String>;
 
@@ -699,6 +742,14 @@ fn apply_inner(book: &mut Book, copied: &mut Option<Copied>, act: Act) -> Said {
             Some(label) => Ok(format!("Redid {label}")),
             None => Err("There is nothing to redo.".to_owned()),
         },
+        Act::AutoSum if ranges.len() == 1 && ranges[0].len() > 1 => {
+            let inputs = autosum_totals(&s.book.sheets[sheet], ranges[0]);
+            if inputs.is_empty() {
+                return Err("There are no numbers in the selection to add up".to_owned());
+            }
+            s.set_inputs(sheet, &inputs)?;
+            Ok(format!("Added {} totals", inputs.len()))
+        }
         Act::AutoSum => {
             let formula = s.autosum(sheet, cursor);
             s.set_input(sheet, cursor, &formula)?;

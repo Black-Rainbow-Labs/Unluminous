@@ -214,6 +214,8 @@ pub struct GridOut {
     pub point: Option<Range>,
     /// How `point` goes into the formula.
     pub point_how: PointHow,
+    /// A reference carried or resized by its coloured outline: which one, and where it is now.
+    pub finder: Option<(usize, Range)>,
     /// The right click menu asked for, where.
     pub menu: Option<Pos2>,
     /// A filter button was pressed on this column.
@@ -761,8 +763,24 @@ fn read_the_pointer(
     let handle = frame.range(book, range).right_bottom();
     let on_handle = !pointing && (p - handle).length() <= 5.0 && book.view.extra.is_empty();
     let border = (!pointing && !on_handle).then(|| on_the_border(book, frame, p)).flatten();
+    let finder = super::editor::finder_at(book, frame, p);
+    // A drag is read from where the button went down, which egui only calls a drag once the pointer has
+    // moved a little way from it.
+    let pressed_at = ui
+        .input(|i| i.pointer.press_origin())
+        .filter(|_| response.drag_started())
+        .map(|o| {
+            let to_global = ui.ctx().layer_transform_to_global(ui.layer_id());
+            to_global.map_or(o, |t| t.inverse() * o)
+        })
+        .unwrap_or(p);
     if response.hovered() {
-        if column_edge.is_some() {
+        if let Some((_, grip)) = finder {
+            ui.ctx().set_cursor_icon(match grip {
+                super::editor::FinderGrip::Border => egui::CursorIcon::Move,
+                super::editor::FinderGrip::Corner(_) => egui::CursorIcon::ResizeNwSe,
+            });
+        } else if column_edge.is_some() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeColumn);
         } else if row_edge.is_some() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeRow);
@@ -842,10 +860,37 @@ fn read_the_pointer(
     if response.drag_started() || (response.clicked() && book.view.drag.is_none()) {
         out.pressed = true;
         book.view.held = None;
+        book.view.tab_start = None;
         let filter_button = filter_button_at(book, frame, p);
         if let Some(col) = filter_button {
             out.filter_menu = Some((col, p));
             return;
+        }
+        // A reference's coloured outline is taken before anything else under it, as Excel's range finder is.
+        let finder_pressed = super::editor::finder_at(book, frame, pressed_at);
+        if let Some((index, grip)) = finder_pressed.filter(|_| response.drag_started()) {
+            let at = frame.at(book, pressed_at);
+            let references =
+                crate::services::spreadsheet::formula_text::references(
+                    &book.view.edit.as_ref().map(|e| e.text.clone()).unwrap_or_default(),
+                );
+            if let Some(r) = references.get(index) {
+                let range = r.range;
+                book.view.drag = Some(Drag::Finder {
+                    index,
+                    fixed: match grip {
+                        super::editor::FinderGrip::Corner(fixed) => Some(fixed),
+                        super::editor::FinderGrip::Border => None,
+                    },
+                    grab: (
+                        at.row.clamp(range.first.row, range.last.row) - range.first.row,
+                        at.col.clamp(range.first.col, range.last.col) - range.first.col,
+                    ),
+                    size: (range.rows(), range.cols()),
+                });
+                out.pressed = false;
+                return;
+            }
         }
         if pointing && column_edge.is_none() && row_edge.is_none() {
             let over = if in_columns {
@@ -858,17 +903,7 @@ fn read_the_pointer(
                 None
             };
             if let Some(over) = over {
-                // A drag is read from where the button went down, which egui only calls a drag once the
-                // pointer has moved a little way from it.
-                let origin = ui
-                    .input(|i| i.pointer.press_origin())
-                    .filter(|_| response.drag_started())
-                    .map(|o| {
-                        let to_global = ui.ctx().layer_transform_to_global(ui.layer_id());
-                        to_global.map_or(o, |t| t.inverse() * o)
-                    })
-                    .map_or(at, |o| frame.at(book, o));
-                start_pointing(book, origin, over, modifiers, out);
+                start_pointing(book, frame.at(book, pressed_at), over, modifiers, out);
                 return;
             }
         }
@@ -960,6 +995,27 @@ fn read_the_pointer(
         match book.view.drag {
             Some(Drag::Select) => {
                 book.view.anchor = target;
+                scroll_by(book, push / frame.zoom);
+            }
+            Some(Drag::Finder { index, fixed, grab, size }) => {
+                let range = match fixed {
+                    Some(fixed) => Range::new(fixed, target),
+                    None => {
+                        let row = target
+                            .row
+                            .saturating_sub(grab.0)
+                            .min(MAX_ROWS - size.0);
+                        let col = target
+                            .col
+                            .saturating_sub(grab.1)
+                            .min(MAX_COLS - size.1);
+                        Range::new(
+                            CellRef::new(row, col),
+                            CellRef::new(row + size.0 - 1, col + size.1 - 1),
+                        )
+                    }
+                };
+                out.finder = Some((index, range));
                 scroll_by(book, push / frame.zoom);
             }
             Some(Drag::Point(from, over)) => {

@@ -43,14 +43,43 @@ pub fn offered(ctx: &egui::Context, book: &Book, list_on: bool) -> Offered {
     let Some((start, word)) = formula_text::word_before(&edit.text, caret) else {
         return Offered::default();
     };
+    Offered { start, names: offered_names(book, &word) }
+}
+
+/// What Formula AutoComplete offers for the letters typed: the functions and the workbook's defined names
+/// that start with them, then those that hold them further in, as Excel's list does since it began matching
+/// inside names, at most eight.
+pub fn offered_names(book: &Book, word: &str) -> Vec<String> {
     let upper = word.to_ascii_uppercase();
-    let names: Vec<&'static str> = unluminous_sheet::functions::all()
+    let functions = unluminous_sheet::functions::all().iter().map(|f| f.name.to_owned());
+    let names = book
+        .session
+        .book
+        .names
         .iter()
-        .map(|f| f.name)
-        .filter(|name| name.starts_with(&upper))
-        .take(8)
-        .collect();
-    Offered { start, names }
+        .filter(|n| !n.name.starts_with("_xlnm") && !n.name.starts_with("_xlfn"))
+        .map(|n| n.name.clone());
+    let mut every: Vec<String> = functions.chain(names).collect();
+    // One alphabetical list, functions and names together, as Excel's is.
+    every.sort_by_key(|n| n.to_ascii_uppercase());
+    let starts = every.iter().filter(|n| n.to_ascii_uppercase().starts_with(&upper));
+    // Inside a name only for three letters or more that are not a cell's address, so `=B2*C2` does not offer
+    // DEC2BIN for its `C2`.
+    let wordy = upper.len() >= 3 && upper.chars().all(|c| c.is_ascii_alphabetic() || c == '.');
+    let inside = every.iter().filter(|n| {
+        let n = n.to_ascii_uppercase();
+        wordy && !n.starts_with(&upper) && n.contains(&upper)
+    });
+    let mut out: Vec<String> = Vec::new();
+    for name in starts.chain(inside) {
+        if !out.iter().any(|o| o.eq_ignore_ascii_case(name)) {
+            out.push(name.clone());
+        }
+        if out.len() == 8 {
+            break;
+        }
+    }
+    out
 }
 
 /// Draw the box over the cell being typed into.
@@ -111,11 +140,18 @@ pub fn show_cell_box(ui: &mut egui::Ui, book: &mut Book, frame: Frame, ink: &Ink
     let wanted_focus = edit.focus && !edit.in_bar;
     let inner = rect.shrink2(Vec2::new(3.0 * zoom, 1.0));
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner));
+    let (layout_font, layout_ink) = (font_id.clone(), ink.text);
+    let mut layouter = |ui: &egui::Ui, text: &dyn egui::TextBuffer, width: f32| {
+        let mut job = coloured_formula(text.as_str(), layout_font.clone(), layout_ink);
+        job.wrap.max_width = width;
+        ui.fonts_mut(|fonts| fonts.layout_job(job))
+    };
     let response = child.text_box(
         egui::TextEdit::multiline(&mut edit.text)
             .id(id)
             .frame(egui::Frame::NONE)
             .font(font_id)
+            .layouter(&mut layouter)
             .text_color(ink.text)
             .desired_rows(1)
             .desired_width(inner.width())
@@ -157,7 +193,11 @@ pub fn show_function_list(
             crate::components::controls::menu_frame(ui).show(ui, |ui| {
                 ui.set_width(360.0);
                 for (i, name) in offered.names.iter().enumerate() {
-                    let about = unluminous_sheet::functions::find(name).map_or("", |f| f.about);
+                    let named = book.session.book.names.iter().find(|n| &n.name == name);
+                    let about = match unluminous_sheet::functions::find(name) {
+                        Some(f) => f.about.to_owned(),
+                        None => named.map_or(String::new(), |n| format!("Name: {}", n.formula)),
+                    };
                     let (rect, response) = ui.allocate_exact_size(
                         Vec2::new(ui.available_width(), 26.0),
                         egui::Sense::click(),
@@ -173,11 +213,11 @@ pub fn show_function_list(
                     ui.painter().text(
                         rect.left_center() + Vec2::new(10.0, 0.0),
                         egui::Align2::LEFT_CENTER,
-                        *name,
+                        name,
                         egui::FontId::monospace(12.5),
                         look.palette.text_strong,
                     );
-                    let about_short = crate::components::controls::truncate_chars(about, 44, 40);
+                    let about_short = crate::components::controls::truncate_chars(&about, 44, 40);
                     ui.painter().text(
                         rect.left_center() + Vec2::new(120.0, 0.0),
                         egui::Align2::LEFT_CENTER,
@@ -248,6 +288,77 @@ pub fn show_argument_hint(ui: &egui::Ui, book: &Book, frame: Frame, look: &Look<
         });
 }
 
+/// What part of a reference's coloured outline is under a point.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FinderGrip {
+    /// Its border: a drag carries the reference.
+    Border,
+    /// One of its corner squares: a drag resizes it with the opposite corner kept.
+    Corner(unluminous_sheet::CellRef),
+}
+
+/// The reference of the formula being typed whose outline is under `p`, and which part of it. Corners are
+/// asked first, as Excel's are, because a corner is also on the border.
+pub fn finder_at(book: &Book, frame: Frame, p: egui::Pos2) -> Option<(usize, FinderGrip)> {
+    use unluminous_sheet::CellRef;
+    let edit = book.view.edit.as_ref()?;
+    if !edit.text.starts_with('=') {
+        return None;
+    }
+    let here = &book.session.book.sheets[book.view.sheet].name;
+    let own = book.session.book.sheets.get(edit.sheet).map_or("", |s| s.name.as_str());
+    let references = formula_text::references(&edit.text);
+    let on_this_sheet = |r: &formula_text::Reference| {
+        r.sheet.as_deref().unwrap_or(own).eq_ignore_ascii_case(here)
+            && !r.range.is_whole_columns()
+            && !r.range.is_whole_rows()
+    };
+    for (i, r) in references.iter().enumerate().filter(|(_, r)| on_this_sheet(r)) {
+        let rect = frame.range(book, r.range);
+        let (first, last) = (r.range.first, r.range.last);
+        let corners = [
+            (rect.left_top(), last),
+            (rect.right_top(), CellRef::new(last.row, first.col)),
+            (rect.left_bottom(), CellRef::new(first.row, last.col)),
+            (rect.right_bottom(), first),
+        ];
+        if let Some((_, fixed)) = corners.iter().find(|(c, _)| (*c - p).length() <= 5.0) {
+            return Some((i, FinderGrip::Corner(*fixed)));
+        }
+    }
+    for (i, r) in references.iter().enumerate().filter(|(_, r)| on_this_sheet(r)) {
+        let rect = frame.range(book, r.range);
+        if rect.expand(3.0).contains(p) && !rect.shrink(3.0).contains(p) {
+            return Some((i, FinderGrip::Border));
+        }
+    }
+    None
+}
+
+/// A formula laid out with each reference in the colour its outline on the grid is drawn in, as Excel
+/// colours the references while a formula is typed. Text that is not a formula is laid out plainly.
+pub fn coloured_formula(text: &str, font: egui::FontId, ink: Color32) -> egui::text::LayoutJob {
+    let mut job = egui::text::LayoutJob::default();
+    let plain = egui::TextFormat { font_id: font.clone(), color: ink, ..Default::default() };
+    if !text.starts_with('=') {
+        job.append(text, 0.0, plain);
+        return job;
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let mut at = 0;
+    for (i, reference) in formula_text::references(text).iter().enumerate() {
+        let before: String = chars[at..reference.start].iter().collect();
+        job.append(&before, 0.0, plain.clone());
+        let inside: String = chars[reference.start..reference.end].iter().collect();
+        let coloured = egui::TextFormat { color: reference_colour(i), ..plain.clone() };
+        job.append(&inside, 0.0, coloured);
+        at = reference.end;
+    }
+    let rest: String = chars[at.min(chars.len())..].iter().collect();
+    job.append(&rest, 0.0, plain);
+    job
+}
+
 /// The colours a formula's references are outlined in, in turn.
 pub fn reference_colour(index: usize) -> Color32 {
     let (r, g, b) = display::REFERENCE_COLOURS[index % display::REFERENCE_COLOURS.len()];
@@ -262,8 +373,10 @@ pub fn show_reference_outlines(ui: &egui::Ui, book: &Book, frame: Frame) {
     }
     let painter = ui.painter_at(frame.cells);
     let here = &book.session.book.sheets[book.view.sheet].name;
+    // A reference with no sheet's name is on the sheet of the cell being typed into.
+    let own = book.session.book.sheets.get(edit.sheet).map_or("", |s| s.name.as_str());
     for (i, reference) in formula_text::references(&edit.text).iter().enumerate() {
-        if reference.sheet.as_ref().is_some_and(|s| !s.eq_ignore_ascii_case(here)) {
+        if !reference.sheet.as_deref().unwrap_or(own).eq_ignore_ascii_case(here) {
             continue;
         }
         let rect = frame.range(book, reference.range);

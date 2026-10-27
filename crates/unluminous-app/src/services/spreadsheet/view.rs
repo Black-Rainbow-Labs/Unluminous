@@ -242,6 +242,10 @@ pub enum Drag {
     /// Pointing at cells for a formula being typed: the cell the drag started from, and whether it is over
     /// cells, whole columns or whole rows.
     Point(CellRef, PointOver),
+    /// Carrying a formula's reference by its coloured outline, Excel's range finder: which reference, the
+    /// corner that stays put when a corner is pulled, and otherwise where in the reference it was picked up
+    /// and how large it is.
+    Finder { index: usize, fixed: Option<CellRef>, grab: (u32, u32), size: (u32, u32) },
 }
 
 /// Where the grid was drawn on the last frame: the cells' area and how it was scrolled and zoomed, which is
@@ -314,6 +318,8 @@ pub struct Axes {
 pub struct View {
     /// Where the grid was drawn last frame, which `where` answers from.
     pub on_screen: Option<OnScreen>,
+    /// The column a run of Tab presses started in, which Enter goes back to on the next row, as in Excel.
+    pub tab_start: Option<u32>,
     pub sheet: usize,
     /// The active cell.
     pub cursor: CellRef,
@@ -396,6 +402,7 @@ impl Default for View {
     fn default() -> Self {
         Self {
             on_screen: None,
+            tab_start: None,
             sheet: 0,
             cursor: CellRef::new(0, 0),
             anchor: CellRef::new(0, 0),

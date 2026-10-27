@@ -133,6 +133,25 @@ fn draw(
         let bar = editor::bar_box_id(&book.key);
         ctx.memory(|m| m.has_focus(cell) || m.has_focus(bar))
     };
+    // A cell being typed into keeps the keyboard while the tab has it and no other box took it: a chord
+    // egui's text box reads for itself could leave it with no focus, and then Escape and Enter reached
+    // nothing.
+    let lost_its_box = book.view.edit.is_some()
+        && !a_box_is_ours
+        && look.has_the_keyboard
+        && !ctx.text_edit_focused()
+        && book.view.prompt.is_none()
+        && book.view.book_menu.is_none()
+        && book.view.find.is_none();
+    if lost_its_box {
+        let id = editor::box_with_the_caret(&ctx, book);
+        let caret = keys::caret_of(&ctx, id);
+        if let Some(edit) = book.view.edit.as_mut() {
+            edit.focus = true;
+            edit.caret = caret.or(edit.caret);
+        }
+    }
+    let a_box_is_ours = a_box_is_ours || lost_its_box;
     let mut name_box = false;
     if look.has_the_keyboard && book.view.prompt.is_none() && book.view.book_menu.is_none() {
         if a_box_is_ours {
@@ -282,6 +301,20 @@ fn after_the_grid(
 ) {
     let ctx = ui.ctx();
     asked.acts.append(&mut out.acts);
+    let prefix = keys::pointing_prefix(book);
+    if let Some((index, range)) = out.finder {
+        if let Some(edit) = book.view.edit.as_mut() {
+            if let Some((text, end)) =
+                crate::services::spreadsheet::formula_text::replace_reference(&edit.text, index, range)
+            {
+                edit.text = text;
+                edit.pointing = None;
+                edit.focus = true;
+                edit.caret = Some(end);
+            }
+        }
+        return;
+    }
     if let Some(range) = out.point {
         // Pointing at a figure of a PivotTable writes a GETPIVOTDATA call, as Excel does.
         let pivot_call = (range.len() == 1)
@@ -313,7 +346,7 @@ fn after_the_grid(
             };
             let new_end = match &pivot_call {
                 Some(call) => keys::put_text(edit, start, end, call),
-                None => keys::put_reference(edit, start, end, range),
+                None => keys::put_reference(edit, start, end, range, &prefix),
             };
             edit.focus = true;
             edit.caret = Some(new_end);
@@ -385,7 +418,9 @@ fn complete_with(ctx: &egui::Context, book: &mut Book, offered: &keys::Offered, 
     let chars: Vec<char> = edit.text.chars().collect();
     let mut text: String = chars[..offered.start.min(chars.len())].iter().collect();
     text.push_str(name);
-    text.push('(');
+    if unluminous_sheet::functions::find(name).is_some() {
+        text.push('(');
+    }
     let new_caret = text.chars().count();
     text.extend(chars[caret.min(chars.len())..].iter());
     edit.text = text;
@@ -895,8 +930,16 @@ fn show_sheet_tabs(
             egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Sheet {name}"))
         });
         if response.clicked() && !showing {
-            commit_open_edit(book, asked);
-            asked.acts.push(Act::ShowSheet(i));
+            let caret = book.view.edit.as_ref().map(|e| {
+                let id = editor::box_with_the_caret(ui.ctx(), book);
+                keys::caret_of(ui.ctx(), id).unwrap_or(e.text.chars().count())
+            });
+            if caret.is_some_and(|caret| can_point(book, caret)) {
+                point_on_another_sheet(book, i, caret.unwrap_or(0));
+            } else {
+                commit_open_edit(book, asked);
+                asked.acts.push(Act::ShowSheet(i));
+            }
         }
         if response.double_clicked() {
             book.view.renaming = Some((i, name.clone()));
@@ -947,6 +990,41 @@ fn show_sheet_tabs(
             )));
         }
     }
+}
+
+/// Whether the formula being typed takes a reference at the caret, so a click on a cell or a sheet's tab
+/// points rather than finishes the cell.
+fn can_point(book: &Book, caret: usize) -> bool {
+    book.view.edit.as_ref().is_some_and(|e| {
+        e.text.starts_with('=')
+            && (e.pointing.is_some_and(|(_, end, _)| end == caret)
+                || crate::services::spreadsheet::formula_text::points_at(&e.text, caret))
+    })
+}
+
+/// A click on another sheet's tab while a formula takes a reference: the sheet shows, the formula stays
+/// open in the formula bar, and its name goes in, `=SUM(Data!`, so the next click on a cell finishes the
+/// reference, as Excel's Point mode works across sheets. Back on the cell's own sheet, references are
+/// written without the name.
+fn point_on_another_sheet(book: &mut Book, index: usize, caret: usize) {
+    crate::services::spreadsheet::keep_view(&mut book.session, &book.view);
+    book.view.sheet = index;
+    crate::services::spreadsheet::restore_view(&book.session.book, &mut book.view);
+    book.view.axes = None;
+    book.rules = None;
+    let prefix = keys::pointing_prefix(book);
+    let cursor = book.view.cursor;
+    let Some(edit) = book.view.edit.as_mut() else { return };
+    let (start, end) = match edit.pointing {
+        Some((start, end, _)) if end == caret => (start, end),
+        _ => (caret, caret),
+    };
+    let new_end = keys::put_text(edit, start, end, &prefix);
+    // What was put in is the reference being pointed at, so a click or an arrow replaces it whole.
+    edit.pointing = Some((start, new_end, unluminous_sheet::coord::Range::cell(cursor)));
+    edit.in_bar = true;
+    edit.focus = true;
+    edit.caret = Some(new_end);
 }
 
 /// Finish the cell being typed into without moving, as switching sheets does.
@@ -1215,6 +1293,11 @@ fn finish(sheet: &mut Spreadsheet, key: &str, asked: Asked) -> Vec<Request> {
         let config = sheet.config.clone();
         let book = &mut sheet.books[index];
         let mut copied = sheet.clip.take();
+        // A formula finished while another sheet was showing, after pointing at its cells, goes back to the
+        // sheet the cell is on, as Excel does.
+        if edit.sheet != book.view.sheet && edit.sheet < book.session.book.sheets.len() {
+            let _ = actions::apply(book, &mut copied, Act::ShowSheet(edit.sheet));
+        }
         let typed = typed_with_options(book, &edit, &config);
         let act = match how {
             Finish::CommitEverywhere => Act::TypeEverywhere(edit.text.clone()),
@@ -1239,7 +1322,16 @@ fn finish(sheet: &mut Spreadsheet, key: &str, asked: Asked) -> Vec<Request> {
                 if let Finish::Commit { rows, cols } = how {
                     if rows != 0 || cols != 0 {
                         book.view.select_cell(edit.at);
-                        keys::step_within(book, rows, cols);
+                        let tab_start = book.view.tab_start;
+                        // Enter after a run of Tabs goes back to the column the run started in.
+                        if keys::back_to_where_the_tabs_started(book, tab_start, rows, cols) {
+                            book.view.tab_start = None;
+                        } else {
+                            if rows != 0 {
+                                book.view.tab_start = None;
+                            }
+                            keys::step_within(book, rows, cols);
+                        }
                     }
                 }
             }

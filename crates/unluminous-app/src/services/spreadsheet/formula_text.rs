@@ -94,6 +94,9 @@ fn reference_at(chars: &[char], i: usize) -> Option<(usize, Option<String>, Rang
             at = j + 1;
         }
     }
+    if let Some((end, range)) = whole_lines_at(chars, at) {
+        return Some((end, sheet, range));
+    }
     let (end, first) = cell_at(chars, at)?;
     if chars.get(end) == Some(&':') {
         if let Some((end2, last)) = cell_at(chars, end + 1) {
@@ -106,6 +109,52 @@ fn reference_at(chars: &[char], i: usize) -> Option<(usize, Option<String>, Rang
         return None;
     }
     Some((end, sheet, Range::cell(first)))
+}
+
+/// Whole columns `A:C` or whole rows `3:5`, either end possibly with a `$`, beginning at `i`.
+fn whole_lines_at(chars: &[char], i: usize) -> Option<(usize, Range)> {
+    use unluminous_sheet::coord::{column_number, MAX_COLS, MAX_ROWS};
+    let part = |from: usize, letters: bool| -> Option<(usize, String)> {
+        let mut j = from;
+        if chars.get(j) == Some(&'$') {
+            j += 1;
+        }
+        let start = j;
+        while j < chars.len()
+            && (if letters { chars[j].is_ascii_alphabetic() } else { chars[j].is_ascii_digit() })
+        {
+            j += 1;
+        }
+        (j > start).then(|| (j, chars[start..j].iter().collect()))
+    };
+    for letters in [true, false] {
+        let Some((end, a)) = part(i, letters) else { continue };
+        if chars.get(end) != Some(&':') {
+            continue;
+        }
+        let Some((end2, b)) = part(end + 1, letters) else { continue };
+        if chars.get(end2).is_some_and(|c| is_name_char(*c) || *c == '(') {
+            continue;
+        }
+        let range = if letters {
+            let (a, b) = (column_number(&a)?, column_number(&b)?);
+            Range::new(
+                unluminous_sheet::CellRef::new(0, a),
+                unluminous_sheet::CellRef::new(MAX_ROWS - 1, b),
+            )
+        } else {
+            let (a, b): (u32, u32) = (a.parse().ok()?, b.parse().ok()?);
+            if a == 0 || b == 0 || a > MAX_ROWS || b > MAX_ROWS {
+                return None;
+            }
+            Range::new(
+                unluminous_sheet::CellRef::new(a - 1, 0),
+                unluminous_sheet::CellRef::new(b - 1, MAX_COLS - 1),
+            )
+        };
+        return Some((end2, range));
+    }
+    None
 }
 
 /// One cell, `$A$1`, beginning at `i`.
@@ -271,9 +320,96 @@ pub fn cycle_reference(text: &str, caret: usize) -> Option<(String, usize)> {
     Some((out, found.start + replacement.chars().count()))
 }
 
+/// The formula with its `index`th reference changed to `range`, as dragging a reference's coloured outline
+/// changes it: the sheet name and each corner's `$` marks are kept. Answers the text and where the reference
+/// now ends.
+pub fn replace_reference(text: &str, index: usize, range: Range) -> Option<(String, usize)> {
+    let found = references(text).into_iter().nth(index)?;
+    let chars: Vec<char> = text.chars().collect();
+    let inside: String = chars[found.start..found.end].iter().collect();
+    let (prefix, body) = match inside.rfind('!') {
+        Some(at) => (inside[..=at].to_owned(), inside[at + 1..].to_owned()),
+        None => (String::new(), inside.clone()),
+    };
+    let marks = |cell: &str| -> (bool, bool) {
+        (cell.starts_with('$'), cell.trim_start_matches('$').contains('$'))
+    };
+    let (a, b) = match body.split_once(':') {
+        Some((a, b)) => (marks(a), marks(b)),
+        None => (marks(&body), marks(&body)),
+    };
+    let write = |cell: unluminous_sheet::CellRef, (col, row): (bool, bool)| -> String {
+        format!(
+            "{}{}{}{}",
+            if col { "$" } else { "" },
+            unluminous_sheet::coord::column_name(cell.col),
+            if row { "$" } else { "" },
+            cell.row + 1
+        )
+    };
+    let shown = match range.a1().contains(':') {
+        // Whole columns and rows are written the plain way.
+        true if range.is_whole_columns() || range.is_whole_rows() => range.a1(),
+        true => format!("{}:{}", write(range.first, a), write(range.last, b)),
+        false => write(range.first, a),
+    };
+    let replacement = format!("{prefix}{shown}");
+    let mut out: String = chars[..found.start].iter().collect();
+    out.push_str(&replacement);
+    out.extend(chars[found.end..].iter());
+    Some((out, found.start + replacement.chars().count()))
+}
+
+/// What Ctrl+Shift+A puts after a function's name: its arguments' names in brackets, `(number1,[number2],...)`.
+pub fn argument_names(args: &str) -> String {
+    format!("({})", args.split(", ").collect::<Vec<_>>().join(","))
+}
+
+/// A sheet's name as a formula writes it before `!`: quoted when it holds anything but letters, digits,
+/// dots and underscores, or starts with a digit.
+pub fn sheet_prefix(name: &str) -> String {
+    let plain = name.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '.')
+        && !name.chars().next().is_some_and(|c| c.is_ascii_digit());
+    match plain {
+        true => format!("{name}!"),
+        false => format!("'{}'!", name.replace('\'', "''")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn whole_columns_and_rows_are_references_too() {
+        let refs = references("=SUM(B:C)+SUM($3:5)");
+        let texts: Vec<String> = refs.iter().map(|r| r.range.a1()).collect();
+        assert_eq!(texts, vec!["B:C", "3:5"]);
+    }
+
+    #[test]
+    fn a_reference_dragged_somewhere_else_keeps_its_sheet_and_its_dollars() {
+        let to = |a: &str| Range::parse(a).unwrap();
+        assert_eq!(
+            replace_reference("=SUM(A1:B2)*$C$3", 1, to("D4")),
+            Some(("=SUM(A1:B2)*$D$4".to_owned(), 16))
+        );
+        assert_eq!(
+            replace_reference("=SUM(Data!A$1:B2)", 0, to("C1:D5")),
+            Some(("=SUM(Data!C$1:D5)".to_owned(), 16))
+        );
+        assert_eq!(replace_reference("=A1+B1", 0, to("A1:A3")).unwrap().0, "=A1:A3+B1");
+        assert_eq!(replace_reference("=A1", 3, to("A2")), None);
+    }
+
+    #[test]
+    fn argument_names_and_sheet_prefixes_are_written_as_excel_writes_them() {
+        assert_eq!(argument_names("number1, [number2], ..."), "(number1,[number2],...)");
+        assert_eq!(sheet_prefix("Data"), "Data!");
+        assert_eq!(sheet_prefix("My sheet"), "'My sheet'!");
+        assert_eq!(sheet_prefix("2024"), "'2024'!");
+        assert_eq!(sheet_prefix("Bob's"), "'Bob''s'!");
+    }
 
     #[test]
     fn references_are_found_outside_strings_and_function_names() {

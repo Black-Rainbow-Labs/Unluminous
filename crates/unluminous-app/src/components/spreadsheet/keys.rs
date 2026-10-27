@@ -131,6 +131,24 @@ pub fn start_typing(book: &mut Book, text: String) {
     book.view.marquee = None;
 }
 
+/// Alt+= on one cell: AutoSum's guess goes into the cell being typed into, with the range it guessed as the
+/// reference being pointed at, so Enter takes it, an arrow or a drag points somewhere else, and Escape leaves
+/// the cell as it was, as Excel's AutoSum does.
+pub fn start_autosum(book: &mut Book) {
+    let formula = book.session.autosum(book.view.sheet, book.view.cursor);
+    start_typing(book, formula.clone());
+    let Some(edit) = book.view.edit.as_mut() else { return };
+    let found = formula_text::references(&formula).into_iter().next();
+    match found {
+        Some(r) => {
+            edit.pointing = Some((r.start, r.end, r.range));
+            edit.caret = Some(r.end);
+        }
+        // Nothing to add up: the caret waits between the brackets.
+        None => edit.caret = Some(formula.chars().count().saturating_sub(1)),
+    }
+}
+
 /// Begin typing into the active cell with what it holds, as F2 and a double click do.
 pub fn start_editing(book: &mut Book, in_bar: bool) {
     let at = book.view.cursor;
@@ -252,6 +270,24 @@ pub fn step_within(book: &mut Book, rows: i64, cols: i64) {
     book.view.reveal = true;
 }
 
+/// Enter after a run of Tab presses goes to the next row of the column the run started in, as Excel's data
+/// entry does. Answers whether it did, which is only when Enter moves down and one cell is chosen.
+pub fn back_to_where_the_tabs_started(
+    book: &mut Book,
+    tab_start: Option<u32>,
+    rows: i64,
+    cols: i64,
+) -> bool {
+    let Some(col) = tab_start else { return false };
+    if rows != 1 || cols != 0 || book.view.range().len() > 1 || !book.view.extra.is_empty() {
+        return false;
+    }
+    let row = (book.view.cursor.row + 1).min(MAX_ROWS - 1);
+    book.view.select_cell(CellRef::new(row, col));
+    book.view.reveal = true;
+    true
+}
+
 /// One key press on the grid.
 fn press(book: &mut Book, key: Key, m: Modifiers, keys: &mut Keys) {
     use Key::*;
@@ -305,6 +341,8 @@ fn moves(book: &mut Book, key: Key, m: Modifiers) -> bool {
     }
     let keep_extra = book.view.selecting == SelectMode::Add;
     let extra = book.view.extra.clone();
+    // Tab remembers where its run started; any other move forgets it.
+    let tab_start = book.view.tab_start.take();
     match key {
         ArrowUp => step(book, -1, 0, extend, jump),
         ArrowDown if m.alt => return false,
@@ -313,11 +351,18 @@ fn moves(book: &mut Book, key: Key, m: Modifiers) -> bool {
         ArrowRight => step(book, 0, 1, extend, jump),
         Enter if !command && !m.alt => {
             let (rows, cols) = enter_step(book.view.enter, m.shift);
-            if rows != 0 || cols != 0 {
+            if !back_to_where_the_tabs_started(book, tab_start, rows, cols)
+                && (rows != 0 || cols != 0)
+            {
                 step_within(book, rows, cols);
             }
         }
-        Tab if !command => step_within(book, 0, if m.shift { -1 } else { 1 }),
+        Tab if !command => {
+            if book.view.range().len() <= 1 {
+                book.view.tab_start = Some(tab_start.unwrap_or(book.view.cursor.col));
+            }
+            step_within(book, 0, if m.shift { -1 } else { 1 })
+        }
         Home if command => {
             let frozen = book.session.book.sheets[book.view.sheet].frozen.unwrap_or((0, 0));
             book.view.move_to(CellRef::new(frozen.0, frozen.1), m.shift);
@@ -409,6 +454,9 @@ fn alt_keys(book: &mut Book, key: Key, m: Modifiers, keys: &mut Keys) {
     use Key::*;
     match key {
         ArrowDown => keys.words.push(say("autocomplete list")),
+        Equals | Plus if book.view.range().len() <= 1 && book.view.extra.is_empty() => {
+            start_autosum(book)
+        }
         Equals | Plus => keys.acts.push(Act::AutoSum),
         Q => {
             book.view.book_menu = Some(String::new());
@@ -724,7 +772,7 @@ pub enum Finish {
 #[derive(Debug, Clone, Default)]
 pub struct Offered {
     pub start: usize,
-    pub names: Vec<&'static str>,
+    pub names: Vec<String>,
 }
 
 /// Read the keys that finish or steer typing, before the box draws and takes the rest.
@@ -739,13 +787,18 @@ pub fn typing(ctx: &egui::Context, book: &mut Book, box_id: egui::Id, offered: &
     let list_open = !offered.names.is_empty();
     let book_enter = book.view.enter;
     let mut finish = Finish::Typing;
-    let mut moves: Vec<(i64, i64, bool)> = Vec::new();
+    // Each pointing move: rows, columns, whether Shift grows the reference, and whether Ctrl jumps to the
+    // edge of the data.
+    let mut moves: Vec<(i64, i64, bool, bool)> = Vec::new();
     let mut cycle = false;
     let mut chosen = edit.chosen as i64;
     let mut complete = false;
     let mut toggle_mode = false;
     let mut no_complete = false;
     let mut arguments_asked = false;
+    let mut names_asked = false;
+    let mut evaluate = false;
+    let mut tabbed = None;
     let typed_more = ctx.input(|i| i.events.iter().any(|e| matches!(e, Event::Text(_))));
     ctx.input_mut(|input| {
         input.events.retain(|event| {
@@ -778,6 +831,7 @@ pub fn typing(ctx: &egui::Context, book: &mut Book, box_id: egui::Id, offered: &
                 }
                 Key::Tab => {
                     finish = Finish::Commit { rows: 0, cols: if m.shift { -1 } else { 1 } };
+                    tabbed = Some(true);
                     false
                 }
                 Key::ArrowDown | Key::ArrowUp if list_open => {
@@ -796,12 +850,22 @@ pub fn typing(ctx: &egui::Context, book: &mut Book, box_id: egui::Id, offered: &
                     arguments_asked = true;
                     false
                 }
+                // Ctrl+Shift+A writes the argument names after a function's name, as Excel does.
+                Key::A if command && m.shift && formula => {
+                    names_asked = true;
+                    false
+                }
+                // F9 turns the chosen part of a formula, or all of it, into its value.
+                Key::F9 if formula && !command => {
+                    evaluate = true;
+                    false
+                }
                 Key::Backspace | Key::Delete => {
                     no_complete = true;
                     true
                 }
                 Key::ArrowUp | Key::ArrowDown | Key::ArrowLeft | Key::ArrowRight
-                    if typed && !command =>
+                    if typed && (!command || pointing_here) =>
                 {
                     let (rows, cols) = match key {
                         Key::ArrowUp => (-1, 0),
@@ -810,9 +874,10 @@ pub fn typing(ctx: &egui::Context, book: &mut Book, box_id: egui::Id, offered: &
                         _ => (0, 1),
                     };
                     if pointing_here {
-                        moves.push((rows, cols, m.shift));
+                        moves.push((rows, cols, m.shift, command));
                     } else {
                         finish = Finish::Commit { rows, cols };
+                        tabbed = Some(false);
                     }
                     false
                 }
@@ -820,7 +885,44 @@ pub fn typing(ctx: &egui::Context, book: &mut Book, box_id: egui::Id, offered: &
             }
         });
     });
+    match tabbed {
+        Some(true) if book.view.tab_start.is_none() => {
+            book.view.tab_start = book.view.edit.as_ref().map(|e| e.at.col)
+        }
+        Some(false) => book.view.tab_start = None,
+        _ => {}
+    }
+    let prefix = pointing_prefix(book);
+    let sheet_index = book.view.sheet;
+    let evaluated = evaluate.then(|| evaluate_part(ctx, book, box_id)).flatten();
     let Some(edit) = book.view.edit.as_mut() else { return finish };
+    if let Some((text, new_caret)) = evaluated {
+        edit.text = text;
+        edit.pointing = None;
+        set_caret(ctx, box_id, new_caret);
+    }
+    if names_asked {
+        if let Some((_, name)) = formula_text::word_before(&edit.text, caret)
+            .or_else(|| formula_text::function_at(&edit.text, caret).map(|(n, _)| (0, n)))
+        {
+            if let Some(function) = unluminous_sheet::functions::find(&name) {
+                let chars: Vec<char> = edit.text.chars().collect();
+                // After `=SUM` or `=SUM(`, the names go in place of the bracket.
+                let at = if chars.get(caret.saturating_sub(1)) == Some(&'(') {
+                    caret - 1
+                } else {
+                    caret
+                };
+                let names = formula_text::argument_names(function.args);
+                let mut text: String = chars[..at].iter().collect();
+                text.push_str(&names);
+                let new_caret = text.chars().count();
+                text.extend(chars[caret.min(chars.len())..].iter());
+                edit.text = text;
+                set_caret(ctx, box_id, new_caret);
+            }
+        }
+    }
     if toggle_mode {
         edit.typed = !edit.typed;
     }
@@ -856,7 +958,9 @@ pub fn typing(ctx: &egui::Context, book: &mut Book, box_id: egui::Id, offered: &
             let chars: Vec<char> = edit.text.chars().collect();
             let mut text: String = chars[..offered.start].iter().collect();
             text.push_str(name);
-            text.push('(');
+            if unluminous_sheet::functions::find(name).is_some() {
+                text.push('(');
+            }
             let new_caret = text.chars().count();
             text.extend(chars[caret.min(chars.len())..].iter());
             edit.text = text;
@@ -870,26 +974,86 @@ pub fn typing(ctx: &egui::Context, book: &mut Book, box_id: egui::Id, offered: &
             set_caret(ctx, box_id, new_caret);
         }
     }
-    for (rows, cols, extend) in moves {
+    for (rows, cols, extend, jump) in moves {
         let (start, end, range) = edit.pointing.unwrap_or((caret, caret, Range::cell(edit.at)));
         let base = if edit.pointing.is_some() { range } else { Range::cell(edit.at) };
-        let moved = if extend {
-            Range::new(base.first, base.last.offset(rows, cols).unwrap_or(base.last))
-        } else {
-            let to = base.first.offset(rows, cols).unwrap_or(base.first);
-            Range::cell(to)
+        let sheet = &book.session.book.sheets[sheet_index];
+        let go = |from: unluminous_sheet::CellRef| match jump {
+            true => crate::services::spreadsheet::view::edge_of_data(sheet, from, rows, cols),
+            false => from.offset(rows, cols).unwrap_or(from),
         };
-        let new_end = put_reference(edit, start, end, moved);
+        let moved = match extend {
+            true => Range::new(base.first, go(base.last)),
+            false => Range::cell(go(base.first)),
+        };
+        let new_end = put_reference(edit, start, end, moved, &prefix);
+        // A grown reference keeps the corner it started from as its first, so the next Shift and arrow moves
+        // the other one, the way the selection's own anchor works.
+        if extend {
+            if let Some(p) = edit.pointing.as_mut() {
+                p.2 = Range { first: base.first, last: go(base.last) };
+            }
+        }
         set_caret(ctx, box_id, new_end);
     }
     finish
 }
 
+/// What a reference pointed at goes after: the sheet's name when the sheet showing is not the one the cell
+/// being typed into is on, as Excel writes `Data!B3` after a click on another sheet's tab.
+pub fn pointing_prefix(book: &Book) -> String {
+    match &book.view.edit {
+        Some(edit) if edit.sheet != book.view.sheet => {
+            formula_text::sheet_prefix(&book.session.book.sheets[book.view.sheet].name)
+        }
+        _ => String::new(),
+    }
+}
+
+/// F9 while a formula is typed: the chosen part of it, or all of it after the `=`, worked out and written
+/// back as the value, the way Excel's F9 shows what a piece of a formula comes to. Answers the new text and
+/// where the caret goes, or `None` when the part does not work out.
+fn evaluate_part(ctx: &egui::Context, book: &Book, box_id: egui::Id) -> Option<(String, usize)> {
+    use unluminous_sheet::value::Value;
+    let edit = book.view.edit.as_ref()?;
+    let chars: Vec<char> = edit.text.chars().collect();
+    let state = egui::TextEdit::load_state(ctx, box_id)?;
+    let range = state.cursor.char_range()?;
+    let (a, b) = (range.primary.index.0, range.secondary.index.0);
+    let (from, to) = match a == b {
+        true => (1.min(chars.len()), chars.len()),
+        false => (a.min(b), a.max(b).min(chars.len())),
+    };
+    let part: String = chars[from..to].iter().collect();
+    if part.trim().is_empty() {
+        return None;
+    }
+    let value = book.session.evaluate_at(edit.sheet, edit.at, &format!("={part}")).ok()?;
+    let literal = match value {
+        Value::Text(t) => format!("\"{}\"", t.replace('"', "\"\"")),
+        Value::Number(n) => unluminous_sheet::value::number_to_text(n),
+        Value::Bool(b) => if b { "TRUE" } else { "FALSE" }.to_owned(),
+        Value::Empty => "0".to_owned(),
+        other => other.to_text(),
+    };
+    let mut text: String = chars[..from].iter().collect();
+    text.push_str(&literal);
+    let caret = text.chars().count();
+    text.extend(chars[to..].iter());
+    Some((text, caret))
+}
+
 /// Put a reference into the formula being typed, replacing the one pointed at before, and answer where it
 /// ends.
-pub fn put_reference(edit: &mut Edit, start: usize, end: usize, range: Range) -> usize {
+pub fn put_reference(
+    edit: &mut Edit,
+    start: usize,
+    end: usize,
+    range: Range,
+    prefix: &str,
+) -> usize {
     let chars: Vec<char> = edit.text.chars().collect();
-    let shown = range.a1();
+    let shown = format!("{prefix}{}", range.a1());
     let mut text: String = chars[..start.min(chars.len())].iter().collect();
     text.push_str(&shown);
     let new_end = text.chars().count();

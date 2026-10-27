@@ -349,3 +349,127 @@ fn a_drag_while_typing_a_formula_points_at_the_whole_range() {
     let v = view(&mut harness);
     assert_eq!(v["current"]["editing"]["text"], "=SUM(B:C", "the headers point at whole columns");
 }
+
+/// Where a cell was drawn, from the `where` verb.
+fn cell_at(harness: &mut Harness<'static, UnluminousApp>, cell: &str) -> egui::Pos2 {
+    let v = did(harness, &format!("plugins run spreadsheet where {cell}"));
+    egui::pos2(v["x"].as_f64().unwrap() as f32, v["y"].as_f64().unwrap() as f32)
+}
+
+/// Excel's data entry: Tab, Tab, then Enter goes to the next row of the column the Tabs started in.
+#[test]
+fn enter_after_a_run_of_tabs_goes_back_to_the_column_it_started_in() {
+    let (_, mut harness) = a_workbook_window("unluminous-sheet-tab-enter", "prices.csv");
+    did(&mut harness, "plugins run spreadsheet select A5");
+    for word in ["Jam", "1.5"] {
+        type_text(&mut harness, word);
+        press(&mut harness, egui::Key::Tab, Modifiers::NONE);
+    }
+    type_text(&mut harness, "3");
+    press(&mut harness, egui::Key::Enter, Modifiers::NONE);
+    let v = view(&mut harness);
+    assert_eq!(v["current"]["selection"]["active"], "A6", "Enter goes back to column A");
+    let cell = did(&mut harness, "plugins run spreadsheet cell C5");
+    assert_eq!(cell["value"], serde_json::json!(3.0));
+    // Without typing, the same walk through the cells.
+    did(&mut harness, "plugins run spreadsheet select B2");
+    press(&mut harness, egui::Key::Tab, Modifiers::NONE);
+    press(&mut harness, egui::Key::Tab, Modifiers::NONE);
+    press(&mut harness, egui::Key::Enter, Modifiers::NONE);
+    let v = view(&mut harness);
+    assert_eq!(v["current"]["selection"]["active"], "B3");
+}
+
+/// Alt+= puts AutoSum's guess into the cell with the range pointed at, so an arrow can change it before
+/// Enter writes it; on a block it writes a total under each column.
+#[test]
+fn autosum_points_at_its_guess_and_totals_a_block() {
+    let (_, mut harness) = a_workbook_window("unluminous-sheet-autosum", "prices.csv");
+    did(&mut harness, "plugins run spreadsheet select B5");
+    press(&mut harness, egui::Key::Equals, Modifiers::ALT);
+    let v = view(&mut harness);
+    assert_eq!(v["current"]["editing"]["text"], "=SUM(B2:B4)");
+    assert_eq!(v["current"]["mode"], "Point");
+    press(&mut harness, egui::Key::Enter, Modifiers::NONE);
+    let cell = did(&mut harness, "plugins run spreadsheet cell B5");
+    assert_eq!(cell["value"], serde_json::json!(9.75));
+    did(&mut harness, "plugins run spreadsheet select C2:C4");
+    press(&mut harness, egui::Key::Equals, Modifiers::ALT);
+    let cell = did(&mut harness, "plugins run spreadsheet cell C5");
+    assert_eq!(cell["value"], serde_json::json!(12.0), "a block gets its total under it");
+}
+
+/// Ctrl+Shift+A writes the argument names, F9 turns a chosen part into its value, and Ctrl and an arrow
+/// points at the edge of the data.
+#[test]
+fn the_formula_keys_excel_has_work_while_typing() {
+    let (_, mut harness) = a_workbook_window("unluminous-sheet-formula-keys", "prices.csv");
+    did(&mut harness, "plugins run spreadsheet select E2");
+    type_text(&mut harness, "=SUM");
+    press(&mut harness, egui::Key::A, Modifiers::COMMAND | Modifiers::SHIFT);
+    let v = view(&mut harness);
+    assert_eq!(v["current"]["editing"]["text"], "=SUM(number1,[number2],...)");
+    press(&mut harness, egui::Key::Escape, Modifiers::NONE);
+    assert_eq!(view(&mut harness)["current"]["editing"], serde_json::Value::Null, "Escape leaves the cell");
+    type_text(&mut harness, "=2*B2");
+    press(&mut harness, egui::Key::F9, Modifiers::NONE);
+    let v = view(&mut harness);
+    assert_eq!(v["current"]["editing"]["text"], "=7", "F9 with nothing chosen works out all of it");
+    press(&mut harness, egui::Key::Escape, Modifiers::NONE);
+    type_text(&mut harness, "=SUM(");
+    press(&mut harness, egui::Key::ArrowLeft, Modifiers::NONE);
+    press(&mut harness, egui::Key::ArrowLeft, Modifiers::NONE);
+    press(&mut harness, egui::Key::ArrowLeft, Modifiers::NONE);
+    press(&mut harness, egui::Key::ArrowDown, Modifiers::COMMAND | Modifiers::SHIFT);
+    let v = view(&mut harness);
+    assert_eq!(v["current"]["editing"]["text"], "=SUM(B2:B4", "Ctrl+Shift+Down grows to the data's edge");
+}
+
+/// Excel's range finder: a reference's coloured outline is carried by its border and resized by a corner,
+/// and the formula follows.
+#[test]
+fn a_references_outline_is_dragged_to_move_and_resize_it() {
+    let (_, mut harness) = a_workbook_window("unluminous-sheet-range-finder", "prices.csv");
+    did(&mut harness, "plugins run spreadsheet select E2");
+    type_text(&mut harness, "=B2+1");
+    // The bottom right corner of B2's outline pulled down to B4.
+    let b2 = did(&mut harness, "plugins run spreadsheet where B2");
+    let corner = egui::pos2(
+        (b2["left"].as_f64().unwrap() + b2["width"].as_f64().unwrap()) as f32,
+        (b2["top"].as_f64().unwrap() + b2["height"].as_f64().unwrap()) as f32,
+    );
+    let b4 = cell_at(&mut harness, "B4");
+    drag_in_steps(&mut harness, corner, b4 + egui::vec2(10.0, 4.0), Modifiers::NONE);
+    let v = view(&mut harness);
+    assert_eq!(v["current"]["editing"]["text"], "=B2:B4+1", "the corner resizes it");
+    // Its left border carried one column right.
+    let b3 = cell_at(&mut harness, "B3");
+    let left = egui::pos2(b2["left"].as_f64().unwrap() as f32 + 1.0, b3.y);
+    let c3 = cell_at(&mut harness, "C3");
+    drag_in_steps(&mut harness, left, egui::pos2(c3.x - 25.0, c3.y), Modifiers::NONE);
+    let v = view(&mut harness);
+    assert_eq!(v["current"]["editing"]["text"], "=C2:C4+1", "the border carries it");
+}
+
+/// A click on another sheet's tab while a formula takes a reference keeps the formula open, and a click on
+/// a cell there writes the sheet's name before it; Enter goes back to the formula's own sheet.
+#[test]
+fn pointing_reaches_a_cell_on_another_sheet() {
+    let (_, mut harness) = a_workbook_window("unluminous-sheet-point-sheets", "features.xlsx");
+    did(&mut harness, "plugins run spreadsheet select H20");
+    type_text(&mut harness, "=");
+    harness.get_by_label("Sheet Summary").click();
+    steady(&mut harness);
+    let v = view(&mut harness);
+    assert_eq!(v["current"]["sheet"], "Summary");
+    assert_eq!(v["current"]["editing"]["text"], "=Summary!");
+    let a1 = cell_at(&mut harness, "A1");
+    drag_in_steps(&mut harness, a1, a1, Modifiers::NONE);
+    let v = view(&mut harness);
+    assert_eq!(v["current"]["editing"]["text"], "=Summary!A1");
+    press(&mut harness, egui::Key::Enter, Modifiers::NONE);
+    let v = view(&mut harness);
+    assert_eq!(v["current"]["sheet"], "Data", "Enter goes back to the formula's sheet");
+    let cell = did(&mut harness, "plugins run spreadsheet cell H20");
+    assert_eq!(cell["formula"], "=Summary!A1");
+}

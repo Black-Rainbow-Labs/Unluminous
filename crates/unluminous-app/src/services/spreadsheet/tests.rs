@@ -391,3 +391,40 @@ fn a_chart_over_two_areas_is_named_by_the_first_and_choosing_cells_lets_go_of_it
     run(&mut sheet, "select A1");
     assert!(sheet.current_book().unwrap().view.chart.is_none());
 }
+
+/// AutoSum on a block writes a total under each column, in the block's empty last row when it has one,
+/// and across for a block one row tall (`task-2382`).
+#[test]
+fn autosum_on_a_block_totals_each_column_where_excel_puts_it() {
+    let (mut sheet, _) = with_data("autosum-block");
+    let at = |a: &str| unluminous_sheet::CellRef::parse(a).unwrap();
+    let range = |a: &str| unluminous_sheet::Range::parse(a).unwrap();
+    let book = sheet.current_book().unwrap();
+    let s = &book.session.book.sheets[0];
+    assert_eq!(
+        actions::autosum_totals(s, range("B2:C5")),
+        vec![(at("B6"), "=SUM(B2:B5)".to_owned()), (at("C6"), "=SUM(C2:C5)".to_owned())]
+    );
+    assert_eq!(
+        actions::autosum_totals(s, range("B2:C6")),
+        vec![(at("B6"), "=SUM(B2:B5)".to_owned()), (at("C6"), "=SUM(C2:C5)".to_owned())],
+        "an empty last row takes the totals"
+    );
+    assert_eq!(actions::autosum_totals(s, range("B2:C2")), vec![(at("D2"), "=SUM(B2:C2)".to_owned())]);
+    assert!(actions::autosum_totals(s, range("A2:A5")).is_empty(), "text has nothing to add up");
+}
+
+/// Formula AutoComplete offers names that start with the letters first, then names that hold them, and never
+/// offers a function for what is a cell's address.
+#[test]
+fn the_function_list_offers_starts_then_insides_and_defined_names() {
+    let (mut sheet, _) = with_data("offered");
+    run(&mut sheet, "names new Prices Sheet1!$B$2:$B$5");
+    let book = sheet.current_book().unwrap();
+    let offered = crate::components::spreadsheet::editor::offered_names(book, "PRI");
+    assert_eq!(&offered[..4], ["PRICE", "PRICEDISC", "PRICEMAT", "Prices"], "{offered:?}");
+    let offered = crate::components::spreadsheet::editor::offered_names(book, "DAYS");
+    assert_eq!(offered[0], "DAYS");
+    assert!(offered.iter().any(|n| n == "NETWORKDAYS"), "{offered:?}");
+    assert!(crate::components::spreadsheet::editor::offered_names(book, "C2").is_empty());
+}
