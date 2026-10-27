@@ -6,6 +6,10 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.18.1 — 2026-10-27
+
+- Word fixes for bullets, Cmd shortcuts on a Mac, the cursor and the right click menu (`task-2383`)
+
 ## 1.18.0 — 2026-10-27
 
 - A drag while typing a formula points at the whole range, as Excel's Point mode does (`task-2382`)
