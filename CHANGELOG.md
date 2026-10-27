@@ -6,7 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.17.2 — 2026-10-27
+## 1.17.3 — 2026-10-27
+
+- Word documents edited from the command line look the way Word makes them (`task-2377`)
+- A paragraph style takes the paragraph's own alignment off, in the agent test too (`task-2377`)
+- Accept the Word pictures with headings in Calibri and the table where the empty line was (`task-2377`)
+
+## 1.17.2 — 2026-10-26
 
 - Spell check on non-breaking spaces, selecting past the fold, Shift+click, every chat text selectable (`task-2375`)
 
