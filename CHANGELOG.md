@@ -6,6 +6,10 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.17.2 — 2026-10-27
+
+- Spell check on non-breaking spaces, selecting past the fold, Shift+click, every chat text selectable (`task-2375`)
+
 ## 1.17.1 — 2026-10-26
 
 - Register the nightly with pwsh's full path so Task Scheduler can start it (`task-2356`)
