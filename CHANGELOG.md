@@ -6,7 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.17.3 — 2026-10-27
+## 1.17.4 — 2026-10-27
+
+- A workbook in Unluminous looks the way Excel draws it (`task-2378`)
+- Excel's chart and filter button colours are named in excel_ink; data bars fade to the paper they are on (`task-2378`)
+- Accept the spreadsheet pictures with text at its true size, the workbook's face in the cell editor and gradient data bars (`task-2378`)
+
+## 1.17.3 — 2026-10-26
 
 - Word documents edited from the command line look the way Word makes them (`task-2377`)
 - A paragraph style takes the paragraph's own alignment off, in the agent test too (`task-2377`)
