@@ -1198,8 +1198,10 @@ mod tests {
     #[test]
     fn each_new_plugin_colors_what_its_description_says() {
         use unluminous_core::syntax::{scan, Token};
+        // A plugin, a few lines of its language, and what some of the words in them are read as.
+        type Case<'a> = (&'a str, &'a str, &'a [(&'a str, Token)]);
         let (plugins, _) = Plugins::load(None);
-        let cases: &[(&str, &str, &[(&str, Token)])] = &[
+        let cases: &[Case] = &[
             (
                 "dockerfile",
                 "FROM rust:1.85 AS build\n# a note\nENV PORT=8080\nCOPY --from=build /app /app\n",
