@@ -7776,6 +7776,29 @@ is `overlays::remember_popup` and `overlays::a_popup_covers`; a new popup calls 
 Spell check is `unluminous_word::spell` (SCOWL en_US through `spellbook`, inflated only on first use) and
 `services::word::spelling`, which caches each paragraph's result by its checked text. TDD section 13 has the rules.
 
+### Word on a Mac, the caret after a bullet, and the right click menu (`task-2383`)
+
+- **An atom with no length is no place for the caret.** A list's label, the tab after it and a picture bullet
+  all sit at offset 0, and each gave the caret a stop there, so offset 0 was drawn and hit at the bullet: a
+  gap before the first word, a press on the first letter landing after it, and no way to select that letter.
+  `place_line` skips them and keeps where the text starts for an empty list paragraph's caret.
+  `layout::tests::list_caret` and `a_press_on_the_first_letter_after_a_bullet_puts_the_caret_before_it`.
+- **Word's chord table means `Cmd` on a Mac.** `keys::set_chords` reads `CHORDS` with `parse_for(chord, false)`,
+  so `Ctrl+B` there is the command key on every platform, as Word for Mac has it. A person's own moved chords
+  are still read the platform's way. `Cmd+Left`, `Cmd+Right` and `Option` with an arrow move the caret the Mac
+  way (`keys::mac_caret_key`).
+- **The menu bar's Edit entries are handed to a Word or workbook tab.** On macOS `Cmd+Z`, `Cmd+A`, `Cmd+X`,
+  `Cmd+C` and `Cmd+V` are key equivalents, so the tab never sees the key, and the entries went to the empty
+  document behind it. `give_the_edit_entry_to_a_plugin_tab` sends the tab the event the key would have made
+  on the next frame (`app::send_on_the_next_frame`), and the Edit menu stays enabled while a plugin tab holds
+  the keyboard. `the_edit_menu_undoes_selects_and_cuts_in_a_word_tab`.
+- **The right click menu is the window's menu.** It is `controls::menu_frame` and `controls::menu_rows`, with
+  each row a `PluginCommand` for `word` and the chord from the chord table beside it. A family of entries that
+  differ by one word (Wrap Text, the table's inserts and deletes, Synonyms) is one row opening to the side.
+- **A drag the Word tab remembers ends when no button is held.** The ruler and the table column edge used to
+  wait for a release they could miss, and kept the resize arrows meanwhile. The page sets the text cursor
+  before `pointer` runs, so the column edge's arrows show.
+
 ### Word round 3: the Word tab is drawn in the design system (`task-2366`)
 
 `tasks/task-2366-word-design-tdd.md` is the design. Rules it left:

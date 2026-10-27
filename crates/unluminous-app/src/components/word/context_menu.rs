@@ -7,133 +7,177 @@
 //! Every entry but the clipboard's is an id in the action table, so the menu runs exactly what the `/`
 //! search, the panel and `plugins run word action <id>` run. `Shift+F10` opens it at the caret.
 
-use egui::{Pos2, Rect, Vec2};
+use egui::{Pos2, Rect};
 use unluminous_word::model::{FIELD_BEGIN, FIELD_END};
 use unluminous_word::position::{self, Pos, StoryId};
 
+use crate::app::actions::{Action, Entry, Shortcut};
+use crate::components::controls;
 use crate::services::plugin_ui::{Look, Request};
 use crate::services::word::{ContextMenu, Doc, MenuEntry};
 
+/// A row that runs the action `id`.
+fn item(label: &str, id: &str) -> MenuEntry {
+    MenuEntry { label: label.to_owned(), id: id.to_owned(), children: Vec::new() }
+}
+
+/// A line between two groups.
+fn line() -> MenuEntry {
+    item("-", "")
+}
+
+/// A menu inside the menu, opened to the side.
+fn group(label: &str, children: Vec<MenuEntry>) -> MenuEntry {
+    MenuEntry { label: label.to_owned(), id: String::new(), children }
+}
+
 /// What the pointer was over when the menu was asked for.
+///
+/// Grouped the way Word for Mac groups it (`task-2383`): the clipboard first, then what belongs to the thing
+/// under the pointer, then formatting, then links and comments, then the words that could stand in for the one
+/// pressed on. A family of entries that differ by one word (the seven ways text wraps, the four places a row
+/// or column goes, the synonyms) is one row that opens to the side, so the menu stays short enough to read.
 fn entries(doc: &Doc, at: &Pos) -> Vec<MenuEntry> {
-    let entry = |label: &str, id: &str| MenuEntry { label: label.to_owned(), id: id.to_owned() };
-    let line = || entry("-", "");
-    let mut out = Vec::new();
+    let mut out = vec![item("Cut", "cut"), item("Copy", "copy"), item("Paste", "paste")];
     // A picture, a shape or a text box the press selected.
     if doc.session.selected_object().is_some() {
-        out.extend([entry("Cut", "cut"), entry("Copy", "copy"), entry("Paste", "paste"), line()]);
-        for (label, id) in [
-            ("Wrap Text: In Line with Text", "wrap-inline"),
-            ("Wrap Text: Square", "wrap-square"),
-            ("Wrap Text: Tight", "wrap-tight"),
-            ("Wrap Text: Through", "wrap-through"),
-            ("Wrap Text: Top and Bottom", "wrap-top-and-bottom"),
-            ("Wrap Text: Behind Text", "wrap-behind"),
-            ("Wrap Text: In Front of Text", "wrap-front"),
-        ] {
-            out.push(entry(label, id));
-        }
         out.push(line());
-        out.push(entry("Size and Position...", "picture-properties"));
+        out.push(group(
+            "Wrap Text",
+            vec![
+                item("In Line with Text", "wrap-inline"),
+                item("Square", "wrap-square"),
+                item("Tight", "wrap-tight"),
+                item("Through", "wrap-through"),
+                item("Top and Bottom", "wrap-top-and-bottom"),
+                item("Behind Text", "wrap-behind"),
+                item("In Front of Text", "wrap-front"),
+            ],
+        ));
+        out.push(group(
+            "Arrange",
+            vec![item("Bring Forward", "bring-forward"), item("Send Backward", "send-backward")],
+        ));
+        out.push(line());
+        out.push(item("Size and Position...", "picture-properties"));
         if doc.session.object_info().is_some_and(|i| i.kind == "Picture") {
-            out.push(entry("Crop", "crop"));
-            out.push(entry("Reset Picture", "reset-picture"));
+            out.push(item("Crop", "crop"));
+            out.push(item("Reset Picture", "reset-picture"));
         }
-        out.push(entry("Edit Alt Text...", "alt-text"));
-        out.extend([
-            entry("Bring Forward", "bring-forward"),
-            entry("Send Backward", "send-backward"),
-        ]);
+        out.push(item("Edit Alt Text...", "alt-text"));
         return out;
     }
-    out.extend([entry("Cut", "cut"), entry("Copy", "copy"), entry("Paste", "paste")]);
     if doc.view.pasted.is_some() {
-        out.push(entry("Paste Options: Keep Text Only", "paste-text-only"));
+        out.push(item("Paste Text Only", "paste-text-only"));
     }
+    out.extend(what_is_under(doc, at));
     out.push(line());
-    if let StoryId::Header(_) = at.story {
-        out.extend([
-            entry("Remove Header or Footer", "remove-header"),
-            entry("Page Number", "page-number"),
-        ]);
-        out.push(entry("Close Header and Footer", "close-header"));
+    out.extend([item("Font...", "font-dialog"), item("Paragraph...", "paragraph-dialog")]);
+    out.extend([
+        item("Bullets", "bullets"),
+        item("Numbering", "numbering"),
+        item("Styles", "styles-level"),
+    ]);
+    out.push(line());
+    match doc.session.hyperlink_at(at) {
+        Some(_) => out.extend([
+            item("Edit Hyperlink...", "edit-link"),
+            item("Open Hyperlink", "open-link"),
+            item("Copy Hyperlink", "copy-link"),
+            item("Remove Hyperlink", "remove-link"),
+        ]),
+        None => out.push(item("Link...", "insert-link")),
+    }
+    if !matches!(at.story, StoryId::Header(_)) {
+        out.push(item("New Comment", "comment"));
+    }
+    let synonyms = synonyms_of(&word_at(doc, at));
+    if !synonyms.is_empty() {
         out.push(line());
+        out.push(group(
+            "Synonyms",
+            synonyms.iter().map(|s| item(s, &format!("synonym:{s}"))).collect(),
+        ));
+    }
+    out
+}
+
+/// The entries that belong to what is under the pointer: a header, a field, a note reference or a table
+/// cell, each after a line of its own.
+fn what_is_under(doc: &Doc, at: &Pos) -> Vec<MenuEntry> {
+    let mut out = Vec::new();
+    if let StoryId::Header(_) = at.story {
+        out.push(line());
+        out.extend([
+            item("Remove Header or Footer", "remove-header"),
+            item("Page Number", "page-number"),
+            item("Close Header and Footer", "close-header"),
+        ]);
     }
     if field_at(doc, at) {
+        out.push(line());
         out.extend([
-            entry("Update Field", "update-field"),
-            entry("Toggle Field Codes", "field-codes"),
-            entry("Edit Field...", "edit-field"),
-            line(),
+            item("Update Field", "update-field"),
+            item("Toggle Field Codes", "field-codes"),
+            item("Edit Field...", "edit-field"),
         ]);
     }
-    if doc.session.note_at(at).is_some() {
-        let endnote = matches!(doc.session.note_at(at), Some(StoryId::Endnote(_)));
-        out.push(entry(if endnote { "Go to Endnote" } else { "Go to Footnote" }, "go-to-note"));
-        out.push(entry(
+    if let Some(note) = doc.session.note_at(at) {
+        let endnote = matches!(note, StoryId::Endnote(_));
+        out.push(line());
+        out.push(item(if endnote { "Go to Endnote" } else { "Go to Footnote" }, "go-to-note"));
+        out.push(item(
             if endnote { "Convert to Footnote" } else { "Convert to Endnote" },
             "convert-note",
         ));
-        out.push(line());
     }
     if doc.session.cell_at_caret().is_some() {
-        for (label, id) in [
-            ("Insert Rows Above", "insert-row-above"),
-            ("Insert Rows Below", "insert-row-below"),
-            ("Insert Columns to the Left", "insert-column-left"),
-            ("Insert Columns to the Right", "insert-column-right"),
-            ("Delete Rows", "delete-row"),
-            ("Delete Columns", "delete-column"),
-            ("Delete Table", "delete-table"),
-            ("Merge Cells", "merge-cells"),
-            ("Split Cells", "split-cells"),
-            ("Distribute Rows Evenly", "distribute-rows"),
-            ("Distribute Columns Evenly", "distribute-columns"),
-            ("Borders and Shading...", "borders-and-shading"),
-            ("Table Properties...", "table-properties"),
-        ] {
-            out.push(entry(label, id));
-        }
         out.push(line());
-    }
-    out.extend([entry("Font...", "font-dialog"), entry("Paragraph...", "paragraph-dialog")]);
-    out.extend([
-        entry("Bullets", "bullets"),
-        entry("Numbering", "numbering"),
-        entry("Styles", "styles-level"),
-    ]);
-    match doc.session.hyperlink_at(at) {
-        Some(_) => out.extend([
-            entry("Edit Hyperlink...", "edit-link"),
-            entry("Open Hyperlink", "open-link"),
-            entry("Copy Hyperlink", "copy-link"),
-            entry("Remove Hyperlink", "remove-link"),
-        ]),
-        None => out.push(entry("Link...", "insert-link")),
-    }
-    if !matches!(at.story, StoryId::Header(_)) {
-        out.push(entry("New Comment", "comment"));
-    }
-    let word = word_at(doc, at);
-    if !word.is_empty() {
-        let meanings = unluminous_word::thesaurus::synonyms(&word);
-        // The most common meaning's words, as Word's Synonyms list offers: every sense together put a
-        // rare or anatomical sense of a word beside its everyday one.
-        let mut synonyms: Vec<String> =
-            meanings.into_iter().map(|m| m.synonyms).find(|s| !s.is_empty()).unwrap_or_default();
-        synonyms.dedup();
-        if !synonyms.is_empty() {
-            out.push(line());
-            out.push(entry(&format!("Synonyms of {word}"), ""));
-            for synonym in synonyms.into_iter().take(8) {
-                out.push(MenuEntry {
-                    label: format!("    {synonym}"),
-                    id: format!("synonym:{synonym}"),
-                });
-            }
-        }
+        out.push(group(
+            "Insert Rows and Columns",
+            vec![
+                item("Rows Above", "insert-row-above"),
+                item("Rows Below", "insert-row-below"),
+                item("Columns to the Left", "insert-column-left"),
+                item("Columns to the Right", "insert-column-right"),
+            ],
+        ));
+        out.push(group(
+            "Delete Rows and Columns",
+            vec![
+                item("Rows", "delete-row"),
+                item("Columns", "delete-column"),
+                item("Entire Table", "delete-table"),
+            ],
+        ));
+        out.extend([item("Merge Cells", "merge-cells"), item("Split Cells", "split-cells")]);
+        out.push(group(
+            "Distribute",
+            vec![
+                item("Rows Evenly", "distribute-rows"),
+                item("Columns Evenly", "distribute-columns"),
+            ],
+        ));
+        out.extend([
+            item("Borders and Shading...", "borders-and-shading"),
+            item("Table Properties...", "table-properties"),
+        ]);
     }
     out
+}
+
+/// The words a synonym list offers for `word`: the most common meaning's, eight at most, as Word's Synonyms
+/// list offers. Every sense together put a rare or anatomical sense of a word beside its everyday one.
+fn synonyms_of(word: &str) -> Vec<String> {
+    if word.is_empty() {
+        return Vec::new();
+    }
+    let meanings = unluminous_word::thesaurus::synonyms(word);
+    let mut synonyms: Vec<String> =
+        meanings.into_iter().map(|m| m.synonyms).find(|s| !s.is_empty()).unwrap_or_default();
+    synonyms.dedup();
+    synonyms.truncate(8);
+    synonyms
 }
 
 /// Whether `at` is inside a field: between a field's begin and end, or in a simple field.
@@ -211,65 +255,96 @@ pub fn open_at_caret(doc: &mut Doc, area: Rect) {
     open(doc, point, pos);
 }
 
+/// How wide the menu is: room for `Columns to the Right` beside its chevron, and for `Paragraph...`
+/// beside its chord.
+const WIDTH: f32 = 260.0;
+
 /// Draw the menu when it is open, and run what is chosen.
+///
+/// `task-2383` redrew it with the window's own menu parts: the raised card of `controls::menu_frame`, and
+/// `controls::menu_rows`, which carves the row under the pointer, draws the lines as grooves, puts the
+/// chord in a quiet column on the right and opens a family of entries to the side. It was egui's own
+/// buttons, labels and separators before, which is the one menu in the window that looked like none of
+/// the others.
 pub fn show(
     ui: &mut egui::Ui,
-    look: &Look<'_>,
+    _look: &Look<'_>,
     doc: &mut Doc,
     area: Rect,
     requests: &mut Vec<Request>,
 ) {
     let Some(menu) = doc.view.context_menu.clone() else { return };
-    // Sized as the window's own menus are, by their row height, not by the document's font: a large editor
-    // font made every row of this menu taller than the lines of the page it was opened over.
-    let row = look.menu_row_height;
-    let text = row * 0.48;
-    let width = row * 8.5;
-    let height =
-        menu.entries.iter().map(|e| if e.label == "-" { 7.0 } else { row }).sum::<f32>() + 8.0;
+    let rows = menu_entries(doc, &menu.entries);
+    let gap = ui.spacing().item_spacing.y;
+    let height = rows
+        .iter()
+        .map(|e| match e {
+            Entry::Separator => 11.0 + gap,
+            _ => controls::MENU_ROW + gap,
+        })
+        .sum::<f32>()
+        + 16.0;
+    // Kept inside the pages, as Word keeps its menu inside its window.
     let mut at = menu.at;
-    at.x = at.x.min(area.right() - width - 4.0).max(area.left());
+    at.x = at.x.min(area.right() - WIDTH - 4.0).max(area.left());
     at.y = at.y.min(area.bottom() - height - 4.0).max(area.top());
-    let rect = Rect::from_min_size(at, Vec2::new(width, height));
-    super::overlays::remember_popup(ui, rect);
+    let popup = egui::Popup::new(
+        egui::Id::new(("word-context-menu", &doc.key)),
+        ui.ctx().clone(),
+        at,
+        ui.layer_id(),
+    )
+    .kind(egui::PopupKind::Menu)
+    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+    .layout(egui::Layout::top_down_justified(egui::Align::Min))
+    .frame(controls::menu_frame(ui))
+    .width(WIDTH);
     let mut chosen: Option<String> = None;
-    egui::Area::new(ui.id().with(("word-context-menu", &doc.key)))
-        .order(egui::Order::Foreground)
-        .fixed_pos(at)
-        .show(ui.ctx(), |ui| {
-            crate::components::controls::menu_frame(ui).show(ui, |ui| {
-                ui.set_width(width - 16.0);
-                ui.spacing_mut().item_spacing.y = 0.0;
-                for entry in &menu.entries {
-                    if entry.label == "-" {
-                        ui.separator();
-                        continue;
-                    }
-                    if entry.id.is_empty() {
-                        ui.label(egui::RichText::new(&entry.label).weak().size(text * 0.92));
-                        continue;
-                    }
-                    let enabled = enabled(doc, &entry.id);
-                    let button = egui::Button::new(egui::RichText::new(&entry.label).size(text))
-                        .frame(false)
-                        .min_size(Vec2::new(width - 16.0, row));
-                    let response = ui.add_enabled(enabled, button);
-                    response.widget_info(|| {
-                        egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, &entry.label)
-                    });
-                    if response.clicked() {
-                        chosen = Some(entry.id.clone());
-                    }
-                }
-            });
-        });
-    let pressed_outside = ui.input(|i| i.pointer.any_pressed())
-        && ui.input(|i| i.pointer.interact_pos()).is_some_and(|p| !rect.contains(p));
+    let mut close = false;
+    if let Some(response) = popup.show(|ui| controls::menu_rows(ui, &rows, 0.0)) {
+        super::overlays::remember_popup(ui, response.response.rect);
+        close = response.response.should_close();
+        if let Some(Action::PluginCommand { command, .. }) = response.inner {
+            chosen = Some(command);
+        }
+    }
     if let Some(id) = chosen {
         doc.view.context_menu = None;
         run(doc, &id, &menu, requests);
-    } else if pressed_outside || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+    } else if close || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
         doc.view.context_menu = None;
+    }
+}
+
+/// The menu's rows as the window's menus hold theirs: each a plugin command with the chord that runs it
+/// beside it, dimmed when it cannot be run now.
+fn menu_entries(doc: &Doc, entries: &[MenuEntry]) -> Vec<Entry> {
+    entries
+        .iter()
+        .map(|entry| match entry {
+            e if e.label == "-" => Entry::Separator,
+            e if !e.children.is_empty() => {
+                Entry::Submenu { name: e.label.clone(), entries: menu_entries(doc, &e.children) }
+            }
+            e => Entry::Item {
+                name: e.label.clone(),
+                action: Action::PluginCommand { plugin: "word".to_owned(), command: e.id.clone() },
+                shortcut: chord_of(&e.id),
+                enabled: enabled(doc, &e.id),
+                checked: false,
+                keyboard: false,
+            },
+        })
+        .collect()
+}
+
+/// The chord shown beside an entry: the clipboard's own, or the one Word's chord table gives its action.
+fn chord_of(id: &str) -> Option<Shortcut> {
+    match id {
+        "cut" => Some(Shortcut::command(egui::Key::X)),
+        "copy" => Some(Shortcut::command(egui::Key::C)),
+        "paste" => Some(Shortcut::command(egui::Key::V)),
+        id => super::keys::chord_of(id),
     }
 }
 

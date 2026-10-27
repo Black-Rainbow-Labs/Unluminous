@@ -113,6 +113,15 @@ fn drag_words(grip: &RulerGrip, at_points: f32) -> String {
 /// pointer, a drag shows a dashed guide down the page and a small card saying what is moving and where, and
 /// the tab kind selector is a round chip.
 pub fn ruler(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, rect: Rect, pages: Rect) {
+    // A drag with no button held is over, whether or not its release was seen: the release can come while
+    // the pointer is outside the window, where it has no position and the release check below was never
+    // reached. Kept, the mark it held drew the resize arrows wherever the pointer was, the dashed guide
+    // stayed down the page, and the next press anywhere moved the indent (`task-2383`).
+    if doc.view.ruler_drag.is_some()
+        && !ui.input(|i| i.pointer.primary_down() || i.pointer.primary_released())
+    {
+        doc.view.ruler_drag = None;
+    }
     let z = super::kit::zoom(ui.ctx());
     ui.painter().rect_filled(rect, 0.0, look.ground(look.palette.panel));
     crate::components::chrome_kit::groove(ui.painter(), rect.left_bottom(), rect.right_bottom());

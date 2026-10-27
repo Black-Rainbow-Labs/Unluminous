@@ -1454,9 +1454,21 @@ fn place_line(
         }
     }
     // The caret's stops.
+    //
+    // An atom with no length holds no character, so it is no place for the caret: a list's label, the tab
+    // after it and a picture bullet all sit at offset 0, and a stop for them put offset 0 at the bullet
+    // instead of before the first letter. The caret then stood a tab's width left of the text, a press on
+    // the first letter's left half went after it, and the first letter could not be selected (`task-2383`).
+    // What they do give is where the text starts, which is where an empty list paragraph's caret goes.
     let mut stops: Vec<(usize, f32)> = Vec::new();
+    let mut after_the_label: Option<f32> = None;
     for (position, &index) in line.atoms.iter().enumerate() {
         let atom = &atoms[index];
+        if atom.start == atom.end && !matches!(atom.kind, Kind::Float(_)) {
+            let (x, w) = xs[position];
+            after_the_label = Some(x + w);
+            continue;
+        }
         if !atom.addressable() || matches!(atom.kind, Kind::Float(_)) && atom.start == atom.end {
             continue;
         }
@@ -1473,10 +1485,11 @@ fn place_line(
     let mut end = stops.last().map_or(start, |(at, _)| *at);
     if last {
         let end_x = stops.last().map_or_else(
-            || match look.align {
-                Align::Center => (left + right) / 2.0,
-                Align::Right => right,
-                _ => left,
+            || match (after_the_label, look.align) {
+                (Some(x), _) => x,
+                (None, Align::Center) => (left + right) / 2.0,
+                (None, Align::Right) => right,
+                (None, _) => left,
             },
             |(_, x)| *x,
         );

@@ -26,6 +26,7 @@ use crate::app::{Focus, Maximise, UnluminousApp};
 impl UnluminousApp {
     /// What the menus need to know about the window.
     pub fn menu_state(&self) -> MenuState {
+        let plugin_tab = self.the_plugin_tab_with_the_keyboard().is_some();
         MenuState {
             templates: Vec::new(),
             updates: self.update_menu(),
@@ -81,9 +82,12 @@ impl UnluminousApp {
                     items: surface.what.items.clone(),
                 })
                 .collect(),
-            can_undo: self.document().can_undo(),
-            can_redo: self.document().can_redo(),
-            has_selection: !self.document().selection().is_empty(),
+            // A Word or workbook tab keeps its own undo and selection, which the empty document behind it
+            // does not know about, so the entries stay on and are handed to the tab (`task-2383`). Turned
+            // off, `Cmd+C` and `Cmd+Z` did nothing at all on a Mac, where they are the menu's.
+            can_undo: plugin_tab || self.document().can_undo(),
+            can_redo: plugin_tab || self.document().can_redo(),
+            has_selection: plugin_tab || !self.document().selection().is_empty(),
             // The same three questions the key chords and the command line ask, of the same
             // functions, so the menu cannot come to a different answer about the tab that is
             // showing — which is what `file_kind`'s family exists to prevent. `task-1922` WP4.
@@ -735,6 +739,72 @@ impl UnluminousApp {
         true
     }
 
+    /// Hand `Undo`, `Redo`, `Cut`, `Copy`, `Paste` or `Select All` to the Word or workbook tab that holds
+    /// the keyboard, and answer whether one did.
+    ///
+    /// `task-2383`: *"CMD+X, etc doesn't work on mac."* On macOS the six are key equivalents of the menu
+    /// bar, so AppKit gives the chord to the menu and the tab never sees a key press, and the entries went to
+    /// the empty document behind the tab: `Cmd+V` pasted into nothing and `Cmd+Z` undid nothing. A plugin tab
+    /// reads the clipboard as `egui`'s `Cut`, `Copy` and `Paste` events and its own chords as key presses, so
+    /// those are what is sent, on the next frame, the same way a field's right click menu sends one.
+    fn give_the_edit_entry_to_a_plugin_tab(
+        &mut self,
+        action: &Action,
+        ctx: &egui::Context,
+    ) -> bool {
+        let Some(plugin) = self.the_plugin_tab_with_the_keyboard() else { return false };
+        let command = egui::Modifiers {
+            ctrl: !cfg!(target_os = "macos"),
+            mac_cmd: cfg!(target_os = "macos"),
+            command: true,
+            ..egui::Modifiers::NONE
+        };
+        let chord = |key: egui::Key, modifiers: egui::Modifiers| {
+            let press = |pressed| egui::Event::Key {
+                key,
+                physical_key: Some(key),
+                pressed,
+                repeat: false,
+                modifiers,
+            };
+            vec![press(true), press(false)]
+        };
+        let events = match action {
+            Action::Cut => vec![egui::Event::Cut],
+            Action::Copy => vec![egui::Event::Copy],
+            // A picture on the clipboard has no text, and the tab asks for it when it sees the chord's key
+            // going up, which is why the key is sent as well as the text.
+            Action::Paste => {
+                let text = arboard::Clipboard::new()
+                    .and_then(|mut clipboard| clipboard.get_text())
+                    .unwrap_or_default();
+                let mut events = Vec::new();
+                if !text.is_empty() {
+                    events.push(egui::Event::Paste(text));
+                }
+                events.extend(chord(egui::Key::V, command).into_iter().skip(1));
+                events
+            }
+            Action::Undo => chord(egui::Key::Z, command),
+            Action::Redo => chord(egui::Key::Z, egui::Modifiers { shift: true, ..command }),
+            Action::SelectAll => chord(egui::Key::A, command),
+            _ => return false,
+        };
+        // A key a plugin does not claim would reach nothing that reads it, so the entry keeps its old meaning.
+        let Some(provider) = self.plugin_ui.provider(&plugin) else { return false };
+        let claimed = events.iter().all(|event| match event {
+            egui::Event::Key { key, modifiers, pressed: true, .. } => {
+                provider.claims_key(*key, *modifiers)
+            }
+            _ => true,
+        });
+        if !claimed {
+            return false;
+        }
+        crate::app::send_on_the_next_frame(ctx, events);
+        true
+    }
+
     /// The Edit menu, which holds the symbol, completion, navigation, highlight and folding
     /// entries as well as the clipboard.
     ///
@@ -742,6 +812,9 @@ impl UnluminousApp {
     /// these, so the last arm cannot happen.
     fn an_edit_entry(&mut self, action: Action, ctx: &egui::Context) {
         if self.give_the_clipboard_entry_to_a_text_box(&action, ctx) {
+            return;
+        }
+        if self.give_the_edit_entry_to_a_plugin_tab(&action, ctx) {
             return;
         }
         match action {

@@ -7,6 +7,7 @@ mod footnote_continuation;
 mod header_push;
 mod hyphenation;
 mod keep_next;
+mod list_caret;
 mod page_field;
 mod ptab;
 mod row_splitting;

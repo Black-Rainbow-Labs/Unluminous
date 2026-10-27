@@ -2253,7 +2253,7 @@ pub fn view(word: &Word) -> serde_json::Value {
             "ruler": d.view.ruler,
             "rulerMarks": d.view.ruler_marks.map(|m| m.map(|v| v * d.view.window_zoom)),
             "multiple": d.view.multiple,
-            "contextMenu": d.view.context_menu.as_ref().map(|m| m.entries.iter().map(|e| e.label.clone()).collect::<Vec<_>>()),
+            "contextMenu": d.view.context_menu.as_ref().map(|m| m.entries.iter().flat_map(|e| std::iter::once(e).chain(e.children.iter())).map(|e| e.label.clone()).collect::<Vec<_>>()),
             "object": d.session.object_info().map(|info| {
                 let screen = crate::components::word::objects::selected(d).and_then(|(page, rect)| {
                     crate::components::word::objects::to_screen(d, d.view.pages_rect, page, rect)

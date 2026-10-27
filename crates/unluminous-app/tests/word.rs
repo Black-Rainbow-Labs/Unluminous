@@ -306,10 +306,7 @@ fn the_right_click_menu_offers_what_is_under_the_pointer() {
     for wanted in ["Cut", "Copy", "Paste", "Font...", "Paragraph...", "New Comment"] {
         assert!(entries.iter().any(|e| e == wanted), "{wanted} in {entries:?}");
     }
-    assert!(
-        entries.iter().any(|e| e.starts_with("Synonyms of")),
-        "the word's synonyms: {entries:?}"
-    );
+    assert!(entries.iter().any(|e| e == "Synonyms"), "the word's synonyms: {entries:?}");
     harness.snapshot(shot("word_context_text"));
     harness.key_press(Key::Escape);
     steady(&mut harness);
@@ -324,8 +321,11 @@ fn the_right_click_menu_offers_what_is_under_the_pointer() {
     let at = point(&did(&mut harness, &format!("plugins run word locate {cell} 0")));
     press_at(&mut harness, at, egui::PointerButton::Secondary);
     let entries = menu(&mut harness);
-    assert!(entries.iter().any(|e| e == "Insert Rows Above"), "{entries:?}");
-    harness.get_by_label("Insert Rows Below").click();
+    assert!(entries.iter().any(|e| e == "Rows Above"), "{entries:?}");
+    // The four places a row or column goes open to the side of one row, as Word's menu has them.
+    harness.get_by_label("Insert Rows and Columns").click();
+    steady(&mut harness);
+    harness.get_by_label("Rows Below").click();
     steady(&mut harness);
     assert!(paragraphs(&mut harness).iter().any(|p| p["cell"]["row"] == 3), "a row was added");
 }
@@ -367,8 +367,10 @@ fn a_picture_is_resized_by_its_handle_and_wrapped_from_its_menu() {
     let screen = rect_of(&after["screen"]);
     let middle = egui::pos2(screen[0] + screen[2] / 2.0, screen[1] + screen[3] / 2.0);
     press_at(&mut harness, middle, egui::PointerButton::Secondary);
-    assert!(menu(&mut harness).iter().any(|e| e == "Wrap Text: Square"));
-    harness.get_by_label("Wrap Text: Square").click();
+    assert!(menu(&mut harness).iter().any(|e| e == "Square"));
+    harness.get_by_label("Wrap Text").click();
+    steady(&mut harness);
+    harness.get_by_label("Square").click();
     steady(&mut harness);
     assert_eq!(current(&mut harness)["object"]["wrap"], "square");
 }
@@ -630,4 +632,54 @@ fn the_modify_style_level_changes_a_style() {
         look["line"].as_str().unwrap().contains("2.0"),
         "Heading 1 is double spaced now: {look}"
     );
+}
+
+/// **A press on the left half of the first letter after a bullet puts the caret before that letter**
+/// (`task-2383`). The bullet and the tab after it stood at offset 0 of the paragraph, so the caret before
+/// the first word was drawn and hit at the bullet: a press on the letter went after it, typing there
+/// landed one letter in, and the first letter could not be selected.
+#[test]
+fn a_press_on_the_first_letter_after_a_bullet_puts_the_caret_before_it() {
+    let (_, mut harness) = a_word_window("unluminous-word-bullet-caret", "blank.docx");
+    type_text(&mut harness, "- Apple");
+    assert_eq!(paragraphs(&mut harness)[0]["text"], "Apple", "a dash and a space make a bullet");
+    let after_a = point(&did(&mut harness, "plugins run word locate 1 1"));
+    let after_p = point(&did(&mut harness, "plugins run word locate 1 2"));
+    let letter = after_p.x - after_a.x;
+    let start = point(&did(&mut harness, "plugins run word locate 1 0"));
+    assert!(
+        (after_a.x - start.x - letter).abs() < letter * 0.6,
+        "offset 0 is drawn a letter left of offset 1, not at the bullet: {start:?} {after_a:?}"
+    );
+    press_at(
+        &mut harness,
+        egui::pos2(after_a.x - letter * 0.8, after_a.y),
+        egui::PointerButton::Primary,
+    );
+    type_text(&mut harness, "X");
+    assert_eq!(paragraphs(&mut harness)[0]["text"], "XApple", "typed before the first letter");
+    harness.key_press_modifiers(Modifiers::SHIFT, Key::ArrowRight);
+    steady(&mut harness);
+    assert_eq!(did(&mut harness, "plugins run word selection")["text"], "A");
+}
+
+/// **The Edit menu's entries reach a Word tab** (`task-2383`). On macOS `Cmd+Z`, `Cmd+A`, `Cmd+X`, `Cmd+C`
+/// and `Cmd+V` are the menu bar's, so the tab never sees the keys, and the entries went to the empty
+/// document behind the tab. Run here as the menu runs them, on every platform.
+#[test]
+fn the_edit_menu_undoes_selects_and_cuts_in_a_word_tab() {
+    let (_, mut harness) = a_word_window("unluminous-word-edit-menu", "blank.docx");
+    type_text(&mut harness, "one two");
+    did(&mut harness, "action run undo");
+    steady(&mut harness);
+    assert_ne!(paragraphs(&mut harness)[0]["text"], "One two", "Edit -> Undo undid the typing");
+    did(&mut harness, "action run redo");
+    steady(&mut harness);
+    assert_eq!(paragraphs(&mut harness)[0]["text"], "One two", "and Edit -> Redo put it back");
+    did(&mut harness, "action run select-all");
+    steady(&mut harness);
+    assert_eq!(did(&mut harness, "plugins run word selection")["text"], "One two");
+    did(&mut harness, "action run cut");
+    steady(&mut harness);
+    assert_eq!(paragraphs(&mut harness)[0]["text"], "", "Edit -> Cut took the selection out");
 }

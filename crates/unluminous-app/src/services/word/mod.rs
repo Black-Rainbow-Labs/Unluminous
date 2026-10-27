@@ -428,11 +428,12 @@ pub struct ContextMenu {
 }
 
 /// One row of the right click menu: its words and the action id it runs. A row of `-` is a line, and a
-/// row with no id is a heading.
+/// row with `children` is a menu inside the menu, opened to the side (`task-2383`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct MenuEntry {
     pub label: String,
     pub id: String,
+    pub children: Vec<MenuEntry>,
 }
 
 /// The last paste, which Paste Options can paste again another way.

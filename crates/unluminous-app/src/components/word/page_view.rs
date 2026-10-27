@@ -119,10 +119,13 @@ pub fn show(
     let response =
         ui.interact(area, ui.id().with(("word-pages", &doc.key)), Sense::click_and_drag());
     scroll_and_zoom(ui, doc, area, &response);
-    pointer(ui, doc, area, &response, requests);
+    // The text cursor first, so what `pointer` finds under the pointer (a table column's edge, a link with
+    // Ctrl held, a selection being carried) is the cursor shown. Set after it, the text cursor hid the
+    // column edge's resize arrows, and the edge could be dragged without anything saying so (`task-2383`).
     if response.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
     }
+    pointer(ui, doc, area, &response, requests);
     let (tops, total) = page_tops(doc, area.width());
     doc.view.scroll = doc.view.scroll.clamp(0.0, (total - area.height()).max(0.0));
     doc.view.viewport_height = area.height();
@@ -840,7 +843,15 @@ Ctrl+click to follow the link"
             }
         }
     }
-    // A table column's edge: dragged to change the column's width (task-2359, TDD 5.4).
+    // A table column's edge: dragged to change the column's width (task-2359, TDD 5.4). A drag whose
+    // release this tab did not see ends here, with no button held, rather than keeping the resize arrows
+    // and taking the next press as the end of a drag nobody is making (`task-2383`).
+    if doc.view.column_drag.is_some() && !ui.input(|i| i.pointer.primary_down()) {
+        let released = ui.input(|i| i.pointer.primary_released());
+        if !released {
+            doc.view.column_drag = None;
+        }
+    }
     if response.hovered() && super::objects::over_column_edge(doc, area, at) {
         ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
     }

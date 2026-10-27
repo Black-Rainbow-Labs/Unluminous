@@ -104,13 +104,18 @@ static IN_FORCE: std::sync::RwLock<Vec<(crate::app::actions::Shortcut, String)>>
     std::sync::RwLock::new(Vec::new());
 
 /// Read the chord table and a person's moves into the chords in force.
+///
+/// The table is written in Word for Windows' words, and its `Ctrl` is read as the command key on every
+/// platform: on macOS that is the Apple key, which is where Word for Mac puts bold, undo, select all and the
+/// rest (`task-2383`). Read the way a person's own `Ctrl` is read, it was the control key on a Mac, so
+/// `Cmd+B` did nothing and `Cmd+Z` undid the empty document behind the tab.
 pub fn set_chords(moved: &[(String, String)]) {
     let mut table: Vec<(crate::app::actions::Shortcut, String)> = Vec::new();
     for (chord, action) in CHORDS {
         if moved.iter().any(|(a, _)| a == action) {
             continue;
         }
-        if let Ok(shortcut) = crate::services::keymap::parse(chord) {
+        if let Ok(shortcut) = crate::services::keymap::parse_for(chord, false) {
             table.push((shortcut, (*action).to_owned()));
         }
     }
@@ -135,6 +140,15 @@ pub fn chord_action(key: Key, modifiers: &Modifiers) -> Option<String> {
     }
     let table = IN_FORCE.read().ok()?;
     table.iter().find(|(shortcut, _)| shortcut.matches(key, modifiers)).map(|(_, id)| id.clone())
+}
+
+/// The chord in force for an action, which the right click menu shows beside it.
+pub fn chord_of(id: &str) -> Option<crate::app::actions::Shortcut> {
+    if IN_FORCE.read().map(|t| t.is_empty()).unwrap_or(true) {
+        set_chords(&[]);
+    }
+    let table = IN_FORCE.read().ok()?;
+    table.iter().find(|(_, action)| action == id).map(|(shortcut, _)| *shortcut)
 }
 
 /// The chords a Word tab answers itself: Word's own formatting, editing and navigation keys.
@@ -325,6 +339,10 @@ fn key_press(doc: &mut Doc, key: Key, modifiers: &Modifiers, requests: &mut Vec<
         doc.view.reveal = true;
         return;
     }
+    if mac_caret_key(doc, key, modifiers) {
+        doc.view.reveal = true;
+        return;
+    }
     if command {
         let id = match (key, shift) {
             // Ctrl+F9 opens the Insert level at its field box, where a code is typed and inserted.
@@ -476,6 +494,34 @@ fn key_press(doc: &mut Doc, key: Key, modifiers: &Modifiers, requests: &mut Vec<
         _ => return,
     }
     doc.view.reveal = true;
+}
+
+/// The caret keys a Mac moves by: `Cmd+Left` and `Cmd+Right` go to the ends of the line, `Cmd+Up` and
+/// `Cmd+Down` to the ends of the document, and `Option` with an arrow goes a word or a paragraph, which is
+/// what Word for Mac and every other Mac editor do. Answers whether the key was one of them; off macOS it
+/// never is, and `Ctrl` with an arrow keeps Windows' meaning.
+fn mac_caret_key(doc: &mut Doc, key: Key, modifiers: &Modifiers) -> bool {
+    if !cfg!(target_os = "macos") {
+        return false;
+    }
+    let shift = modifiers.shift;
+    let to = match (key, modifiers.mac_cmd, modifiers.alt) {
+        (Key::ArrowLeft, true, false) => line_edge(doc, false),
+        (Key::ArrowRight, true, false) => line_edge(doc, true),
+        (Key::ArrowUp, true, false) => story_edge(doc, false),
+        (Key::ArrowDown, true, false) => story_edge(doc, true),
+        (Key::ArrowLeft, false, true) => word_step(doc, false),
+        (Key::ArrowRight, false, true) => word_step(doc, true),
+        (Key::ArrowUp, false, true) => paragraph_step(doc, false),
+        (Key::ArrowDown, false, true) => paragraph_step(doc, true),
+        (Key::Backspace, false, true) => {
+            doc.session.backspace(Unit::Word);
+            return true;
+        }
+        _ => return false,
+    };
+    move_to(doc, to, shift);
+    true
 }
 
 /// The chords that act on the view rather than on the document: Ctrl+Y, Go Back, Extend Selection, the
