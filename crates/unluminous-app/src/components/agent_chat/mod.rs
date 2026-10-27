@@ -78,8 +78,9 @@ pub enum Act {
     ToggleGroup(String),
     /// Open or close one message's thinking.
     ToggleThinking(u64),
-    /// Select the whole of one message's words, which is what the menu's `Select All` means.
-    SelectAll(u64),
+    /// Select the whole of one block of a message's words, by the message and the block's key, which is what
+    /// the menu's `Select All` means.
+    SelectAll(u64, String),
     /// A component's button asked for these words to be sent as the person's next message.
     SendWords(String),
     /// A component's button asked for these words to be put in the composer.
@@ -718,17 +719,17 @@ const MENU_WIDTH: f32 = 200.0;
 /// comes back without its hashes. `Copy Message` is the source, which is what the button beside the
 /// bubble has always copied and what somebody pasting an answer back into a file wants.
 fn message_menu(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Act> {
-    let Some(menu) = parts.state.menu else {
+    let Some(menu) = parts.state.menu.clone() else {
         return Vec::new();
     };
     let mut acts = Vec::new();
     let _ = look;
-    let key = format!("message-{}", menu.message);
     let selected = parts
         .state
         .selection
+        .as_ref()
         .filter(|one| one.message == menu.message && !one.range.is_empty())
-        .and_then(|one| parts.state.rendered.slice(&key, one.range.range()));
+        .and_then(|one| parts.state.rendered.slice(&one.key, one.range.range()));
     // The message's own source, whether it is in the conversation or still waiting in the queue.
     let source = parts
         .session
@@ -767,7 +768,7 @@ fn message_menu(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>) -> Ve
             close = true;
         }
         if controls::menu_row(ui, "Select All", "", true, false, 0.0) {
-            acts.push(Act::SelectAll(menu.message));
+            acts.push(Act::SelectAll(menu.message, menu.key.clone()));
             close = true;
         }
     }) {
@@ -951,6 +952,16 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
         if let Some(wheel) = wheel {
             ui.scroll_with_delta_animation(
                 Vec2::new(0.0, wheel),
+                egui::style::ScrollAnimation::none(),
+            );
+        }
+        // **A selection dragged past the top or bottom of the conversation scrolls it** (`task-2375`), the way
+        // the editing area and the Markdown preview do (`editor_view::drag_scroll`). Asked of the pointer and
+        // of last frame's `selecting`, because the drag belongs to whichever block of words it began in.
+        let by = crate::components::editor_view::held_drag_scroll(ui, area, selecting);
+        if by != 0.0 {
+            ui.scroll_with_delta_animation(
+                Vec2::new(0.0, -by),
                 egui::style::ScrollAnimation::none(),
             );
         }
@@ -1591,7 +1602,7 @@ fn apply(chat: &mut AgentChat, acts: Vec<Act>) -> Vec<Request> {
                     chat.ui.opened_groups.insert(key);
                 }
             }
-            Act::SelectAll(id) => chat.select_the_whole_message(id),
+            Act::SelectAll(id, key) => chat.select_the_whole_block(id, &key),
             Act::SendWords(words) => {
                 // Through the same path as typing and pressing send, so it queues behind an answer
                 // that is still arriving and refuses with a notice when nothing can answer it.

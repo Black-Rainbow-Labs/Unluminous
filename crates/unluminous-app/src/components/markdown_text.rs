@@ -271,6 +271,13 @@ fn selected_block() -> egui::Id {
     egui::Id::new("unluminous-markdown-selected-block")
 }
 
+/// Whether the selectable words kept under `id` are being pressed on now, which is a selection being made.
+/// What a caller that scrolls the words asks before it scrolls them for a drag held past its edge
+/// (`editor_view::held_drag_scroll`, `task-2375`).
+pub fn selecting_in(ctx: &egui::Context, id: egui::Id) -> bool {
+    crate::components::editor_view::words_hold_the_selection(ctx) == Some(id.with("markdown-words"))
+}
+
 /// Paint `rendered` as [`show_with`] does, with words a person can select: a drag selects, a double click
 /// selects a word and a triple click a line, `Ctrl`/`Cmd`+`C` copies, and the selected words are answered so a
 /// caller's right click menu can offer them.

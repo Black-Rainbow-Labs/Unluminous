@@ -682,28 +682,28 @@ impl Default for ModelSelect {
     }
 }
 
-/// A selection inside one message's rendered words.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// A selection inside one block of a message's rendered words.
+///
+/// A message is drawn as several blocks of rendered markdown: its words, or the runs of them between
+/// components, and the thinking, a tool call's arguments and answer, the failure, and the words inside a
+/// component. Each is cached under a key of its own, and the selection names the key it was made in
+/// (`task-2375`: *"I'm unable to select certain texts in agent chat"*, which were every block but the words).
+#[derive(Debug, Clone, PartialEq)]
 pub struct Selected {
-    /// The message it is in, which is what keys the rendered markdown it is measured against.
+    /// The message it is in, which is what the right click menu is about.
     pub message: u64,
-    /// Which run of the message's words, when components divide them. Zero for a plain answer.
-    pub segment: usize,
+    /// The key the rendered markdown it is measured against is cached under.
+    pub key: String,
     pub range: unluminous_core::Selection,
 }
 
-impl Selected {
-    /// The key the rendered markdown for this run of words is cached under.
-    pub fn key(&self) -> String {
-        crate::components::agent_chat::message::words_key(self.message, self.segment)
-    }
-}
-
-/// The right click menu over a message: where it was opened and which message it is about.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// The right click menu over a message: where it was opened, which message it is about, and the key of the
+/// block of rendered words it was opened over, which is what `Select All` selects.
+#[derive(Debug, Clone, PartialEq)]
 pub struct MessageMenu {
     pub at: egui::Pos2,
     pub message: u64,
+    pub key: String,
 }
 
 /// The pieces of the pane the drawing is handed.
@@ -1730,8 +1730,8 @@ impl AgentChat {
     /// heading comes back without its hashes and a list item without its dash. Copying the source is
     /// a separate row on the menu and is what the button beside the bubble has always done.
     pub fn selected_text(&self) -> Option<String> {
-        let selected = self.ui.selection.filter(|one| !one.range.is_empty())?;
-        self.ui.rendered.slice(&selected.key(), selected.range.range())
+        let selected = self.ui.selection.as_ref().filter(|one| !one.range.is_empty())?;
+        self.ui.rendered.slice(&selected.key, selected.range.range())
     }
 
     /// Select the whole of one message's words, which is what the menu's `Select All` means.
@@ -1739,13 +1739,18 @@ impl AgentChat {
     /// Nothing happens for a message that has not been drawn yet: what is being selected is the
     /// rendered markdown, and there is none until the row has been on the screen once.
     pub fn select_the_whole_message(&mut self, id: u64) {
-        let key = format!("message-{id}");
-        let Some(length) = self.ui.rendered.length(&key) else {
+        self.select_the_whole_block(id, &format!("message-{id}"));
+    }
+
+    /// Select the whole of one block of a message's rendered words: its answer, its thinking, a tool call's
+    /// arguments or answer. What `Select All` on the right click menu over that block means.
+    pub fn select_the_whole_block(&mut self, id: u64, key: &str) {
+        let Some(length) = self.ui.rendered.length(key) else {
             return;
         };
         self.ui.selection = Some(Selected {
             message: id,
-            segment: 0,
+            key: key.to_owned(),
             range: unluminous_core::Selection::new(0, length),
         });
     }

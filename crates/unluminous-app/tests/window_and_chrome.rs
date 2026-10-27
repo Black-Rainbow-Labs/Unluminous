@@ -7166,3 +7166,111 @@ fn many_threads_make_renderers_on_the_shared_devices_at_once() {
         thread.join().expect("a thread making renderers panicked");
     }
 }
+
+/// A document long enough that most of it is below the bottom of the view: `count` paragraphs, each one
+/// line saying which it is.
+fn a_long_document(count: usize) -> String {
+    (1..=count).map(|n| format!("Line {n} of the long document.\n\n")).collect()
+}
+
+/// Press at `from`, move to `to` and hold the button there for `frames` frames, then let go: a drag that
+/// waits past the edge of a view for it to scroll.
+fn drag_and_hold(
+    harness: &mut Harness<'static, UnluminousApp>,
+    from: egui::Pos2,
+    to: egui::Pos2,
+    frames: usize,
+) {
+    harness.input_mut().events.push(egui::Event::PointerMoved(from));
+    steady(harness);
+    harness.input_mut().events.push(egui::Event::PointerButton {
+        pos: from,
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers: Modifiers::default(),
+    });
+    harness.step();
+    for step in 1..=6 {
+        let at = from + (to - from) * (step as f32 / 6.0);
+        harness.input_mut().events.push(egui::Event::PointerMoved(at));
+        harness.step();
+    }
+    for _ in 0..frames {
+        harness.step();
+    }
+    harness.input_mut().events.push(egui::Event::PointerButton {
+        pos: to,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::default(),
+    });
+    steady(harness);
+}
+
+/// `task-2375`: *"in md preview I'm unable to select text that goes below the fold."* A drag held below the
+/// bottom of the preview scrolls it, and the selection goes on growing into the words that come into view.
+#[test]
+fn a_drag_held_below_the_preview_scrolls_it_and_selects_past_the_fold() {
+    let mut harness = harness(&a_long_document(120));
+    harness.get_by_label("Markdown preview").click();
+    steady(&mut harness);
+    let area = harness.state().editor_area();
+    let first_hidden = harness.state().preview_layout().offset_at(0.0, area.height());
+    let from = egui::pos2(area.left() + 24.0, area.top() + 30.0);
+    drag_and_hold(&mut harness, from, egui::pos2(area.left() + 200.0, area.bottom() + 30.0), 40);
+    let scrolled = harness.state().files.active().preview_scroll;
+    assert!(scrolled > 100.0, "the preview scrolled while the drag was held below it: {scrolled}");
+    let selection = harness.state().files.active().preview_selection;
+    assert!(
+        selection.range().end > first_hidden,
+        "the selection reaches words that were below the fold: {selection:?} against {first_hidden}"
+    );
+    let selected = harness.state().preview_selected_text().unwrap_or_default();
+    assert!(selected.starts_with("Line 1 ") || selected.starts_with("ine 1 "), "{selected:.40}");
+}
+
+/// The editing area does the same, so a selection made in the source can reach past the screen too.
+#[test]
+fn a_drag_held_below_the_editing_area_scrolls_it_and_selects_past_the_fold() {
+    let mut harness = harness(&a_long_document(120));
+    harness.get_by_label("Raw Markdown").click();
+    steady(&mut harness);
+    let area = harness.state().editor_area();
+    let first_hidden = harness.state().layout().offset_at(0.0, area.height());
+    let from = egui::pos2(area.left() + 80.0, area.top() + 30.0);
+    drag_and_hold(&mut harness, from, egui::pos2(area.left() + 200.0, area.bottom() + 30.0), 40);
+    let scrolled = harness.state().files.active().scroll;
+    assert!(scrolled > 100.0, "the file scrolled while the drag was held below it: {scrolled}");
+    let head = harness.state().document().selection().head;
+    assert!(
+        head > first_hidden,
+        "the selection reaches past the fold: {head} against {first_hidden}"
+    );
+}
+
+/// `task-2375`: *"shift+click doesn't select text to the remainder of the point I click at."* A click puts the
+/// caret down in the preview, and a click with Shift held selects from there to the second click.
+#[test]
+fn a_shift_click_in_the_preview_selects_from_the_caret_to_the_click() {
+    let mut harness = harness(MARKDOWN);
+    harness.get_by_label("Markdown preview").click();
+    steady(&mut harness);
+    let area = harness.state().editor_area();
+    let preview = harness.state().preview_text();
+    let point = |harness: &Harness<'static, UnluminousApp>, offset: usize| {
+        let caret = harness.state().preview_layout().caret_at(offset);
+        egui::pos2(
+            area.left() + size::EDITOR_PADDING_X + caret.x + 1.0,
+            area.top() + size::EDITOR_PADDING_Y + caret.y + caret.height / 2.0,
+        )
+    };
+    let start = preview.find("paragraph").expect("a word to start at");
+    let end = preview.find("a bullet").expect("a later line") + "a bul".len();
+    let (from, to) = (point(&harness, start), point(&harness, end));
+    click_at(&mut harness, from);
+    assert!(harness.state().preview_selected_text().unwrap_or_default().is_empty(), "a caret");
+    click_at_with(&mut harness, to, Modifiers::SHIFT);
+    let selected = harness.state().preview_selected_text().unwrap_or_default();
+    assert!(selected.starts_with("paragraph"), "from the caret: {selected:?}");
+    assert!(selected.ends_with("a bul"), "to the shift click: {selected}");
+}

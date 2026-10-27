@@ -97,6 +97,9 @@ pub struct Kit<'a, 'r> {
     /// The id every control in the component is named under: the conversation's own, so two chats on
     /// one canvas, each with a message 2, do not name their controls the same.
     pub scope: Id,
+    /// The pane's selection and right click menu while drawing, so the markdown in a component can be
+    /// selected and copied like the answer around it (`task-2375`). `None` while measuring.
+    pub(super) held: Option<super::message::Held<'a, 'a>>,
 }
 
 impl Kit<'_, '_> {
@@ -208,14 +211,32 @@ impl Kit<'_, '_> {
         if self.draw {
             let rect = Rect::from_min_size(at, Vec2::new(width, height));
             let code = super::message::code_colours(look);
-            crate::components::markdown_text::show_with(
-                self.rux.ui,
-                rect,
-                made,
-                look.renderer,
-                0.0,
-                Some(code),
-            );
+            match self.held.as_mut() {
+                Some(held) => {
+                    held.key = key.to_owned().into();
+                    let place = super::message::Placed { sensed: rect, inside: rect, down: 0.0 };
+                    let id = self.scope.with(("agent-chat-ui-words", key));
+                    super::message::selectable(
+                        self.rux.ui,
+                        id,
+                        place,
+                        made,
+                        look,
+                        Some(code),
+                        held,
+                    );
+                }
+                None => {
+                    crate::components::markdown_text::show_with(
+                        self.rux.ui,
+                        rect,
+                        made,
+                        look.renderer,
+                        0.0,
+                        Some(code),
+                    );
+                }
+            }
         }
         height
     }

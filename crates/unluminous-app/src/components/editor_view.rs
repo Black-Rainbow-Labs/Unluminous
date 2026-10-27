@@ -1051,7 +1051,10 @@ pub fn multi_press(
 /// selection it would make and changes nothing, which is the rule every component in Unluminous follows.
 ///
 /// A press puts the anchor down and clears what was selected, a drag extends it, a double click
-/// takes the word and a triple click the line. `None` means the pointer did nothing this frame.
+/// takes the word and a triple click the line. A press or a drag with Shift held keeps the anchor that
+/// was there and moves only the head, which is how every editor and browser extends a selection
+/// (`task-2375`: *"common operations like shift+click doesn't select text to the remainder of the point I
+/// click at"*). `None` means the pointer did nothing this frame.
 pub fn read_pointer(
     response: &egui::Response,
     layout: &Layout,
@@ -1070,6 +1073,10 @@ pub fn read_pointer(
     let pointer = response.interact_pointer_pos()?;
     let local = pointer - text_origin;
     let offset = layout.offset_at(local.x, local.y);
+    let extend = response.ctx.input(|input| input.modifiers.shift);
+    if extend && (response.drag_started() || response.clicked()) {
+        return Some(Selection { anchor: selection.anchor, head: offset });
+    }
     if response.triple_clicked() {
         let line = text.line_range(text.byte_to_line(offset));
         return Some(Selection::new(line.start, line.end.min(text.len_bytes())));
@@ -1105,6 +1112,59 @@ pub fn read_pointer(
         return Some(Selection::caret(offset));
     }
     None
+}
+
+/// How far a view scrolls this frame while a drag that selects is held near or past its top or bottom
+/// edge: positive to scroll down, negative to scroll up, nothing otherwise.
+///
+/// `task-2375`: *"in md preview I'm unable to select text that goes below the fold."* The selection already
+/// followed the pointer below the view, because the layout covers the whole document, but nothing scrolled,
+/// so the text past the bottom could not be seen while it was being selected and a selection could not
+/// reach further than a pointer can be moved. Every editor and browser scrolls here, faster the further
+/// the pointer is past the edge. The band starts [`DRAG_SCROLL_BAND`] points inside the edge, so a view
+/// against the bottom of the screen, where the pointer cannot go any further, still scrolls.
+///
+/// It asks for another frame while it scrolls, because a pointer held still past the edge sends no event.
+pub fn drag_scroll(response: &egui::Response, view: Rect) -> f32 {
+    if !response.dragged_by(egui::PointerButton::Primary) {
+        return 0.0;
+    }
+    let Some(at) = response.interact_pointer_pos() else { return 0.0 };
+    scroll_toward(&response.ctx, view, at)
+}
+
+/// [`drag_scroll`] for words whose response the caller does not have: `holding` says whether the words were
+/// pressed on and are still being selected, and the pointer is asked of `ui`'s own points, which a canvas
+/// node or a zoomed modal transforms.
+pub fn held_drag_scroll(ui: &egui::Ui, view: Rect, holding: bool) -> f32 {
+    if !holding || !ui.input(|input| input.pointer.primary_down()) {
+        return 0.0;
+    }
+    let Some(at) = crate::components::controls::pointer_in(ui) else { return 0.0 };
+    scroll_toward(ui.ctx(), view, at)
+}
+
+/// How far to scroll `view` this frame for a held drag at `at`, asking for another frame while it scrolls.
+fn scroll_toward(ctx: &egui::Context, view: Rect, at: Pos2) -> f32 {
+    let past = match at.y {
+        y if y > view.bottom() - DRAG_SCROLL_BAND => y - (view.bottom() - DRAG_SCROLL_BAND),
+        y if y < view.top() + DRAG_SCROLL_BAND => y - (view.top() + DRAG_SCROLL_BAND),
+        _ => return 0.0,
+    };
+    let seconds = ctx.input(|input| input.stable_dt).clamp(0.0, 0.1);
+    ctx.request_repaint();
+    drag_scroll_speed(past) * seconds
+}
+
+/// How far inside a view's top and bottom edge a held drag starts to scroll it, in points.
+pub const DRAG_SCROLL_BAND: f32 = 12.0;
+
+/// How fast a held drag scrolls a view, in points a second, for a pointer `past` points into the band or
+/// beyond it: negative above the view and positive below. A slow crawl near the edge, so a line can be
+/// reached exactly, and quicker the further the pointer goes, up to a screenful or two a second.
+pub fn drag_scroll_speed(past: f32) -> f32 {
+    let speed = (150.0 + past.abs() * 18.0).min(4000.0);
+    speed * past.signum()
 }
 
 /// Which of the three kinds a double click selects runs of a character is: a word character (a letter, a digit

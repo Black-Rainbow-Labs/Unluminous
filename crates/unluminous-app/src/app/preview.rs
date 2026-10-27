@@ -555,6 +555,9 @@ impl UnluminousApp {
         if wheel != 0.0 && response.contains_pointer() {
             self.files.active_mut().preview_scroll -= wheel;
         }
+        // A drag held past the top or bottom edge scrolls the page, so a selection can reach past what is
+        // on the screen. Before the selection is read below, which therefore reads the page where it is now.
+        self.files.active_mut().preview_scroll += editor_view::drag_scroll(&response, area);
         let overflow = (self.preview_layout().height - view_height).max(0.0);
         let scroll = self.files.active().preview_scroll.clamp(0.0, overflow);
         self.files.active_mut().preview_scroll = scroll;

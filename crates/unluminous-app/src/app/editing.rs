@@ -1189,6 +1189,9 @@ impl UnluminousApp {
         if wheel != 0.0 && response.contains_pointer() {
             scroll -= wheel;
         }
+        // A drag that selects, held past the top or bottom edge, scrolls the file (`task-2375`). The head of the
+        // selection already follows the pointer below the view, which is laid out past the edge.
+        scroll += editor_view::drag_scroll(&response, area);
         if self.reveal_caret && focused && self.reveal_at_the_top {
             // The line goes to the top of the view, with the code after it below. The clamp further
             // down keeps a line near the end of the file from scrolling past the last line.

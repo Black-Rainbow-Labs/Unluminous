@@ -171,8 +171,13 @@ fn is_left_alone(text: &str, range: &Range<usize>, word: &str) -> bool {
     if word.contains('.') {
         return true;
     }
-    // The run of text between spaces the word is in, which is what an address is.
-    let before = text[..range.start].rfind(char::is_whitespace).map_or(0, |at| at + 1);
+    // The run of text between spaces the word is in, which is what an address is. The space before it
+    // can be wider than a byte: Word writes a non-breaking space, which is two bytes in UTF-8.
+    let before = text[..range.start]
+        .char_indices()
+        .rev()
+        .find(|(_, c)| c.is_whitespace())
+        .map_or(0, |(at, c)| at + c.len_utf8());
     let after = text[range.end..].find(char::is_whitespace).map_or(text.len(), |at| range.end + at);
     let chunk = &text[before..after];
     chunk.contains("://")

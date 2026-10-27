@@ -456,94 +456,27 @@ fn words(
     mine: bool,
     segment: usize,
 ) -> Vec<Act> {
-    use crate::services::agent_chat::{MessageMenu, Selected};
-
     let scale = look.scale();
     let mut acts = Vec::new();
     let key = words_key(message.id, segment);
     let code = code_colours(look);
     // **The words are selectable**, which is `task-2060`: a message is text to read, and reading
-    // includes taking a copy of a part of it. `click_and_drag` rather than `hover` for the reason
-    // the Markdown preview senses both - see `UnluminousApp::show_markdown_preview`.
-    let response = ui.interact(
-        rect,
-        ui.id().with(("agent-chat-bubble", message.id, segment)),
-        Sense::click_and_drag(),
-    );
-    // Read out of the state before the rendered markdown is borrowed from it.
-    let was = match state.selection {
-        Some(selected) if selected.message == message.id && selected.segment == segment => {
-            Some(selected.range)
-        }
-        _ => None,
-    };
-    let picked = {
-        let made = rendered(state, look, &key, said, inside.width());
+    // includes taking a copy of a part of it.
+    let response = {
+        let PaneState { rendered: cache, selection, selecting, menu, .. } = state;
+        let made = rendered_in(cache, look, &key, said, inside.width());
         // **Where the letters really start.** A line is taller than its glyphs and all of the extra
         // leading is added below the baseline, so a block drawn at the top of a box padded equally
         // above and below sits high - `task-2060`: *"The text in a message isnt perfectly vertically
         // aligned."* `Rendered::centring` is that difference, halved, and it is read here for the
         // drawing, for the selection and for the pointer, so the three cannot disagree.
         let down = made.centring();
-        let origin = Pos2::new(inside.left(), inside.top() + down);
-        let picked = crate::components::editor_view::read_pointer(
-            &response,
-            &made.layout,
-            &made.text,
-            origin,
-            was.unwrap_or_else(|| unluminous_core::Selection::caret(0)),
-        );
-        // What is painted is the selection this frame's drag made rather than the one it started
-        // with, which is `select_in_the_preview`'s own ordering.
-        if let Some(selection) = picked.or(was) {
-            crate::components::editor_view::paint_behind(
-                ui,
-                &made.layout,
-                origin,
-                selection.range(),
-                crate::theme::color::text_selection(),
-                2.0,
-            );
-        }
-        // `show_with` draws at `area.top() - scroll`, so the centring is a negative scroll: the code
-        // panels behind the words move with them rather than being a second answer to one question.
-        crate::components::markdown_text::show_with(
-            ui,
-            inside,
-            made,
-            look.renderer,
-            -down,
-            Some(code),
-        );
-        picked
+        let place = Placed { sensed: rect, inside, down };
+        let id = ui.id().with(("agent-chat-bubble", message.id, segment));
+        let mut held =
+            Held { selection, selecting, menu, message: message.id, key: key.as_str().into() };
+        selectable(ui, id, place, made, look, Some(code), &mut held)
     };
-    if let Some(selection) = picked {
-        state.selection = Some(Selected { message: message.id, segment, range: selection });
-    }
-    if response.is_pointer_button_down_on() || response.dragged() {
-        state.selecting = true;
-    }
-    // The text cursor over the words, **except over a link**, where `show_with` has just set the hand: setting the
-    // text cursor afterwards took the hand away, so nothing said a link could be clicked (`task-2263`).
-    let over_a_link =
-        ui.ctx().output(|output| output.cursor_icon == egui::CursorIcon::PointingHand);
-    if response.hovered() && !over_a_link {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
-    }
-    // The right click menu: copy what is selected, copy the whole message, select all of it. Opened
-    // here and drawn by `components::agent_chat::message_menu` once everything else has been, because
-    // a popup is a layer of its own and this one is opened from inside a scrolling area. **Not over a link**,
-    // where the right click opened the link's own menu (`task-2263`).
-    let link_menu = crate::components::markdown_text::the_link_menu_opened_this_frame(ui.ctx());
-    if response.secondary_clicked() && !link_menu {
-        // **The window's own points, not the layer's.** A popup is an `egui::Area` and is placed in
-        // screen space, so where it opens is asked of the context rather than of this `Ui` — which is
-        // exactly the split `controls::field_menu` keeps, and the reason a menu opened inside a chat
-        // node on a panned canvas lands under the pointer rather than somewhere else.
-        if let Some(at) = ui.ctx().pointer_interact_pos() {
-            state.menu = Some(MessageMenu { at, message: message.id });
-        }
-    }
     // The copy button, which is `.messageActions`: it appears under the pointer rather than sitting
     // there, because a column of bubbles each with a permanent button on it is a column of buttons.
     // **And it stays up for [`COPY_LINGER`] after the pointer has left**, so it can be reached.
@@ -687,8 +620,13 @@ fn thinking(
         let body = well.shrink2(Vec2::new(14.0 * scale, 12.0 * scale));
         let key = format!("think-{}", message.id);
         let code = in_a_well(look);
-        let made = rendered(state, look, &key, &message.thinking, body.width());
-        crate::components::markdown_text::show_with(ui, body, made, look.renderer, 0.0, Some(code));
+        let PaneState { rendered: cache, selection, selecting, menu, .. } = state;
+        let made = rendered_in(cache, look, &key, &message.thinking, body.width());
+        let place = Placed { sensed: well, inside: body, down: 0.0 };
+        let id = ui.id().with(("agent-chat-thinking-words", message.id));
+        let mut held =
+            Held { selection, selecting, menu, message: message.id, key: key.as_str().into() };
+        selectable(ui, id, place, made, look, Some(code), &mut held);
     }
     acts
 }
@@ -1435,7 +1373,8 @@ fn read_card(
     acts
 }
 
-/// What a call was asked and what it answered, laid out by `tool_view`, from the top of `area`.
+/// What a call was asked and what it answered, laid out by `tool_view`, from the top of `area`. Both can be
+/// selected and copied (`task-2375`).
 fn tool_body(
     tool: &ToolCall,
     state: &mut PaneState,
@@ -1444,25 +1383,35 @@ fn tool_body(
     area: Rect,
 ) {
     let code = in_a_well(look);
+    let PaneState { rendered: cache, selection, selecting, menu, .. } = state;
     let arguments = super::tool_view::arguments_markdown(tool);
-    let made = rendered(state, look, &format!("tool-args-{}", tool.id), &arguments, area.width());
+    let key = format!("tool-args-{}", tool.id);
+    let made = rendered_in(cache, look, &key, &arguments, area.width());
     let used = made.height();
-    crate::components::markdown_text::show_with(ui, area, made, look.renderer, 0.0, Some(code));
+    let sensed = Rect::from_min_size(area.min, Vec2::new(area.width(), used));
+    let place = Placed { sensed, inside: area, down: 0.0 };
+    let id = ui.id().with(("agent-chat-tool-arguments", &tool.id));
+    let mut held =
+        Held { selection, selecting, menu, message: NO_MESSAGE, key: key.as_str().into() };
+    selectable(ui, id, place, made, look, Some(code), &mut held);
     if let Some(answer) = &tool.answer {
         let below =
             Rect::from_min_max(Pos2::new(area.left(), area.top() + used + ANSWER_GAP), area.max);
         let text = super::tool_view::answer_markdown(tool, answer);
-        let made = rendered(state, look, &format!("tool-answer-{}", tool.id), &text, below.width());
-        crate::components::markdown_text::show_with(
-            ui,
-            below,
-            made,
-            look.renderer,
-            0.0,
-            Some(code),
-        );
+        let key = format!("tool-answer-{}", tool.id);
+        let made = rendered_in(cache, look, &key, &text, below.width());
+        let sensed = Rect::from_min_size(below.min, Vec2::new(below.width(), made.height()));
+        let place = Placed { sensed, inside: below, down: 0.0 };
+        let id = ui.id().with(("agent-chat-tool-answer", &tool.id));
+        let mut held =
+            Held { selection, selecting, menu, message: NO_MESSAGE, key: key.as_str().into() };
+        selectable(ui, id, place, made, look, Some(code), &mut held);
     }
 }
+
+/// The message a block of words is said to be in when it is in no one message, which is a run of tool calls:
+/// a run can gather calls from several messages, so its right click menu offers no `Copy Message`.
+const NO_MESSAGE: u64 = u64::MAX;
 
 /// An answer that stopped with an error: the design's error card, with the server's own words in its
 /// well.
@@ -1517,8 +1466,13 @@ fn failure(
     let inside = well.shrink2(Vec2::new(WELL_PAD_X * scale, WELL_PAD_Y * scale));
     let key = format!("failure-{}", message.id);
     let code = in_a_well(look);
-    let made = rendered(state, look, &key, said, inside.width());
-    crate::components::markdown_text::show_with(ui, inside, made, look.renderer, 0.0, Some(code));
+    let PaneState { rendered: cache, selection, selecting, menu, .. } = state;
+    let made = rendered_in(cache, look, &key, said, inside.width());
+    let place = Placed { sensed: well, inside, down: 0.0 };
+    let id = ui.id().with(("agent-chat-failure-words", message.id));
+    let mut held =
+        Held { selection, selecting, menu, message: message.id, key: key.as_str().into() };
+    selectable(ui, id, place, made, look, Some(code), &mut held);
 }
 
 /// The colours markdown is rendered in here.
@@ -1561,15 +1515,120 @@ fn in_a_well(look: &Look<'_>) -> crate::components::markdown_text::CodeColors {
     }
 }
 
-/// The rendered markdown for `key`, made again only when the source or the width has changed.
-fn rendered<'a>(
-    state: &'a mut PaneState,
+/// Where a block of rendered words is drawn: the rectangle that takes the pointer, the room the words
+/// get inside it, and how far down that room the letters start.
+#[derive(Clone, Copy)]
+pub(super) struct Placed {
+    pub sensed: Rect,
+    pub inside: Rect,
+    pub down: f32,
+}
+
+/// The pane's selection and right click menu, lent to one block of words, with the message and the key that
+/// block is in.
+pub(super) struct Held<'a, 'k> {
+    pub selection: &'a mut Option<crate::services::agent_chat::Selected>,
+    pub selecting: &'a mut bool,
+    pub menu: &'a mut Option<crate::services::agent_chat::MessageMenu>,
+    pub message: u64,
+    pub key: std::borrow::Cow<'k, str>,
+}
+
+/// Draw a block of rendered words that can be selected and copied, and answer the pointer's response.
+///
+/// Every block of words in a message goes through this: the answer, the thinking, a tool call's arguments
+/// and answer, and the failure (`task-2375`). A press puts the anchor down, a drag extends it, a double and a
+/// triple press take the word and the line, and a press with Shift held extends what was selected in the
+/// same block, which is [`crate::components::editor_view::read_pointer`]. The selection is the pane's one
+/// [`crate::services::agent_chat::Selected`], so a copy, the right click menu and `Ctrl`/`Cmd`+`C` work in
+/// every block the same way.
+pub(super) fn selectable(
+    ui: &mut egui::Ui,
+    id: egui::Id,
+    place: Placed,
+    made: &crate::components::markdown_text::Rendered,
+    look: &Look<'_>,
+    code: Option<crate::components::markdown_text::CodeColors>,
+    held: &mut Held<'_, '_>,
+) -> egui::Response {
+    use crate::components::editor_view;
+    // `click_and_drag` rather than `hover` for the reason the Markdown preview senses both - see
+    // `UnluminousApp::show_markdown_preview`.
+    let response = ui.interact(place.sensed, id, Sense::click_and_drag());
+    let was = held.selection.as_ref().filter(|one| one.key == *held.key).map(|one| one.range);
+    let origin = Pos2::new(place.inside.left(), place.inside.top() + place.down);
+    let caret = unluminous_core::Selection::caret(0);
+    let picked = editor_view::read_pointer(
+        &response,
+        &made.layout,
+        &made.text,
+        origin,
+        was.unwrap_or(caret),
+    );
+    // What is painted is the selection this frame's drag made rather than the one it started with,
+    // which is `select_in_the_preview`'s own ordering.
+    if let Some(selection) = picked.or(was) {
+        let colour = crate::theme::color::text_selection();
+        editor_view::paint_behind(ui, &made.layout, origin, selection.range(), colour, 2.0);
+    }
+    // `show_with` draws at `area.top() - scroll`, so the centring is a negative scroll: the code
+    // panels behind the words move with them rather than being a second answer to one question.
+    crate::components::markdown_text::show_with(
+        ui,
+        place.inside,
+        made,
+        look.renderer,
+        -place.down,
+        code,
+    );
+    if let Some(range) = picked {
+        *held.selection = Some(crate::services::agent_chat::Selected {
+            message: held.message,
+            key: held.key.clone().into_owned(),
+            range,
+        });
+    }
+    if response.is_pointer_button_down_on() || response.dragged() {
+        *held.selecting = true;
+    }
+    // The text cursor over the words, **except over a link**, where `show_with` has just set the hand: setting the
+    // text cursor afterwards took the hand away, so nothing said a link could be clicked (`task-2263`).
+    let over_a_link =
+        ui.ctx().output(|output| output.cursor_icon == egui::CursorIcon::PointingHand);
+    if response.hovered() && !over_a_link {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
+    }
+    // The right click menu: copy what is selected, copy the whole message, select all of the block. Opened
+    // here and drawn by `components::agent_chat::message_menu` once everything else has been, because
+    // a popup is a layer of its own and this one is opened from inside a scrolling area. **Not over a link**,
+    // where the right click opened the link's own menu (`task-2263`).
+    let link_menu = crate::components::markdown_text::the_link_menu_opened_this_frame(ui.ctx());
+    if response.secondary_clicked() && !link_menu {
+        // **The window's own points, not the layer's.** A popup is an `egui::Area` and is placed in
+        // screen space, so where it opens is asked of the context rather than of this `Ui` — which is
+        // exactly the split `controls::field_menu` keeps, and the reason a menu opened inside a chat
+        // node on a panned canvas lands under the pointer rather than somewhere else.
+        if let Some(at) = ui.ctx().pointer_interact_pos() {
+            *held.menu = Some(crate::services::agent_chat::MessageMenu {
+                at,
+                message: held.message,
+                key: held.key.clone().into_owned(),
+            });
+        }
+    }
+    response
+}
+
+/// The rendered markdown for `key`, out of the pane's cache, made again only when the source or the width
+/// has changed. [`rendered`] for a caller that has the rest of the pane borrowed.
+fn rendered_in<'a>(
+    cache: &'a mut crate::components::markdown_text::Cache,
     look: &Look<'_>,
     key: &str,
     source: &str,
     width: f32,
 ) -> &'a crate::components::markdown_text::Rendered {
-    state.rendered.rendered(
+    cache.rendered(
         key,
         source,
         look.renderer,
@@ -1579,6 +1638,17 @@ fn rendered<'a>(
         width.max(24.0),
         look.highlighter,
     )
+}
+
+/// The rendered markdown for `key`, made again only when the source or the width has changed.
+fn rendered<'a>(
+    state: &'a mut PaneState,
+    look: &Look<'_>,
+    key: &str,
+    source: &str,
+    width: f32,
+) -> &'a crate::components::markdown_text::Rendered {
+    rendered_in(&mut state.rendered, look, key, source, width)
 }
 
 /// The same, as a height, which is what the measuring pass wants.
@@ -1796,6 +1866,7 @@ fn measure_block(
         scenes,
         acts: Vec::new(),
         scope,
+        held: None,
     };
     super::blocks::block(&mut kit, read, source, key, Pos2::ZERO, width)
 }
@@ -1814,7 +1885,17 @@ fn block_show(
 ) -> Vec<Act> {
     let key = block_key(message, segment);
     let read = read_cached(state, &key, source, finished);
-    let PaneState { blocks_rux: kept, rendered, blocks, scenes, still, .. } = state;
+    let PaneState {
+        blocks_rux: kept,
+        rendered,
+        blocks,
+        scenes,
+        still,
+        selection,
+        selecting,
+        menu,
+        ..
+    } = state;
     let rux_state = kept.get_or_insert_with(blocks_rux);
     rux_state.set_zoom(look.scale());
     rux_state.set_still(*still);
@@ -1837,6 +1918,7 @@ fn block_show(
             scenes,
             acts: Vec::new(),
             scope,
+            held: Some(Held { selection, selecting, menu, message, key: "".into() }),
         };
         super::blocks::block(&mut kit, &read, source, &key, rect.min, rect.width());
         kit.acts

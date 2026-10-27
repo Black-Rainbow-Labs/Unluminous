@@ -144,12 +144,19 @@ fn rendered_text(
         None,
         egui::Id::new("agent-tasks-description-words"),
     );
+    let most = (height - inside.height()).max(0.0);
+    // A selection dragged past the top or bottom of the well scrolls the description (`task-2375`).
+    let holding =
+        markdown_text::selecting_in(ui.ctx(), egui::Id::new("agent-tasks-description-words"));
+    let by = crate::components::editor_view::held_drag_scroll(ui, inside, holding);
+    if by != 0.0 {
+        board.description_scroll = (scroll + by).clamp(0.0, most);
+    }
     let over = crate::components::controls::pointer_in(ui).is_some_and(|at| well.contains(at));
     if over {
         let wheel = ui.ctx().input(|input| input.smooth_scroll_delta.y);
         if wheel != 0.0 {
-            board.description_scroll =
-                (scroll - wheel).clamp(0.0, (height - inside.height()).max(0.0));
+            board.description_scroll = (scroll - wheel).clamp(0.0, most);
         }
     }
 }

@@ -2707,6 +2707,22 @@ its own custom layout (same behavior as if they were open in different windows).
   Tab`, `Next Project Tab` and `Previous Project Tab` (`Ctrl`/`Cmd`+`Alt`+`PageDown`/`PageUp`) are the agent's half.
   `tests/project_tabs.rs` is the tests.
 
+## What `task-2375` changed, and the rules it left
+
+- **Byte offsets into text are moved by a character's own width, never by one.** Word writes U+00A0 between
+  words, which is two bytes in UTF-8, and the spell check stepped one byte past the space before a word and
+  panicked on every frame that drew a document's underlines (`spell::is_left_alone`).
+- **A drag that selects scrolls its view while it is held near or past the top or bottom edge**:
+  `editor_view::drag_scroll` for a caller with the response, `held_drag_scroll` for one without. The editing
+  area, the Markdown preview, the chat transcript, a ticket's description and its comments use them. A new
+  scrolling text view calls one of them.
+- **A press or a drag with Shift held extends the selection** in every view `editor_view::read_pointer` reads,
+  which keeps the anchor and moves the head.
+- **Every block of rendered words in a chat message goes through `message::selectable`**: the answer, the
+  thinking, a tool call's arguments and answer, the failure, and a component's markdown (`blocks::Kit::held`).
+  `Selected` and `MessageMenu` name the rendered key the block is cached under, so a copy, `Ctrl`/`Cmd`+`C`,
+  the right click menu and `Select All` are about the block they were made in.
+
 ## What `task-2374` changed, and the rules it left
 
 - **A press outside a text box takes the keyboard from it** (`let_a_press_elsewhere_take_the_focus`, egui's

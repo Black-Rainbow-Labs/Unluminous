@@ -543,6 +543,7 @@ pub(crate) fn comment_section(
                             Vec2::new(words_width, height),
                         );
                         // Selectable, as the chat's messages are. `task-2255`.
+                        let words_id = egui::Id::new(("agent-tasks-comment-words", comment.id));
                         selected_words = crate::components::markdown_text::show_selectable(
                             ui,
                             block,
@@ -550,8 +551,20 @@ pub(crate) fn comment_section(
                             look.renderer,
                             0.0,
                             None,
-                            egui::Id::new(("agent-tasks-comment-words", comment.id)),
+                            words_id,
                         );
+                        // A selection dragged past the top or bottom of the list scrolls it (`task-2375`).
+                        let holding =
+                            crate::components::markdown_text::selecting_in(ui.ctx(), words_id);
+                        let view = ui.clip_rect();
+                        let by =
+                            crate::components::editor_view::held_drag_scroll(ui, view, holding);
+                        if by != 0.0 {
+                            ui.scroll_with_delta_animation(
+                                Vec2::new(0.0, -by),
+                                egui::style::ScrollAnimation::none(),
+                            );
+                        }
                         height
                     }
                     false => {

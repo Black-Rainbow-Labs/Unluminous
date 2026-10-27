@@ -81,3 +81,16 @@ fn field_codes_and_deleted_text_are_not_checked() {
     session.backspace(unluminous_word::edit::Unit::Character);
     assert_eq!(underlined(&session, &speller), []);
 }
+
+#[test]
+fn a_non_breaking_space_before_a_word_does_not_stop_the_check() {
+    // task-2375: Word writes U+00A0 between words, which is two bytes in UTF-8, and the check that
+    // looks for an address round a word sliced the text one byte after it and panicked.
+    let speller = Speller::english().unwrap();
+    for space in ['\u{a0}', '\u{2002}', '\u{3000}'] {
+        let text = format!("Some{space}background.{space}Sylloge{space}is an internall tool{space}https://example.com/page");
+        let found = spell::check_text(&text, &speller);
+        let words: Vec<&str> = found.iter().map(|(range, _)| &text[range.clone()]).collect();
+        assert_eq!(words, ["Sylloge", "internall"], "with {space:?} between the words");
+    }
+}

@@ -3744,7 +3744,7 @@ fn a_drag_over_an_answer_selects_only_the_words_it_crossed() {
         let mut landed = false;
         with_the_chat(&mut harness, |chat| {
             let answer = chat.chat().messages.last().expect("the answer").id;
-            landed = chat.ui.selection.is_some_and(|selected| selected.message == answer);
+            landed = chat.ui.selection.as_ref().is_some_and(|selected| selected.message == answer);
         });
         if landed {
             start = Some(at);
@@ -3781,7 +3781,7 @@ fn a_point_on_the_answer(harness: &mut Harness<'static, UnluminousApp>) -> egui:
         let mut landed = false;
         with_the_chat(harness, |chat| {
             let answer = chat.chat().messages.last().expect("the answer").id;
-            landed = chat.ui.selection.is_some_and(|selected| selected.message == answer);
+            landed = chat.ui.selection.as_ref().is_some_and(|selected| selected.message == answer);
         });
         if landed {
             return at + egui::vec2(0.0, 3.0);
@@ -3943,7 +3943,7 @@ fn words_selected_while_an_answer_streams_in_are_only_the_words_dragged_over() {
         click_at(&mut harness, at);
         let mut landed = false;
         with_the_chat(&mut harness, |chat| {
-            landed = chat.ui.selection.is_some_and(|selected| selected.message == target);
+            landed = chat.ui.selection.as_ref().is_some_and(|selected| selected.message == target);
         });
         if landed {
             start = Some(at + egui::vec2(0.0, 3.0));
@@ -5813,4 +5813,109 @@ fn an_open_tool_call_is_laid_out_rather_than_shown_as_json() {
     });
     steady(&mut harness);
     harness.snapshot(shot("agent_chat_tool_laid_out").as_str());
+}
+
+/// Click down the chat pane a few points at a time until a click lands in the block of words whose key
+/// starts with `key`, and answer where that was.
+fn a_point_in_the_chat_block(
+    harness: &mut Harness<'static, UnluminousApp>,
+    key: &str,
+) -> Option<egui::Pos2> {
+    let pane = harness.state().plugin_pane_area_for("agent-chat/chat").expect("the chat pane");
+    let mut y = pane.top() + 90.0;
+    while y < pane.bottom() - 90.0 {
+        let at = egui::pos2(pane.left() + 40.0, y);
+        click_at(harness, at);
+        let mut landed = false;
+        with_the_chat(harness, |chat| {
+            landed = chat.ui.selection.as_ref().is_some_and(|one| one.key.starts_with(key));
+        });
+        if landed {
+            return Some(at);
+        }
+        y += 4.0;
+    }
+    None
+}
+
+/// `task-2375`: *"I'm unable to select certain texts in agent chat."* The words of an answer could be selected,
+/// and nothing else could: the thinking, a tool call's arguments and answer, a component's words and the
+/// error an answer stopped with were painted with nothing behind them. They all go through the same
+/// selection now; the error card is the one every conversation can show.
+#[test]
+fn the_words_of_a_failed_answer_can_be_selected_and_copied() {
+    let mut harness =
+        a_chat(&[(unluminous_chat::Role::User, "Why?"), (unluminous_chat::Role::Assistant, "")]);
+    with_the_chat(&mut harness, |chat| {
+        let answer = chat.session_mut().chat.messages.last_mut().expect("the answer");
+        answer.failure = Some(
+            "The server answered 529: the model is overloaded, please try again in a minute".into(),
+        );
+    });
+    steady(&mut harness);
+    let start = a_point_in_the_chat_block(&mut harness, "failure-")
+        .expect("a click in the error card's words puts a caret there");
+    drag_from(&mut harness, start, start + egui::vec2(120.0, 0.0));
+    let selected = chat_selection(&mut harness).unwrap_or_default();
+    assert!(!selected.is_empty(), "a drag over the error selects some of it");
+    assert!(
+        "The server answered 529: the model is overloaded, please try again in a minute"
+            .contains(selected.as_str()),
+        "and what it selects is the error's own words: {selected}"
+    );
+}
+
+/// `task-2375`: a click with Shift held extends the selection in an answer from where the caret was.
+#[test]
+fn a_shift_click_in_an_answer_selects_from_the_caret_to_the_click() {
+    let words = "alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima mike \
+                 november oscar papa quebec romeo sierra tango uniform victor whiskey xray yankee";
+    let mut harness = a_chat(&[
+        (unluminous_chat::Role::User, "Read me the alphabet."),
+        (unluminous_chat::Role::Assistant, words),
+    ]);
+    steady(&mut harness);
+    let start = a_point_in_the_chat_block(&mut harness, "message-").expect("a point in an answer");
+    // The point found may be in the question, so the answer is found again from below it if need be.
+    let mut answer = 0;
+    with_the_chat(&mut harness, |chat| answer = chat.chat().messages.last().expect("answer").id);
+    let mut start = start;
+    let mut in_the_answer = false;
+    for _ in 0..80 {
+        click_at(&mut harness, start);
+        with_the_chat(&mut harness, |chat| {
+            in_the_answer = chat.ui.selection.as_ref().is_some_and(|one| one.message == answer);
+        });
+        if in_the_answer {
+            break;
+        }
+        start += egui::vec2(0.0, 4.0);
+    }
+    assert!(in_the_answer, "a point over the answer's words");
+    assert!(
+        chat_selection(&mut harness).unwrap_or_default().is_empty(),
+        "a caret, nothing selected"
+    );
+    shift_click_at(&mut harness, start + egui::vec2(120.0, 0.0));
+    let selected = chat_selection(&mut harness).unwrap_or_default();
+    assert!(selected.len() > 6, "the shift click selected from the caret to itself: {selected:?}");
+    assert!(words.contains(selected.as_str()), "{selected}");
+}
+
+/// A click with Shift held down, the way a hand makes one.
+fn shift_click_at(harness: &mut Harness<'static, UnluminousApp>, at: egui::Pos2) {
+    harness.input_mut().events.push(egui::Event::PointerMoved(at));
+    harness.input_mut().events.push(egui::Event::ModifiersChanged(egui::Modifiers::SHIFT));
+    steady(harness);
+    for pressed in [true, false] {
+        harness.input_mut().events.push(egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::SHIFT,
+        });
+    }
+    steady(harness);
+    harness.input_mut().events.push(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+    steady(harness);
 }
