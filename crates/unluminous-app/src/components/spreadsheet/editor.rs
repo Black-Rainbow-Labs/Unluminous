@@ -203,11 +203,22 @@ pub fn show_function_list(
                         egui::Sense::click(),
                     );
                     let chosen = i == edit.chosen;
+                    // The chosen row and the row under the pointer are carved in, as every menu's are.
                     if chosen || response.hovered() {
-                        ui.painter().rect_filled(
-                            rect,
-                            CornerRadius::same(8),
-                            if chosen { look.palette.selected_row } else { look.palette.control },
+                        let chat = crate::components::word::kit::chat();
+                        ui.painter().rect_filled(rect, CornerRadius::same(10), chat.well);
+                        ui.painter().rect_stroke(
+                            rect.shrink(0.5),
+                            CornerRadius::same(10),
+                            Stroke::new(
+                                1.0,
+                                if chosen {
+                                    chat.sky.gamma_multiply(0.7)
+                                } else {
+                                    chat.dark.gamma_multiply(0.55)
+                                },
+                            ),
+                            egui::StrokeKind::Inside,
                         );
                     }
                     ui.painter().text(
@@ -257,10 +268,9 @@ pub fn show_argument_hint(ui: &egui::Ui, book: &Book, frame: Frame, look: &Look<
         .fixed_pos(anchor)
         .interactable(false)
         .show(ui.ctx(), |ui| {
-            egui::Frame::popup(ui.style())
-                .fill(look.palette.menu)
-                .corner_radius(CornerRadius::same(6))
-                .inner_margin(egui::Margin::symmetric(8, 3))
+            crate::components::controls::menu_frame(ui)
+                .corner_radius(CornerRadius::same(10))
+                .inner_margin(egui::Margin::symmetric(10, 4))
                 .show(ui, |ui| {
                     // The argument the caret is in is set in the strong ink.
                     let mut job = egui::text::LayoutJob::default();

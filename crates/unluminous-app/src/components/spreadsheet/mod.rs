@@ -10,6 +10,7 @@
 pub mod chart;
 pub mod chart_drag;
 pub mod chart_paint;
+pub mod chrome;
 pub mod editor;
 pub mod grid;
 pub mod keys;
@@ -27,7 +28,7 @@ pub mod sparkline;
 use egui::{CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 use unluminous_sheet::coord::{column_name, CellRef};
 
-use crate::components::controls::{self, TextBoxes, WithHint};
+use crate::components::controls;
 use crate::components::settings_kit::{self as kit, Column};
 use crate::services::plugin_ui::{Look, Request};
 use crate::services::spreadsheet::actions::{self, Act};
@@ -40,12 +41,8 @@ use crate::theme::icon;
 use keys::Finish;
 use menus::Picked;
 
-/// The bar's height, before the tab's zoom.
-const BAR: f32 = 38.0;
-/// The sheet tabs' height.
-const SHEETS: f32 = 30.0;
-/// The Format panel's width.
-const PANEL: f32 = 290.0;
+/// The Format panel's width, before the tab's zoom.
+const PANEL: f32 = 320.0;
 
 /// What a tab asked for this frame, made after drawing.
 #[derive(Default)]
@@ -105,9 +102,12 @@ fn draw(
     list_on: bool,
     asked: &mut Asked,
 ) {
-    let s = look.scale();
-    let bar = Rect::from_min_size(area.min, Vec2::new(area.width(), BAR * s));
-    let sheets = Rect::from_min_max(Pos2::new(area.left(), area.bottom() - SHEETS * s), area.max);
+    // Every part of the tab's own furniture is the design's size times the tab's own zoom (`task-2382`).
+    let s = look.zoom();
+    crate::components::word::kit::set_zoom(ui.ctx(), s);
+    let bar = Rect::from_min_size(area.min, Vec2::new(area.width(), chrome::BAR * s));
+    let sheets =
+        Rect::from_min_max(Pos2::new(area.left(), area.bottom() - chrome::SHEETS * s), area.max);
     let panel_width =
         if book.view.panel.is_some() { (PANEL * s).min(area.width() * 0.45) } else { 0.0 };
     let grid_area = Rect::from_min_max(
@@ -187,10 +187,10 @@ fn draw(
             name_box = k.name_box;
         }
     }
-    show_bar(ui, bar, book, look, name_box, asked);
+    chrome::bar(ui, bar, book, look, name_box, asked);
     if is_a_chart_sheet(book) {
         show_a_chart_sheet(ui, grid_area, book, look, asked);
-        show_sheet_tabs(ui, sheets, book, look, asked);
+        chrome::sheet_strip(ui, sheets, book, look, asked);
         show_floating(ui, grid_area, book, look, asked);
         return;
     }
@@ -247,7 +247,7 @@ fn draw(
     show_note_under_the_pointer(ui, book, frame, look);
     panes_a::show(ui, book, frame, look, &mut asked.words);
     panes_b::show(ui, book, frame, look, &mut asked.words);
-    show_sheet_tabs(ui, sheets, book, look, asked);
+    chrome::sheet_strip(ui, sheets, book, look, asked);
     // The panel is drawn from the frame after `Format` opened it, when the grid has made room for it.
     if book.view.panel.is_some() && panel_area.width() > 40.0 {
         show_panel(ui, panel_area, book, look, asked);
@@ -304,9 +304,9 @@ fn after_the_grid(
     let prefix = keys::pointing_prefix(book);
     if let Some((index, range)) = out.finder {
         if let Some(edit) = book.view.edit.as_mut() {
-            if let Some((text, end)) =
-                crate::services::spreadsheet::formula_text::replace_reference(&edit.text, index, range)
-            {
+            if let Some((text, end)) = crate::services::spreadsheet::formula_text::replace_reference(
+                &edit.text, index, range,
+            ) {
                 edit.text = text;
                 edit.pointing = None;
                 edit.focus = true;
@@ -428,239 +428,6 @@ fn complete_with(ctx: &egui::Context, book: &mut Book, offered: &keys::Offered, 
     edit.caret = Some(new_caret);
 }
 
-/// The bar: the name box, the formula bar, `Format` and `...`.
-fn show_bar(
-    ui: &mut egui::Ui,
-    bar: Rect,
-    book: &mut Book,
-    look: &Look<'_>,
-    focus_name_box: bool,
-    asked: &mut Asked,
-) {
-    let painter = ui.painter_at(bar);
-    painter.rect_filled(bar, 0, look.ground(look.palette.panel));
-    painter.line_segment(
-        [bar.left_bottom(), bar.right_bottom()],
-        Stroke::new(1.0, look.palette.divider),
-    );
-    let pad = 6.0;
-    let height = bar.height() - 2.0 * pad;
-    let font = controls::field_font(height);
-    // The name box.
-    let name_rect = Rect::from_min_size(bar.min + Vec2::new(pad, pad), Vec2::new(110.0, height));
-    let name_id = egui::Id::new(("spreadsheet-name-box", &book.key));
-    let mut typed: String = ui.ctx().data(|d| d.get_temp::<String>(name_id)).unwrap_or_default();
-    let focused = ui.ctx().memory(|m| m.has_focus(name_id.with("box")));
-    if !focused {
-        typed = book.view.range().a1();
-        if let Some(name) = name_of(book) {
-            typed = name;
-        }
-    }
-    painter.rect(
-        name_rect,
-        CornerRadius::same(8),
-        look.palette.field,
-        Stroke::new(1.0, look.palette.control_border),
-        egui::StrokeKind::Inside,
-    );
-    let response = ui.text_box_at(
-        name_rect.shrink2(Vec2::new(8.0, 2.0)),
-        egui::TextEdit::singleline(&mut typed)
-            .id(name_id.with("box"))
-            .frame(egui::Frame::NONE)
-            .font(font.clone()),
-    );
-    response
-        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Name box"));
-    if focus_name_box {
-        response.request_focus();
-    }
-    if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-        let text = typed.trim().to_owned();
-        if !text.is_empty() {
-            // A range or a name goes there; anything else names the chosen cells.
-            if commands::parse_range(book, &text).is_some() {
-                asked.words.push(vec!["select".to_owned(), text]);
-            } else {
-                asked.words.push(vec!["name".to_owned(), text]);
-            }
-        }
-        asked.requests.push(Request::TakeTheKeyboard(true));
-    }
-    ui.ctx().data_mut(|d| d.insert_temp(name_id, typed));
-    // `fx`, then the formula bar.
-    let buttons = 132.0;
-    let fx = Rect::from_min_size(
-        Pos2::new(name_rect.right() + 6.0, name_rect.top()),
-        Vec2::new(28.0, height),
-    );
-    painter.text(
-        fx.center(),
-        egui::Align2::CENTER_CENTER,
-        "fx",
-        egui::FontId::proportional(13.0).clone(),
-        look.palette.text_dim,
-    );
-    let formula = Rect::from_min_max(
-        Pos2::new(fx.right() + 4.0, name_rect.top()),
-        Pos2::new(bar.right() - buttons, name_rect.bottom()),
-    );
-    painter.rect(
-        formula,
-        CornerRadius::same(8),
-        look.palette.field,
-        Stroke::new(
-            1.0,
-            if book.view.edit.as_ref().is_some_and(|e| e.in_bar) {
-                look.palette.accent
-            } else {
-                look.palette.control_border
-            },
-        ),
-        egui::StrokeKind::Inside,
-    );
-    let inside = formula.shrink2(Vec2::new(10.0, 2.0));
-    let bar_id = editor::bar_box_id(&book.key);
-    match book.view.edit.as_mut() {
-        Some(edit) => {
-            // A formula longer than the bar, or one with line breaks, grows the bar down over the grid while it
-            // is typed in, as Excel's formula bar does.
-            let width = ui
-                .painter()
-                .layout_no_wrap(edit.text.clone(), font.clone(), look.palette.text)
-                .size()
-                .x;
-            let grows = edit.in_bar && (width > inside.width() || edit.text.contains('\n'));
-            let response = if grows {
-                let lines = (width / inside.width().max(1.0))
-                    .ceil()
-                    .max(edit.text.split('\n').count() as f32)
-                    .clamp(2.0, 10.0);
-                let tall = Rect::from_min_size(
-                    formula.min,
-                    Vec2::new(formula.width(), lines * (font.size * 1.35) + 10.0),
-                );
-                egui::Area::new(egui::Id::new(("spreadsheet-tall-bar", &book.key)))
-                    .order(egui::Order::Foreground)
-                    .fixed_pos(tall.min)
-                    .show(ui.ctx(), |ui| {
-                        ui.painter().rect(
-                            tall,
-                            CornerRadius::same(8),
-                            look.palette.field,
-                            Stroke::new(1.0, look.palette.accent),
-                            egui::StrokeKind::Inside,
-                        );
-                        ui.text_box_at(
-                            tall.shrink2(Vec2::new(10.0, 5.0)),
-                            egui::TextEdit::multiline(&mut edit.text)
-                                .id(bar_id)
-                                .frame(egui::Frame::NONE)
-                                .font(font.clone())
-                                .lock_focus(true)
-                                .desired_width(tall.width() - 20.0)
-                                .return_key(Some(egui::KeyboardShortcut::new(
-                                    egui::Modifiers::ALT,
-                                    egui::Key::Enter,
-                                ))),
-                        )
-                    })
-                    .inner
-            } else {
-                ui.text_box_at(
-                    inside,
-                    egui::TextEdit::singleline(&mut edit.text)
-                        .id(bar_id)
-                        .frame(egui::Frame::NONE)
-                        .font(font.clone())
-                        .lock_focus(true),
-                )
-            };
-            response.widget_info(|| {
-                egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Formula bar")
-            });
-            if response.gained_focus() {
-                edit.in_bar = true;
-                edit.typed = false;
-            }
-            if edit.focus && edit.in_bar {
-                response.request_focus();
-                keys::set_caret(
-                    ui.ctx(),
-                    bar_id,
-                    edit.caret.take().unwrap_or(edit.text.chars().count()),
-                );
-                edit.focus = false;
-            }
-        }
-        None => {
-            let s = &book.session.book;
-            let shown = display::input_text(s, &s.sheets[book.view.sheet], book.view.cursor);
-            let response =
-                ui.interact(formula, ui.id().with(("formula-bar", &book.key)), Sense::click());
-            let text = controls::truncate_chars(&shown.replace('\n', " "), 400, 396);
-            painter.text(
-                Pos2::new(inside.left(), inside.center().y),
-                egui::Align2::LEFT_CENTER,
-                text,
-                font.clone(),
-                look.palette.text_strong,
-            );
-            let response = response.with_hint("The active cell's contents. Click to change them.");
-            response.widget_info(|| {
-                egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Formula bar")
-            });
-            if response.clicked() {
-                keys::start_editing(book, true);
-                asked.requests.push(Request::TakeTheKeyboard(true));
-            }
-        }
-    }
-    // `Format`, which opens the panel, and `...`, which opens the workbook menu.
-    let format = Rect::from_min_size(
-        Pos2::new(bar.right() - buttons + 8.0, name_rect.top()),
-        Vec2::new(80.0, height),
-    );
-    let lit = book.view.panel.is_some();
-    let response = ui.interact(format, ui.id().with(("format-button", &book.key)), Sense::click());
-    let fill = if lit {
-        look.palette.selected_row
-    } else if response.hovered() {
-        look.palette.control
-    } else {
-        look.ground(look.palette.panel)
-    };
-    painter.rect(
-        format,
-        CornerRadius::same(13),
-        fill,
-        Stroke::new(1.0, look.palette.control_border),
-        egui::StrokeKind::Inside,
-    );
-    painter.text(
-        format.center(),
-        egui::Align2::CENTER_CENTER,
-        "Format",
-        egui::FontId::proportional(12.5),
-        look.palette.text_strong,
-    );
-    let response =
-        response.with_hint("Number, font, fill, borders, alignment, rules and data (Ctrl+1)");
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Format"));
-    if response.clicked() {
-        book.view.panel = if lit { None } else { Some(PanelPath(Vec::new())) };
-    }
-    let more = Rect::from_min_size(
-        Pos2::new(format.right() + 8.0, name_rect.top()),
-        Vec2::new(height, height),
-    );
-    if controls::icon_button(ui, more, "Workbook menu", icon::more) {
-        book.view.book_menu = Some(String::new());
-        book.view.menu = None;
-    }
-}
-
 /// The defined name that is exactly the chosen range, which the name box shows instead of the address.
 fn name_of(book: &Book) -> Option<String> {
     let range = book.view.range();
@@ -748,10 +515,9 @@ fn show_input_message(ui: &egui::Ui, book: &Book, frame: grid::Frame, look: &Loo
         .fixed_pos(cell.left_bottom() + Vec2::new(12.0, 6.0))
         .interactable(false)
         .show(ui.ctx(), |ui| {
-            egui::Frame::popup(ui.style())
-                .fill(look.palette.menu)
-                .corner_radius(CornerRadius::same(8))
-                .inner_margin(egui::Margin::same(8))
+            controls::menu_frame(ui)
+                .corner_radius(CornerRadius::same(12))
+                .inner_margin(egui::Margin::same(10))
                 .show(ui, |ui| {
                     ui.set_max_width(240.0);
                     if let Some(title) = rule.prompt_title.as_ref().filter(|t| !t.is_empty()) {
@@ -782,10 +548,9 @@ fn show_note_under_the_pointer(ui: &egui::Ui, book: &Book, frame: grid::Frame, l
         .fixed_pos(cell.right_top() + Vec2::new(8.0, 0.0))
         .interactable(false)
         .show(ui.ctx(), |ui| {
-            egui::Frame::popup(ui.style())
-                .fill(look.palette.menu)
-                .corner_radius(CornerRadius::same(8))
-                .inner_margin(egui::Margin::same(10))
+            controls::menu_frame(ui)
+                .corner_radius(CornerRadius::same(12))
+                .inner_margin(egui::Margin::same(12))
                 .show(ui, |ui| {
                     ui.set_max_width(260.0);
                     if !note.author.is_empty() {
@@ -799,197 +564,6 @@ fn show_note_under_the_pointer(ui: &egui::Ui, book: &Book, frame: grid::Frame, l
                     ui.label(egui::RichText::new(&note.text).size(12.0).color(look.palette.text));
                 });
         });
-}
-
-/// The sheet tabs, the button that adds one, and the selection's sum, average and count.
-fn show_sheet_tabs(
-    ui: &mut egui::Ui,
-    strip: Rect,
-    book: &mut Book,
-    look: &Look<'_>,
-    asked: &mut Asked,
-) {
-    let painter = ui.painter_at(strip);
-    painter.rect_filled(strip, 0, look.ground(look.palette.panel));
-    painter.line_segment(
-        [strip.left_top(), strip.right_top()],
-        Stroke::new(1.0, look.palette.divider),
-    );
-    let add =
-        Rect::from_center_size(Pos2::new(strip.left() + 18.0, strip.center().y), Vec2::splat(22.0));
-    if controls::icon_button(ui, add, "Add a sheet", icon::plus) {
-        asked.acts.push(Act::AddSheet);
-    }
-    let font = egui::FontId::proportional(12.5);
-    let mut x = add.right() + 8.0;
-    let summary = summary_text(book);
-    let summary_width = ui
-        .painter()
-        .layout_no_wrap(summary.clone(), egui::FontId::proportional(11.5), look.palette.text_dim)
-        .size()
-        .x;
-    let limit = strip.right() - summary_width - 24.0;
-    let sheets: Vec<(usize, String, Option<unluminous_sheet::styles::Color>)> = book
-        .session
-        .book
-        .sheets
-        .iter()
-        .enumerate()
-        .filter(|(_, s)| s.state == unluminous_sheet::model::Visibility::Visible)
-        .map(|(i, s)| (i, s.name.clone(), s.tab_color))
-        .collect();
-    let theme = book.session.book.styles.theme.clone();
-    let mut placed: Vec<(usize, Rect)> = Vec::new();
-    let mut dropped: Option<(usize, f32)> = None;
-    for (i, name, color) in sheets {
-        let width =
-            ui.painter().layout_no_wrap(name.clone(), font.clone(), look.palette.text).size().x
-                + 26.0;
-        if x + width > limit {
-            break;
-        }
-        let rect = Rect::from_min_size(
-            Pos2::new(x, strip.top() + 3.0),
-            Vec2::new(width, strip.height() - 6.0),
-        );
-        x += width + 4.0;
-        let showing = i == book.view.sheet;
-        if let Some((renaming, text)) = book.view.renaming.as_mut().filter(|(r, _)| *r == i) {
-            let _ = renaming;
-            let id = egui::Id::new(("spreadsheet-rename", &book.key, i));
-            let response = ui.text_box_at(
-                rect.shrink2(Vec2::new(6.0, 2.0)),
-                egui::TextEdit::singleline(text).id(id).font(font.clone()),
-            );
-            response.widget_info(|| {
-                egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Sheet name")
-            });
-            if !response.has_focus() && !response.lost_focus() {
-                response.request_focus();
-            }
-            if response.lost_focus() {
-                let new_name = text.trim().to_owned();
-                if ui.input(|i| !i.key_pressed(egui::Key::Escape))
-                    && !new_name.is_empty()
-                    && new_name != name
-                {
-                    asked.acts.push(Act::RenameSheet(i, new_name));
-                }
-                book.view.renaming = None;
-            }
-            continue;
-        }
-        placed.push((i, rect));
-        let response =
-            ui.interact(rect, ui.id().with(("sheet-tab", &book.key, i)), Sense::click_and_drag());
-        // A tab dragged along the strip moves its sheet to where it is let go.
-        if response.dragged() {
-            if let Some(p) = response.interact_pointer_pos() {
-                ui.painter().line_segment(
-                    [Pos2::new(p.x, strip.top() + 4.0), Pos2::new(p.x, strip.bottom() - 4.0)],
-                    Stroke::new(2.0, look.palette.accent),
-                );
-            }
-        }
-        if response.drag_stopped() {
-            if let Some(p) = response.interact_pointer_pos() {
-                dropped = Some((i, p.x));
-            }
-        }
-        let fill = if showing {
-            look.ground(look.palette.editor)
-        } else if response.hovered() {
-            look.palette.control
-        } else {
-            look.ground(look.palette.panel)
-        };
-        ui.painter().rect_filled(rect, CornerRadius::same(7), fill);
-        if showing {
-            ui.painter().rect_stroke(
-                rect,
-                CornerRadius::same(7),
-                Stroke::new(1.0, look.palette.control_border),
-                egui::StrokeKind::Inside,
-            );
-        }
-        if let Some((r, g, b)) = color.and_then(|c| c.resolve(&theme)) {
-            let stripe = Rect::from_min_max(
-                Pos2::new(rect.left() + 6.0, rect.bottom() - 3.0),
-                Pos2::new(rect.right() - 6.0, rect.bottom() - 1.0),
-            );
-            ui.painter().rect_filled(stripe, 1, egui::Color32::from_rgb(r, g, b));
-        }
-        ui.painter().text(
-            rect.center(),
-            egui::Align2::CENTER_CENTER,
-            &name,
-            font.clone(),
-            if showing { look.palette.text_strong } else { look.palette.text_dim },
-        );
-        response.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Sheet {name}"))
-        });
-        if response.clicked() && !showing {
-            let caret = book.view.edit.as_ref().map(|e| {
-                let id = editor::box_with_the_caret(ui.ctx(), book);
-                keys::caret_of(ui.ctx(), id).unwrap_or(e.text.chars().count())
-            });
-            if caret.is_some_and(|caret| can_point(book, caret)) {
-                point_on_another_sheet(book, i, caret.unwrap_or(0));
-            } else {
-                commit_open_edit(book, asked);
-                asked.acts.push(Act::ShowSheet(i));
-            }
-        }
-        if response.double_clicked() {
-            book.view.renaming = Some((i, name.clone()));
-        }
-        if response.secondary_clicked() {
-            book.view.sheet_menu =
-                Some((i, response.interact_pointer_pos().unwrap_or(rect.left_top())));
-        }
-    }
-    if let Some((from, x)) = dropped {
-        let before = placed.iter().filter(|(_, r)| r.center().x < x).count();
-        let target = placed
-            .get(before.min(placed.len().saturating_sub(1)))
-            .map(|(index, _)| *index)
-            .unwrap_or(from);
-        let target = if before >= placed.len() {
-            placed.last().map_or(from, |(index, _)| *index)
-        } else if target > from {
-            target.saturating_sub(1)
-        } else {
-            target
-        };
-        if target != from {
-            asked.acts.push(Act::MoveSheet(from, target));
-        }
-    }
-    let summary_rect =
-        Rect::from_min_max(Pos2::new(strip.right() - summary_width - 16.0, strip.top()), strip.max);
-    let response = ui.interact(summary_rect, ui.id().with(("summary", &book.key)), Sense::click());
-    ui.painter().text(
-        Pos2::new(strip.right() - 12.0, strip.center().y),
-        egui::Align2::RIGHT_CENTER,
-        summary,
-        egui::FontId::proportional(11.5),
-        if response.hovered() { look.palette.text_strong } else { look.palette.text_dim },
-    );
-    let response = response.with_hint("Copy the sum");
-    response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Selection summary")
-    });
-    if response.clicked() {
-        let total = book.session.summary(book.view.sheet, &book.view.ranges());
-        if total.numbers > 0 {
-            asked.requests.push(Request::Copy(unluminous_sheet::value::number_to_text(total.sum)));
-            asked.requests.push(Request::Message(format!(
-                "Copied the sum, {}",
-                unluminous_sheet::value::number_to_text(total.sum)
-            )));
-        }
-    }
 }
 
 /// Whether the formula being typed takes a reference at the caret, so a click on a cell or a sheet's tab
@@ -1031,46 +605,6 @@ fn point_on_another_sheet(book: &mut Book, index: usize, caret: usize) {
 fn commit_open_edit(book: &mut Book, asked: &mut Asked) {
     if let Some(edit) = book.view.edit.take() {
         asked.commit = Some((edit, Finish::Commit { rows: 0, cols: 0 }));
-    }
-}
-
-/// The status area: the mode (`Ready`, `Enter`, `Edit`, `Point`, and `Extend Selection` or `Add to
-/// Selection`), then for a selection of more than one cell the figures the settings choose, `Average 4
-/// Count 3 Sum 12`, as Excel's status bar shows, then the zoom.
-pub fn summary_text(book: &Book) -> String {
-    let mut parts = vec![mode_text(book)];
-    let ranges = book.view.ranges();
-    if ranges.iter().map(|r| r.len()).sum::<u64>() > 1 {
-        let summary = book.session.summary(book.view.sheet, &ranges);
-        let n = |v: f64| unluminous_sheet::numfmt::general(v, 11);
-        for name in &book.view.aggregates {
-            let figure = match name.as_str() {
-                "average" => summary.average().map(|a| format!("Average {}", n(a))),
-                "count" => (summary.count > 0).then(|| format!("Count {}", summary.count)),
-                "numbers" => {
-                    (summary.numbers > 0).then(|| format!("Numerical Count {}", summary.numbers))
-                }
-                "min" => summary.min.map(|m| format!("Min {}", n(m))),
-                "max" => summary.max.map(|m| format!("Max {}", n(m))),
-                "sum" => (summary.numbers > 0).then(|| format!("Sum {}", n(summary.sum))),
-                _ => None,
-            };
-            parts.extend(figure);
-        }
-    }
-    parts.push(format!("{}%", (book.view.zoom * 100.0).round()));
-    parts.join("    ")
-}
-
-/// Excel's cell mode: what typing does now.
-pub fn mode_text(book: &Book) -> String {
-    use crate::services::spreadsheet::view::SelectMode;
-    let mode = book.view.mode();
-    match book.view.selecting {
-        SelectMode::Extend => format!("{mode}    Extend Selection"),
-        SelectMode::Add => format!("{mode}    Add to Selection"),
-        SelectMode::Normal if book.view.end_mode => format!("{mode}    End Mode"),
-        SelectMode::Normal => mode.to_owned(),
     }
 }
 

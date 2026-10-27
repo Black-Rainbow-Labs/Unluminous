@@ -173,7 +173,7 @@ fn field_row(
         ui.dnd_drag_source(egui::Id::new(("pivot-field", &table.name, f)), f, |ui| {
             ui.label(name);
         });
-        ui.menu_button("\u{25BE}", |ui| {
+        ui.menu_button("More", |ui| {
             for (label, to) in [
                 ("Add to Filters", "filters"),
                 ("Add to Columns", "columns"),
@@ -268,7 +268,7 @@ fn area_entry(
     };
     ui.horizontal(|ui| {
         ui.label(&name);
-        ui.menu_button("\u{25BE}", |ui| match entry {
+        ui.menu_button("More", |ui| match entry {
             Entry::Field(f) => field_menu(ui, area, place, f, &name, at, asks),
             Entry::Values => {
                 let to = if area == "rows" { "columns" } else { "rows" };

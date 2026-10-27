@@ -330,7 +330,10 @@ fn a_drag_while_typing_a_formula_points_at_the_whole_range() {
     let c3 = did(&mut harness, "plugins run spreadsheet where C3");
     drag_in_steps(&mut harness, at(&c3), at(&c3), Modifiers::SHIFT);
     let v = view(&mut harness);
-    assert_eq!(v["current"]["editing"]["text"], "=SUM(B2:C3", "Shift and a click grows it from where it started");
+    assert_eq!(
+        v["current"]["editing"]["text"], "=SUM(B2:C3",
+        "Shift and a click grows it from where it started"
+    );
     let a2 = did(&mut harness, "plugins run spreadsheet where A2");
     drag_in_steps(&mut harness, at(&a2), at(&a2), Modifiers::COMMAND);
     let v = view(&mut harness);
@@ -410,7 +413,11 @@ fn the_formula_keys_excel_has_work_while_typing() {
     let v = view(&mut harness);
     assert_eq!(v["current"]["editing"]["text"], "=SUM(number1,[number2],...)");
     press(&mut harness, egui::Key::Escape, Modifiers::NONE);
-    assert_eq!(view(&mut harness)["current"]["editing"], serde_json::Value::Null, "Escape leaves the cell");
+    assert_eq!(
+        view(&mut harness)["current"]["editing"],
+        serde_json::Value::Null,
+        "Escape leaves the cell"
+    );
     type_text(&mut harness, "=2*B2");
     press(&mut harness, egui::Key::F9, Modifiers::NONE);
     let v = view(&mut harness);
@@ -422,7 +429,10 @@ fn the_formula_keys_excel_has_work_while_typing() {
     press(&mut harness, egui::Key::ArrowLeft, Modifiers::NONE);
     press(&mut harness, egui::Key::ArrowDown, Modifiers::COMMAND | Modifiers::SHIFT);
     let v = view(&mut harness);
-    assert_eq!(v["current"]["editing"]["text"], "=SUM(B2:B4", "Ctrl+Shift+Down grows to the data's edge");
+    assert_eq!(
+        v["current"]["editing"]["text"], "=SUM(B2:B4",
+        "Ctrl+Shift+Down grows to the data's edge"
+    );
 }
 
 /// Excel's range finder: a reference's coloured outline is carried by its border and resized by a corner,

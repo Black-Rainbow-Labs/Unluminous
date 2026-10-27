@@ -3,7 +3,7 @@
 //! stored box, and the button offered after a calculated column is filled. Each one asks for a change by
 //! pushing the words of a verb, as a menu entry does, so a press and an agent's call are the same call.
 
-use egui::{Align2, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
+use egui::{Align2, Pos2, Rect, Sense, Stroke, Vec2};
 
 use super::grid::Frame;
 use crate::services::plugin_ui::Look;
@@ -36,7 +36,7 @@ pub fn show(ui: &egui::Ui, book: &mut Book, frame: Frame, look: &Look<'_>, words
     calculated_column_button(ui, book, frame, look, words);
 }
 
-/// A floating card with the palette's menu colours.
+/// A floating card in the window's menu card (`chrome::card`).
 fn card(
     ui: &egui::Ui,
     look: &Look<'_>,
@@ -44,24 +44,13 @@ fn card(
     at: Pos2,
     add: impl FnOnce(&mut egui::Ui),
 ) -> Rect {
-    egui::Area::new(id)
-        .order(egui::Order::Foreground)
-        .fixed_pos(at)
-        .show(ui.ctx(), |ui| {
-            egui::Frame::popup(ui.style())
-                .fill(look.palette.menu)
-                .corner_radius(CornerRadius::same(10))
-                .inner_margin(egui::Margin::same(10))
-                .show(ui, add);
-        })
-        .response
-        .rect
+    let _ = look;
+    super::chrome::card(ui, id, at, add)
 }
 
+/// A button with an accessible name, in the design's pill, or a round chip for a symbol.
 fn button(ui: &mut egui::Ui, label: &str, name: &str) -> bool {
-    let r = ui.button(label);
-    r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name));
-    r.clicked()
+    super::chrome::button(ui, label, name)
 }
 
 // ------------------------------------------------------------------------------------------- sort levels
@@ -520,34 +509,29 @@ fn calculated_column_button(
         book,
         unluminous_sheet::coord::CellRef::new(data.first.row, data.first.col + column as u32),
     );
-    let spot = Rect::from_min_size(cell.right_top() + Vec2::new(2.0, 0.0), Vec2::splat(16.0));
+    let spot = Rect::from_min_size(cell.right_top() + Vec2::new(3.0, 0.0), Vec2::splat(20.0));
     if !frame.cells.intersects(spot) {
         return;
     }
     let menu_id = id.with("menu");
-    let r = ui.interact(spot, id.with("button"), Sense::click());
-    r.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "AutoCorrect Options")
-    });
-    ui.painter().rect_filled(spot, 3, look.palette.menu);
-    ui.painter().text(
-        spot.center(),
-        Align2::CENTER_CENTER,
-        "\u{26A1}",
-        egui::FontId::proportional(11.0),
-        look.palette.text,
-    );
-    egui::Popup::from_toggle_button_response(&r).id(menu_id).show(|ui| {
-        if button(ui, "Undo Calculated Column", "Undo Calculated Column") {
-            words.push(say("undo"));
-        }
-        if button(
-            ui,
-            "Stop Automatically Creating Calculated Columns",
-            "Stop creating calculated columns",
-        ) {
-            words.push(say("table auto-fill off"));
-            words.push(say("undo"));
-        }
-    });
+    let _ = look;
+    let mark = crate::components::word::kit::Mark::Svg(&crate::theme::svg_icon::ZAP);
+    let r = super::chrome::floating_chip(ui, spot, id.with("button"), "AutoCorrect Options", mark);
+    egui::Popup::from_toggle_button_response(&r)
+        .id(menu_id)
+        .frame(crate::components::controls::menu_frame(ui))
+        .width(330.0)
+        .show(|ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            let row = |ui: &mut egui::Ui, label: &str| {
+                crate::components::controls::menu_row(ui, label, "", true, false, 0.0)
+            };
+            if row(ui, "Undo Calculated Column") {
+                words.push(say("undo"));
+            }
+            if row(ui, "Stop Automatically Creating Calculated Columns") {
+                words.push(say("table auto-fill off"));
+                words.push(say("undo"));
+            }
+        });
 }

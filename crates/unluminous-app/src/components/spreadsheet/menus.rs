@@ -125,25 +125,40 @@ fn sub_row(
 ) -> egui::Response {
     let (rect, response) =
         ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click());
+    let _ = look;
+    let chat = crate::components::word::kit::chat();
+    let ink = crate::components::word::kit::ink();
+    // The row under the pointer, or whose flyout is open, is carved in, as every menu's is.
     if response.hovered() || open {
-        ui.painter().rect_filled(rect, CornerRadius::same(10), look.palette.control);
+        ui.painter().rect_filled(rect, CornerRadius::same(10), chat.well);
+        ui.painter().rect_stroke(
+            rect.shrink(0.5),
+            CornerRadius::same(10),
+            Stroke::new(1.0, chat.dark.gamma_multiply(0.55)),
+            egui::StrokeKind::Inside,
+        );
     }
-    ui.painter().text(
-        rect.left_center() + Vec2::new(36.0, 0.0),
-        egui::Align2::LEFT_CENTER,
-        label,
-        egui::FontId::proportional(12.5),
-        look.palette.text_strong,
+    let size = 12.5;
+    let galley =
+        crate::components::word::kit::words(ui, label, size, ink.i900, rect.width() - 64.0);
+    crate::components::word::kit::draw_by_capitals(
+        ui.painter(),
+        rect.left() + 36.0,
+        rect.center().y,
+        galley,
+        size,
+        ink.i900,
     );
     let c = Pos2::new(rect.right() - 14.0, rect.center().y);
+    let tint = if response.hovered() || open { chat.sky } else { ink.i400 };
     let s = 3.5;
     ui.painter().line_segment(
         [c + Vec2::new(-s / 2.0, -s), c + Vec2::new(s / 2.0, 0.0)],
-        Stroke::new(1.5, look.palette.text_dim),
+        Stroke::new(1.5, tint),
     );
     ui.painter().line_segment(
         [c + Vec2::new(s / 2.0, 0.0), c + Vec2::new(-s / 2.0, s)],
-        Stroke::new(1.5, look.palette.text_dim),
+        Stroke::new(1.5, tint),
     );
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label));
     response
@@ -328,17 +343,18 @@ pub fn book_menu(
         controls::menu_frame(ui)
             .show(ui, |ui| {
                 ui.set_width(width);
-                let (field, _) = ui.allocate_exact_size(Vec2::new(width, 30.0), Sense::hover());
-                let response = controls::search_field(
+                let (field, _) = ui.allocate_exact_size(Vec2::new(width, 34.0), Sense::hover());
+                let box_id = id.with("search");
+                super::chrome::search_well(
                     ui,
-                    field.shrink2(Vec2::new(2.0, 2.0)),
-                    "Search commands",
+                    field.shrink2(Vec2::new(2.0, 1.0)),
+                    box_id,
                     "Search commands",
                     search,
                 );
                 // The search box has the keyboard while the menu is open, unless another box took it.
-                if !response.has_focus() && !ui.ctx().text_edit_focused() {
-                    response.request_focus();
+                if !ui.ctx().memory(|m| m.has_focus(box_id)) && !ui.ctx().text_edit_focused() {
+                    ui.ctx().memory_mut(|m| m.request_focus(box_id));
                 }
                 ui.add_space(4.0);
                 // The list scrolls inside the room under the button. Taller than that, egui would push the
@@ -405,80 +421,39 @@ pub fn panel(
     details: &[(&str, String)],
     everything: &[Item],
 ) -> Option<Picked> {
-    let painter = ui.painter_at(area);
-    painter.rect_filled(area, 0, look.ground(look.palette.panel));
-    painter.line_segment(
-        [area.left_top(), area.left_bottom()],
-        Stroke::new(1.0, look.palette.divider),
-    );
+    let z = crate::components::word::kit::zoom(ui.ctx());
+    ui.painter().rect_filled(area, 0, look.ground(look.palette.panel));
+    crate::components::chrome_kit::groove(ui.painter(), area.left_top(), area.left_bottom());
     let mut picked = None;
-    let header = Rect::from_min_size(area.min, Vec2::new(area.width(), 40.0));
+    let header = Rect::from_min_size(area.min, Vec2::new(area.width(), 58.0 * z));
     let mut child =
         ui.new_child(egui::UiBuilder::new().max_rect(area.shrink2(Vec2::new(8.0, 0.0))));
-    // The back button, or the close button at the top level.
-    let back = Rect::from_center_size(
-        Pos2::new(header.left() + 22.0, header.center().y),
-        Vec2::splat(26.0),
-    );
-    if path.is_empty() {
-        if controls::icon_button(&mut child, back, "Close the Format panel", icon::cross) {
-            picked = Some(Picked::Close);
-        }
-    } else {
-        let response = child.interact(back, child.id().with("panel-back"), Sense::click());
-        if response.hovered() {
-            child.painter().rect_filled(back, CornerRadius::same(6), look.palette.control);
-        }
-        let c = back.center();
-        child.painter().line_segment(
-            [c + Vec2::new(2.0, -4.5), c + Vec2::new(-2.5, 0.0)],
-            Stroke::new(1.6, look.palette.text_dim),
-        );
-        child.painter().line_segment(
-            [c + Vec2::new(-2.5, 0.0), c + Vec2::new(2.0, 4.5)],
-            Stroke::new(1.6, look.palette.text_dim),
-        );
-        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Back"));
-        if response.clicked() {
-            picked = Some(Picked::Enter("..".to_owned()));
-        }
+    match super::chrome::panel_head(&mut child, header, path, what) {
+        Some(super::chrome::Head::Back) => picked = Some(Picked::Enter("..".to_owned())),
+        Some(super::chrome::Head::Close) => picked = Some(Picked::Close),
+        None => {}
     }
-    let title = if path.is_empty() { "Format".to_owned() } else { path.join(" / ") };
-    painter.text(
-        Pos2::new(header.left() + 44.0, header.center().y - 6.0),
-        egui::Align2::LEFT_CENTER,
-        title,
-        egui::FontId::proportional(13.5),
-        look.palette.text_strong,
-    );
-    painter.text(
-        Pos2::new(header.left() + 44.0, header.center().y + 9.0),
-        egui::Align2::LEFT_CENTER,
-        what,
-        egui::FontId::proportional(11.0),
-        look.palette.text_dim,
-    );
     // A path the panel's own levels do not have is looked for in the whole tree, so the panel can show
     // Insert > Function or Data > Sort as well as its formatting levels.
     let level = catalogue::at_path(root, path)
         .or_else(|| catalogue::at_path(everything, path))
         .unwrap_or(root);
-    let mut top = header.bottom() + 4.0;
-    // At the first level, a box that finds any command by name.
+    let mut top = header.bottom() + 2.0 * z;
+    // At the first level, a carved well that finds any command by name.
     let search_id = egui::Id::new("spreadsheet-panel-search");
     let mut search: String = ui.ctx().data(|d| d.get_temp(search_id)).unwrap_or_default();
     if path.is_empty() {
         let field = Rect::from_min_size(
-            Pos2::new(area.left() + 10.0, top),
-            Vec2::new(area.width() - 20.0, 28.0),
+            Pos2::new(area.left() + 14.0 * z, top),
+            Vec2::new(area.width() - 28.0 * z, 34.0 * z),
         );
-        controls::search_field(ui, field, "Find a command", "Find a command", &mut search);
-        top = field.bottom() + 6.0;
+        super::chrome::search_well(ui, field, search_id.with("box"), "Find a command", &mut search);
+        top = field.bottom() + 10.0 * z;
     }
     ui.ctx().data_mut(|d| d.insert_temp(search_id, search.clone()));
     let body = Rect::from_min_max(
-        Pos2::new(area.left() + 6.0, top),
-        Pos2::new(area.right() - 6.0, area.bottom()),
+        Pos2::new(area.left() + 12.0 * z, top),
+        Pos2::new(area.right() - 8.0 * z, area.bottom()),
     );
     if path.is_empty() && !search.trim().is_empty() {
         let mut body_ui = ui.new_child(egui::UiBuilder::new().max_rect(body));
@@ -509,21 +484,20 @@ pub fn panel(
                             picked = ask_of(item).map(Picked::Ask);
                         }
                     }
-                    Item::Sub { label, .. } => {
-                        let response = sub_row(ui, look, label, false, 32.0);
-                        // The current value for the chosen cells, beside the level's name.
-                        if let Some((_, detail)) =
-                            details.iter().find(|(name, _)| *name == label.as_str())
-                        {
-                            let shown = controls::truncate_chars(detail, 22, 20);
-                            ui.painter().text(
-                                Pos2::new(response.rect.right() - 26.0, response.rect.center().y),
-                                egui::Align2::RIGHT_CENTER,
-                                shown,
-                                egui::FontId::proportional(11.0),
-                                look.palette.text_dim,
-                            );
+                    // The first level's rows are raised, each with its mark and what it says about the
+                    // chosen cells now; deeper, a level is a menu row with a chevron.
+                    Item::Sub { label, .. } if path.is_empty() => {
+                        let detail = details
+                            .iter()
+                            .find(|(name, _)| *name == label.as_str())
+                            .map(|(_, detail)| detail.as_str());
+                        let mark = super::chrome::mark_of(label);
+                        if super::chrome::level_row(ui, label, detail, mark) {
+                            picked = Some(Picked::Enter(label.clone()));
                         }
+                    }
+                    Item::Sub { label, .. } => {
+                        let response = sub_row(ui, look, label, false, controls::MENU_ROW);
                         if response.clicked() {
                             picked = Some(Picked::Enter(label.clone()));
                         }
@@ -558,13 +532,14 @@ pub fn prompt_box(
 ) -> Option<Answered> {
     let mut answer = None;
     egui::Area::new(id).order(egui::Order::Foreground).fixed_pos(at).show(ctx, |ui| {
-        controls::menu_frame(ui).show(ui, |ui| {
+        controls::menu_frame(ui).inner_margin(egui::Margin::same(14)).show(ui, |ui| {
+            crate::components::word::kit::style_the_panel(ui);
             ui.set_width(340.0);
             ui.label(
                 egui::RichText::new(&prompt.title)
                     .strong()
-                    .color(look.palette.text_strong)
-                    .size(13.5),
+                    .color(crate::components::word::kit::ink().i900)
+                    .size(14.0),
             );
             ui.add_space(6.0);
             let font = egui::FontId::proportional(13.0);
@@ -615,12 +590,8 @@ pub fn prompt_box(
             }
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                let ok = ui.button("OK");
-                ok.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "OK"));
-                let cancel = ui.button("Cancel");
-                cancel.widget_info(|| {
-                    egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Cancel")
-                });
+                let ok = crate::components::word::kit::named_pill(ui, "OK", "OK");
+                let cancel = crate::components::word::kit::named_pill(ui, "Cancel", "Cancel");
                 let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
                 let escape = ui.input(|i| i.key_pressed(egui::Key::Escape));
                 if ok.clicked() || enter {

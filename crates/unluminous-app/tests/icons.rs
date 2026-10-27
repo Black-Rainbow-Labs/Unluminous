@@ -226,3 +226,42 @@ fn every_mark_drawn_from_svg_path_data_on_one_sheet() {
     harness.run();
     harness.snapshot(shot("icons_svg_marks").as_str());
 }
+
+/// The Lucide marks the spreadsheet tab draws (`task-2382`): Insert Function and the workbook menu in the
+/// bar, and the Format panel's levels, each at the size the panel draws it.
+#[test]
+fn the_spreadsheet_marks_on_one_sheet() {
+    use unluminous_app::theme::svg_icon;
+    let marks: [&svg_icon::SvgMark; 16] = [
+        &svg_icon::CHEVRON_UP,
+        &svg_icon::ZAP,
+        &svg_icon::CLIPBOARD,
+        &svg_icon::SQUARE_FUNCTION,
+        &svg_icon::MENU,
+        &svg_icon::HASH,
+        &svg_icon::PAINT_BUCKET,
+        &svg_icon::GRID,
+        &svg_icon::COLUMNS,
+        &svg_icon::FUNNEL,
+        &svg_icon::LOCK,
+        &svg_icon::ACTIVITY,
+        &svg_icon::CHART_COLUMN,
+        &svg_icon::EYE,
+        &svg_icon::SHEET,
+        &svg_icon::WRENCH,
+    ];
+    let margin = 24.0;
+    let size = Vec2::new(CELL * marks.len() as f32 + margin, CELL + margin);
+    let mut harness = builder().with_pixels_per_point(ZOOM).with_size(size).build_ui(move |ui| {
+        let area = ui.max_rect();
+        let painter = ui.painter_at(area);
+        painter.rect_filled(area, egui::CornerRadius::ZERO, color::editor());
+        for (index, mark) in marks.into_iter().enumerate() {
+            let centre =
+                Pos2::new(area.left() + CELL * index as f32 + CELL / 2.0, area.top() + CELL / 2.0);
+            svg_icon::paint(&painter, centre, 16.0, mark, color::icon());
+        }
+    });
+    harness.run();
+    harness.snapshot(shot("icons_spreadsheet_marks").as_str());
+}

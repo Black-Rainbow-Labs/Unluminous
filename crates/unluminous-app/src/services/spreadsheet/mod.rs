@@ -26,6 +26,7 @@ pub mod formula_text;
 pub mod measure;
 pub mod names;
 pub mod print;
+pub mod status;
 pub mod verbs;
 pub mod verbs_a;
 pub mod verbs_a_data;
@@ -42,11 +43,11 @@ pub mod verbs_b_pivot_more;
 pub mod verbs_b_slicers;
 pub mod verbs_c;
 pub mod verbs_c_spark;
-pub mod verbs_d;
 pub mod verbs_charts;
 pub mod verbs_charts_axis;
 pub mod verbs_charts_info;
 pub mod verbs_charts_series;
+pub mod verbs_d;
 pub mod view;
 pub mod view_a;
 pub mod view_b;
@@ -434,6 +435,10 @@ impl UiProvider for Spreadsheet {
 
     fn modified(&self, key: &str) -> bool {
         self.books.iter().any(|book| book.key == key && book.session.modified)
+    }
+
+    fn tab_status(&self, key: &str) -> Option<crate::services::plugin_ui::TabStatus> {
+        self.books.iter().find(|book| book.key == key).map(status::of)
     }
 
     fn save(&mut self, key: &str) -> Result<String, String> {

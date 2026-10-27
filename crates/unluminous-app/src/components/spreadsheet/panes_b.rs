@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use egui::{Align2, Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
+use egui::{Align2, Color32, Pos2, Rect, Stroke, Vec2};
 use unluminous_sheet::edit::{PasteKind, PasteOperation};
 use unluminous_sheet::model::ViewKind;
 use unluminous_sheet::pages::layout::PageLayout;
@@ -36,7 +36,7 @@ pub fn show(ui: &egui::Ui, book: &mut Book, frame: Frame, look: &Look<'_>, words
     super::panes_b_pivot::show(ui, book, frame, look, words);
 }
 
-/// A floating card with the palette's menu colours.
+/// A floating card in the window's menu card (`chrome::card`).
 pub fn card(
     ui: &egui::Ui,
     look: &Look<'_>,
@@ -44,25 +44,13 @@ pub fn card(
     at: Pos2,
     add: impl FnOnce(&mut egui::Ui),
 ) -> Rect {
-    egui::Area::new(id)
-        .order(egui::Order::Foreground)
-        .fixed_pos(at)
-        .show(ui.ctx(), |ui| {
-            egui::Frame::popup(ui.style())
-                .fill(look.palette.menu)
-                .corner_radius(CornerRadius::same(10))
-                .inner_margin(egui::Margin::same(10))
-                .show(ui, add);
-        })
-        .response
-        .rect
+    let _ = look;
+    super::chrome::card(ui, id, at, add)
 }
 
-/// A button with an accessible name.
+/// A button with an accessible name, in the design's pill, or a round chip for a symbol.
 pub fn button(ui: &mut egui::Ui, label: &str, name: &str) -> bool {
-    let r = ui.button(label);
-    r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name));
-    r.clicked()
+    super::chrome::button(ui, label, name)
 }
 
 // -------------------------------------------------------------------------------------- Paste Special
@@ -188,43 +176,39 @@ fn after_button(ui: &egui::Ui, book: &mut Book, frame: Frame, look: &Look<'_>, w
         return;
     }
     let cell = frame.range(book, after.target);
-    let spot =
-        Rect::from_min_size(cell.right_bottom() + Vec2::new(2.0, 2.0), Vec2::new(24.0, 18.0));
+    let spot = Rect::from_min_size(cell.right_bottom() + Vec2::new(3.0, 3.0), Vec2::splat(22.0));
     if !frame.cells.intersects(spot) {
         return;
     }
-    let (label, name, items) = match after.kind {
-        AfterKind::Paste => ("\u{1F4CB}", "Paste Options", catalogue_b::paste_options_items()),
-        AfterKind::Fill => ("\u{2795}", "Auto Fill Options", catalogue_b::fill_options_items()),
-    };
-    let id = egui::Id::new(("spreadsheet-after", &book.key));
-    let r = ui.interact(spot, id.with("button"), Sense::click());
-    r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name));
-    ui.painter().rect_filled(spot, 3, look.palette.menu);
-    ui.painter().rect_stroke(
-        spot,
-        3,
-        Stroke::new(1.0, look.palette.control_border),
-        egui::StrokeKind::Inside,
-    );
-    ui.painter().text(
-        spot.center(),
-        Align2::CENTER_CENTER,
-        label,
-        egui::FontId::proportional(11.0),
-        look.palette.text,
-    );
-    egui::Popup::from_toggle_button_response(&r).id(id.with("menu")).show(|ui| {
-        for item in &items {
-            if let Entry::Run { label, words: w, .. } = item {
-                if button(ui, label, label) {
-                    words.push(w.clone());
-                }
-            } else if matches!(item, Entry::Line) {
-                ui.separator();
-            }
+    use crate::components::word::kit::Mark;
+    use crate::theme::svg_icon;
+    let (mark, name, items) = match after.kind {
+        AfterKind::Paste => {
+            (Mark::Svg(&svg_icon::CLIPBOARD), "Paste Options", catalogue_b::paste_options_items())
         }
-    });
+        AfterKind::Fill => {
+            (Mark::Rux(rux::Icon::Plus), "Auto Fill Options", catalogue_b::fill_options_items())
+        }
+    };
+    let _ = look;
+    let id = egui::Id::new(("spreadsheet-after", &book.key));
+    let r = super::chrome::floating_chip(ui, spot, id.with("button"), name, mark);
+    egui::Popup::from_toggle_button_response(&r)
+        .id(id.with("menu"))
+        .frame(crate::components::controls::menu_frame(ui))
+        .width(240.0)
+        .show(|ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            for item in &items {
+                if let Entry::Run { label, words: w, .. } = item {
+                    if crate::components::controls::menu_row(ui, label, "", true, false, 0.0) {
+                        words.push(w.clone());
+                    }
+                } else if matches!(item, Entry::Line) {
+                    ui.separator();
+                }
+            }
+        });
 }
 
 // ------------------------------------------------------------------------------ page break and layout

@@ -226,6 +226,128 @@ lucide!(
         "M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4a4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3a3 3 0 0 0-3-3z"
     ]
 );
+lucide!(
+    /// Lucide `square-function`: Insert Function beside the spreadsheet's formula bar (`task-2382`).
+    SQUARE_FUNCTION,
+    [
+        "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z",
+        "M9 17c2 0 2.8-1 2.8-2.8V10c0-2 1-3.3 3.2-3",
+        "M9 11.2h5.7"
+    ]
+);
+lucide!(
+    /// Lucide `chevron-up`: moving a sort level up.
+    CHEVRON_UP,
+    ["m18 15-6-6-6 6"]
+);
+lucide!(
+    /// Lucide `zap`: a table's AutoCorrect Options after a calculated column.
+    ZAP,
+    [
+        "M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"
+    ]
+);
+lucide!(
+    /// Lucide `clipboard`: Paste Options after a paste.
+    CLIPBOARD,
+    [
+        "M9 2h6a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z",
+        "M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
+    ]
+);
+lucide!(
+    /// Lucide `menu`: the spreadsheet's workbook menu.
+    MENU,
+    ["M4 12h16", "M4 18h16", "M4 6h16"]
+);
+lucide!(
+    /// Lucide `hash`: the Number level.
+    HASH,
+    ["M4 9h16", "M4 15h16", "M10 3 8 21", "M16 3l-2 18"]
+);
+lucide!(
+    /// Lucide `paint-bucket`: the Fill level.
+    PAINT_BUCKET,
+    [
+        "m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z",
+        "m5 2 5 5",
+        "M2 13h15",
+        "M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4Z"
+    ]
+);
+lucide!(
+    /// Lucide `grid-3x3`: the Borders level and PivotTables.
+    GRID,
+    [
+        "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z",
+        "M3 9h18",
+        "M3 15h18",
+        "M9 3v18",
+        "M15 3v18"
+    ]
+);
+lucide!(
+    /// Lucide `columns-3`: the Cell size level.
+    COLUMNS,
+    [
+        "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z",
+        "M9 3v18",
+        "M15 3v18"
+    ]
+);
+lucide!(
+    /// Lucide `funnel`: the Sort and Filter level.
+    FUNNEL,
+    [
+        "M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z"
+    ]
+);
+lucide!(
+    /// Lucide `lock`: the Protection level.
+    LOCK,
+    [
+        "M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2z",
+        "M7 11V7a5 5 0 0 1 10 0v4"
+    ]
+);
+lucide!(
+    /// Lucide `activity`: the Sparklines level.
+    ACTIVITY,
+    [
+        "M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"
+    ]
+);
+lucide!(
+    /// Lucide `chart-column`: the Chart level.
+    CHART_COLUMN,
+    ["M3 3v16a2 2 0 0 0 2 2h16", "M18 17V9", "M13 17V5", "M8 17v-3"]
+);
+lucide!(
+    /// Lucide `eye`: the View level.
+    EYE,
+    [
+        "M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0",
+        "M9 12a3 3 0 1 0 6 0a3 3 0 1 0-6 0"
+    ]
+);
+lucide!(
+    /// Lucide `sheet`: the Sheet level.
+    SHEET,
+    [
+        "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z",
+        "M3 9h18",
+        "M3 15h18",
+        "M9 9v12",
+        "M15 9v12"
+    ]
+);
+lucide!(
+    /// Lucide `wrench`: the Data tools level.
+    WRENCH,
+    [
+        "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z"
+    ]
+);
 /// Draw `mark` centred on `centre`, `size` points across, in `color`.
 pub fn paint(painter: &egui::Painter, centre: Pos2, size: f32, mark: &SvgMark, color: Color32) {
     let scale = size / mark.view;

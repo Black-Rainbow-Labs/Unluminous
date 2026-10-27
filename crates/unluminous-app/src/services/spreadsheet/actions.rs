@@ -206,9 +206,12 @@ impl Act {
 /// is not. A block one row tall is added up across instead, into its last column or the column after it.
 pub fn autosum_totals(sheet: &Sheet, range: Range) -> Vec<(CellRef, String)> {
     let number = |at: CellRef| matches!(sheet.value_at(at), Value::Number(_));
-    let empty = |at: CellRef| !sheet.cells.get(&(at.row, at.col)).is_some_and(|c| {
-        !c.value.is_empty() || c.formula.is_some()
-    });
+    let empty = |at: CellRef| {
+        !sheet
+            .cells
+            .get(&(at.row, at.col))
+            .is_some_and(|c| !c.value.is_empty() || c.formula.is_some())
+    };
     let mut out = Vec::new();
     if range.rows() == 1 {
         let row = range.first.row;

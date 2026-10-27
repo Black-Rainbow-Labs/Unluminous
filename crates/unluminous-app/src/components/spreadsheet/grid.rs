@@ -56,7 +56,7 @@ impl Ink {
             text,
             grid,
             header: look.ground(p.panel),
-            header_text: p.text_dim,
+            header_text: crate::theme::rux_theme().ink.i500,
             header_chosen: crate::components::controls::mix(p.panel, p.accent, 0.22),
             accent: p.accent,
             wash: p.accent.gamma_multiply(0.16),
@@ -870,10 +870,9 @@ fn read_the_pointer(
         let finder_pressed = super::editor::finder_at(book, frame, pressed_at);
         if let Some((index, grip)) = finder_pressed.filter(|_| response.drag_started()) {
             let at = frame.at(book, pressed_at);
-            let references =
-                crate::services::spreadsheet::formula_text::references(
-                    &book.view.edit.as_ref().map(|e| e.text.clone()).unwrap_or_default(),
-                );
+            let references = crate::services::spreadsheet::formula_text::references(
+                &book.view.edit.as_ref().map(|e| e.text.clone()).unwrap_or_default(),
+            );
             if let Some(r) = references.get(index) {
                 let range = r.range;
                 book.view.drag = Some(Drag::Finder {
@@ -1001,14 +1000,8 @@ fn read_the_pointer(
                 let range = match fixed {
                     Some(fixed) => Range::new(fixed, target),
                     None => {
-                        let row = target
-                            .row
-                            .saturating_sub(grab.0)
-                            .min(MAX_ROWS - size.0);
-                        let col = target
-                            .col
-                            .saturating_sub(grab.1)
-                            .min(MAX_COLS - size.1);
+                        let row = target.row.saturating_sub(grab.0).min(MAX_ROWS - size.0);
+                        let col = target.col.saturating_sub(grab.1).min(MAX_COLS - size.1);
                         Range::new(
                             CellRef::new(row, col),
                             CellRef::new(row + size.0 - 1, col + size.1 - 1),
@@ -1020,7 +1013,8 @@ fn read_the_pointer(
             }
             Some(Drag::Point(from, over)) => {
                 let range = over.range(from, target);
-                if book.view.edit.as_ref().and_then(|e| e.pointing).map(|(_, _, r)| r) != Some(range)
+                if book.view.edit.as_ref().and_then(|e| e.pointing).map(|(_, _, r)| r)
+                    != Some(range)
                 {
                     out.point = Some(range);
                     out.point_how = PointHow::Again;
@@ -2022,8 +2016,9 @@ fn draw_headers(ui: &egui::Ui, book: &Book, pane: &Pane, ink: &Ink, look: &Look<
         book.view.ranges().iter().map(|r| (r.first.col, r.last.col)).collect();
     let chosen_rows: Vec<(u32, u32)> =
         book.view.ranges().iter().map(|r| (r.first.row, r.last.row)).collect();
-    let font = egui::FontId::proportional((11.0 * zoom).clamp(7.0, 20.0));
-    let divider = Stroke::new(1.0, look.palette.divider);
+    let font = egui::FontId::proportional((10.5 * zoom).clamp(7.0, 20.0));
+    // Hairlines between the headers, quieter than the gridlines' own colour, as the window's other headers.
+    let divider = Stroke::new(1.0, look.palette.divider.gamma_multiply(0.6));
     let col_painter = ui.painter_at(frame.column_header);
     col_painter.rect_filled(frame.column_header, 0, ink.header);
     for col in (0..frame.frozen.1).chain(first_col..=last_col) {

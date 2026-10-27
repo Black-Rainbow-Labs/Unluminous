@@ -12,8 +12,22 @@ use crate::services::plugin_ui::Answer;
 pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Option<Out> {
     match verb {
         "where" => Some(where_is(sheet, args)),
+        "copy-figure" => Some(copy_figure(sheet, args)),
         _ => None,
     }
+}
+
+/// `copy-figure sum|average|count|numbers|min|max`: puts the number the status bar shows for the
+/// selection on the clipboard, as a press on that figure does.
+fn copy_figure(sheet: &mut Spreadsheet, args: &[String]) -> Out {
+    let name = args.first().map(String::as_str).unwrap_or("sum");
+    let book = sheet.current_book()?;
+    let value = super::status::figure_value(book, name)
+        .ok_or_else(|| format!("The selection has no {name} to copy"))?;
+    let text = unluminous_sheet::value::number_to_text(value);
+    sheet.asked.push(crate::services::plugin_ui::Request::Copy(text.clone()));
+    Ok(Answer::said(format!("Copied the {name}, {text}"))
+        .with(json!({ "figure": name, "value": value })))
 }
 
 /// `where [cell]`: the cell's rectangle as the grid drew it on the last frame, in egui's points, and its

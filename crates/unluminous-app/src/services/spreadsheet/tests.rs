@@ -410,7 +410,10 @@ fn autosum_on_a_block_totals_each_column_where_excel_puts_it() {
         vec![(at("B6"), "=SUM(B2:B5)".to_owned()), (at("C6"), "=SUM(C2:C5)".to_owned())],
         "an empty last row takes the totals"
     );
-    assert_eq!(actions::autosum_totals(s, range("B2:C2")), vec![(at("D2"), "=SUM(B2:C2)".to_owned())]);
+    assert_eq!(
+        actions::autosum_totals(s, range("B2:C2")),
+        vec![(at("D2"), "=SUM(B2:C2)".to_owned())]
+    );
     assert!(actions::autosum_totals(s, range("A2:A5")).is_empty(), "text has nothing to add up");
 }
 
