@@ -329,6 +329,30 @@ impl Session {
         self.new_chart_from(sheet, range, ty, title, series, shape.dates)
     }
 
+    /// Insert a chart over a selection of several areas, such as `B4:B9,D4:D9`: the first area's text
+    /// column is the categories and the other columns are the series. One area is [`Self::insert_chart`].
+    pub fn insert_chart_areas(
+        &mut self,
+        sheet: usize,
+        areas: &[Range],
+        ty: ChartType,
+        title: Option<String>,
+    ) -> Result<usize, String> {
+        match areas {
+            [] => Err("The data range is not valid.".to_owned()),
+            [one] => self.insert_chart(sheet, *one, ty, title),
+            _ => {
+                self.check_sheet(sheet)?;
+                self.allowed(sheet, Guard::Forbidden)?;
+                let (series, dates) = chartdata::layout_areas(&self.book, sheet, areas)
+                    .filter(|(series, _)| !series.is_empty())
+                    .ok_or("The areas of a chart's data must cover the same rows.")?;
+                let bounds = areas.iter().skip(1).fold(areas[0], |all, a| all.union(a));
+                self.new_chart_from(sheet, bounds, ty, title, series, dates)
+            }
+        }
+    }
+
     /// Insert a chart from series the caller laid out.
     fn new_chart_from(
         &mut self,

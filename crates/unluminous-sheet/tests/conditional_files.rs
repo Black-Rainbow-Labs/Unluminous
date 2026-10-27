@@ -242,3 +242,43 @@ fn excel_opens_the_rules_written_here_without_repairing_the_file() {
     }
     let _ = std::fs::remove_dir(&folder);
 }
+
+#[test]
+fn an_automatic_data_bar_starts_at_zero_and_keeps_its_thresholds_in_the_file() {
+    // Excel's Data Bars button writes `min` and `max` in the 2007 element and `autoMin` and `autoMax` in
+    // its extension, and draws the bars from zero when every number is positive (task-2378): 11.5 of 16
+    // is a bar 72% of the cell, where a bar from the lowest number would have no length at all.
+    let mut s = Session::new(Workbook::new(), 46318.5);
+    for (row, value) in [(0u32, "12.5"), (1, "16"), (2, "11.5")] {
+        s.set_input(0, unluminous_sheet::coord::CellRef::new(row, 0), value).unwrap();
+    }
+    let rule = CfRule {
+        data_bar: Some((
+            Cfvo { kind: "min".to_owned(), value: None },
+            Cfvo { kind: "max".to_owned(), value: None },
+            Color::rgb(0x63, 0x8E, 0xC6),
+        )),
+        data_bar_options: Some(DataBarExt {
+            auto_min: true,
+            auto_max: true,
+            ..DataBarExt::default()
+        }),
+        ..CfRule::new("dataBar")
+    };
+    s.add_conditional(0, vec![Range::parse("A1:A3").unwrap()], rule).unwrap();
+    let bar = |book: &Workbook, row: u32| {
+        let rules = unluminous_sheet::conditional::RuleSet::prepare(book, 0);
+        rules.apply(book, 46318.5, unluminous_sheet::coord::CellRef::new(row, 0)).bar.unwrap()
+    };
+    let shortest = bar(&s.book, 2);
+    assert_eq!(shortest.start, 0.0);
+    assert!((shortest.end - 11.5 / 16.0).abs() < 1e-9, "{shortest:?}");
+    let bytes = unluminous_sheet::xlsx::write(&s.book).unwrap();
+    let sheet = sheet_xml(&bytes, "xl/worksheets/sheet1.xml");
+    assert!(sheet.contains("<x14:cfvo type=\"autoMin\"/><x14:cfvo type=\"autoMax\"/>"), "{sheet}");
+    assert!(sheet.contains("<cfvo type=\"min\"/><cfvo type=\"max\"/>"), "{sheet}");
+    let back = unluminous_sheet::xlsx::read(&bytes).unwrap();
+    let options = rule_at(&back, 0, "A1:A3").data_bar_options.clone().unwrap();
+    assert!(options.auto_min && options.auto_max);
+    assert!((bar(&back, 2).end - 11.5 / 16.0).abs() < 1e-9);
+}

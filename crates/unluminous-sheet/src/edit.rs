@@ -616,6 +616,48 @@ impl Session {
         self.check_sheet(sheet)?;
         self.allowed(sheet, Guard::Format)?;
         self.remember_cells("Format", sheet, ranges, true);
+        self.restyle(sheet, ranges, change);
+        Ok(())
+    }
+
+    /// Format cells as [`Self::set_style`] does, and give each row that has no height of its own the height
+    /// `fit` works out for it, as one undo step. Excel grows a row whose text was made taller, such as a
+    /// title set at 20 points, unless somebody set the row's height.
+    ///
+    /// @param fit - the height a row's text needs, in points, or `None` for the default height
+    pub fn set_style_fitting_rows(
+        &mut self,
+        sheet: usize,
+        ranges: &[Range],
+        change: &StyleChange,
+        fit: &dyn Fn(&Workbook, usize, u32) -> Option<f64>,
+    ) -> Result<(), String> {
+        self.set_style(sheet, ranges, change)?;
+        let s = &self.book.sheets[sheet];
+        let grow: Vec<(u32, f64)> = ranges
+            .iter()
+            .filter(|r| !r.is_whole_columns())
+            .flat_map(|r| r.first.row..=r.last.row.min(r.first.row + 4096))
+            .filter(|row| s.rows.get(row).is_none_or(|info| info.height.is_none()))
+            .filter_map(|row| fit(&self.book, sheet, row).map(|h| (row, h)))
+            .collect();
+        if grow.is_empty() {
+            return Ok(());
+        }
+        // The cells the format step remembered do not hold row heights, so the step is put back and taken
+        // again as the whole workbook.
+        let step = self.undo.pop().expect("set_style remembered the cells");
+        self.apply_before(step.before);
+        self.remember_whole(&step.label);
+        self.restyle(sheet, ranges, change);
+        for (row, height) in grow {
+            self.book.sheets[sheet].rows.entry(row).or_default().height = Some(height);
+        }
+        Ok(())
+    }
+
+    /// The format change itself, with nothing remembered for undo.
+    fn restyle(&mut self, sheet: usize, ranges: &[Range], change: &StyleChange) {
         // Whole rows and columns change the row and column formats rather than every cell.
         for range in ranges {
             let s = &self.book.sheets[sheet];
@@ -662,7 +704,6 @@ impl Session {
             }
         }
         self.modified = true;
-        Ok(())
     }
 
     // ------------------------------------------------------------------------------------------------

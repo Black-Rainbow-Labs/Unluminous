@@ -547,11 +547,26 @@ fn threshold_points(book: &Workbook, sheet: usize, p: &Prepared) -> Vec<f64> {
     } else {
         return Vec::new();
     };
-    cfvos
+    let mut points: Vec<f64> = cfvos
         .iter()
         .enumerate()
         .map(|(i, c)| threshold(p, book, sheet, c, i == 0).unwrap_or(f64::NAN))
-        .collect()
+        .collect();
+    // An automatic threshold reaches zero: with every number positive the bars start at zero, so the
+    // smallest number still has a bar, as Excel draws them.
+    if let (Some(o), Some((lo, hi, _)), [low, high]) = (
+        rule.data_bar_options.as_ref().filter(|o| o.has_extension),
+        &rule.data_bar,
+        &mut points[..],
+    ) {
+        if (o.auto_min && lo.kind == "min") || lo.kind == "autoMin" {
+            *low = low.min(0.0);
+        }
+        if (o.auto_max && hi.kind == "max") || hi.kind == "autoMax" {
+            *high = high.max(0.0);
+        }
+    }
+    points
 }
 
 fn mix(a: Rgb, b: Rgb, t: f64) -> Rgb {

@@ -1478,7 +1478,7 @@ mod tests {
     /// does with its real faces. A page drawn with no faces bound panics on the first word.
     fn fonted() -> egui::Context {
         let egui = egui::Context::default();
-        crate::theme::install_fonts(&egui, "", None, None);
+        crate::theme::install_fonts(&egui, "", None, None, None);
         egui
     }
 

@@ -357,6 +357,53 @@ fn series_by_rows(name: &str, range: Range, shape: Shape, top: u32, left: u32) -
     out
 }
 
+/// Lay a selection of several areas out as series, as Excel does for `B4:B9,D4:D9`: when every area spans
+/// the same rows, the areas' columns are read as one block, so a text column first is the categories and
+/// each column after it is a series named by its top cell. `None` when the areas do not line up that way.
+pub fn layout_areas(
+    book: &Workbook,
+    sheet: usize,
+    areas: &[Range],
+) -> Option<(Vec<ChartSeries>, bool)> {
+    let first = *areas.first()?;
+    if areas.iter().any(|a| a.first.row != first.first.row || a.last.row != first.last.row) {
+        return None;
+    }
+    let s = &book.sheets[sheet];
+    let name = &s.name;
+    let columns: Vec<u32> = areas.iter().flat_map(|a| a.first.col..=a.last.col).collect();
+    let (top, bottom) = (first.first.row, first.last.row);
+    let value = |r: u32, c: u32| s.value_at(CellRef::new(r, c));
+    let label = columns.len() > 1 && {
+        let c = columns[0];
+        matches!(value(top, c), Value::Empty) || (top + 1..=bottom).all(|r| is_text(&value(r, c)))
+    };
+    let series_columns = &columns[usize::from(label)..];
+    let header = bottom > top
+        && (matches!(value(top, columns[0]), Value::Empty) && label
+            || series_columns
+                .iter()
+                .all(|&c| matches!(value(top, c), Value::Text(_) | Value::Empty)));
+    let body = top + u32::from(header);
+    let column = |c: u32| Range::new(CellRef::new(body, c), CellRef::new(bottom, c));
+    let categories = label.then(|| absolute(name, column(columns[0])));
+    let series = series_columns
+        .iter()
+        .map(|&c| {
+            let title = header.then(|| absolute(name, Range::cell(CellRef::new(top, c))));
+            ChartSeries::new(title, categories.clone(), absolute(name, column(c)))
+        })
+        .collect();
+    let dates = label
+        && (body..=bottom).all(|r| {
+            s.cell(CellRef::new(r, columns[0])).is_some_and(|cell| {
+                is_number(&cell.value)
+                    && Format::parse(&book.styles.format_code(cell.style)).is_date()
+            })
+        });
+    Some((series, dates))
+}
+
 /// The charts Excel recommends for a selection, best first. There are five for most data.
 pub fn recommend(book: &Workbook, sheet: usize, range: Range) -> Vec<ChartType> {
     use ChartType as T;

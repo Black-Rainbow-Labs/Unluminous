@@ -190,7 +190,10 @@ fn read_colour_child(n: Node, name: &str) -> Option<Color> {
 /// The `x14:dataBar` of a paired rule, applied to the options its main twin gave.
 fn read_data_bar_ext(db: Node, main: Option<DataBarExt>) -> DataBarExt {
     let main = main.unwrap_or_default();
+    let kinds: Vec<String> = cfvos(db).into_iter().map(|(c, _)| c.kind).collect();
     DataBarExt {
+        auto_min: kinds.first().is_some_and(|k| k == "autoMin"),
+        auto_max: kinds.get(1).is_some_and(|k| k == "autoMax"),
         min_length: number(db, "minLength").unwrap_or(0),
         max_length: number(db, "maxLength").unwrap_or(100),
         border: bool_attr(db, "border"),
@@ -495,7 +498,13 @@ fn write_ext_data_bar(rule: &CfRule) -> String {
     if o.axis_position != "automatic" {
         a.push_str(&format!(" axisPosition=\"{}\"", escape(&o.axis_position)));
     }
-    let mut children = format!("{}{}", write_ext_cfvo(lo, None), write_ext_cfvo(hi, None));
+    // The 2007 element can only say `min` and `max`; the extension says when they are the automatic ones.
+    let auto = |c: &Cfvo, on: bool, from: &str, to: &str| match on && c.kind == from {
+        true => Cfvo { kind: to.to_owned(), value: None },
+        false => c.clone(),
+    };
+    let (lo, hi) = (auto(lo, o.auto_min, "min", "autoMin"), auto(hi, o.auto_max, "max", "autoMax"));
+    let mut children = format!("{}{}", write_ext_cfvo(&lo, None), write_ext_cfvo(&hi, None));
     for (name, c) in [
         ("borderColor", &o.border_color),
         ("negativeFillColor", &o.negative_fill),

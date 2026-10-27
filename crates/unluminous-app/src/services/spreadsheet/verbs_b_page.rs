@@ -514,8 +514,8 @@ fn plain_of(s: &unluminous_sheet::pages::headerfooter::Sections) -> String {
 fn print_now(sheet: &mut Spreadsheet, args: &[String]) -> Out {
     let book = sheet.current_book()?;
     let (bytes, layout) = print::pdf_bytes(book);
-    let target = match args.first() {
-        Some(file) => super::verbs_b_files::resolve(sheet, file),
+    let target = match super::verbs_b_files::file_words(args) {
+        Some(file) => super::verbs_b_files::resolve(sheet, &file),
         None => std::env::temp_dir()
             .join("unluminous-print")
             .join(format!("{}.pdf", sheet.current_book()?.name())),

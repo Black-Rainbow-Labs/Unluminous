@@ -5,7 +5,7 @@
 use serde_json::{json, Value as Json};
 use unluminous_sheet::coord::{column_name, column_number, CellRef, Range};
 use unluminous_sheet::edit::{clip_to_used, Clear, Direction, PasteMode};
-use unluminous_sheet::model::{CfRule, Cfvo, FilterCriteria, Validation, Visibility};
+use unluminous_sheet::model::{CfRule, Cfvo, DataBarExt, FilterCriteria, Validation, Visibility};
 use unluminous_sheet::styles::{AlignEdit, Color, FontEdit, StyleChange, Underline};
 use unluminous_sheet::Value;
 
@@ -88,16 +88,14 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Result<Answe
     }
     match verb {
         "open" => {
-            let path = args.first().ok_or("open needs a file")?;
-            let name = sheet.open_path(std::path::Path::new(path), true)?;
+            let path = super::verbs_b_files::file_words(args).ok_or("open needs a file")?;
+            let name = sheet.open_path(std::path::Path::new(&path), true)?;
             Ok(said(format!("Opened {name}")).with(book_value(sheet.current_book()?)))
         }
         "new" => {
-            let path = args.first().ok_or("new needs a file name, such as budget.xlsx")?;
-            let full = match (std::path::Path::new(path).is_absolute(), &sheet.project) {
-                (false, Some(project)) => project.join(path),
-                _ => std::path::PathBuf::from(path),
-            };
+            let path = super::verbs_b_files::file_words(args)
+                .ok_or("new needs a file name, such as budget.xlsx")?;
+            let full = super::verbs_b_files::resolve(sheet, &path);
             if full.exists() {
                 return Err(format!("{} already exists; `open` opens it", full.display()));
             }
@@ -118,8 +116,8 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Result<Answe
             Ok(said(format!("{} open", list.len())).with(json!(list)))
         }
         "use" => {
-            let path = args.first().ok_or("use needs a file")?;
-            let name = sheet.open_path(std::path::Path::new(path), false)?;
+            let path = super::verbs_b_files::file_words(args).ok_or("use needs a file")?;
+            let name = sheet.open_path(std::path::Path::new(&path), false)?;
             Ok(said(format!("Acting on {name}")))
         }
         "save" => {
@@ -174,6 +172,8 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Result<Answe
                     args.first().map_or("", String::as_str)
                 ));
             }
+            // Choosing cells lets go of a chart that was chosen, as a click on a cell does.
+            book.view.chart = None;
             Ok(said(format!("Chose {}", book.view.range().a1())).with(selection_value(book)))
         }
         "selection" => {
@@ -218,6 +218,16 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Result<Answe
             let at = book.view.cursor;
             act(sheet, Act::TypeRows { at, rows })?;
             let book = sheet.current_book()?;
+            // Words still being typed into a cell that was just written are about the old contents, and
+            // left open they would be committed over the new ones.
+            if book
+                .view
+                .edit
+                .as_ref()
+                .is_some_and(|e| e.sheet == book.view.sheet && book.view.range().contains(e.at))
+            {
+                book.view.edit = None;
+            }
             Ok(said(format!("Wrote {}", book.view.range().a1())).with(selection_value(book)))
         }
         "type" => {
@@ -1117,6 +1127,9 @@ pub fn rule_from_words(
                 .unwrap_or(Color::rgb(0x63, 0x8E, 0xC6));
             let cfvo = |k: &str| Cfvo { kind: k.to_owned(), value: None };
             r.data_bar = Some((cfvo("min"), cfvo("max"), color));
+            // What Excel's Data Bars button makes: a gradient bar that starts at zero.
+            r.data_bar_options =
+                Some(DataBarExt { auto_min: true, auto_max: true, ..Default::default() });
             return Ok(r);
         }
         other => return Err(format!("`{other}` is not a conditional rule")),

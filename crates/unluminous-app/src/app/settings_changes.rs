@@ -236,7 +236,8 @@ impl UnluminousApp {
         let regular = self.renderer.face_data(&family, false);
         let bold = self.renderer.face_data(&family, true);
         let has_bold = bold.is_some();
-        theme::install_fonts(&context, &family, regular, bold);
+        let workbook = theme::WORKBOOK_FACES.iter().find_map(|f| self.renderer.face_data(f, false));
+        theme::install_fonts(&context, &family, regular, bold, workbook);
         if has_bold {
             self.bold_family = egui::FontFamily::Name(theme::BOLD_FAMILY.into());
         }

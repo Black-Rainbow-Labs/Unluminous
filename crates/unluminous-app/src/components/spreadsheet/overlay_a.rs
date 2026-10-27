@@ -38,7 +38,7 @@ pub fn draw(
 pub fn data_bar(
     cell: Rect,
     shape: &BarShape,
-    fills: &mut Vec<(Rect, Color32)>,
+    fills: &mut Vec<(Rect, Color32, bool)>,
     edges: &mut Vec<(Rect, Color32)>,
 ) {
     let width = cell.width() - 2.0;
@@ -48,7 +48,7 @@ pub fn data_bar(
         Pos2::new(left, cell.top() + 2.0),
         Pos2::new(right.max(left + 1.0), cell.bottom() - 2.0),
     );
-    fills.push((bar, rgb(shape.fill)));
+    fills.push((bar, rgb(shape.fill), shape.gradient));
     if let Some(border) = shape.border {
         edges.push((bar, rgb(border)));
     }
@@ -60,6 +60,36 @@ pub fn data_bar(
         );
         edges.push((axis, rgb(colour)));
     }
+}
+
+/// A data bar's fill: solid, or Excel's gradient, the bar's colour at its start fading nearly to the paper
+/// at its end, which is what Excel's Data Bars button gives a new bar. Excel's paper is white; on the
+/// theme's dark paper the bar fades to dark, so light numbers over it stay readable.
+pub fn paint_bar(
+    painter: &egui::Painter,
+    bar: Rect,
+    color: Color32,
+    gradient: bool,
+    paper: Color32,
+) {
+    if !gradient {
+        painter.rect_filled(bar, 0, color);
+        return;
+    }
+    let toward = |v: u8, p: u8| (v as f32 + (p as f32 - v as f32) * 0.9).round() as u8;
+    let end = Color32::from_rgb(
+        toward(color.r(), paper.r()),
+        toward(color.g(), paper.g()),
+        toward(color.b(), paper.b()),
+    );
+    let mut mesh = egui::Mesh::default();
+    mesh.colored_vertex(bar.left_top(), color);
+    mesh.colored_vertex(bar.right_top(), end);
+    mesh.colored_vertex(bar.right_bottom(), end);
+    mesh.colored_vertex(bar.left_bottom(), color);
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(0, 2, 3);
+    painter.add(egui::Shape::mesh(mesh));
 }
 
 /// The colour of the nth icon of a set of `count`: red at the lowest, green at the highest.

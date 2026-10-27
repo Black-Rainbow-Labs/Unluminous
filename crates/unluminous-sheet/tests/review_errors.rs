@@ -121,3 +121,32 @@ fn excel_opens_the_ignored_errors_the_engine_writes() {
     let theirs = excel_script("review-read.ps1", &["-Path", path.to_str().unwrap()]);
     assert_eq!(theirs["repaired"], false);
 }
+
+#[test]
+fn only_a_typed_number_beside_the_range_is_an_omitted_cell() {
+    // What Excel answered through `Range.Errors.Item(5)` for `=AVERAGE(C5:C9)` in C11 (task-2378): a
+    // total worked out by a formula in C10 is not flagged, and the same number typed in is.
+    let omits = |below: &str| {
+        let mut s =
+            unluminous_sheet::edit::Session::new(unluminous_sheet::model::Workbook::new(), 46318.5);
+        for row in 5..=9u32 {
+            s.set_input(0, at(&format!("C{row}")), &format!("{}", row * 2)).unwrap();
+        }
+        s.set_input(0, at("C10"), below).unwrap();
+        s.set_input(0, at("C11"), "=AVERAGE(C5:C9)").unwrap();
+        s.set_input(0, at("E5"), "=INDEX(C5:C9,1)").unwrap();
+        let flagged = |cell: &str| {
+            s.check_errors(
+                None,
+                Some(unluminous_sheet::Range::parse(cell).unwrap()),
+                ErrorOptions::all(),
+            )
+            .iter()
+            .any(|f| f.rule == ErrorRule::OmittedCells)
+        };
+        (flagged("C11"), flagged("E5"))
+    };
+    assert_eq!(omits("=SUM(C5:C9)"), (false, false));
+    assert_eq!(omits("=1+1"), (false, false));
+    assert_eq!(omits("70"), (true, true));
+}

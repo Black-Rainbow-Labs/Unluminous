@@ -382,7 +382,16 @@ fn apply_inner(book: &mut Book, copied: &mut Option<Copied>, act: Act) -> Said {
             Ok(String::new())
         }
         Act::Style(change) => {
-            s.set_style(sheet, &ranges, &change)?;
+            // A larger font grows the rows it is in, as Excel does for a row nobody set a height on.
+            let taller = matches!(
+                &change,
+                StyleChange::Font(unluminous_sheet::styles::FontEdit { size: Some(_), .. })
+                    | StyleChange::CellStyle(_)
+            );
+            match taller {
+                true => s.set_style_fitting_rows(sheet, &ranges, &change, &fitted_height)?,
+                false => s.set_style(sheet, &ranges, &change)?,
+            }
             Ok(String::new())
         }
         Act::Border { sides, style, color } => {
@@ -617,8 +626,12 @@ fn apply_inner(book: &mut Book, copied: &mut Option<Copied>, act: Act) -> Said {
         }
         Act::AutoFitColumns => {
             for r in &ranges {
+                // Whole columns fit everything in them; a block of cells fits only its own rows, as
+                // Excel's AutoFit Column Width does, so a long title above a table leaves it alone.
+                let rows = (r.first.row > 0 || r.last.row < MAX_ROWS - 1)
+                    .then_some((r.first.row, r.last.row));
                 for col in r.first.col..=r.last.col.min(r.first.col + 512) {
-                    let width = fitted_width(&s.book, sheet, col);
+                    let width = fitted_width(&s.book, sheet, col, rows);
                     s.set_column_width(sheet, col, col, width)?;
                 }
             }
@@ -879,12 +892,18 @@ fn typed_value(
 }
 
 /// The width that fits a column's widest shown value, in the file's characters: seven points a character,
-/// which is the default font's digit, plus the cell's padding.
-pub fn fitted_width(book: &unluminous_sheet::Workbook, sheet: usize, col: u32) -> Option<f64> {
+/// which is the default font's digit, plus the cell's padding. With `rows`, only the cells in those rows
+/// are measured.
+pub fn fitted_width(
+    book: &unluminous_sheet::Workbook,
+    sheet: usize,
+    col: u32,
+    rows: Option<(u32, u32)>,
+) -> Option<f64> {
     let s = &book.sheets[sheet];
-    let mut widest = 0usize;
-    for (&(_, c), cell) in &s.cells {
-        if c != col || cell.value.is_empty() {
+    let mut widest: f64 = 0.0;
+    for (&(row, c), cell) in &s.cells {
+        if c != col || cell.value.is_empty() || rows.is_some_and(|(a, b)| row < a || row > b) {
             continue;
         }
         let code = book.styles.format_code(cell.style);
@@ -892,14 +911,26 @@ pub fn fitted_width(book: &unluminous_sheet::Workbook, sheet: usize, col: u32) -
             .render(&cell.value, book.date1904, 255)
             .text;
         let font = book.styles.font_of(cell.style);
-        let scale = font.size / 11.0 * if font.bold { 1.1 } else { 1.0 };
-        let longest = text.lines().map(|line| line.chars().count()).max().unwrap_or(0);
-        widest = widest.max((longest as f64 * scale).ceil() as usize);
+        // Measured in the face the grid drew it in, plus the eight pixels Excel's AutoFit leaves, when the
+        // grid has drawn that face; counted at seven pixels a character otherwise.
+        let measured = text
+            .lines()
+            .map(|line| super::measure::width(&font.name, font.bold, font.italic, font.size, line))
+            .collect::<Option<Vec<f64>>>()
+            .map(|widths| widths.into_iter().fold(0.0, f64::max) + 8.0);
+        let counted = || {
+            let scale = font.size / 11.0 * if font.bold { 1.1 } else { 1.0 };
+            let longest = text.lines().map(|line| line.chars().count()).max().unwrap_or(0);
+            (longest as f64 * scale).ceil() * 7.0 + 12.0
+        };
+        if !text.is_empty() {
+            widest = widest.max(measured.unwrap_or_else(counted));
+        }
     }
-    if widest == 0 {
+    if widest <= 0.0 {
         return None;
     }
-    Some(super::axis::points_to_width((widest as f32) * 7.0 + 12.0))
+    Some(super::axis::points_to_width(widest.ceil() as f32))
 }
 
 /// The height that fits a row's tallest text, in points: the font's line, times the lines a wrapped cell

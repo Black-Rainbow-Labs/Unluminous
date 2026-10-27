@@ -316,3 +316,78 @@ fn every_verb_in_the_help_is_one_the_provider_runs_and_takes_the_words_it_lists(
         }
     }
 }
+
+// ------------------------------------------------------------------------------------------------ task-2378
+// What recording the workbook beside Excel found.
+
+#[test]
+fn a_file_whose_path_holds_a_space_is_made_opened_and_saved_whole() {
+    let (mut sheet, folder) = opened("spaced");
+    run(&mut sheet, "new Trip budget.xlsx");
+    assert!(folder.join("Trip budget.xlsx").exists(), "the file is named by every word");
+    run(&mut sheet, "write A1 1");
+    run(&mut sheet, "save-as Trip budget copy.xlsx");
+    assert!(folder.join("Trip budget copy.xlsx").exists());
+    run(&mut sheet, "save-as Trip budget.csv plain");
+    assert!(
+        folder.join("Trip budget.csv").exists(),
+        "the encoding is the last word, not the file's"
+    );
+    let full = folder.join("Trip budget.xlsx").display().to_string();
+    run(&mut sheet, &format!("open {full}"));
+    assert_eq!(sheet.current_book().unwrap().path, folder.join("Trip budget.xlsx"));
+}
+
+#[test]
+fn autofit_on_a_block_fits_only_the_rows_it_covers() {
+    let (mut sheet, _folder) = with_data("autofit-block");
+    run(&mut sheet, "write A8 A_title_far_longer_than_anything_in_the_table_below_it");
+    run(&mut sheet, "autofit columns A1:A5");
+    let width = |sheet: &mut Spreadsheet| {
+        sheet.current_book().unwrap().session.book.sheets[0]
+            .column(0)
+            .and_then(|c| c.width)
+            .unwrap()
+    };
+    let narrow = width(&mut sheet);
+    run(&mut sheet, "autofit columns A:A");
+    let wide = width(&mut sheet);
+    assert!(narrow < 10.0 && wide > 30.0, "{narrow} then {wide}");
+}
+
+#[test]
+fn a_bigger_font_makes_its_row_taller_in_one_undo_step() {
+    let (mut sheet, _folder) = with_data("taller");
+    run(&mut sheet, "format A1 size 20");
+    let height = |sheet: &mut Spreadsheet| {
+        sheet.current_book().unwrap().session.book.sheets[0].rows.get(&0).and_then(|r| r.height)
+    };
+    let grown = height(&mut sheet).expect("the row grew");
+    assert!(grown > 25.0 && grown < 29.0, "Excel makes a 20 point row 26.25 points, not {grown}");
+    run(&mut sheet, "undo");
+    assert_eq!(height(&mut sheet), None);
+    let cell = run(&mut sheet, "cell A1");
+    assert_eq!(cell.value["font"]["size"], serde_json::json!(11.0), "the one step took both back");
+}
+
+#[test]
+fn writing_a_cell_drops_the_words_still_being_typed_into_it() {
+    let (mut sheet, _folder) = with_data("stale-edit");
+    run(&mut sheet, "select C8");
+    run(&mut sheet, "edit Bigg");
+    run(&mut sheet, "write C8 Biggest climb");
+    assert!(sheet.current_book().unwrap().view.edit.is_none());
+    assert_eq!(run(&mut sheet, "cell C8").value["value"], serde_json::json!("Biggest climb"));
+}
+
+#[test]
+fn a_chart_over_two_areas_is_named_by_the_first_and_choosing_cells_lets_go_of_it() {
+    let (mut sheet, _folder) = with_data("two-areas");
+    run(&mut sheet, "chart column A1:A5,C1:C5 Count");
+    let charts = run(&mut sheet, "charts");
+    let series = &charts.value[0]["series"];
+    assert_eq!(series, &serde_json::json!(["Sheet1!$C$2:$C$5"]), "{charts:?}");
+    assert!(sheet.current_book().unwrap().view.chart.is_some());
+    run(&mut sheet, "select A1");
+    assert!(sheet.current_book().unwrap().view.chart.is_none());
+}

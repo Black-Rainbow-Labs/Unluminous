@@ -1256,6 +1256,25 @@ pub fn keep_egui_on_the_theme(ctx: &egui::Context) {
 /// The family name egui uses for the interface's bold text.
 pub const BOLD_FAMILY: &str = "unluminous-bold";
 
+/// The family egui sets a workbook's own words in where egui draws them: a chart's titles, labels and
+/// legend, and the cell being typed into. They belong to the workbook rather than to the window, so they
+/// are not set in the interface font, which may be a monospaced face.
+pub const WORKBOOK_FAMILY: &str = "unluminous-workbook";
+
+/// The faces [`WORKBOOK_FAMILY`] is, first one found: Excel's body font, which is Aptos Narrow in a
+/// workbook made by Excel today and Calibri in one made before 2023.
+pub const WORKBOOK_FACES: [&str; 4] = ["Aptos Narrow", "Calibri", "Arial", "Segoe UI"];
+
+/// [`WORKBOOK_FAMILY`] when the window has named it, and egui's proportional faces otherwise, because egui
+/// stops on a family nobody named.
+pub fn workbook_family(ctx: &egui::Context) -> egui::FontFamily {
+    let named = egui::FontFamily::Name(WORKBOOK_FAMILY.into());
+    match ctx.fonts(|f| f.definitions().families.contains_key(&named)) {
+        true => named,
+        false => egui::FontFamily::Proportional,
+    }
+}
+
 /// Set the interface in a real font, so that the toolbar's bold B is actually bold.
 ///
 /// egui's built in fonts have no bold face, so its `strong` styling only brightens the colour. The design
@@ -1267,8 +1286,18 @@ pub fn install_fonts(
     family: &str,
     regular: Option<egui::FontData>,
     bold: Option<egui::FontData>,
+    workbook: Option<egui::FontData>,
 ) {
     let mut fonts = egui::FontDefinitions::default();
+    // The workbook family is egui's own proportional faces, which are not monospaced, behind the workbook
+    // face when there is one.
+    let mut workbook_stack =
+        fonts.families.get(&egui::FontFamily::Proportional).cloned().unwrap_or_default();
+    if let Some(bytes) = workbook {
+        fonts.font_data.insert("unluminous-workbook-face".to_owned(), std::sync::Arc::new(bytes));
+        workbook_stack.insert(0, "unluminous-workbook-face".to_owned());
+    }
+    fonts.families.insert(egui::FontFamily::Name(WORKBOOK_FAMILY.into()), workbook_stack);
     let mut bold_stack = Vec::new();
     if let Some(bytes) = bold {
         let bytes = centred_in_its_row(bytes);

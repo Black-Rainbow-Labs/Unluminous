@@ -518,6 +518,11 @@ pub struct DataBarExt {
     pub axis_color: Option<crate::styles::Color>,
     /// The extension is present in the file, so a rule written back gets one.
     pub has_extension: bool,
+    /// The extension's thresholds are `autoMin` and `autoMax` where the 2007 element says `min` and `max`:
+    /// the bar starts at zero, or at the lowest number when one is below zero. That is what Excel's own
+    /// Data Bars button makes.
+    pub auto_min: bool,
+    pub auto_max: bool,
 }
 
 impl Default for DataBarExt {
@@ -540,6 +545,8 @@ impl Default for DataBarExt {
             negative_border: None,
             axis_color: None,
             has_extension: true,
+            auto_min: false,
+            auto_max: false,
         }
     }
 }

@@ -18,6 +18,7 @@ use crate::services::spreadsheet::actions::Act;
 use crate::services::spreadsheet::conditional::{Effect, Rules};
 use crate::services::spreadsheet::config::Paper;
 use crate::services::spreadsheet::display::{self, Across, Down, Rgb, Shown};
+use crate::services::spreadsheet::measure;
 use crate::services::spreadsheet::view::Drag;
 use crate::services::spreadsheet::Book;
 
@@ -1219,7 +1220,8 @@ fn filter_button_at(book: &Book, frame: Frame, p: Pos2) -> Option<u32> {
 /// Where a filter button sits in its cell.
 pub fn filter_button(book: &Book, frame: Frame, at: CellRef) -> Rect {
     let cell = frame.cell(book, at);
-    let side = (16.0 * frame.zoom).min(cell.height() - 2.0).max(6.0);
+    // Excel's button is 13 pixels at 100%, two thirds of a default row.
+    let side = (13.0 * frame.zoom).min(cell.height() - 2.0).max(6.0);
     Rect::from_min_size(
         Pos2::new(cell.right() - side - 2.0, cell.bottom() - side - 2.0),
         Vec2::splat(side),
@@ -1250,7 +1252,10 @@ fn draw_cells(
     let now = book.session.now;
     // Gridlines, under everything.
     if sheet.show_grid {
-        let stroke = Stroke::new(1.0, ink.grid);
+        // One device pixel, on a pixel, as Excel draws its gridlines at every zoom: a point wide at an
+        // interface zoom above one was a blurred line two pixels wide.
+        let px = painter.pixels_per_point();
+        let stroke = Stroke::new(1.0 / px, ink.grid);
         let top = frame.y(book, first_row).max(clip.top());
         let bottom = (frame.y(book, last_row) + axes.rows.size(last_row) * zoom).min(clip.bottom());
         let left = frame.x(book, first_col).max(clip.left());
@@ -1260,14 +1265,17 @@ fn draw_cells(
             if axes.columns.is_hidden(col) {
                 continue;
             }
-            let x = (frame.x(book, col) + axes.columns.size(col) * zoom).round() - 0.5;
+            let x = painter.round_to_pixel_center(
+                frame.x(book, col) + axes.columns.size(col) * zoom - 0.5 / px,
+            );
             painter.line_segment([Pos2::new(x, top), Pos2::new(x, bottom)], stroke);
         }
         for row in first_row..=last_row {
             if axes.rows.is_hidden(row) {
                 continue;
             }
-            let y = (frame.y(book, row) + axes.rows.size(row) * zoom).round() - 0.5;
+            let y = painter
+                .round_to_pixel_center(frame.y(book, row) + axes.rows.size(row) * zoom - 0.5 / px);
             painter.line_segment([Pos2::new(left, y), Pos2::new(right, y)], stroke);
         }
     }
@@ -1279,10 +1287,13 @@ fn draw_cells(
     let in_merge = |at: CellRef| merges.iter().find(|m| m.contains(at)).copied();
 
     let mut texts: Vec<TextItem> = Vec::new();
+    // Each face's line over its em, asked once a pass: see the text's size below.
+    let mut em_ratios: std::collections::HashMap<(std::sync::Arc<str>, bool, bool), f32> =
+        std::collections::HashMap::new();
     let mut lines: Vec<(Pos2, Pos2, Stroke)> = Vec::new();
     let mut doubles: Vec<(Pos2, Pos2, Stroke)> = Vec::new();
     let mut notes: Vec<Pos2> = Vec::new();
-    let mut bars: Vec<(Rect, Color32)> = Vec::new();
+    let mut bars: Vec<(Rect, Color32, bool)> = Vec::new();
     let mut bar_edges: Vec<(Rect, Color32)> = Vec::new();
     let mut icons: Vec<(Rect, unluminous_sheet::conditional::IconPick)> = Vec::new();
     let mut filter_cells: Vec<CellRef> = Vec::new();
@@ -1358,7 +1369,7 @@ fn draw_cells(
                 rect.min + Vec2::new(1.0, 2.0),
                 Vec2::new((rect.width() - 2.0) * fraction, rect.height() - 4.0),
             );
-            bars.push((bar, rgb(color)));
+            bars.push((bar, rgb(color).gamma_multiply(0.75), false));
         }
         if let Some(pick) = effect.icon.clone().filter(|p| !p.hidden) {
             icons.push((rect, pick));
@@ -1379,20 +1390,37 @@ fn draw_cells(
                 }
             }
         };
+        // Every edge is drawn on the boundary's own pixel, the one the gridline is on, so the bottom of one
+        // cell and the top of the next are the same line rather than two lines side by side.
         let r = rect;
-        edge(shown.top, r.left_top(), r.right_top(), &mut lines, &mut doubles);
+        let half = 0.5 / painter.pixels_per_point();
+        let (top, bottom) = (r.top() - half, r.bottom() - half);
+        let (left, right) = (r.left() - half, r.right() - half);
         edge(
-            shown.bottom,
-            r.left_bottom() - Vec2::new(0.0, 0.5),
-            r.right_bottom() - Vec2::new(0.0, 0.5),
+            shown.top,
+            Pos2::new(r.left(), top),
+            Pos2::new(r.right(), top),
             &mut lines,
             &mut doubles,
         );
-        edge(shown.left, r.left_top(), r.left_bottom(), &mut lines, &mut doubles);
+        edge(
+            shown.bottom,
+            Pos2::new(r.left(), bottom),
+            Pos2::new(r.right(), bottom),
+            &mut lines,
+            &mut doubles,
+        );
+        edge(
+            shown.left,
+            Pos2::new(left, r.top()),
+            Pos2::new(left, r.bottom()),
+            &mut lines,
+            &mut doubles,
+        );
         edge(
             shown.right,
-            r.right_top() - Vec2::new(0.5, 0.0),
-            r.right_bottom() - Vec2::new(0.5, 0.0),
+            Pos2::new(right, r.top()),
+            Pos2::new(right, r.bottom()),
             &mut lines,
             &mut doubles,
         );
@@ -1403,14 +1431,32 @@ fn draw_cells(
             continue;
         }
         // The text: its style, its colour, and where it may go.
-        let size = (shown.size.max(1.0) * 4.0 / 3.0) * zoom;
-        let style = CharStyle {
+        // A point size is the face's em, and the renderer sizes a face by its ascent to descent and divides
+        // every size by the interface zoom, so both are put back, as the Word tab does: without them an 11
+        // point cell was drawn a fifth smaller than Excel draws it in the same row (task-2378).
+        let mut style = CharStyle {
             family: shown.family.clone(),
-            size,
+            size: (shown.size.max(1.0) * 4.0 / 3.0) * zoom,
             bold: shown.bold,
             italic: shown.italic,
             ..CharStyle::default()
         };
+        let em = *em_ratios
+            .entry((style.family.clone(), style.bold, style.italic))
+            .or_insert_with(|| look.renderer.em_ratio(&style));
+        style.size *= em * look.renderer.interface_zoom();
+        // AutoFit measures with the faces the grid draws in: see `services::spreadsheet::measure`.
+        if !measure::knows(&shown.family, shown.bold, shown.italic) {
+            let mut units = [0.0f32; 128];
+            let mut buffer = [0u8; 4];
+            for (i, unit) in units.iter_mut().enumerate().skip(32) {
+                let c = char::from(i as u8);
+                *unit = look.renderer.advance(c.encode_utf8(&mut buffer), &style)
+                    / zoom
+                    / shown.size.max(1.0);
+            }
+            measure::remember(&shown.family, shown.bold, shown.italic, units);
+        }
         let over_fill = shown.fill.is_some();
         let color = match shown.color {
             Some(c) => ink.adapt(c, over_fill),
@@ -1475,7 +1521,9 @@ fn draw_cells(
         // Where text that is wider than its cell may run: over empty neighbours, the way it is aligned.
         let mut clip_rect = rect;
         let longest = widths.iter().cloned().fold(0.0, f32::max);
-        if !shown.wrap && !shown.numeric && longest > available && !merged {
+        // A heading with a filter button is cut at the button, as Excel cuts it, rather than running on.
+        let has_button = filter_room > 0.0;
+        if !shown.wrap && !shown.numeric && longest > available && !merged && !has_button {
             let free = |c: u32| {
                 let n = CellRef::new(at.row, c);
                 sheet.value_at(n).is_empty() && in_merge(n).is_none() && used.is_some_and(|_| true)
@@ -1505,14 +1553,24 @@ fn draw_cells(
                 Pos2::new(rect.left() - extra_left, rect.top()),
                 Pos2::new(rect.right() + extra_right, rect.bottom()),
             );
-            // The gridlines the text runs over are hidden, as Excel hides them.
-            if extra_right > 0.0 || extra_left > 0.0 {
+            // The gridlines the text runs over are hidden, as Excel hides them. The empty cells it runs into
+            // keep the paper: a cell's fill stays inside the cell.
+            let (top, bottom) = (rect.top() + 0.5, rect.bottom() - 1.5);
+            // A filled cell already hides the gridline on its own edge; one with none needs it covered.
+            let edge = if shown.fill.is_some() { 0.0 } else { 1.0 };
+            if extra_right > 0.0 {
                 let cover = Rect::from_min_max(
-                    Pos2::new(clip_rect.left() + 1.0, rect.top() + 0.5),
-                    Pos2::new(clip_rect.right() - 1.0, rect.bottom() - 1.5),
+                    Pos2::new(rect.right() - edge, top),
+                    Pos2::new(clip_rect.right() - 1.0, bottom),
                 );
-                let background = shown.fill.map_or(ink.paper, rgb);
-                painter.rect_filled(cover, 0, background);
+                painter.rect_filled(cover, 0, ink.paper);
+            }
+            if extra_left > 0.0 {
+                let cover = Rect::from_min_max(
+                    Pos2::new(clip_rect.left() + 1.0, top),
+                    Pos2::new(rect.left() + edge, bottom),
+                );
+                painter.rect_filled(cover, 0, ink.paper);
             }
         }
         let block = line_height * wrapped.len() as f32;
@@ -1547,8 +1605,8 @@ fn draw_cells(
             widths,
         });
     }
-    for (bar, color) in bars {
-        painter.rect_filled(bar, 1, color.gamma_multiply(0.75));
+    for (bar, color, gradient) in bars {
+        super::overlay_a::paint_bar(&painter, bar, color, gradient, ink.paper);
     }
     for (bar, color) in bar_edges {
         painter.rect_stroke(bar, 1, Stroke::new(1.0, color), egui::StrokeKind::Inside);
@@ -1556,14 +1614,31 @@ fn draw_cells(
     for (rect, pick) in icons {
         super::overlay_a::icon(&painter, rect, &pick);
     }
+    // A border is a whole number of device pixels on the pixel grid, as Excel draws one: thin is one pixel,
+    // medium two and thick three, at any zoom.
+    let px = painter.pixels_per_point();
+    let on_pixels = |a: Pos2, b: Pos2| {
+        if (a.x - b.x).abs() < 0.01 {
+            let x = painter.round_to_pixel_center(a.x);
+            [Pos2::new(x, a.y), Pos2::new(x, b.y)]
+        } else if (a.y - b.y).abs() < 0.01 {
+            let y = painter.round_to_pixel_center(a.y);
+            [Pos2::new(a.x, y), Pos2::new(b.x, y)]
+        } else {
+            [a, b]
+        }
+    };
     for (a, b, stroke) in lines {
-        painter.line_segment([a, b], stroke);
+        let width = stroke.width.round().max(1.0) / px;
+        painter.line_segment(on_pixels(a, b), Stroke::new(width, stroke.color));
     }
     for (a, b, stroke) in doubles {
+        // Two one pixel lines with one pixel between them.
         let along = (b - a).normalized();
-        let across = Vec2::new(-along.y, along.x) * 1.0;
-        painter.line_segment([a - across, b - across], stroke);
-        painter.line_segment([a + across, b + across], stroke);
+        let across = Vec2::new(-along.y, along.x) * (1.0 / px);
+        let thin = Stroke::new(1.0 / px, stroke.color);
+        painter.line_segment(on_pixels(a - across, b - across), thin);
+        painter.line_segment(on_pixels(a + across, b + across), thin);
     }
     paint_texts(ui, look, &painter, &texts);
     for corner in notes {
@@ -1583,16 +1658,26 @@ fn draw_cells(
             .filter
             .as_ref()
             .is_some_and(|f| f.columns.contains_key(&(at.col - f.range.first.col)));
+        // On white paper the button is Excel's: white, a grey edge and a dark arrow. On the theme's paper it
+        // is one of the window's own controls.
+        let (fill, edge, arrow) = match ink.dark {
+            true => (look.palette.control, look.palette.control_border, look.palette.text_dim),
+            false => (
+                Color32::WHITE,
+                Color32::from_rgb(0xAB, 0xAB, 0xAB),
+                Color32::from_rgb(0x44, 0x44, 0x44),
+            ),
+        };
         painter.rect(
             button,
-            CornerRadius::same(3),
-            look.palette.control,
-            Stroke::new(1.0, look.palette.control_border),
+            CornerRadius::same(1),
+            fill,
+            Stroke::new(1.0, edge),
             egui::StrokeKind::Inside,
         );
         let c = button.center();
-        let w = button.width() * 0.28;
-        let tint = if active { look.palette.accent } else { look.palette.text_dim };
+        let w = button.width() * 0.22;
+        let tint = if active { look.palette.accent } else { arrow };
         painter.add(Shape::convex_polygon(
             vec![
                 c + Vec2::new(-w, -w / 2.0),

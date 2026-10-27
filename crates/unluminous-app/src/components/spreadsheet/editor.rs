@@ -71,7 +71,8 @@ pub fn show_cell_box(ui: &mut egui::Ui, book: &mut Book, frame: Frame, ink: &Ink
     let style = display::style_at(sheet, at);
     let font = book.session.book.styles.font_of(style);
     let size = (font.size as f32 * 4.0 / 3.0 * zoom).clamp(6.0, 72.0);
-    let font_id = egui::FontId::proportional(size);
+    // Set in the workbook's face, as Excel shows the words being typed in the cell's own font.
+    let font_id = egui::FontId::new(size, crate::theme::workbook_family(ui.ctx()));
     // The box grows to the right with what is typed, as Excel's does, and down for each line.
     let text = edit.text.clone();
     let galley = ui.painter().layout_no_wrap(text.clone(), font_id.clone(), ink.text);
@@ -102,7 +103,7 @@ pub fn show_cell_box(ui: &mut egui::Ui, book: &mut Book, frame: Frame, ink: &Ink
             egui::Pos2::new(x, rect.top() + 1.0),
             egui::Align2::LEFT_TOP,
             rest,
-            egui::FontId::proportional(size),
+            font_id.clone(),
             ink.text.gamma_multiply(0.45),
         );
     }

@@ -274,7 +274,9 @@ fn inconsistent(s: &Sheet, at: CellRef, cell: &Cell) -> bool {
     })
 }
 
-/// A formula with a range in it where the cell just past the range holds a number.
+/// A formula with a range in it where the cell just past the range holds a number typed in. A number a
+/// formula worked out does not count, which Excel was asked: `=AVERAGE(C5:C9)` under `=SUM(C5:C9)` in C10
+/// is not flagged, and under a typed 70 it is.
 fn omitted_cells(s: &Sheet, at: CellRef, cell: &Cell) -> bool {
     let Some(formula) = cell.formula.as_ref() else { return false };
     let mut omits = false;
@@ -286,7 +288,10 @@ fn omitted_cells(s: &Sheet, at: CellRef, cell: &Cell) -> bool {
         let range = r.range();
         let numeric = |p: Option<CellRef>| {
             p.is_some_and(|p| {
-                matches!(s.value_at(p), Value::Number(_)) && p != at && !range.contains(p)
+                matches!(s.value_at(p), Value::Number(_))
+                    && s.cell(p).is_none_or(|c| c.formula.is_none())
+                    && p != at
+                    && !range.contains(p)
             })
         };
         let beside = if range.first.col == range.last.col {

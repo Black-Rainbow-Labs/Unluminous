@@ -23,10 +23,15 @@ fn accent(book: &Book, index: usize) -> Color32 {
 
 /// The colours a chart is drawn in: the paper and ink of the sheet, and the theme's six accents.
 fn colours_of(book: &Book, ink: &Ink, look: &Look<'_>) -> Colours {
+    // On white paper a chart's words are Excel's grey, #595959, the title as well as the labels.
+    let (text, dim) = match ink.dark {
+        true => (ink.text, look.palette.text_dim),
+        false => (Color32::from_rgb(0x59, 0x59, 0x59), Color32::from_rgb(0x59, 0x59, 0x59)),
+    };
     Colours {
         paper: ink.paper,
-        text: ink.text,
-        dim: look.palette.text_dim,
+        text,
+        dim,
         grid: ink.grid,
         accents: std::array::from_fn(|i| accent(book, i)),
     }

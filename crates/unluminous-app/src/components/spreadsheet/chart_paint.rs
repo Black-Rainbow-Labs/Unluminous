@@ -55,15 +55,23 @@ pub fn lighten(c: Color32, by: f32) -> Color32 {
     Color32::from_rgba_unmultiplied(mix(c.r()), mix(c.g()), mix(c.b()), c.a())
 }
 
-/// The sizes text and marks are drawn at, for a zoom.
-#[derive(Debug, Clone, Copy)]
+/// The sizes text and marks are drawn at, for a zoom, and the family the text is set in.
+#[derive(Debug, Clone)]
 pub struct Metrics {
     pub zoom: f32,
+    pub family: egui::FontFamily,
 }
 
 impl Metrics {
+    /// The sizes for a zoom, set in the workbook's family rather than the interface's.
+    pub fn new(ctx: &egui::Context, zoom: f32) -> Self {
+        Self { zoom, family: crate::theme::workbook_family(ctx) }
+    }
+
+    /// A chart's text at a size in points, as Excel gives them: 9 for labels and 14 for a title. A point is
+    /// four thirds of a pixel at 100%, and `zoom` is how large a pixel at 100% is drawn.
     fn font(&self, size: f32) -> FontId {
-        FontId::proportional((size * self.zoom).clamp(6.0, 36.0))
+        FontId::new((size * 4.0 / 3.0 * self.zoom).clamp(6.0, 96.0), self.family.clone())
     }
 
     fn label(&self) -> FontId {
@@ -366,7 +374,7 @@ pub fn draw(
     colours: &Colours,
     zoom: f32,
 ) {
-    let m = Metrics { zoom };
+    let m = Metrics::new(painter.ctx(), zoom);
     let spec = &chart.spec;
     let mut top = area.top();
     if !plot.title.is_empty() || (spec.title_auto && !plot.series.is_empty()) {
@@ -376,14 +384,14 @@ pub fn draw(
             (true, 1) => plot.series[0].name.clone(),
             (true, _) => "Chart Title".to_owned(),
         };
-        painter.text(
-            Pos2::new(area.center().x, top + 2.0),
+        let drawn = painter.text(
+            Pos2::new(area.center().x, top + 6.0 * zoom),
             egui::Align2::CENTER_TOP,
             title,
             m.title(),
             colours.text,
         );
-        top += 24.0 * zoom;
+        top = drawn.bottom() + 4.0 * zoom;
     }
     let mut body = Rect::from_min_max(Pos2::new(area.left(), top), area.max);
     if let Some(legend) = &spec.legend {
@@ -583,29 +591,50 @@ fn point_colour(chart: &Chart, s: &PlotSeries, point: usize, colours: &Colours) 
 
 /// The room the axes' labels and titles take around the plot.
 fn axis_room(
+    painter: &egui::Painter,
     plot: &Plot,
     chart: &Chart,
     m: &Metrics,
     horizontal_bars: bool,
+    width: f32,
 ) -> (f32, f32, f32, f32) {
     let (mut left, mut bottom, mut right, mut top) =
         (8.0 * m.zoom, 8.0 * m.zoom, 8.0 * m.zoom, 6.0 * m.zoom);
-    let char_w = 5.5 * m.zoom;
     for (axis, p) in chart.spec.axes.iter().zip(&plot.axes) {
         if axis.deleted {
             continue;
         }
+        let measure =
+            |text: &str| painter.layout_no_wrap(text.to_owned(), m.label(), colours_dim()).size().x;
         let labels_width = if p.kind == AxisKind::Value {
-            p.ticks.iter().map(|t| t.1.chars().count()).max().unwrap_or(2) as f32 * char_w + 6.0
+            p.ticks.iter().map(|t| measure(&t.1)).fold(0.0, f32::max) + 6.0
         } else if horizontal_bars {
-            p.categories.iter().map(|c| c.chars().count().min(12)).max().unwrap_or(2) as f32
-                * char_w
+            p.categories.iter().map(|c| measure(&unluminous_sheet_trim(c, 12))).fold(0.0, f32::max)
                 + 6.0
         } else {
             0.0
         };
         let title = if axis.title.is_some() { 16.0 * m.zoom } else { 0.0 };
-        let label_h = if axis.tick_labels == TickLabels::Hidden { 0.0 } else { 14.0 * m.zoom };
+        // Category names under a plot wrap onto as many lines as the widest of them needs.
+        let lines = match (p.kind, axis.position, horizontal_bars) {
+            (AxisKind::Value, ..)
+            | (_, AxisPosition::Left | AxisPosition::Right, _)
+            | (_, _, true) => 1,
+            _ => {
+                let band = (width - 60.0 * m.zoom).max(10.0) / p.categories.len().max(1) as f32;
+                p.categories
+                    .iter()
+                    .map(|c| category_galley(painter, c, band, m, colours_dim()).rows.len())
+                    .max()
+                    .unwrap_or(1)
+                    .clamp(1, 3)
+            }
+        };
+        let row = painter.layout_no_wrap("Ag".to_owned(), m.label(), colours_dim()).size().y;
+        let label_h = match axis.tick_labels == TickLabels::Hidden {
+            true => 0.0,
+            false => (14.0 * m.zoom).max(row * lines as f32 + 3.0 * m.zoom),
+        };
         match axis.position {
             AxisPosition::Left => {
                 left = left.max(
@@ -647,7 +676,8 @@ fn draw_cartesian(
     let spec = &chart.spec;
     let first = spec.groups.first().cloned().unwrap_or_default();
     let horizontal_bars = first.kind == GroupKind::Bar && first.horizontal;
-    let (left, bottom, right, top) = axis_room(plot, chart, m, horizontal_bars);
+    let (left, bottom, right, top) =
+        axis_room(painter, plot, chart, m, horizontal_bars, body.width());
     let inner = Rect::from_min_max(
         Pos2::new(body.left() + left, body.top() + top),
         Pos2::new(body.right() - right, body.bottom() - bottom),
@@ -787,29 +817,29 @@ fn draw_category_axis(
     let count = p.categories.len().max(1);
     let length = if vertical { inner.height() } else { inner.width() };
     let band = length / count as f32;
-    let step = ((14.0 * m.zoom * if vertical { 1.0 } else { 3.0 }) / band).ceil().max(1.0) as usize;
+    // Under the plot the names wrap to their band, as Excel's do, so every one is shown when a band is
+    // wide enough for a word; beside it they are thinned out to fit.
+    let step = match vertical {
+        true => ((14.0 * m.zoom) / band).ceil().max(1.0) as usize,
+        false => ((30.0 * m.zoom) / band).ceil().max(1.0) as usize,
+    };
     for (i, c) in p.categories.iter().enumerate().step_by(step) {
         let along = geo::band_centre(i, count, length);
-        let text = unluminous_sheet_trim(c, if vertical { 12 } else { 10 });
-        if vertical {
-            let y = if p.reverse { inner.top() + along } else { inner.bottom() - along };
-            painter.text(
-                Pos2::new(inner.left() - 5.0, y),
-                egui::Align2::RIGHT_CENTER,
-                text,
-                m.label(),
-                colours.dim,
-            );
-        } else {
+        if !vertical {
             let x = if p.reverse { inner.right() - along } else { inner.left() + along };
-            painter.text(
-                Pos2::new(x, inner.bottom() + 3.0),
-                egui::Align2::CENTER_TOP,
-                text,
-                m.label(),
-                colours.dim,
-            );
+            let galley = category_galley(painter, c, band * step as f32, m, colours.dim);
+            painter.galley(Pos2::new(x, inner.bottom() + 3.0), galley, colours.dim);
+            continue;
         }
+        let text = unluminous_sheet_trim(c, 12);
+        let y = if p.reverse { inner.top() + along } else { inner.bottom() - along };
+        painter.text(
+            Pos2::new(inner.left() - 5.0, y),
+            egui::Align2::RIGHT_CENTER,
+            text,
+            m.label(),
+            colours.dim,
+        );
     }
 }
 
@@ -848,6 +878,25 @@ fn axis_line_position(inner: Rect, axis: &Axis, plot: &Plot) -> f32 {
     } else {
         inner.bottom() - inner.height() * t
     }
+}
+
+/// A category name laid out in its band, wrapped between words and each line centred, as Excel lays out
+/// the names under a column chart.
+fn category_galley(
+    painter: &egui::Painter,
+    text: &str,
+    band: f32,
+    m: &Metrics,
+    colour: Color32,
+) -> std::sync::Arc<egui::Galley> {
+    let mut job = egui::text::LayoutJob::simple(text.to_owned(), m.label(), colour, band * 0.95);
+    job.halign = egui::Align::Center;
+    painter.layout_job(job)
+}
+
+/// The colour a category name is measured in, which does not change its size.
+fn colours_dim() -> Color32 {
+    Color32::GRAY
 }
 
 fn unluminous_sheet_trim(text: &str, max: usize) -> String {

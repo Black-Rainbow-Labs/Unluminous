@@ -39,6 +39,14 @@ pub fn first(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Option<Out
     }
 }
 
+/// The file a verb's words name. `plugins run` splits its line on spaces, so a path holding a space
+/// arrives as several words and is put back together here: a verb whose last word is its file takes all
+/// of them.
+pub fn file_words(args: &[String]) -> Option<String> {
+    let file = args.join(" ");
+    (!file.trim().is_empty()).then(|| file.trim().to_owned())
+}
+
 /// A file name read against the project folder when it is relative.
 pub fn resolve(sheet: &Spreadsheet, file: &str) -> PathBuf {
     let path = std::path::Path::new(file);
@@ -72,8 +80,8 @@ fn save_as_xlsx(sheet: &mut Spreadsheet) -> Out {
 }
 
 /// The encoding a `save-as` word asks for.
-fn encoding_of(args: &[String]) -> Result<Option<Encoding>, String> {
-    let Some(word) = args.get(1) else { return Ok(None) };
+fn encoding_of(word: Option<&str>) -> Result<Option<Encoding>, String> {
+    let Some(word) = word else { return Ok(None) };
     Ok(Some(match word.to_ascii_lowercase().as_str() {
         "utf8" | "utf-8" | "utf8-bom" => Encoding::Utf8Bom,
         "utf8-no-bom" | "plain-utf8" => Encoding::Utf8,
@@ -90,8 +98,14 @@ fn encoding_of(args: &[String]) -> Result<Option<Encoding>, String> {
 /// `save-as <file> [utf8|plain|unicode]`: the format is the file's extension. `.html` and `.pdf` write a
 /// copy and leave the workbook where it is.
 fn save_as(sheet: &mut Spreadsheet, args: &[String]) -> Out {
-    let file = args.first().ok_or("save-as needs a file")?;
-    let full = resolve(sheet, file);
+    // The encoding is the last word when it is one; every word before it is the file.
+    let last_is_encoding = args.len() > 1 && encoding_of(args.last().map(String::as_str)).is_ok();
+    let (file_args, encoding_word) = match last_is_encoding {
+        true => (&args[..args.len() - 1], args.last().map(String::as_str)),
+        false => (args, None),
+    };
+    let file = file_words(file_args).ok_or("save-as needs a file")?;
+    let full = resolve(sheet, &file);
     let ext = full.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
     if matches!(ext.as_str(), "pdf" | "html" | "htm") {
         return export_to(sheet, &full);
@@ -100,7 +114,7 @@ fn save_as(sheet: &mut Spreadsheet, args: &[String]) -> Out {
     if !kind.can_save() {
         return Err(format!("This version reads .{ext} files but does not write them. Save as .xlsx, .xlsm, .csv, .tsv, .txt, .ods, .html or .pdf."));
     }
-    let encoding = encoding_of(args)?;
+    let encoding = encoding_of(encoding_word)?;
     let key = super::key_of_path(&full, sheet.project.as_deref());
     let book = sheet.current_book()?;
     // An encoding belongs to the format it was chosen for, so a file saved in another format starts again.
@@ -120,8 +134,8 @@ fn export(sheet: &mut Spreadsheet, args: &[String]) -> Out {
     let kind = args.first().ok_or("export takes a format and a file")?.to_ascii_lowercase();
     let book = sheet.current_book()?;
     let default = book.path.with_extension(&kind);
-    let target = match args.get(1) {
-        Some(file) => resolve(sheet, file),
+    let target = match file_words(args.get(1..).unwrap_or_default()) {
+        Some(file) => resolve(sheet, &file),
         None => default,
     };
     export_to(sheet, &target)

@@ -99,7 +99,9 @@ $Folder = (Resolve-Path $Folder).Path
 
 # **`--background` is the whole point.** Without it the new window becomes the foreground window, and on
 # Windows that drags the virtual desktop with it.
-$started = Start-Process -FilePath $binary -ArgumentList '--background', $Folder -PassThru
+# `Start-Process` joins its arguments with spaces and quotes none of them, so a folder holding a space
+# reached the window as two arguments and it opened a folder named after the second half.
+$started = Start-Process -FilePath $binary -ArgumentList '--background', "`"$Folder`"" -PassThru
 
 # Waited for by **asking** rather than by sleeping a fixed time: a cold start is about a second on this
 # machine and much longer on a busy one, and the control channel answering is the honest signal that the

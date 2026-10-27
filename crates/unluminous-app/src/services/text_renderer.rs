@@ -792,9 +792,13 @@ impl TextRenderer {
                 return Some(face);
             }
         }
-        self.families.first().and_then(|family| {
-            self.face(&FaceKey { family: family.clone(), bold: false, italic: false })
-        })
+        // A family this machine does not have is drawn in the first one it does, in the same weight and slant
+        // when that family has them: a workbook's bold Aptos Narrow is Arial Bold here, as Excel draws it on
+        // a machine without Aptos Narrow, rather than Arial with a bold drawn over it (task-2378).
+        let family = self.families.first()?;
+        [(key.bold, key.italic), (key.bold, false), (false, false)]
+            .into_iter()
+            .find_map(|(bold, italic)| self.face(&FaceKey { family: family.clone(), bold, italic }))
     }
 
     /// The face to draw one character with: the style's own family when it has a shape for the character,

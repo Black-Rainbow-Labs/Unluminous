@@ -269,12 +269,27 @@ fn make(sheet: &mut Spreadsheet, args: &[String], on_sheet: bool) -> Out {
             let made = book.session.insert_chart_sheet(at, range, ty)?;
             book.view.sheet = made;
             (1, book.session.book.sheets[made].name.clone())
+        } else if !book.view.extra.is_empty() {
+            // Several areas chosen, as `B4:B9,D4:D9`: the first one's names are the categories.
+            let mut areas = book.view.extra.clone();
+            areas.push(book.view.range());
+            let index = book.session.insert_chart_areas(at, &areas, ty, title)?;
+            book.view.chart = Some(index);
+            (index + 1, book.session.book.sheets[at].name.clone())
         } else {
             let index = book.session.insert_chart(at, range, ty, title)?;
             book.view.chart = Some(index);
             (index + 1, book.session.book.sheets[at].name.clone())
         };
-        let message = format!("Made a {} chart of {} (chart {number})", ty.name(), range.a1());
+        let chosen = match book.view.extra.is_empty() {
+            true => range.a1(),
+            false => {
+                let mut all: Vec<String> = book.view.extra.iter().map(|r| r.a1()).collect();
+                all.push(book.view.range().a1());
+                all.join(",")
+            }
+        };
+        let message = format!("Made a {} chart of {chosen} (chart {number})", ty.name());
         Ok((message, json!({ "chart": number, "sheet": sheet_name, "type": ty.name() })))
     })
 }

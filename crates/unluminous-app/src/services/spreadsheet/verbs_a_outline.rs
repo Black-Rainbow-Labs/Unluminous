@@ -401,7 +401,8 @@ fn bar_rule(words: &[String]) -> Result<CfRule, String> {
         words.get(1).and_then(|w| Color::parse_hex(w)).unwrap_or(Color::rgb(0x63, 0x8E, 0xC6));
     let mut rule = CfRule::new("dataBar");
     rule.data_bar = Some((cfvo("min", None), cfvo("max", None), colour));
-    let mut options = DataBarExt::default();
+    // Starting at zero is what Excel's Data Bars button makes.
+    let mut options = DataBarExt { auto_min: true, auto_max: true, ..DataBarExt::default() };
     if let Some(c) = after(words, "border").and_then(Color::parse_hex) {
         options.border = true;
         options.border_color = Some(c);

@@ -23,6 +23,7 @@ pub mod display;
 pub mod entry;
 pub mod excel_ink;
 pub mod formula_text;
+pub mod measure;
 pub mod names;
 pub mod print;
 pub mod verbs;

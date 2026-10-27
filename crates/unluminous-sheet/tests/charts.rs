@@ -1084,3 +1084,28 @@ fn every_classic_chart_written_from_the_model_has_the_tags_of_the_one_excel_wrot
     }
     assert_eq!(compared, 14);
 }
+
+#[test]
+fn a_chart_of_two_areas_takes_its_categories_from_the_first() {
+    // `B1:B6,D1:D6` in Excel (task-2378): the names in B are the categories and D is one series named by
+    // its heading, where the column between them is left out.
+    let mut s = Session::new(Workbook::new(), 46318.5);
+    let rows =
+        [("Hut", "Distance", "Ascent"), ("Biella", "12.5", "850"), ("Lavarella", "16", "920")];
+    for (r, (name, distance, ascent)) in rows.iter().enumerate() {
+        s.set_input(0, CellRef::new(r as u32, 1), name).unwrap();
+        s.set_input(0, CellRef::new(r as u32, 2), distance).unwrap();
+        s.set_input(0, CellRef::new(r as u32, 3), ascent).unwrap();
+    }
+    let areas = [Range::parse("B1:B3").unwrap(), Range::parse("D1:D3").unwrap()];
+    let index = s.insert_chart_areas(0, &areas, ChartType::ColumnClustered, None).unwrap();
+    let chart = &s.book.sheets[0].charts[index];
+    assert_eq!(chart.series.len(), 1);
+    let series = &chart.series[0];
+    assert_eq!(series.values, "Sheet1!$D$2:$D$3");
+    assert_eq!(series.categories.as_deref(), Some("Sheet1!$B$2:$B$3"));
+    assert_eq!(series.name.as_deref(), Some("Sheet1!$D$1"));
+    // Areas over different rows are refused rather than drawn wrongly.
+    let uneven = [Range::parse("B1:B3").unwrap(), Range::parse("D2:D3").unwrap()];
+    assert!(s.insert_chart_areas(0, &uneven, ChartType::ColumnClustered, None).is_err());
+}
