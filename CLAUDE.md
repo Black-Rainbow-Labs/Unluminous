@@ -238,6 +238,23 @@ reason, and `installer/macos/build.sh` is unchanged and still the route on a Mac
 - **`UNLUMINOUS_RELEASES_STABLE` and `UNLUMINOUS_RELEASES_NIGHTLY`** point a test's window at a scripted server for
   one channel; `UNLUMINOUS_RELEASES` still names both.
 
+### Before `agent_done`: delete retired worktree evidence older than a day
+
+When a ticket's worktree is retired, its `_agent_output` is moved into
+`_agent_output/retired-worktrees/<task-N>/` in the main checkout. That evidence is kept for one day
+after the retire, and nothing else deletes it. By 2026-10-28 the folder had grown to 28 GB, 24 GB of it one ticket.
+So the last step of every ticket here, just before `agent_done`, is:
+
+```bash
+node C:/jason/dev/ai-service/scripts/clean-retired-worktrees.cjs <your worktree or the main checkout>
+```
+
+It deletes only the entries directly inside `retired-worktrees` whose folder was made more than 24
+hours ago, prints what it deleted and the total freed, and exits 0 even when one entry cannot be
+deleted. Put its `freed N GB` line in the closing comment. `--dry-run` lists what it would delete.
+Do not write multi-gigabyte scratch databases into `_agent_output` and leave them there: delete them
+before the ticket finishes, and keep the numbers in a results file.
+
 ### A release from a ticket worktree needs two gitignored things from the main checkout (`task-2207`)
 
 `installer/macos/notarize.env` names the sealed Developer ID key, its certificate, the sealed notary key and

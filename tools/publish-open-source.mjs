@@ -262,6 +262,12 @@ function main() {
   // this line is about commits.
   const head = git(REPOSITORY, 'rev-parse', `${options.ref}^{commit}`).trim();
   const work = options.work || fs.mkdtempSync(path.join(os.tmpdir(), 'unluminous-publish-'));
+  // **A work folder this run made is deleted when it ends (`task-2391`).** Each one holds a mirror of the
+  // whole repository, about 0.9 GB, and every release runs this at least twice, so 196 of them had filled
+  // 170 GB of the temporary directory. The `exit` event is used rather than a `finally` because the
+  // checks below end the process with `process.exit`, which skips a `finally`; `exit` also fires when an
+  // error is thrown. A folder passed with `--work` is the caller's and is left alone.
+  if (!options.work) process.on('exit', () => fs.rmSync(work, { recursive: true, force: true, maxRetries: 3 }));
 
   console.log(`source     ${REPOSITORY}`);
   console.log(`ref        ${options.ref} = ${head}`);
