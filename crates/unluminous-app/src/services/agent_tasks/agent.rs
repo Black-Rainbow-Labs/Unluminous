@@ -149,6 +149,13 @@ pub struct Plan {
     /// The program the ticket's AI endpoint names, which replaces the program Unluminous would start and keeps
     /// the flags it would start it with (`task-2247`). `None` is the program of the agent's own name.
     pub program: Option<String>,
+    /// The endpoint's mode, in the agent's own words (`task-2392`), which replaces the flag that lets an
+    /// unattended agent do anything: `claude --permission-mode auto` rather than
+    /// `--dangerously-skip-permissions`. `None` keeps that flag. An agent stopped by its own permission menu shows
+    /// the menu on the ticket's Chat tab and as a comment on the ticket, where the person answers it.
+    pub mode: Option<String>,
+    /// The endpoint's own arguments, added after everything else (`task-2392`).
+    pub extra: Vec<String>,
 }
 
 /// The command line for `plan`, or a sentence when the ticket names something that cannot be launched.
@@ -206,7 +213,16 @@ fn command(plan: &Plan, fallback: &[&str]) -> Result<(String, Vec<String>), Stri
 /// conversation could not resume one. A command that names `--model` too gets both, and Claude takes
 /// the last — which is the ordinary behaviour of a command line and not something to be clever about.
 fn claude(plan: &Plan) -> Result<Launch, String> {
-    let (program, mut arguments) = command(plan, &["claude", "--dangerously-skip-permissions"])?;
+    let (program, mut arguments) = match &plan.mode {
+        Some(mode) => {
+            let (program, mut arguments) = command(plan, &["claude"])?;
+            arguments.retain(|word| word != "--dangerously-skip-permissions");
+            arguments.push("--permission-mode".to_owned());
+            arguments.push(mode.clone());
+            (program, arguments)
+        }
+        None => command(plan, &["claude", "--dangerously-skip-permissions"])?,
+    };
     if let Some(model) = &plan.model {
         arguments.push("--model".to_owned());
         arguments.push(model.clone());
@@ -220,6 +236,7 @@ fn claude(plan: &Plan) -> Result<Launch, String> {
         false => "--session-id".to_owned(),
     });
     arguments.push(plan.session.clone());
+    arguments.extend(plan.extra.iter().cloned());
     Ok(Launch { program, arguments })
 }
 
@@ -257,6 +274,18 @@ fn codex(plan: &Plan) -> Result<Launch, String> {
         arguments.push("-c".to_owned());
         arguments.push(format!("model_reasoning_effort={}", codex_effort(effort)));
     }
+    match plan.mode.as_deref() {
+        Some("danger-full-access") => {
+            arguments.push("--dangerously-bypass-approvals-and-sandbox".to_owned())
+        }
+        Some("approve-for-me") => arguments.push("--approve-for-me".to_owned()),
+        Some(sandbox) => {
+            arguments.push("--sandbox".to_owned());
+            arguments.push(sandbox.to_owned());
+        }
+        None => {}
+    }
+    arguments.extend(plan.extra.iter().cloned());
     Ok(Launch { program, arguments })
 }
 
@@ -268,7 +297,21 @@ fn codex(plan: &Plan) -> Result<Launch, String> {
 /// sessions**, so a first run names nothing and a resumed one is `--session <id>` with the id found in
 /// OpenCode's own records (`native_session`, `task-2285`).
 fn opencode(plan: &Plan) -> Result<Launch, String> {
-    let (program, mut arguments) = command(plan, &["opencode", "--auto"])?;
+    let (program, mut arguments) = match plan.mode.as_deref() {
+        Some("plan") => {
+            let (program, mut arguments) = command(plan, &["opencode"])?;
+            arguments.retain(|word| word != "--auto");
+            arguments.push("--agent".to_owned());
+            arguments.push("plan".to_owned());
+            (program, arguments)
+        }
+        Some("build") => {
+            let (program, mut arguments) = command(plan, &["opencode"])?;
+            arguments.retain(|word| word != "--auto");
+            (program, arguments)
+        }
+        _ => command(plan, &["opencode", "--auto"])?,
+    };
     if let Some(model) = &plan.model {
         arguments.push("--model".to_owned());
         arguments.push(model.clone());
@@ -277,6 +320,7 @@ fn opencode(plan: &Plan) -> Result<Launch, String> {
         arguments.push("--session".to_owned());
         arguments.push(plan.session.clone());
     }
+    arguments.extend(plan.extra.iter().cloned());
     Ok(Launch { program, arguments })
 }
 
@@ -300,6 +344,18 @@ fn pi(plan: &Plan) -> Result<Launch, String> {
     }
     arguments.push("--session-id".to_owned());
     arguments.push(plan.session.clone());
+    match plan.mode.as_deref() {
+        Some("read") => {
+            arguments.push("--tools".to_owned());
+            arguments.push("read,grep,find,ls".to_owned());
+        }
+        Some("edit") => {
+            arguments.push("--tools".to_owned());
+            arguments.push("read,grep,find,ls,edit,write".to_owned());
+        }
+        _ => {}
+    }
+    arguments.extend(plan.extra.iter().cloned());
     Ok(Launch { program, arguments })
 }
 
@@ -535,7 +591,28 @@ mod tests {
             resuming: false,
             command: None,
             program: None,
+            mode: None,
+            extra: Vec::new(),
         }
+    }
+
+    /// `task-2392`: the endpoint's mode replaces the flag that lets an unattended agent do anything, and its own
+    /// arguments go last.
+    #[test]
+    fn an_endpoints_mode_and_arguments_reach_a_tickets_command_line() {
+        let mut asked = plan(Assignee::Claude);
+        asked.mode = Some("auto".to_owned());
+        asked.extra = vec!["--add-dir".to_owned(), "../shared".to_owned()];
+        assert_eq!(
+            launch(&asked).unwrap().line(),
+            "claude --permission-mode auto --session-id 0f9a-session --add-dir ../shared"
+        );
+        let mut asked = plan(Assignee::Codex);
+        asked.mode = Some("approve-for-me".to_owned());
+        assert_eq!(launch(&asked).unwrap().line(), "codex --approve-for-me");
+        let mut asked = plan(Assignee::OpenCode);
+        asked.mode = Some("plan".to_owned());
+        assert_eq!(launch(&asked).unwrap().line(), "opencode --agent plan");
     }
 
     #[test]

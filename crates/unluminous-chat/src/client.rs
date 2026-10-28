@@ -76,6 +76,9 @@ pub struct Client {
     /// **not** enough to stop a program, because the thread reading one is asleep in a read that has
     /// no timeout at all. See `agent::Running`.
     running: Arc<crate::agent::Running>,
+    /// The person's answers to what an agent asks before doing something, shared with every turn this client
+    /// starts (`task-2392`).
+    answers: Arc<crate::approval::Answers>,
     to: Sender<Arrived>,
     from: Receiver<Arrived>,
     /// How to ask the window to draw again, once a reply has been pushed.
@@ -125,10 +128,22 @@ impl Client {
             newest: Arc::new(AtomicU64::new(0)),
             stopping: Arc::new(AtomicBool::new(false)),
             running: Arc::new(crate::agent::Running::default()),
+            answers: Arc::new(crate::approval::Answers::default()),
             to,
             from,
             wake: None,
         }
+    }
+
+    /// Where a turn finds the person's answers, for [`crate::agent::Ask::answers`].
+    pub fn answers(&self) -> Arc<crate::approval::Answers> {
+        Arc::clone(&self.answers)
+    }
+
+    /// The person chose `choice` for the question `question`. The turn's thread sends it on within a tenth of
+    /// a second.
+    pub fn answer(&self, question: &str, choice: &str) {
+        self.answers.give(question, choice);
     }
 
     /// How a reply asks the window for a frame. Handed on from `plugin_ui::Context`.

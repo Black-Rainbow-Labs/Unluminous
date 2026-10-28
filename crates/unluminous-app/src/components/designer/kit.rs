@@ -237,6 +237,8 @@ pub fn carved_field(
         Pos2::new(rect.right() - across, rect.bottom() - down),
     );
     let id = rux.ui.id().with(("designer-field", salt));
+    // The whole well takes a press, a double click in its empty part included (`task-2392`).
+    crate::components::controls::claim_the_field(rux.ui, rect, id, &format!("{name} field"));
     let edit = match multiline {
         true => egui::TextEdit::multiline(text).desired_rows(1),
         false => egui::TextEdit::singleline(text),

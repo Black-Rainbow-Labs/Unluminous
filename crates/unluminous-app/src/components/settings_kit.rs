@@ -738,6 +738,8 @@ pub fn text_area(
     let font = value_style(false).font();
     let id = rux.ui.id().with(("settings-area", name));
     let inside = rect.shrink2(Vec2::new(14.0, 10.0));
+    // The whole well takes a press, a double click in its empty part included (`task-2392`).
+    controls::claim_the_field(rux.ui, rect, id, &format!("{name} field"));
     let mut child = rux.ui.new_child(egui::UiBuilder::new().max_rect(inside));
     child.set_clip_rect(child.clip_rect().intersect(inside));
     let response = egui::ScrollArea::vertical()

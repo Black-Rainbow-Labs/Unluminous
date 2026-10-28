@@ -60,6 +60,7 @@ fn provider(wire: Wire) -> Provider {
         max_tokens: 4096,
         args: Vec::new(),
         env: Vec::new(),
+        mode: String::new(),
     }
 }
 

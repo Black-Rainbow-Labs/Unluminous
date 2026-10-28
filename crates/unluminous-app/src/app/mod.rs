@@ -1167,6 +1167,9 @@ pub struct UnluminousApp {
     /// says which of the two a copy is about — set by a press in a preview and cleared by a press in
     /// an editing area, which is what "the pane the pointer last pressed in" means.
     reading_preview: bool,
+    /// Whether a terminal grid read the keyboard on the last frame, so the Edit menu's `Copy` and `Paste` stay
+    /// enabled for it on macOS, where a dimmed entry's key equivalent does nothing (`task-2392`).
+    terminal_holds_the_keyboard: bool,
     /// The address a `Ctrl/Cmd+Click` in the preview asked for, acted on at the end of the frame.
     link_to_open: Option<String>,
     /// The pictures in the preview, decoded and kept between frames.
@@ -1709,6 +1712,7 @@ impl UnluminousApp {
             settling_the_maximise: false,
             maximise_wanted: false,
             reading_preview: false,
+            terminal_holds_the_keyboard: false,
             link_to_open: None,
             preview_images: PreviewImages::new(),
             mermaid_scenes: MermaidScenes::new(),

@@ -307,8 +307,16 @@ pub const AGENT_CHAT: &[(&str, &str)] = &[
             ),
             ("stop", "Stop the answer, keeping what has arrived."),
             (
+                "answer",
+                "Answer what the agent asked to do before doing it: `answer allow`, `answer always`, `answer deny`, a choice's number or label, and the question's id when several wait. `state` lists them under `asking`.",
+            ),
+            (
+                "mode",
+                "The mode the chat's agent runs in, in its own words: with nothing it lists the modes, with a name it uses that one, with `follow` it goes back to `chat.permission`. Claude Code has `auto`.",
+            ),
+            (
                 "state",
-                "Idle, sending, streaming, waiting-for-tools, finished or failed.",
+                "Idle, sending, streaming, waiting-for-tools, finished or failed, and what the agent is asking to be allowed to do.",
             ),
             ("messages", "The whole conversation as data."),
             ("last", "Just the last answer, with how long it took and how many tokens it wrote."),

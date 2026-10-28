@@ -1270,6 +1270,9 @@ pub struct MenuState {
     pub can_undo: bool,
     pub can_redo: bool,
     pub has_selection: bool,
+    /// Whether a terminal grid holds the keyboard, whose selection is its own, so `Cut` and `Copy` stay enabled for
+    /// it: on macOS a dimmed entry's key equivalent does nothing, and `Cmd+C` would not reach the grid (`task-2392`).
+    pub terminal_has_the_keyboard: bool,
     /// True when the open file's language names a line comment marker, which is what puts
     /// `Comment with Line Comment` on the menu. **Absent** rather than dimmed when it is false,
     /// like the code navigation entries: CSS will never have a `//`. `task-1922` WP4.
@@ -2276,10 +2279,10 @@ fn edit_menu(state: &MenuState) -> Menu {
             .enabled(state.can_redo),
         Entry::Separator,
         Entry::with_shortcut("Cut", Action::Cut, Shortcut::command(egui::Key::X))
-            .enabled(state.has_selection)
+            .enabled(state.has_selection || state.terminal_has_the_keyboard)
             .not_from_the_keyboard(),
         Entry::with_shortcut("Copy", Action::Copy, Shortcut::command(egui::Key::C))
-            .enabled(state.has_selection)
+            .enabled(state.has_selection || state.terminal_has_the_keyboard)
             .not_from_the_keyboard(),
         Entry::with_shortcut("Paste", Action::Paste, Shortcut::command(egui::Key::V))
             .not_from_the_keyboard(),

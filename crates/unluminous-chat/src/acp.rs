@@ -69,6 +69,11 @@ pub struct Asking {
     pub permission: Permission,
     /// The model to ask for, or empty for the agent's own.
     pub model: String,
+    /// The mode to ask for with `session/set_mode`, or empty for the agent's own (`task-2392`).
+    pub mode: String,
+    /// Whether a permission request `permission` does not allow is put to the person rather than refused
+    /// (`task-2392`).
+    pub ask_the_person: bool,
 }
 
 /// A picture as an ACP `image` block needs it, and its path for an agent that takes no images.
@@ -98,6 +103,7 @@ enum Asked {
     Resume,
     Load,
     Model,
+    Mode,
     Prompt,
 }
 
@@ -134,6 +140,10 @@ pub struct Turn {
     model_name: String,
     /// Whether the turn is over.
     pub ended: bool,
+    /// What the session said about its modes when it opened, for `session/set_mode`.
+    modes: Value,
+    /// The permission requests waiting for the person: the question, and the id of the request it answers.
+    waiting: Vec<(crate::approval::Question, Value)>,
 }
 
 impl Turn {
@@ -151,7 +161,32 @@ impl Turn {
             started: false,
             model_name: String::new(),
             ended: false,
+            modes: Value::Null,
+            waiting: Vec::new(),
         }
+    }
+
+    /// The person chose `choice` for the permission request `question`: the answer to send and the line the
+    /// pane keeps. Nothing for a request this turn is not waiting on, or a choice it did not offer.
+    pub fn answer(&mut self, question: &str, choice: &str) -> Step {
+        let mut step = Step::default();
+        let Some(at) = self.waiting.iter().position(|(asked, _)| asked.id == question) else {
+            return step;
+        };
+        let Some(chosen) = self.waiting[at].0.choice(choice).cloned() else {
+            return step;
+        };
+        let (asked, id) = self.waiting.remove(at);
+        step.send.push(json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": { "outcome": { "outcome": "selected", "optionId": chosen.id } },
+        }));
+        step.replies.push(Reply::Answered {
+            id: asked.id.clone(),
+            said: crate::approval::decided(&asked, &chosen),
+        });
+        step
     }
 
     /// The first message: `initialize`, saying the client offers no file system and no terminal.
@@ -218,8 +253,9 @@ impl Turn {
             Asked::New | Asked::Resume | Asked::Load => self.opened(asked, result, step),
             Asked::Model => {
                 self.name_the_model(&result["configOptions"]);
-                self.prompt(step);
+                self.mode_then_prompt(step);
             }
+            Asked::Mode => self.prompt(step),
             Asked::Prompt => self.finished(result, step),
         }
     }
@@ -286,6 +322,7 @@ impl Turn {
             return;
         }
         step.replies.push(Reply::Session(self.session.clone()));
+        self.modes = result["modes"].clone();
         self.name_the_model(&result["configOptions"]);
         if self.model_name.is_empty() {
             if let Some(model) = result["models"]["currentModelId"].as_str() {
@@ -306,7 +343,50 @@ impl Turn {
                 }
             }
         }
-        self.prompt(step);
+        self.mode_then_prompt(step);
+    }
+
+    /// Ask for the mode the row names, when the session is not already in it, and then the question.
+    ///
+    /// **A mode is matched by its id or its name, ignoring case**, the way a model is. An agent that offers no
+    /// such mode fails the turn with the list it does offer, because a row that asked for `plan` and got the
+    /// agent's own default would be doing something nobody chose.
+    fn mode_then_prompt(&mut self, step: &mut Step) {
+        let wanted = self.asking.mode.trim().to_owned();
+        if wanted.is_empty() {
+            self.prompt(step);
+            return;
+        }
+        let available = self.modes["availableModes"].as_array().cloned().unwrap_or_default();
+        let Some(mode) = available.iter().find(|mode| {
+            mode["id"].as_str().is_some_and(|id| id.eq_ignore_ascii_case(&wanted))
+                || mode["name"].as_str().is_some_and(|name| name.eq_ignore_ascii_case(&wanted))
+        }) else {
+            let offered: Vec<&str> =
+                available.iter().filter_map(|mode| mode["id"].as_str()).collect();
+            let why = match offered.is_empty() {
+                true => format!(
+                    "This row names the mode `{wanted}`, and the agent offers no choice of mode. Leave Mode empty."
+                ),
+                false => format!(
+                    "The agent does not offer the mode `{wanted}`. It offers: {}.",
+                    offered.join(", ")
+                ),
+            };
+            self.fail(step, why);
+            return;
+        };
+        if mode["id"] == self.modes["currentModeId"] {
+            self.prompt(step);
+            return;
+        }
+        let session = self.session.clone();
+        let message = self.request(
+            Asked::Mode,
+            "session/set_mode",
+            json!({ "sessionId": session, "modeId": mode["id"] }),
+        );
+        step.send.push(message);
     }
 
     /// The request that asks for the model `wanted`, nothing when it is already the one in use, or why it cannot
@@ -502,9 +582,13 @@ impl Turn {
     /// A request from the agent.
     fn asked_of_us(&mut self, method: &str, id: &Value, params: &Value, step: &mut Step) {
         let answer = match method {
-            "session/request_permission" => {
-                json!({ "jsonrpc": "2.0", "id": id, "result": { "outcome": self.permit(params, step) } })
-            }
+            "session/request_permission" => match self.permit(id, params, step) {
+                Some(outcome) => {
+                    json!({ "jsonrpc": "2.0", "id": id, "result": { "outcome": outcome } })
+                }
+                // Put to the person; [`Turn::answer`] sends the answer when they give one.
+                None => return,
+            },
             _ => json!({
                 "jsonrpc": "2.0",
                 "id": id,
@@ -515,7 +599,10 @@ impl Turn {
     }
 
     /// The answer to a permission request, from `chat.permission`. See §4.4 of the TDD.
-    fn permit(&mut self, params: &Value, step: &mut Step) -> Value {
+    ///
+    /// **Since `task-2392` a request `chat.permission` does not allow is put to the person** when the pane can
+    /// ask them, and `None` is answered: the agent waits until [`Turn::answer`] sends their choice.
+    fn permit(&mut self, request: &Value, params: &Value, step: &mut Step) -> Option<Value> {
         let call = &params["toolCall"];
         let id = call["toolCallId"].as_str().unwrap_or_default();
         let seen = self.tools.iter().find(|tool| tool.id == id);
@@ -538,6 +625,33 @@ impl Turn {
             Permission::Read => matches!(kind.as_str(), "read" | "search" | "think" | "fetch"),
         };
         let options = params["options"].as_array().cloned().unwrap_or_default();
+        if !allowed && self.asking.ask_the_person {
+            let choices: Vec<crate::approval::Choice> = options
+                .iter()
+                .filter_map(|option| {
+                    Some(crate::approval::Choice {
+                        id: option["optionId"].as_str()?.to_owned(),
+                        label: option["name"].as_str().unwrap_or("Choose").to_owned(),
+                        kind: crate::approval::Kind::from_name(option["kind"].as_str()?)?,
+                    })
+                })
+                .collect();
+            if !choices.is_empty() {
+                let question = crate::approval::Question {
+                    id: format!(
+                        "acp-{}",
+                        request.as_str().map(str::to_owned).unwrap_or_else(|| request.to_string())
+                    ),
+                    tool: kind.clone(),
+                    title: title.clone(),
+                    input: serde_json::to_string(&call["rawInput"]).unwrap_or_default(),
+                    choices,
+                };
+                self.waiting.push((question.clone(), request.clone()));
+                step.replies.push(Reply::Asked(question));
+                return None;
+            }
+        }
         let pick = |kinds: &[&str]| {
             kinds
                 .iter()
@@ -553,11 +667,11 @@ impl Turn {
                 self.asking.permission.name()
             )));
         }
-        match chosen.and_then(|option| option["optionId"].as_str().map(str::to_owned)) {
+        Some(match chosen.and_then(|option| option["optionId"].as_str().map(str::to_owned)) {
             Some(option) => json!({ "outcome": "selected", "optionId": option }),
             // An agent that offered nothing of the kind wanted is told the turn will not go on with this tool.
             None => json!({ "outcome": "cancelled" }),
-        }
+        })
     }
 
     /// One `session/update`.
@@ -779,6 +893,8 @@ pub fn asking(provider: &Provider, ask: &Ask) -> Asking {
         session: ask.session.clone(),
         permission: ask.permission,
         model: provider.model.clone(),
+        mode: provider.mode.trim().to_owned(),
+        ask_the_person: ask.answers.is_some(),
     }
 }
 
@@ -956,12 +1072,32 @@ fn run_once(
     let mut turn = Turn::new(asking(provider, ask));
     let mut carried_on = write(&mut input, turn.start());
     if carried_on {
-        for line in BufReader::new(output).lines() {
+        let lines = crate::approval::lines_of(output);
+        'reading: loop {
             if stopping.load(Ordering::Relaxed) {
                 carried_on = false;
                 break;
             }
-            let Ok(line) = line else { break };
+            // The person's answers to the permission requests the agent is waiting on (`task-2392`).
+            for (question, choice) in
+                ask.answers.as_ref().map(|answers| answers.take()).unwrap_or_default()
+            {
+                let step = turn.answer(&question, &choice);
+                if !write(&mut input, step.send) {
+                    break 'reading;
+                }
+                for reply in step.replies {
+                    if !on_reply(reply) {
+                        carried_on = false;
+                        break 'reading;
+                    }
+                }
+            }
+            let line = match lines.recv_timeout(crate::approval::LOOK_AGAIN) {
+                Ok(line) => line,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            };
             let line = line.trim();
             if trace {
                 eprintln!("acp < {line}");
@@ -1140,6 +1276,72 @@ npm error code E404"
         assert_eq!(step.send[0]["id"], 7);
         assert_eq!(step.send[0]["error"]["code"], METHOD_NOT_FOUND);
         assert!(!step.done);
+    }
+
+    #[test]
+    fn a_request_the_permission_does_not_allow_is_put_to_the_person_and_answered_with_their_choice()
+    {
+        let mut turn = Turn::new(Asking { ask_the_person: true, ..asking("", Permission::Read) });
+        let step = turn.message(&permission_request("execute"));
+        assert!(step.send.is_empty(), "nothing is answered until the person chooses");
+        let Some(Reply::Asked(question)) = step.replies.first() else {
+            panic!("the person is asked: {:?}", step.replies);
+        };
+        assert_eq!(question.title, "Run it");
+        let labels: Vec<&str> = question.choices.iter().map(|one| one.label.as_str()).collect();
+        assert_eq!(labels, ["Yes", "Always", "No"]);
+        assert!(
+            turn.answer("acp-other", "yes").send.is_empty(),
+            "a request nobody asked is ignored"
+        );
+        let step = turn.answer(&question.id, "always");
+        assert_eq!(step.send[0]["id"], "p1");
+        assert_eq!(step.send[0]["result"]["outcome"]["optionId"], "always");
+        assert!(
+            matches!(&step.replies[0], Reply::Answered { said, .. } if said.starts_with("Allowed Run it"))
+        );
+        assert!(turn.answer(&question.id, "yes").send.is_empty(), "a question is answered once");
+        // What the permission does allow is still answered at once.
+        let mut turn = Turn::new(Asking { ask_the_person: true, ..asking("", Permission::Read) });
+        assert_eq!(
+            turn.message(&permission_request("read")).send[0]["result"]["outcome"]["optionId"],
+            "yes"
+        );
+    }
+
+    #[test]
+    fn the_mode_a_row_names_is_asked_for_before_the_question() {
+        let mut turn =
+            Turn::new(Asking { mode: "Plan".to_owned(), ..asking("", Permission::Full) });
+        initialized(&mut turn, json!({}));
+        let step = turn.message(&json!({
+            "jsonrpc": "2.0", "id": 1,
+            "result": {
+                "sessionId": "s9",
+                "modes": {
+                    "currentModeId": "default",
+                    "availableModes": [ { "id": "default", "name": "Default" }, { "id": "plan", "name": "Plan Mode" } ],
+                },
+            },
+        }));
+        assert_eq!(step.send[0]["method"], "session/set_mode");
+        assert_eq!(step.send[0]["params"]["modeId"], "plan");
+        let id = step.send[0]["id"].clone();
+        let step = turn.message(&json!({ "jsonrpc": "2.0", "id": id, "result": {} }));
+        assert_eq!(step.send[0]["method"], "session/prompt");
+        // A mode the agent does not offer fails the turn with the ones it does.
+        let mut turn =
+            Turn::new(Asking { mode: "yolo".to_owned(), ..asking("", Permission::Full) });
+        initialized(&mut turn, json!({}));
+        let step = turn.message(&json!({
+            "jsonrpc": "2.0", "id": 1,
+            "result": { "sessionId": "s9", "modes": { "currentModeId": "default", "availableModes": [ { "id": "default" } ] } },
+        }));
+        assert!(
+            matches!(&step.replies[1], Reply::Failed(why) if why.contains("It offers: default")),
+            "{:?}",
+            step.replies
+        );
     }
 
     fn permission_request(kind: &str) -> Value {

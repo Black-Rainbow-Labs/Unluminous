@@ -881,6 +881,8 @@ fn handle_input(
     // The keyboard. egui's own focus is cleared while the terminal has it, so that Tab and Escape are sent
     // to the program instead of moving between the window's controls.
     ui.memory_mut(|memory| memory.stop_text_input());
+    // Said where the menu bar can ask, so `Edit -> Copy` and `Edit -> Paste` reach this grid (`task-2392`).
+    note_that_a_terminal_has_the_keyboard(ui.ctx());
 
     let events = ui.input(|input| input.events.clone());
     // The modifiers held this frame. `Event::Copy` and `Event::Cut` carry none of their own — egui
@@ -951,6 +953,30 @@ fn handle_input(
             input.consume_key(egui::Modifiers::NONE, key);
         }
     });
+}
+
+fn terminal_keyboard_key() -> egui::Id {
+    egui::Id::new("unluminous-a-terminal-has-the-keyboard")
+}
+
+/// Remember that a terminal grid read the keyboard on this pass.
+fn note_that_a_terminal_has_the_keyboard(ctx: &egui::Context) {
+    let pass = ctx.cumulative_pass_nr();
+    ctx.data_mut(|data| data.insert_temp(terminal_keyboard_key(), pass));
+}
+
+/// Whether a terminal grid read the keyboard on this pass or the one before it (`task-2392`).
+///
+/// *"I can't copy text in the terminal. CMD + C should copy. And other shortcuts for paste etc should work."* On
+/// macOS `Cmd+C` and `Cmd+V` are key equivalents of the menu bar, so AppKit hands them to `Edit -> Copy` and
+/// `Edit -> Paste` and the grid never sees a key press or a clipboard event; the entries went to the document
+/// behind the terminal. Every grid that holds the keyboard says so here, whichever tile, node or ticket it is in,
+/// so the menu bar can send the grid the event a keyboard would have made instead. Asked about the pass before
+/// as well, because the menu is answered before this pass's grids have been drawn.
+pub fn a_terminal_has_the_keyboard(ctx: &egui::Context) -> bool {
+    let pass = ctx.cumulative_pass_nr();
+    ctx.data(|data| data.get_temp::<u64>(terminal_keyboard_key()))
+        .is_some_and(|noted| pass.saturating_sub(noted) <= 1)
 }
 
 /// What a clipboard key press means to the terminal.

@@ -137,6 +137,7 @@ pub fn api_endpoints() -> Vec<Provider> {
         max_tokens: unluminous_chat::provider::DEFAULT_MAX_TOKENS,
         args: Vec::new(),
         env: Vec::new(),
+        mode: String::new(),
     };
     vec![
         api(
@@ -206,6 +207,9 @@ pub fn write_rows(values: &mut Values, providers: &[Provider]) {
         if !provider.env.is_empty() {
             values.set(&format!("provider.{index}.env"), join_variables(&provider.env));
         }
+        if !provider.mode.trim().is_empty() {
+            values.set(&format!("provider.{index}.mode"), provider.mode.trim().to_owned());
+        }
     }
 }
 
@@ -239,6 +243,7 @@ fn provider_at(values: &Values, index: usize) -> Result<Option<Provider>, String
             .clamp(64.0, 200_000.0) as u32,
         args: split_arguments(&text("args")),
         env: split_variables(&text("env")),
+        mode: text("mode").trim().to_owned(),
     }))
 }
 
@@ -255,8 +260,8 @@ pub fn agents(providers: &[Provider]) -> impl Iterator<Item = &Provider> {
 /// **The agent's half of the AI Configuration page** (`task-2247`). The same names the file uses, under
 /// `ai.`, the way a plugin's own file is reached as `plugins.<id>.<key>`, so nothing about the page needs a
 /// command of its own: `settings set ai.provider.3.model llama-local/local` is the field on the page.
-const FIELDS: [&str; 9] =
-    ["name", "wire", "command", "args", "env", "url", "model", "key-env", "max-tokens"];
+const FIELDS: [&str; 10] =
+    ["name", "wire", "command", "args", "env", "mode", "url", "model", "key-env", "max-tokens"];
 
 /// Every endpoint key and its value, for `settings list` and `settings get`.
 pub fn settings(providers: &[Provider]) -> Vec<(String, String)> {
@@ -318,6 +323,27 @@ pub fn set(providers: &mut Vec<Provider>, name: &str, value: &str) -> Option<Res
         "command" => provider.command = value.to_owned(),
         "args" => provider.args = split_arguments(value),
         "env" => provider.env = split_variables(value),
+        // **Checked against what the agent offers** (`task-2392`), so a mistyped mode is refused here rather than
+        // quietly replaced by `chat.permission` on every turn. `follow` and an empty value take the row's mode
+        // away. An ACP agent names its own modes, so any word is kept for one.
+        "mode" => {
+            let mode = match value {
+                "follow" | "default-permission" => "",
+                other => other,
+            };
+            if !provider.wire.takes_mode(mode) {
+                let offered: Vec<&str> = provider.wire.modes().iter().map(|one| one.name).collect();
+                return Some(Err(match offered.is_empty() {
+                    true => format!("{} is an address, and an address has no mode", provider.name),
+                    false => format!(
+                        "`{mode}` is not a mode {} has: {}",
+                        provider.name,
+                        offered.join(", ")
+                    ),
+                }));
+            }
+            provider.mode = mode.to_owned();
+        }
         "url" => provider.url = value.to_owned(),
         "model" => provider.model = value.to_owned(),
         "key-env" => provider.key_env = value.to_owned(),
@@ -1022,6 +1048,25 @@ mod tests {
         assert_ne!(providers[4].name, providers[5].name, "each added row has a name of its own");
         assert!(matches!(set(&mut providers, "ai.providers", "0"), Some(Err(_))));
         assert_eq!(set(&mut providers, "editor.indent", "tabs"), None, "not one of these");
+    }
+
+    /// `task-2392`: *"I ran into problems with not being able to run auto mode."*
+    #[test]
+    fn a_mode_is_one_the_agent_has_and_survives_the_file() {
+        let mut providers = Provider::defaults();
+        let claude = providers.iter().position(|one| one.wire == Wire::ClaudeCli).expect("claude");
+        let key = format!("ai.provider.{claude}.mode");
+        assert_eq!(set(&mut providers, &key, "auto"), Some(Ok(())));
+        assert_eq!(providers[claude].mode, "auto");
+        let refused =
+            set(&mut providers, &key, "approve-for-me").expect("a key").expect_err("not Claude's");
+        assert!(refused.contains("bypassPermissions"), "{refused}");
+        let mut values = Values::new();
+        write_rows(&mut values, &providers);
+        let (read, _) = read_rows(&values);
+        assert_eq!(read[claude].mode, "auto");
+        assert_eq!(set(&mut providers, &key, "follow"), Some(Ok(())));
+        assert_eq!(providers[claude].mode, "");
     }
 
     /// An `acp` row keeps its program's arguments and its variables through the file and through `settings set`

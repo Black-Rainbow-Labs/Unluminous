@@ -108,7 +108,83 @@ pub const WIRES: &[&str] = &[
     "responses",
 ];
 
+/// One mode an agent offers, for the Settings page and for `settings set ai.provider.<n>.mode` (`task-2392`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Mode {
+    /// What is written in the settings file: the agent's own word for it.
+    pub name: &'static str,
+    /// What it does, in one line.
+    pub said: &'static str,
+}
+
+const CLAUDE_MODES: &[Mode] = &[
+    Mode { name: "manual", said: "Asks before every edit and command" },
+    Mode { name: "acceptEdits", said: "Edits without asking, asks before commands" },
+    Mode { name: "plan", said: "Reads and plans, changes nothing" },
+    Mode { name: "auto", said: "A classifier allows what is safe and asks about the rest" },
+    Mode { name: "dontAsk", said: "Refuses whatever its rules do not allow, without asking" },
+    Mode { name: "bypassPermissions", said: "Does anything without asking" },
+];
+
+const CODEX_MODES: &[Mode] = &[
+    Mode { name: "read-only", said: "Its sandbox lets it read and nothing else" },
+    Mode { name: "workspace-write", said: "Its sandbox lets it write in the project" },
+    Mode {
+        name: "approve-for-me",
+        said: "Codex reviews its own requests, inside the project sandbox",
+    },
+    Mode { name: "danger-full-access", said: "No sandbox and no approvals" },
+];
+
+const OPENCODE_MODES: &[Mode] = &[
+    Mode { name: "plan", said: "Its read only agent" },
+    Mode { name: "build", said: "Its default agent, refusing what it would ask about" },
+    Mode { name: "auto", said: "Approves whatever its configuration does not refuse" },
+];
+
+const PI_MODES: &[Mode] = &[
+    Mode { name: "read", said: "read, grep, find and ls" },
+    Mode { name: "edit", said: "The read tools, edit and write" },
+    Mode { name: "full", said: "Every tool, bash included" },
+];
+
+/// The modes Claude's ACP adapter offers, which an `acp` row is offered beside the agent's own names.
+const ACP_MODES: &[Mode] = &[
+    Mode { name: "default", said: "The agent asks before what it is not sure of" },
+    Mode { name: "acceptEdits", said: "Edits without asking" },
+    Mode { name: "plan", said: "Reads and plans, changes nothing" },
+    Mode { name: "bypassPermissions", said: "Does anything without asking" },
+];
+
 impl Wire {
+    /// The modes this agent offers (`task-2392`). Empty for an endpoint that is an address.
+    ///
+    /// Each was read off the program's own `--help` on this machine: Claude Code 2.1.312's `--permission-mode`,
+    /// Codex 0.153.4's `--sandbox` and `--approve-for-me`, OpenCode 1.19.4's `--agent` and `--auto`. An ACP agent
+    /// names its own modes in `session/new`, so the list for it is Claude's adapter's and any other name is
+    /// asked for as written.
+    pub fn modes(self) -> &'static [Mode] {
+        match self {
+            Self::ClaudeCli => CLAUDE_MODES,
+            Self::CodexCli => CODEX_MODES,
+            Self::OpenCodeCli => OPENCODE_MODES,
+            Self::PiCli => PI_MODES,
+            Self::Acp => ACP_MODES,
+            Self::OpenAi | Self::Anthropic | Self::Responses => &[],
+        }
+    }
+
+    /// Whether `mode` is one this agent may be given: one of [`Self::modes`], or anything for an ACP agent.
+    pub fn takes_mode(self, mode: &str) -> bool {
+        let mode = mode.trim();
+        mode.is_empty() || self == Self::Acp || self.modes().iter().any(|one| one.name == mode)
+    }
+
+    /// Whether the person can be asked before this agent does something its mode does not allow.
+    pub fn can_ask(self) -> bool {
+        matches!(self, Self::ClaudeCli | Self::Acp)
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Self::OpenAi => "openai",
@@ -213,15 +289,24 @@ pub struct Provider {
     pub key_entry: String,
     /// The most tokens to ask for in one answer.
     pub max_tokens: u32,
-    /// The arguments the program is started with, for an `acp` row (`task-2308`).
+    /// The arguments the program is started with, for an `acp` row (`task-2308`), and the arguments added after
+    /// the ones Unluminous builds, for every other program (`task-2392`).
     ///
-    /// Empty for every other shape, whose arguments are built in `agent.rs`: a row must not be able to change
-    /// what `claude --print` means. An ACP agent is often `npx -y <package>`, so the words after the program are
-    /// part of which agent it is.
+    /// An ACP agent is often `npx -y <package>`, so the words after the program are part of which agent it is.
+    /// For the other programs they are added **after** what `agent.rs` builds, so they can add a flag such as
+    /// `--add-dir ../shared` or `--effort high` and cannot take away the ones the chat needs to read the agent's
+    /// answer. A flag given twice is the program's own business: Claude Code and Codex take the last.
     pub args: Vec<String>,
-    /// Variables added to the environment the program is started with, for an `acp` row. What the ACP registry
-    /// names for an agent, such as `AUGMENT_DISABLE_AUTO_UPDATE=1`, and never a secret.
+    /// Variables added to the environment the program is started with: what the ACP registry names for an
+    /// agent, such as `AUGMENT_DISABLE_AUTO_UPDATE=1`, or anything a row wants its program to see. Never a secret.
     pub env: Vec<(String, String)>,
+    /// The agent's own mode, in its own words, or empty for `chat.permission` (`task-2392`).
+    ///
+    /// *"I ran into problems with not being able to run auto mode."* `chat.permission` is three words every agent
+    /// is translated into, and Claude Code's `auto`, Codex's `--approve-for-me` and an ACP agent's own modes are
+    /// not among them. [`Wire::modes`] lists what each agent offers; a mode is checked against that list when it
+    /// is set, except for an ACP agent, whose modes are its own and are only known once it is running.
+    pub mode: String,
 }
 
 /// What `max_tokens` is when nothing says.
@@ -254,6 +339,7 @@ impl Provider {
                 max_tokens: DEFAULT_MAX_TOKENS,
                 args: Vec::new(),
                 env: Vec::new(),
+                mode: String::new(),
             },
             Provider {
                 name: "codex".to_owned(),
@@ -266,6 +352,7 @@ impl Provider {
                 max_tokens: DEFAULT_MAX_TOKENS,
                 args: Vec::new(),
                 env: Vec::new(),
+                mode: String::new(),
             },
             Provider {
                 name: "local".to_owned(),
@@ -281,6 +368,7 @@ impl Provider {
                 max_tokens: DEFAULT_MAX_TOKENS,
                 args: Vec::new(),
                 env: Vec::new(),
+                mode: String::new(),
             },
             // **OpenCode, with whichever model its own configuration names** (`task-2247`). It is what
             // drives a local model as an agent with tools: a provider in `opencode.json` pointed at
@@ -297,6 +385,7 @@ impl Provider {
                 max_tokens: DEFAULT_MAX_TOKENS,
                 args: Vec::new(),
                 env: Vec::new(),
+                mode: String::new(),
             },
             // **Pi, with whichever model its own configuration names** (`task-2302`). Its models are in
             // `~/.pi/agent/models.json` and its subscriptions are signed in with `/login` in Pi itself, so
@@ -312,6 +401,7 @@ impl Provider {
                 max_tokens: DEFAULT_MAX_TOKENS,
                 args: Vec::new(),
                 env: Vec::new(),
+                mode: String::new(),
             },
         ]
     }
@@ -778,6 +868,7 @@ mod tests {
             max_tokens: DEFAULT_MAX_TOKENS,
             args: Vec::new(),
             env: Vec::new(),
+            mode: String::new(),
         }
     }
 

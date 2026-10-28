@@ -29,7 +29,8 @@ use rux::{Rux, Style};
 
 use unluminous_chat::acp_registry::{self, Agent};
 use unluminous_chat::provider::{
-    join_arguments, split_arguments, Provider, Wire, DEFAULT_MAX_TOKENS, WIRES,
+    join_arguments, join_variables, split_arguments, split_variables, Provider, Wire,
+    DEFAULT_MAX_TOKENS, WIRES,
 };
 
 use crate::components::settings_dialog::{drawn, Drawn};
@@ -401,12 +402,29 @@ struct EndpointRow<'a> {
 ///
 /// **Absent rather than dimmed** for a row they cannot apply to: a URL, a key and a token budget mean nothing
 /// to an agent that holds its own key and picks its own model.
+///
+/// **Every program row has its arguments, its environment and its mode** (`task-2392`: *"We need more options for
+/// integrations with ai. e.g. what flags to send etc. I ran into problems with not being able to run auto
+/// mode."*). An ACP row's arguments are which agent it is; any other program's are added after the ones Unluminous
+/// builds. The mode is the agent's own word, chosen from what it offers.
 fn fields_of(provider: &Provider) -> Vec<(&'static str, f32)> {
     if provider.wire == Wire::Acp {
-        return vec![("Program", 220.0), ("Arguments", 420.0), ("Model", 220.0)];
+        return vec![
+            ("Program", 220.0),
+            ("Arguments", 420.0),
+            ("Environment", 420.0),
+            ("Model", 220.0),
+            ("Mode", 300.0),
+        ];
     }
     match provider.is_a_program() {
-        true => vec![("Program", 220.0), ("Model", 220.0)],
+        true => vec![
+            ("Program", 220.0),
+            ("Model", 220.0),
+            ("Mode", 300.0),
+            ("Arguments", 420.0),
+            ("Environment", 420.0),
+        ],
         false => {
             vec![("URL", 360.0), ("Model", 220.0), ("Key from", 220.0), ("Most tokens", 110.0)]
         }
@@ -540,6 +558,30 @@ fn endpoint(rux: &mut Rux<'_>, providers: &mut [Provider], at: EndpointRow<'_>) 
             Pos2::new(controls_left, pen),
             Vec2::new(width.min(room), ENDPOINT_ROW),
         );
+        // **The mode is a dropdown of what the agent offers**, the first row following `chat.permission`.
+        if field == "Mode" {
+            let provider = &providers[index];
+            let mut names: Vec<String> = vec![String::new()];
+            let mut words: Vec<String> = vec!["Follow Agent-Chat's permission".to_owned()];
+            for mode in provider.wire.modes() {
+                names.push(mode.name.to_owned());
+                words.push(format!("{} \u{b7} {}", mode.name, mode.said));
+            }
+            let current = provider.mode.trim().to_owned();
+            if !names.contains(&current) {
+                names.push(current.clone());
+                words.push(current.clone());
+            }
+            let chosen = names.iter().position(|name| *name == current);
+            if let Some(picked) = kit::select(rux, at, &format!("Mode {index}"), &words, chosen) {
+                if Some(picked) != chosen {
+                    providers[index].mode = names[picked].clone();
+                    act = Some(Act::Changed);
+                }
+            }
+            pen += ENDPOINT_ROW + ENDPOINT_ROW_GAP;
+            continue;
+        }
         let provider = &mut providers[index];
         let (mut value, hint) = match field {
             "Program" => (
@@ -551,8 +593,15 @@ fn endpoint(rux: &mut Rux<'_>, providers: &mut [Provider], at: EndpointRow<'_>) 
             ),
             "Arguments" => (
                 join_arguments(&provider.args),
-                "-y @agentclientprotocol/claude-agent-acp".to_owned(),
+                match provider.wire {
+                    Wire::Acp => "-y @agentclientprotocol/claude-agent-acp".to_owned(),
+                    Wire::ClaudeCli => {
+                        "added after Unluminous's, such as --add-dir ../shared".to_owned()
+                    }
+                    _ => "added after Unluminous's own".to_owned(),
+                },
             ),
+            "Environment" => (join_variables(&provider.env), "NAME=value; OTHER=value".to_owned()),
             "URL" => (provider.url.clone(), "https://\u{2026}".to_owned()),
             // Empty is the honest default for an agent: it answers with the model its own person chose.
             "Model" => (
@@ -578,6 +627,7 @@ fn endpoint(rux: &mut Rux<'_>, providers: &mut [Provider], at: EndpointRow<'_>) 
             match field {
                 "Program" => provider.command = value.trim().to_owned(),
                 "Arguments" => provider.args = split_arguments(&value),
+                "Environment" => provider.env = split_variables(&value),
                 "URL" => provider.url = value.trim().to_owned(),
                 "Model" => provider.model = value.trim().to_owned(),
                 "Key from" => provider.key_env = value.trim().to_owned(),

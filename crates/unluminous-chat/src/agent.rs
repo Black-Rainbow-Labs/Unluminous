@@ -164,6 +164,9 @@ pub struct Ask {
     /// variables rather than the gateway's, so an agent that did start said it was not logged in.
     /// `task-1905`.
     pub environment: crate::environment::Environment,
+    /// Where the person's answers arrive when the agent asks before doing something, or `None` when nobody is
+    /// to be asked and what the mode does not allow is refused (`task-2392`). See [`crate::approval`].
+    pub answers: Option<std::sync::Arc<crate::approval::Answers>>,
 }
 
 /// How much a command-line agent may do to this machine without asking.
@@ -245,15 +248,16 @@ pub fn command_line(provider: &Provider, ask: &Ask) -> Vec<String> {
             // `stream-json` refuses to run without it.
             out.push("--verbose".to_owned());
             out.push("--permission-mode".to_owned());
-            out.push(
-                match ask.permission {
-                    // Its own name for "ask me", which in `--print` means "do not do it".
-                    Permission::Read => "manual",
-                    Permission::Edit => "acceptEdits",
-                    Permission::Full => "bypassPermissions",
-                }
-                .to_owned(),
-            );
+            out.push(mode_of(provider, ask.permission).to_owned());
+            // **Asked through standard input** (`task-2392`): whatever the mode does not allow is put to the
+            // person in the pane rather than refused. The question then goes in as a `stream-json` message and
+            // standard input stays open for the answers. See [`crate::approval`].
+            if ask.answers.is_some() {
+                out.push("--input-format".to_owned());
+                out.push("stream-json".to_owned());
+                out.push("--permission-prompt-tool".to_owned());
+                out.push("stdio".to_owned());
+            }
             if !provider.model.trim().is_empty() {
                 out.push("--model".to_owned());
                 out.push(provider.model.trim().to_owned());
@@ -274,32 +278,39 @@ pub fn command_line(provider: &Provider, ask: &Ask) -> Vec<String> {
             // A pane opened on a folder that is not a repository is an ordinary thing, and codex
             // refuses to start in one without this.
             out.push("--skip-git-repo-check".to_owned());
-            match ask.permission {
+            match mode_of(provider, ask.permission) {
+                // Its own name, and it is a long one on purpose. Both forms take this one.
+                "danger-full-access" => {
+                    out.push("--dangerously-bypass-approvals-and-sandbox".to_owned())
+                }
+                // **Codex reviews its own requests** (`task-2392`), which is `--approve-for-me` on `codex exec` and
+                // absent from `codex exec resume`. The flag is three configuration values, read out of Codex
+                // 0.153.4 itself, so both forms are given those.
+                "approve-for-me" => {
+                    for value in [
+                        "sandbox_mode=\"workspace-write\"",
+                        "approval_policy=\"on-request\"",
+                        "approvals_reviewer=\"auto_review\"",
+                    ] {
+                        out.push("-c".to_owned());
+                        out.push(value.to_owned());
+                    }
+                }
                 // **`codex exec resume` has no `--sandbox`**, though `codex exec` does — measured,
                 // after every second question failed with *"unexpected argument '--sandbox'"*. What
                 // resume does take is `-c`, its own configuration override, so the sandbox is named
                 // that way there. The same value either way, said in the two vocabularies one
                 // program has for it.
-                Permission::Read | Permission::Edit => {
-                    let mode = match ask.permission {
-                        Permission::Edit => "workspace-write",
-                        _ => "read-only",
-                    };
-                    match resuming {
-                        true => {
-                            out.push("-c".to_owned());
-                            out.push(format!("sandbox_mode=\"{mode}\""));
-                        }
-                        false => {
-                            out.push("--sandbox".to_owned());
-                            out.push(mode.to_owned());
-                        }
+                mode => match resuming {
+                    true => {
+                        out.push("-c".to_owned());
+                        out.push(format!("sandbox_mode=\"{mode}\""));
                     }
-                }
-                // Its own name, and it is a long one on purpose. Both forms take this one.
-                Permission::Full => {
-                    out.push("--dangerously-bypass-approvals-and-sandbox".to_owned())
-                }
+                    false => {
+                        out.push("--sandbox".to_owned());
+                        out.push(mode.to_owned());
+                    }
+                },
             }
             if !provider.model.trim().is_empty() {
                 out.push("--model".to_owned());
@@ -316,16 +327,16 @@ pub fn command_line(provider: &Provider, ask: &Ask) -> Vec<String> {
             out.push("run".to_owned());
             out.push("--format".to_owned());
             out.push("json".to_owned());
-            match ask.permission {
+            match mode_of(provider, ask.permission) {
                 // Its own read-only agent, which is refused every edit and every write.
-                Permission::Read => {
+                "plan" => {
                     out.push("--agent".to_owned());
                     out.push("plan".to_owned());
                 }
+                "auto" => out.push("--auto".to_owned()),
                 // Its own default agent, which edits and asks before anything its configuration has not
                 // already allowed. With `run` there is nobody to ask, so what it would ask about is refused.
-                Permission::Edit => {}
-                Permission::Full => out.push("--auto".to_owned()),
+                _ => {}
             }
             if !provider.model.trim().is_empty() {
                 out.push("--model".to_owned());
@@ -352,16 +363,16 @@ pub fn command_line(provider: &Provider, ask: &Ask) -> Vec<String> {
             // **Pi has no permission prompts**, so what it may do is which tools it is given. `full` is its
             // own default set, which includes `bash`. Like Claude Code's mode, this is the agent's own policy
             // rather than the operating system's.
-            match ask.permission {
-                Permission::Read => {
+            match mode_of(provider, ask.permission) {
+                "read" => {
                     out.push("--tools".to_owned());
                     out.push("read,grep,find,ls".to_owned());
                 }
-                Permission::Edit => {
+                "edit" => {
                     out.push("--tools".to_owned());
                     out.push("read,grep,find,ls,edit,write".to_owned());
                 }
-                Permission::Full => {}
+                _ => {}
             }
             if !provider.model.trim().is_empty() {
                 out.push("--model".to_owned());
@@ -387,7 +398,36 @@ pub fn command_line(provider: &Provider, ask: &Ask) -> Vec<String> {
         // and `run` refuses it by name.
         Wire::OpenAi | Wire::Anthropic | Wire::Responses => {}
     }
+    // **The row's own arguments, after Unluminous's** (`task-2392`), for every program but an ACP agent, whose
+    // arguments are which agent it is and are already in front.
+    if provider.wire.is_a_program() && provider.wire != Wire::Acp {
+        out.extend(provider.args.iter().filter(|word| !word.is_empty()).cloned());
+    }
     out
+}
+
+/// The mode a turn runs this agent in: the row's own when it names one the agent has, and otherwise
+/// `chat.permission` said in the agent's own words (`task-2392`).
+pub fn mode_of(provider: &Provider, permission: Permission) -> &str {
+    let named = provider.mode.trim();
+    if !named.is_empty() && provider.wire.takes_mode(named) {
+        return named;
+    }
+    match (provider.wire, permission) {
+        // Its own name for "ask me", which with nobody to ask means "do not do it".
+        (Wire::ClaudeCli, Permission::Read) => "manual",
+        (Wire::ClaudeCli, Permission::Edit) => "acceptEdits",
+        (Wire::ClaudeCli, Permission::Full) => "bypassPermissions",
+        (Wire::CodexCli, Permission::Read) => "read-only",
+        (Wire::CodexCli, Permission::Edit) => "workspace-write",
+        (Wire::CodexCli, Permission::Full) => "danger-full-access",
+        (Wire::OpenCodeCli, Permission::Read) => "plan",
+        (Wire::OpenCodeCli, Permission::Edit) => "build",
+        (Wire::OpenCodeCli, Permission::Full) => "auto",
+        (Wire::PiCli, permission) => permission.name(),
+        // An ACP agent's mode is asked for over the protocol, and only when the row names one.
+        _ => "",
+    }
 }
 
 /// What is written to the agent's standard input: the words, and any picture it takes no other way.
@@ -475,9 +515,23 @@ pub fn run(
     }
     // Written and then **closed**, which is the half that matters: both agents read until the end
     // of their input, so a pipe left open is an agent that waits for ever.
+    //
+    // **Except when the person can be asked** (`task-2392`): then Claude Code reads `stream-json` messages and the
+    // answers to its questions arrive on the same pipe, so it stays open until the turn's `result`.
+    let asking = ask.answers.is_some() && provider.wire == Wire::ClaudeCli;
+    let mut kept: Option<std::process::ChildStdin> = None;
     if let Some(mut input) = input {
         use std::io::Write;
-        let prompt = prompt_for(provider, ask);
+        let prompt = match asking {
+            true => format!(
+                "{}\n",
+                serde_json::json!({
+                    "type": "user",
+                    "message": { "role": "user", "content": prompt_for(provider, ask) },
+                })
+            ),
+            false => prompt_for(provider, ask),
+        };
         if let Err(problem) = input.write_all(prompt.as_bytes()).and_then(|()| input.flush()) {
             let killed = stopping.load(Ordering::Relaxed);
             if let Some(mut child) = running.take(generation) {
@@ -493,15 +547,41 @@ pub fn run(
             }
             return;
         }
+        if asking {
+            kept = Some(input);
+        }
     }
     let mut decoder = Decoder::new(provider.wire);
     let mut carried_on = true;
-    for line in BufReader::new(output).lines() {
+    let lines = crate::approval::lines_of(output);
+    'reading: loop {
         if stopping.load(Ordering::Relaxed) {
             carried_on = false;
             break;
         }
-        let Ok(line) = line else { break };
+        // The person's answers, between lines: the agent says nothing while it waits for one.
+        if let Some(answers) = ask.answers.as_ref().filter(|_| asking) {
+            for (question, choice) in answers.take() {
+                if let Some(reply) = decoder.answer(&question, &choice) {
+                    if !on_reply(reply) {
+                        carried_on = false;
+                        break 'reading;
+                    }
+                }
+            }
+        }
+        if let Some(input) = kept.as_mut() {
+            use std::io::Write;
+            for message in std::mem::take(&mut decoder.outgoing) {
+                let line = format!("{message}\n");
+                let _ = input.write_all(line.as_bytes()).and_then(|()| input.flush());
+            }
+        }
+        let line = match lines.recv_timeout(crate::approval::LOOK_AGAIN) {
+            Ok(line) => line,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+        };
         let line = line.trim();
         if line.is_empty() {
             continue;
@@ -515,7 +595,12 @@ pub fn run(
         if !carried_on {
             break;
         }
+        // The turn's `result` has arrived, so the agent is told there is nothing more to say, and leaves.
+        if decoder.ended {
+            kept = None;
+        }
     }
+    drop(kept);
     let mut child = match running.take(generation) {
         Some(child) => child,
         // Killed and taken by `Running::stop`, or displaced by a newer turn — which is exactly what
@@ -646,6 +731,11 @@ pub struct Decoder {
     /// The tokens read and written by the OpenCode steps of this turn so far, which it reports a step at a
     /// time rather than once for the turn.
     used: (u64, u64),
+    /// Claude Code's questions still waiting for the person, by request id, with the request each came in
+    /// (`task-2392`).
+    questions: Vec<(crate::approval::Question, serde_json::Value)>,
+    /// Lines to write to the agent's standard input, which the thread running the turn writes and empties.
+    pub outgoing: Vec<serde_json::Value>,
 }
 
 impl Decoder {
@@ -659,7 +749,22 @@ impl Decoder {
             started: false,
             context: None,
             used: (0, 0),
+            questions: Vec::new(),
+            outgoing: Vec::new(),
         }
+    }
+
+    /// The person chose `choice` for the question `question`: the answer to write, and the line the pane keeps.
+    /// `None` for a question this turn did not ask, or a choice it did not offer.
+    pub fn answer(&mut self, question: &str, choice: &str) -> Option<Reply> {
+        let at = self.questions.iter().position(|(asked, _)| asked.id == question)?;
+        let chosen = self.questions[at].0.choice(choice)?.clone();
+        let (asked, request) = self.questions.remove(at);
+        self.outgoing.push(crate::approval::claude_answer(&asked.id, &request, chosen.kind));
+        Some(Reply::Answered {
+            id: asked.id.clone(),
+            said: crate::approval::decided(&asked, &chosen),
+        })
     }
 
     /// One line of the agent's output.
@@ -705,6 +810,28 @@ impl Decoder {
             }
         }
         match value["type"].as_str().unwrap_or_default() {
+            // **Claude Code asks before using a tool** (`task-2392`), which it does only when started with
+            // `--permission-prompt-tool stdio`. Any other request this client did not offer is answered with an
+            // error at once, so the agent is never left waiting.
+            "control_request" => {
+                let id = value["request_id"].as_str().unwrap_or_default().to_owned();
+                let request = &value["request"];
+                match request["subtype"].as_str() {
+                    Some("can_use_tool") => {
+                        let question = crate::approval::claude_question(&id, request);
+                        self.questions.push((question.clone(), request.clone()));
+                        out.push(Reply::Asked(question));
+                    }
+                    subtype => self.outgoing.push(serde_json::json!({
+                        "type": "control_response",
+                        "response": {
+                            "subtype": "error",
+                            "request_id": id,
+                            "error": format!("Unluminous does not answer {}.", subtype.unwrap_or("this request")),
+                        },
+                    })),
+                }
+            }
             "system"
                 // `init` names the model the session really started with, which is the honest answer
                 // to what is in the header chip — a row that names no model gets the agent's own.
@@ -1262,6 +1389,67 @@ mod tests {
 
     fn provider(wire: Wire) -> Provider {
         Provider::defaults().into_iter().find(|one| one.wire == wire).expect("a row of that shape")
+    }
+
+    #[test]
+    fn a_rows_own_mode_beats_chat_permission_and_its_arguments_follow_unluminouss() {
+        let mut claude = provider(Wire::ClaudeCli);
+        claude.mode = "auto".to_owned();
+        claude.args = vec!["--add-dir".to_owned(), "../shared".to_owned()];
+        let line = command_line(&claude, &Ask { permission: Permission::Read, ..Ask::default() });
+        let at = line.iter().position(|word| word == "--permission-mode").expect("a mode");
+        assert_eq!(line[at + 1], "auto");
+        assert_eq!(&line[line.len() - 2..], ["--add-dir", "../shared"]);
+        // A mode the agent does not have is not passed on: the permission decides.
+        claude.mode = "approve-for-me".to_owned();
+        let line = command_line(&claude, &Ask { permission: Permission::Edit, ..Ask::default() });
+        let at = line.iter().position(|word| word == "--permission-mode").expect("a mode");
+        assert_eq!(line[at + 1], "acceptEdits");
+
+        let mut codex = provider(Wire::CodexCli);
+        codex.mode = "approve-for-me".to_owned();
+        for session in ["", "s1"] {
+            let line = command_line(&codex, &Ask { session: session.to_owned(), ..Ask::default() })
+                .join(" ");
+            assert!(line.contains("-c approvals_reviewer=\"auto_review\""), "{line}");
+            assert!(!line.contains("--dangerously"), "{line}");
+        }
+        let mut opencode = provider(Wire::OpenCodeCli);
+        opencode.mode = "plan".to_owned();
+        assert!(command_line(&opencode, &Ask::default()).join(" ").contains("--agent plan"));
+    }
+
+    #[test]
+    fn claude_code_is_asked_through_standard_input_when_the_person_can_answer() {
+        let claude = provider(Wire::ClaudeCli);
+        let answers = std::sync::Arc::new(crate::approval::Answers::default());
+        let line =
+            command_line(&claude, &Ask { answers: Some(answers), ..Ask::default() }).join(" ");
+        assert!(
+            line.contains("--input-format stream-json --permission-prompt-tool stdio"),
+            "{line}"
+        );
+        assert!(!command_line(&claude, &Ask::default()).join(" ").contains("--input-format"));
+    }
+
+    #[test]
+    fn claude_codes_question_is_shown_and_the_answer_is_written_back() {
+        let mut decoder = Decoder::new(Wire::ClaudeCli);
+        let replies = decoder.line(r#"{"type":"control_request","request_id":"r7","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"},"permission_suggestions":[]}}"#);
+        let Some(Reply::Asked(question)) = replies.first() else { panic!("{replies:?}") };
+        assert_eq!(question.tool, "Bash");
+        assert!(decoder.outgoing.is_empty());
+        assert!(decoder.answer("r8", "allow").is_none());
+        let said = decoder.answer("r7", "deny").expect("answered");
+        assert!(matches!(said, Reply::Answered { ref id, .. } if id == "r7"));
+        assert_eq!(decoder.outgoing[0]["response"]["request_id"], "r7");
+        assert_eq!(decoder.outgoing[0]["response"]["response"]["behavior"], "deny");
+        // A request nobody here answers is refused at once rather than left waiting.
+        decoder.outgoing.clear();
+        decoder.line(
+            r#"{"type":"control_request","request_id":"r9","request":{"subtype":"hook_callback"}}"#,
+        );
+        assert_eq!(decoder.outgoing[0]["response"]["subtype"], "error");
     }
 
     #[test]

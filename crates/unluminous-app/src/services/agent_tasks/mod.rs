@@ -400,6 +400,12 @@ impl std::fmt::Debug for TicketKit {
 /// The Agent-Tasks provider.
 #[derive(Default)]
 pub struct AgentTasks {
+    /// The menu each ticket's agent was last seen waiting on and has had a comment posted for, and the one seen once
+    /// and not yet twice, so a menu still being drawn is not posted (`task-2392`).
+    menus_posted: Vec<(i64, screen_choice::Choice)>,
+    menus_seen: Vec<(i64, screen_choice::Choice)>,
+    /// When the terminals were last looked at for a menu.
+    menus_looked_at: Option<std::time::Instant>,
     store: Option<Store>,
     configuration: Configuration,
     /// The plugin's own folder, once it has been opened.
@@ -1233,6 +1239,11 @@ impl AgentTasks {
             effort: None,
             resuming: false,
             command: self.configuration.command_for(agent),
+            mode: chosen
+                .as_ref()
+                .map(|one| one.mode.trim().to_owned())
+                .filter(|mode| !mode.is_empty()),
+            extra: chosen.as_ref().map(|one| one.args.clone()).unwrap_or_default(),
             program: chosen
                 .map(|one| one.command.trim().to_owned())
                 .filter(|program| !program.is_empty()),
@@ -1335,6 +1346,13 @@ impl AgentTasks {
             .ok_or_else(|| format!("`{option}` is not an option number: they start at 1"))?;
         let choice = terminal.choose(number - 1)?;
         self.message = format!("{key}: chose {}", choice.options[number - 1]);
+        // **Said on the ticket**, under the comment that asked, so the ticket's history says what was decided and
+        // the buttons under that comment go away (`task-2392`).
+        let said = screen_choice::answered_comment(&choice.options[number - 1]);
+        if let Ok(store) = self.store() {
+            let _ = store.add_comment(task.id, Author::System, &said, &clock::now());
+        }
+        let _ = self.refresh();
         Ok(Answer::said(self.message.clone()).with(described(&choice)))
     }
 
@@ -1982,6 +2000,11 @@ impl AgentTasks {
             effort: task.effort.clone(),
             resuming,
             command: self.configuration.command_for(agent),
+            mode: endpoint
+                .as_ref()
+                .map(|one| one.mode.trim().to_owned())
+                .filter(|mode| !mode.is_empty()),
+            extra: endpoint.as_ref().map(|one| one.args.clone()).unwrap_or_default(),
             program: endpoint
                 .map(|one| one.command.trim().to_owned())
                 .filter(|program| !program.is_empty()),
@@ -2320,7 +2343,64 @@ impl AgentTasks {
             moved |= terminal.pump(&now);
         }
         moved |= self.follow_the_ticket_chat();
+        moved |= self.post_the_menus_waiting();
         moved | self.notice_another_window()
+    }
+
+    /// Post a comment on each ticket whose agent has stopped on a menu since the last look (`task-2392`).
+    ///
+    /// Looked for twice a second, and posted only when the same menu is seen on two looks running, because a menu
+    /// Claude Code is still drawing reads as a shorter one. A menu that has gone is forgotten, so the next one is
+    /// posted even when it asks the same thing.
+    fn post_the_menus_waiting(&mut self) -> bool {
+        const LOOK: std::time::Duration = std::time::Duration::from_millis(500);
+        if self.store.is_none() || self.menus_looked_at.is_some_and(|at| at.elapsed() < LOOK) {
+            return false;
+        }
+        self.menus_looked_at = Some(std::time::Instant::now());
+        let showing: Vec<(i64, Option<screen_choice::Choice>)> = self
+            .terminals
+            .iter()
+            .filter(|terminal| terminal.task_id != SUPERVISOR)
+            .map(|terminal| (terminal.task_id, terminal.choice()))
+            .collect();
+        let mut posted = false;
+        for (task, choice) in showing {
+            let Some(choice) = choice else {
+                self.menus_posted.retain(|(id, _)| *id != task);
+                self.menus_seen.retain(|(id, _)| *id != task);
+                continue;
+            };
+            let same = |(id, one): &(i64, screen_choice::Choice)| {
+                *id == task && one.question == choice.question && one.options == choice.options
+            };
+            if self.menus_posted.iter().any(same) {
+                continue;
+            }
+            let steady = self.menus_seen.iter().any(same);
+            self.menus_seen.retain(|(id, _)| *id != task);
+            if !steady {
+                self.menus_seen.push((task, choice));
+                continue;
+            }
+            let key = self
+                .store()
+                .ok()
+                .and_then(|store| store.task(task).ok().flatten())
+                .map(|card| card.key);
+            let body = screen_choice::comment_for(&choice, key.as_deref().unwrap_or("<task>"));
+            if let Ok(store) = self.store() {
+                if store.add_comment(task, Author::System, &body, &clock::now()).is_ok() {
+                    posted = true;
+                }
+            }
+            self.menus_posted.retain(|(id, _)| *id != task);
+            self.menus_posted.push((task, choice));
+        }
+        if posted {
+            let _ = self.refresh();
+        }
+        posted
     }
 
     /// The agent that works `task`: its own assignee, or for a ticket assigned to a person the endpoint the

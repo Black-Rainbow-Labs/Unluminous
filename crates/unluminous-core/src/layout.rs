@@ -1263,7 +1263,12 @@ impl Layout {
             if x < cluster.right() {
                 return cluster.start as usize;
             }
-            last = cluster.start as usize;
+            // **Past the end of a line is its last letter, not the space it wrapped after** (`task-2392`). A line
+            // that wraps keeps the space it broke at on its end, so a double click beside the words of a wrapped
+            // paragraph selected that one space.
+            if !cluster.is_blank() || last == line.bytes.start {
+                last = cluster.start as usize;
+            }
         }
         last
     }
@@ -2429,6 +2434,9 @@ mod tests {
         assert_eq!(result.character_at(27.0, 10.0), 2, "right half of the space is the space");
         assert_eq!(result.offset_at(27.0, 10.0), 3, "where a single click goes after it");
         assert_eq!(result.character_at(1000.0, 10.0), 4, "past the end is the last character");
+        let (rope, spans, paragraphs) = fixture("ab cd   ");
+        let result = layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 500.0);
+        assert_eq!(result.character_at(1000.0, 10.0), 4, "and never a space the line ends with");
     }
 
     #[test]

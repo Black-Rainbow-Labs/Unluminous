@@ -95,6 +95,13 @@ pub enum Reply {
     Finished {
         reason: String,
     },
+    /// The agent is waiting for the person to allow something, or not (`task-2392`).
+    Asked(crate::approval::Question),
+    /// The person answered the question with this id, and what was decided, in a line for the conversation.
+    Answered {
+        id: String,
+        said: String,
+    },
     /// It did not work, in the server's own words.
     Failed(String),
 }
@@ -1171,6 +1178,7 @@ mod tests {
             max_tokens: crate::provider::DEFAULT_MAX_TOKENS,
             args: Vec::new(),
             env: Vec::new(),
+            mode: String::new(),
         }
     }
     fn openai() -> Provider {

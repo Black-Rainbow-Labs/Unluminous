@@ -7275,3 +7275,55 @@ fn a_shift_click_in_the_preview_selects_from_the_caret_to_the_click() {
     assert!(selected.starts_with("paragraph"), "from the caret: {selected:?}");
     assert!(selected.ends_with("a bul"), "to the shift click: {selected}");
 }
+
+/// `task-2392`: *"I should be able to double click anywhere in the input, regardless if its in blank space next to
+/// text."* The field is taller than the one line strip its box takes, and a double click on the field's own
+/// ground used to select nothing. It is the box's now, measured against the nearest line: at the field's left
+/// edge that is the first word, and past the words the last one. A third press takes everything.
+#[test]
+fn a_double_click_anywhere_in_a_field_selects_the_word_nearest_it() {
+    let copied_after =
+        |harness: &mut Harness<'static, UnluminousApp>, at: egui::Pos2, presses: usize| {
+            harness.input_mut().events.push(egui::Event::PointerMoved(at));
+            for _ in 0..presses {
+                for pressed in [true, false] {
+                    harness.input_mut().events.push(egui::Event::PointerButton {
+                        pos: at,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: Modifiers::default(),
+                    });
+                }
+            }
+            pump(harness);
+            pump(harness);
+            harness.input_mut().events.push(egui::Event::Copy);
+            harness.step();
+            harness
+                .output()
+                .platform_output
+                .commands
+                .iter()
+                .find_map(|command| match command {
+                    egui::OutputCommand::CopyText(text) => Some(text.clone()),
+                    _ => None,
+                })
+                .unwrap_or_default()
+        };
+    let mut harness = harness("");
+    harness.state_mut().filter = "alpha bravo".to_owned();
+    steady(&mut harness);
+    let field = harness.get_by_label("Filter field").rect();
+    let words = harness.get_by_label("Filter files").rect();
+    assert!(
+        field.height() > words.height(),
+        "the field is taller than its box: {field:?} {words:?}"
+    );
+    // Above the strip the box takes, at the field's left edge.
+    let above = egui::Pos2::new(field.left() + 2.0, field.top() + 1.0);
+    assert_eq!(copied_after(&mut harness, above, 2), "alpha");
+    // Below it and well past the words, which is the blank space beside the text.
+    let past = egui::Pos2::new(field.right() - 4.0, field.bottom() - 1.0);
+    assert_eq!(copied_after(&mut harness, past, 2), "bravo");
+    assert_eq!(copied_after(&mut harness, past, 3), "alpha bravo");
+}

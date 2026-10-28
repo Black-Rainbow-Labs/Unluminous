@@ -113,6 +113,9 @@ pub struct Configuration {
     /// where the model asks and Unluminous runs it — the two are never both in play, because the
     /// transport decides which of them applies.
     pub permission: unluminous_chat::Permission,
+    /// Whether an agent that can ask (Claude Code, and an ACP agent) puts what its mode does not allow to the
+    /// person in the pane, rather than having it refused (`task-2392`). `chat.ask`, on by default.
+    pub ask: bool,
     /// The person's own system prompt, added after Unluminous's own line.
     pub system: String,
     pub history: usize,
@@ -156,6 +159,7 @@ impl Default for Configuration {
             // from here. It governs a command-line agent only; `tools` and `shell` above are the
             // equivalent for an endpoint, and `shell` is still off.
             permission: unluminous_chat::Permission::default(),
+            ask: true,
             system: String::new(),
             history: DEFAULT_HISTORY,
             folder: None,
@@ -245,6 +249,9 @@ impl Configuration {
                 )),
             }
         }
+        if let Some(ask) = values.flag("ask") {
+            configuration.ask = ask;
+        }
         if let Some(system) = values.text("system") {
             configuration.system = unescape_lines(system);
         }
@@ -301,6 +308,7 @@ impl Configuration {
         values.set("tool-limit", self.tool_limit.to_string());
         values.set("version", Self::VERSION.to_string());
         values.set("permission", self.permission.name());
+        values.set("ask", self.ask.to_string());
         // Escaped rather than flattened, because the System box is several lines now (`task-2247`).
         values.set("system", escape_lines(&self.system));
         values.set("history", self.history.to_string());
@@ -485,6 +493,10 @@ pub struct PaneState {
     pub model_select: Option<ModelSelect>,
     /// The Chat settings' `Folder` row, whether its list is open. `task-2270`.
     pub folder_select: rux::components::SelectState,
+    /// The Chat settings' `Model` row when its pills would not fit and it is a dropdown instead. `task-2392`.
+    pub model_list: rux::components::SelectState,
+    /// The Chat settings' `Mode` row, whether its list is open. `task-2392`.
+    pub mode_list: rux::components::SelectState,
     /// The tool blocks somebody has opened by hand, by their call id.
     pub opened_tools: Vec<String>,
     /// The runs of tool calls somebody has opened, by `components::agent_chat::message::run_key`.
@@ -1923,6 +1935,107 @@ impl AgentChat {
     /// Unluminous's own line about where it is goes in front of the **first** question only, for the same
     /// reason: after that the agent knows, and repeating it every turn would be a paragraph of
     /// preamble on every message.
+    /// The `mode` verb: the chosen endpoint's mode, its list, or a change to it (`task-2392`).
+    ///
+    /// **The mode is the endpoint's**, kept in `ai-endpoints.conf` with the rest of the row, so it is changed the
+    /// way `Settings -> AI Configuration` changes it: through `settings set ai.provider.<n>.mode`, which checks it
+    /// and hands every pane the new list. The copy here is changed too, so the next turn uses it.
+    pub fn mode_command(&mut self, wanted: &str) -> Result<Answer, String> {
+        let Some(index) = self.chosen_provider().and_then(|chosen| {
+            self.configuration.providers.iter().position(|one| one.name == chosen.name)
+        }) else {
+            return Err("no endpoint is chosen".to_owned());
+        };
+        let provider = &self.configuration.providers[index];
+        let modes: Vec<serde_json::Value> = provider
+            .wire
+            .modes()
+            .iter()
+            .map(|mode| serde_json::json!({ "name": mode.name, "said": mode.said }))
+            .collect();
+        let current =
+            unluminous_chat::agent::mode_of(provider, self.configuration.permission).to_owned();
+        if wanted.is_empty() {
+            return Ok(Answer::said(match provider.mode.trim().is_empty() {
+                true => format!("{current}, from chat.permission"),
+                false => current.clone(),
+            })
+            .with(serde_json::json!({
+                "endpoint": provider.name,
+                "mode": provider.mode,
+                "running": current,
+                "modes": modes,
+                "asks": self.configuration.ask && provider.wire.can_ask(),
+            })));
+        }
+        let mode = match wanted {
+            "follow" => "",
+            other => other,
+        };
+        if !provider.wire.takes_mode(mode) {
+            let offered: Vec<&str> = provider.wire.modes().iter().map(|one| one.name).collect();
+            return Err(match offered.is_empty() {
+                true => format!("{} is an address, and an address has no mode", provider.name),
+                false => {
+                    format!("`{mode}` is not a mode {} has: {}", provider.name, offered.join(", "))
+                }
+            });
+        }
+        self.configuration.providers[index].mode = mode.to_owned();
+        let mut arguments = serde_json::Map::new();
+        arguments.insert("key".to_owned(), serde_json::json!(format!("ai.provider.{index}.mode")));
+        arguments.insert(
+            "value".to_owned(),
+            serde_json::json!(if mode.is_empty() { "follow" } else { mode }),
+        );
+        self.asking.push(Request::RunCommand {
+            id: "agent-chat-mode".to_owned(),
+            command: "settings.set".to_owned(),
+            arguments,
+        });
+        let name = self.configuration.providers[index].name.clone();
+        Ok(Answer::said(match mode.is_empty() {
+            true => format!("{name} follows chat.permission"),
+            false => format!("{name} runs in {mode}"),
+        })
+        .with(serde_json::json!({ "endpoint": name, "mode": mode })))
+    }
+
+    /// Answer what the agent asked to do: `choice` for the question `question`, or for the oldest one waiting.
+    ///
+    /// **The question is taken off the pane at once**, so a second press cannot answer it twice; the turn's thread
+    /// sends the answer within a tenth of a second and the line saying what was decided arrives with it.
+    pub fn answer_the_agent(
+        &mut self,
+        question: Option<&str>,
+        choice: &str,
+    ) -> Result<String, String> {
+        if self.session.asking.is_empty() {
+            return Err("the agent is not waiting for an answer".to_owned());
+        }
+        let at = match question.map(str::trim).filter(|id| !id.is_empty()) {
+            Some(id) => self
+                .session
+                .asking
+                .iter()
+                .position(|asked| asked.id == id)
+                .ok_or_else(|| format!("the agent asked nothing called {id}"))?,
+            None => 0,
+        };
+        let asked = &self.session.asking[at];
+        let Some(chosen) = asked.choice(choice) else {
+            let offered: Vec<&str> = asked.choices.iter().map(|one| one.label.as_str()).collect();
+            return Err(format!(
+                "`{choice}` is not an answer to this. The answers are: {}",
+                offered.join(", ")
+            ));
+        };
+        self.client.answer(&asked.id, &chosen.id);
+        let said = unluminous_chat::approval::decided(asked, chosen).trim().to_owned();
+        self.session.asking.remove(at);
+        Ok(said)
+    }
+
     fn what_to_ask_the_agent(&mut self) -> unluminous_chat::Ask {
         let newest =
             self.session.chat.messages.iter().rev().find(|message| message.role == Role::User);
@@ -1972,6 +2085,10 @@ impl AgentChat {
             // starts logged in — the two faults `login_shell` records from measuring them, both of
             // which `task-1905` would have hit next.
             environment: Self::the_environment(),
+            // **The person is asked** when the agent can ask and `chat.ask` is on (`task-2392`).
+            answers: (self.configuration.ask
+                && self.provider().is_some_and(|provider| provider.wire.can_ask()))
+            .then(|| self.client.answers()),
         }
     }
 
@@ -2615,6 +2732,20 @@ impl UiProvider for AgentChat {
                 self.stop();
                 Ok(Answer::said("stopped"))
             }
+            "mode" => self.mode_command(rest.trim()),
+            // **The person's answer to what the agent asked to do** (`task-2392`): `answer allow`, `answer deny`,
+            // `answer always`, a choice's number or its label, and the question's id after it when more than one
+            // is waiting. `state` lists what is waiting under `asking`.
+            "answer" => {
+                let mut words = arguments.iter().map(String::as_str);
+                let choice = words.next().unwrap_or_default();
+                let question = words.next();
+                let said = self.answer_the_agent(question, choice)?;
+                Ok(Answer::said(said.clone()).with(serde_json::json!({
+                    "said": said,
+                    "asking": self.session.asking.len(),
+                })))
+            }
             "state" => Ok(Answer::said(self.session.state().name()).with(serde_json::json!({
                 "state": self.session.state().name(),
                 "busy": self.session.is_busy(),
@@ -2627,6 +2758,18 @@ impl UiProvider for AgentChat {
                 // resume (`task-2285`).
                 "restore": self.restored,
                 "session": self.session.chat.session,
+                // What the agent is waiting for the person to allow (`task-2392`).
+                "asking": self.session.asking.iter().map(|question| serde_json::json!({
+                    "id": question.id,
+                    "tool": question.tool,
+                    "title": question.title,
+                    "input": question.input,
+                    "choices": question.choices.iter().map(|choice| serde_json::json!({
+                        "id": choice.id,
+                        "label": choice.label,
+                        "kind": choice.kind.name(),
+                    })).collect::<Vec<_>>(),
+                })).collect::<Vec<_>>(),
             }))),
             "messages" => Ok(
                 Answer::said(format!("{} messages", self.session.chat.messages.len()))
@@ -2830,6 +2973,13 @@ impl UiProvider for AgentChat {
         if id.starts_with(FOR_A_TICKET) {
             if let (Err(problem), Some(ticket)) = (answer, self.ticket.as_mut()) {
                 ticket.chat.chat.problem = Some(problem);
+            }
+            return;
+        }
+        // The endpoint's mode, changed from the Chat settings or `mode` (`task-2392`). A refusal is said in the pane.
+        if id == "agent-chat-mode" {
+            if let Err(problem) = answer {
+                self.problem = Some(problem);
             }
             return;
         }

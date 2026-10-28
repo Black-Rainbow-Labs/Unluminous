@@ -33,6 +33,48 @@ pub struct Choice {
     pub cursor: usize,
 }
 
+/// How a comment saying the agent is waiting on a menu starts (`task-2392`). The ticket modal draws the menu's options
+/// as buttons under the newest such comment while the menu is still on the screen.
+pub const WAITING: &str = "**Waiting for your answer**";
+
+/// How a comment saying which option was chosen starts. A waiting comment with one of these after it has been
+/// answered.
+pub const ANSWERED: &str = "**Answered**";
+
+/// The comment posted on a ticket when its agent stops on `choice` (`task-2392`: *"we need the same thing in task of
+/// agent task, where a comment is added (as well as the agent chat dialog) that allows the user to select the action
+/// to take."*). The options are a numbered list, so the comment reads on its own in the board's other views and in
+/// `task <key>`, and the number is what `choice <key> <n>` takes.
+pub fn comment_for(choice: &Choice, key: &str) -> String {
+    let asked = match choice.question.trim().is_empty() {
+        true => "The agent is waiting for an answer in its terminal.".to_owned(),
+        false => choice.question.trim().to_owned(),
+    };
+    let options: Vec<String> = choice
+        .options
+        .iter()
+        .enumerate()
+        .map(|(index, option)| format!("{}. {option}", index + 1))
+        .collect();
+    format!(
+        "{WAITING} \u{b7} {asked}\n\n{}\n\nChoose below, on the Chat tab, or with `plugins run agent-tasks choice {key} <number>`.",
+        options.join("\n")
+    )
+}
+
+/// The comment posted when `option` was chosen.
+pub fn answered_comment(option: &str) -> String {
+    format!("{ANSWERED} \u{b7} {option}")
+}
+
+/// Whether the newest of `bodies` that is about a menu is a question nobody has answered yet.
+pub fn the_newest_is_waiting<'a>(bodies: impl DoubleEndedIterator<Item = &'a str>) -> bool {
+    bodies
+        .rev()
+        .find(|body| body.starts_with(WAITING) || body.starts_with(ANSWERED))
+        .is_some_and(|body| body.starts_with(WAITING))
+}
+
 /// The cursor Claude Code and Codex draw in front of the option the arrow keys are on.
 const CURSOR: [char; 2] = ['❯', '›'];
 
@@ -219,5 +261,30 @@ mod tests {
     fn a_single_line_with_a_cursor_is_not_a_menu() {
         assert_eq!(read("some output\n ❯ only one\n\nmore"), None);
         assert_eq!(read("nothing waiting here\n"), None);
+    }
+
+    /// `task-2392`: a menu is posted on the ticket as a comment whose options are numbered as `choice` takes them,
+    /// and a comment saying what was chosen ends the wait.
+    #[test]
+    fn a_menu_is_a_comment_and_an_answer_ends_it() {
+        let choice = Choice {
+            question: "Do you want to make this edit to a.rs?".to_owned(),
+            options: vec![
+                "Yes".to_owned(),
+                "No, and tell Claude what to do differently".to_owned(),
+            ],
+            cursor: 0,
+        };
+        let body = comment_for(&choice, "task-7");
+        assert!(body.starts_with(WAITING));
+        assert!(body.contains(
+            "1. Yes
+2. No, and tell Claude"
+        ));
+        assert!(body.contains("choice task-7 <number>"));
+        let answered = answered_comment("Yes");
+        assert!(the_newest_is_waiting(["hello", body.as_str()].into_iter()));
+        assert!(!the_newest_is_waiting([body.as_str(), answered.as_str(), "thanks"].into_iter()));
+        assert!(!the_newest_is_waiting(["nothing about a menu"].into_iter()));
     }
 }

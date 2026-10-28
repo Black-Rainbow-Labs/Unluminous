@@ -340,6 +340,7 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
         // out top down inside the rest, so a second line goes under the first rather than pushing it up.
         let row = ui.ctx().fonts_mut(|fonts| fonts.row_height(&prompt_font));
         parts.state.prompt_row = row;
+        let descender_room = (prompt_font.size * 0.3).ceil().min(i8::MAX as f32);
         let first = area.top() + ((PROMPT * scale - row) / 2.0).max(4.0 * scale);
         let words = Rect::from_min_max(
             Pos2::new(field.left(), first),
@@ -365,7 +366,15 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
                 inside.text_box(
                     egui::TextEdit::multiline(parts.draft)
                         .id(prompt_id)
-                        .frame(egui::Frame::NONE)
+                        // **Room under the last line for its descenders** (`task-2392`: the bottom of a `g` was
+                        // cut off). `theme::centred_in_its_row` moves the interface face's ink down inside its
+                        // row so capitals are centred, which puts a descender below the row, and the scrolling
+                        // area is cut to the box. egui ignores `TextEdit::margin` once a frame is given, so the
+                        // room is the frame's.
+                        .frame(egui::Frame::NONE.inner_margin(egui::Margin {
+                            bottom: descender_room as i8,
+                            ..Default::default()
+                        }))
                         // **The placeholder names the two ways a picture goes up**, because the button that used
                         // to do it is gone: `task-1848` asked for it to go and for drag and drop and paste to be
                         // the routes. A control removed with nothing said in its place is a feature nobody finds.
@@ -391,7 +400,7 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
             .inner;
         // How many lines the box really took, for the next frame's well. See `PaneState::prompt_lines`.
         parts.state.prompt_lines =
-            ((response.rect.height() / row.max(1.0)).round() as usize).max(1);
+            (((response.rect.height() - descender_room) / row.max(1.0)).round() as usize).max(1);
         // Named, because every control in Unluminous has a plain name and a test finds one by it. Its hint
         // text is not a name: it is what the field says when it is empty.
         response

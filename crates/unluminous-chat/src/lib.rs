@@ -42,6 +42,7 @@
 pub mod acp;
 pub mod acp_registry;
 pub mod agent;
+pub mod approval;
 pub mod base64;
 pub mod client;
 pub mod environment;

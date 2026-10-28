@@ -101,6 +101,8 @@ impl UnluminousApp {
         self.take_the_report_input(ui.ctx());
         self.ask_for_the_next_frame_and_let_the_plugins_catch_up(ui);
 
+        self.terminal_holds_the_keyboard =
+            crate::components::terminal_panel::a_terminal_has_the_keyboard(ui.ctx());
         let places = self.lay_the_frame_out(ui);
         // Before the menus are built, so `Recent Projects` lists a project another window has just opened.
         self.keep_the_recent_projects_current();

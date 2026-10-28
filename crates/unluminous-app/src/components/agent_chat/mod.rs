@@ -29,6 +29,7 @@
 //! out, which is the fault `task-1765` records for the board. So the only surface painted here is the
 //! panel itself, through `Chrome::raised`.
 
+pub mod approval;
 pub mod blocks;
 pub mod composer;
 pub mod kit;
@@ -101,6 +102,11 @@ pub enum Act {
     ChooseFolder(Option<std::path::PathBuf>),
     /// `Other folder...` was chosen, which asks the window for its folder picker.
     PickFolder,
+    /// The person answered what the agent asked to do: the question's id and the choice's. `task-2392`.
+    Answer(String, String),
+    /// The Chat settings' `Mode` row chose a mode for the endpoint in use, or `None` to follow
+    /// `chat.permission`. `task-2392`.
+    Mode(Option<String>),
 }
 
 /// Draw the pane, and act on what was pressed.
@@ -301,6 +307,21 @@ fn surface(mut parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect)
             acts.extend(conversation(&mut parts, ui, look, body));
         }
     }
+    // **What the agent is waiting for the person to allow**, over the foot of the conversation and above the
+    // prompt box, so it is in view however far up the conversation is scrolled (`task-2392`).
+    if parts.mirror.is_none() && !parts.session.asking.is_empty() && !parts.state.settings_open {
+        let first = &parts.session.asking[0];
+        let stacked = !approval::fits_on_one_row(first, inner_width / scale);
+        let tall = approval::height(first, stacked) * scale;
+        let bottom = composer_rect.top() - 10.0 * scale;
+        let card = Rect::from_min_max(
+            Pos2::new(area.left() + side, (bottom - tall).max(body.top())),
+            Pos2::new(area.right() - side, bottom),
+        );
+        let asking = parts.session.asking.clone();
+        let speaker = parts.state.speaker.clone();
+        acts.extend(approval::show(parts.state, ui, look, card, &asking, &speaker, stacked));
+    }
     // Drawn after the conversation and before the composer takes `parts`. A popup is a layer of its
     // own, so where it sits in this order decides nothing about what it is drawn over — what it
     // decides is that the rows are read on the frame after the right click that opened it, which is
@@ -367,6 +388,44 @@ fn settings(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
         }
         _ => None,
     };
+    // **The endpoint's mode, in the agent's own words** (`task-2392`): the first row follows `chat.permission`,
+    // and the rest are what the agent offers, such as Claude Code's `auto`. Offered for a program only, never in
+    // a mirror, whose agent runs in a terminal the ticket started.
+    let mode_rows = match (parts.mirror.is_none(), parts.configuration.provider()) {
+        (true, Some(provider)) if provider.is_a_program() && !provider.wire.modes().is_empty() => {
+            let following = unluminous_chat::agent::mode_of(
+                &unluminous_chat::Provider { mode: String::new(), ..provider.clone() },
+                parts.configuration.permission,
+            )
+            .to_owned();
+            let mut words = vec![match following.is_empty() {
+                true => "The agent's own".to_owned(),
+                false => format!("Follow Settings ({following})"),
+            }];
+            let mut names: Vec<Option<String>> = vec![None];
+            for mode in provider.wire.modes() {
+                words.push(format!("{} \u{b7} {}", mode.name, mode.said));
+                names.push(Some(mode.name.to_owned()));
+            }
+            let current = provider.mode.trim();
+            let selected = match current.is_empty() {
+                true => Some(0),
+                false => {
+                    names.iter().position(|name| name.as_deref() == Some(current)).or_else(|| {
+                        words.push(current.to_owned());
+                        names.push(Some(current.to_owned()));
+                        Some(names.len() - 1)
+                    })
+                }
+            };
+            Some((names, words, selected))
+        }
+        _ => None,
+    };
+    let mode_height = match mode_rows.is_some() {
+        true => 17.0 + 10.0 + 38.0 + 22.0,
+        false => 0.0,
+    };
     let folder_height = match folder_rows.is_some() {
         true => 17.0 + 10.0 + 38.0 + 22.0,
         false => 0.0,
@@ -385,6 +444,7 @@ fn settings(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
         + 46.0
         + 22.0
         + waiting_height
+        + mode_height
         + folder_height
         + 80.0
         + 22.0
@@ -490,11 +550,30 @@ fn settings(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
                     );
                     let at = Pos2::new(switch.left(), switch.center().y - none.size().y / 2.0);
                     rux.painter().galley(at, none, theme.ink.i400);
-                } else if let Some(index) =
-                    rux::components::PillSwitch::new(&names, chosen, "Model").show(rux, switch)
-                {
-                    if let Some(name) = names.get(index) {
-                        acts.push(Act::Choose(name.clone()));
+                } else if model_pills_fit(rux, &names, switch.width()) {
+                    if let Some(index) =
+                        rux::components::PillSwitch::new(&names, chosen, "Model").show(rux, switch)
+                    {
+                        if let Some(name) = names.get(index) {
+                            acts.push(Act::Choose(name.clone()));
+                        }
+                    }
+                } else {
+                    // **A dropdown once the pills would cut their names short** (`task-2392`): with six
+                    // endpoints in a pane of ordinary width every pill read `claude-…`.
+                    let chip = Rect::from_center_size(
+                        switch.center(),
+                        Vec2::new(switch.width(), rux.z(38.0)),
+                    );
+                    let outcome = rux::components::Select::new(&names, chosen)
+                        .label("Model")
+                        .chip(rux::components::SelectLead::Mark(rux::Icon::Bubble, theme.ink.i400))
+                        .show(rux, chip, &mut parts.state.model_list);
+                    if let Some(index) = outcome.chosen.filter(|index| Some(*index) != chosen) {
+                        parts.state.model_list.open = false;
+                        if let Some(name) = names.get(index) {
+                            acts.push(Act::Choose(name.clone()));
+                        }
                     }
                 }
                 top = switch.bottom() + rux.z(22.0);
@@ -515,6 +594,26 @@ fn settings(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
                         theme.ink.i500,
                     );
                     top = line.bottom() + rux.z(22.0);
+                }
+                // The mode the agent runs in. `task-2392`.
+                if let Some((names, words, selected)) = &mode_rows {
+                    let label = rux.text(rux.zs(rux::Style::sans(12.0)), "Mode", theme.ink.i500);
+                    let label_height = label.size().y;
+                    rux.painter().galley(Pos2::new(inner.left(), top), label, theme.ink.i500);
+                    top += label_height + rux.z(10.0);
+                    let chip = Rect::from_min_size(
+                        Pos2::new(inner.left(), top),
+                        Vec2::new(inner.width(), rux.z(38.0)),
+                    );
+                    let outcome = rux::components::Select::new(words, *selected)
+                        .label("Mode")
+                        .chip(rux::components::SelectLead::Mark(rux::Icon::Key, theme.ink.i400))
+                        .show(rux, chip, &mut parts.state.mode_list);
+                    if let Some(index) = outcome.chosen.filter(|index| Some(*index) != *selected) {
+                        parts.state.mode_list.open = false;
+                        acts.push(Act::Mode(names[index].clone()));
+                    }
+                    top = chip.bottom() + rux.z(22.0);
                 }
                 // The folder the agent starts in. `task-2270`.
                 if let Some((rows, words, selected)) = &folder_rows {
@@ -604,6 +703,19 @@ fn settings(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
         },
     );
     acts
+}
+
+/// Whether every endpoint's name fits whole in its pill of a switch `width` points wide.
+///
+/// The arithmetic is `rux::components::PillSwitch::show`'s: equal pills inside a 5 point pad with 4 points
+/// between them, and 16 points of each pill kept clear of its words.
+fn model_pills_fit(rux: &rux::Rux<'_>, names: &[String], width: f32) -> bool {
+    let count = names.len().max(1) as f32;
+    let (pad, gap) = (rux.z(5.0), rux.z(4.0));
+    let pill = (width - pad * 2.0 - gap * (count - 1.0)) / count;
+    let style = rux.zs(rux::Style::sans(12.0).medium());
+    let ink = rux.theme().ink.i900;
+    names.iter().all(|name| rux.text(style, name, ink).size().x <= pill - rux.z(16.0))
 }
 
 /// The gap between the model pills and the line under them saying the choice waits for a new conversation,
@@ -1607,6 +1719,22 @@ fn apply(chat: &mut AgentChat, acts: Vec<Act>) -> Vec<Request> {
                 // Through the same path as typing and pressing send, so it queues behind an answer
                 // that is still arriving and refuses with a notice when nothing can answer it.
                 if let Err(problem) = chat.send_words(&words) {
+                    requests.push(Request::Notice {
+                        text: problem,
+                        kind: crate::components::toast::Kind::Problem,
+                    });
+                }
+            }
+            Act::Answer(question, choice) => {
+                if let Err(problem) = chat.answer_the_agent(Some(&question), &choice) {
+                    requests.push(Request::Notice {
+                        text: problem,
+                        kind: crate::components::toast::Kind::Problem,
+                    });
+                }
+            }
+            Act::Mode(mode) => {
+                if let Err(problem) = chat.mode_command(mode.as_deref().unwrap_or("follow")) {
                     requests.push(Request::Notice {
                         text: problem,
                         kind: crate::components::toast::Kind::Problem,

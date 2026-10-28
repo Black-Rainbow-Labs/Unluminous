@@ -1372,3 +1372,56 @@ fn type_into(harness: &mut Harness<'static, UnluminousApp>, name: &str, text: &s
     harness.get_by_label(name).type_text(text);
     steady(harness);
 }
+
+/// `task-2392`: *"I can't copy text in the terminal. CMD + C should copy. And other shortcuts for paste etc should
+/// work."* On macOS `Cmd+C` and `Cmd+V` are taken by the menu bar's `Edit -> Copy` and `Edit -> Paste`, so the grid
+/// never saw them and the entries went to the document behind it. The menu entries now hand the grid the events a
+/// keyboard would have made: a copy takes the grid's selection, and the document's own selection is left alone.
+#[test]
+fn the_edit_menus_copy_takes_the_terminals_selection_not_the_documents() {
+    let mut harness = harness("the document line");
+    harness.state_mut().new_detached_terminal_tab(6, 40);
+    steady(&mut harness);
+    harness
+        .state_mut()
+        .terminal
+        .tabs
+        .at_mut(0)
+        .expect("the tab")
+        .feed(b"copy me from the grid\r\n");
+    harness.state_mut().focus = unluminous_app::app::Focus::Terminal;
+    // The tile learns it has the keyboard at the end of a frame and reads keys from the next one.
+    steady(&mut harness);
+    harness.step();
+    harness.step();
+    {
+        let session = harness.state_mut().terminal.tabs.at_mut(0).expect("the tab");
+        session.begin_selection(0, 0, unluminous_terminal::session::SelectionKind::Simple);
+        session.extend_selection(0, 12);
+    }
+    let ctx = harness.ctx.clone();
+    assert!(
+        harness.state().menu_state().terminal_has_the_keyboard,
+        "Copy stays enabled for the grid, so the menu bar's key equivalent reaches it"
+    );
+    harness.state_mut().run_action(Action::Copy, &ctx);
+    let mut copied = String::new();
+    for _ in 0..3 {
+        harness.step();
+        if let Some(text) =
+            harness.output().platform_output.commands.iter().find_map(|command| match command {
+                egui::OutputCommand::CopyText(text) => Some(text.clone()),
+                _ => None,
+            })
+        {
+            copied = text;
+            break;
+        }
+    }
+    assert!(copied.starts_with("copy me from"), "the grid's selection was copied, got {copied:?}");
+    assert_eq!(
+        harness.state().document().text().to_string(),
+        "the document line",
+        "and the document was not touched"
+    );
+}

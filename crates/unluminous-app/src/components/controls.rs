@@ -270,10 +270,34 @@ pub fn claim_the_field(ui: &egui::Ui, field: Rect, id: egui::Id, name: &str) -> 
     if response.clicked() {
         ui.ctx().data_mut(|data| data.insert_temp(wants_the_keyboard(), id));
     }
+    // **A double or triple click on the field's own ground is the box's** (`task-2392`: *"I should be able to
+    // double click anywhere in the input, regardless if its in blank space next to text."*). The box is one line
+    // tall inside a taller field, and egui never told it about a press above, below or beside its strip, so a
+    // double click there selected nothing. The press is remembered for the box, which applies it when it is
+    // drawn, against the line nearest the pointer.
+    let presses: u32 = match (response.triple_clicked(), response.double_clicked()) {
+        (true, _) => 3,
+        (false, true) => 2,
+        _ => 0,
+    };
+    if presses > 0 {
+        if let Some(at) = response.interact_pointer_pos() {
+            ui.ctx().data_mut(|data| {
+                data.insert_temp(a_press_on_the_ground(id), (at, presses));
+                data.insert_temp(wants_the_keyboard(), id);
+            });
+        }
+    }
     if response.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
     }
     response
+}
+
+/// Where a double or triple click on the ground of the field whose box is `id` landed, and how many presses it
+/// was, for the box to apply. See [`claim_the_field`].
+fn a_press_on_the_ground(id: egui::Id) -> egui::Id {
+    id.with("unluminous-press-on-the-ground")
 }
 
 /// What a field's right click menu asked for, which is applied on the **next** frame.
@@ -651,17 +675,40 @@ pub fn a_double_click_takes_the_run_under_it(
     ctx: &egui::Context,
     output: &egui::text_edit::TextEditOutput,
 ) {
-    if !output.response.response.double_clicked() {
-        return;
-    }
-    let Some(pointer) = output.response.response.interact_pointer_pos() else {
-        return;
+    let id = output.response.response.id;
+    // A double or triple click its field's ground took (`task-2392`), measured against the nearest line.
+    let on_the_ground =
+        ctx.data_mut(|data| data.remove_temp::<(Pos2, u32)>(a_press_on_the_ground(id)));
+    let (pointer, presses) = match on_the_ground {
+        Some((at, presses)) => (at, presses),
+        // A third press inside the box is egui's own, which takes the line.
+        None if output.response.response.triple_clicked() => return,
+        None if output.response.response.double_clicked() => {
+            match output.response.response.interact_pointer_pos() {
+                Some(at) => (at, 2),
+                None => return,
+            }
+        }
+        None => return,
     };
     let text = output.galley.text();
     if text.is_empty() {
         return;
     }
+    let mut state = output.state.clone();
+    if presses >= 3 {
+        let range = egui::text::CCursorRange::two(
+            egui::text::CCursor::new(0),
+            egui::text::CCursor::new(text.chars().count()),
+        );
+        state.cursor.set_char_range(Some(range));
+        state.store(ctx, id);
+        return;
+    }
+    let size = output.galley.rect.size();
     let local = pointer - output.galley_pos;
+    // Above or below the words is the nearest line, and beside them the nearest end of it.
+    let local = egui::Vec2::new(local.x, local.y.clamp(0.0, (size.y - 1.0).max(0.0)));
     let gap = output.galley.cursor_from_pos(local);
     let gap_x = output.galley.pos_from_cursor(gap).min.x;
     let mut under = gap.index.0;
@@ -669,13 +716,12 @@ pub fn a_double_click_takes_the_run_under_it(
         under -= 1;
     }
     let (start, end) = run_of_characters(text, under);
-    let mut state = output.state.clone();
     let range = egui::text::CCursorRange::two(
         egui::text::CCursor::new(start),
         egui::text::CCursor::new(end),
     );
     state.cursor.set_char_range(Some(range));
-    state.store(ctx, output.response.response.id);
+    state.store(ctx, id);
 }
 
 /// The run of characters of one kind around the character at `index`, as character positions: letters,

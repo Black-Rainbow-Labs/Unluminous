@@ -88,6 +88,7 @@ impl UnluminousApp {
             can_undo: plugin_tab || self.document().can_undo(),
             can_redo: plugin_tab || self.document().can_redo(),
             has_selection: plugin_tab || !self.document().selection().is_empty(),
+            terminal_has_the_keyboard: self.terminal_holds_the_keyboard,
             // The same three questions the key chords and the command line ask, of the same
             // functions, so the menu cannot come to a different answer about the tab that is
             // showing — which is what `file_kind`'s family exists to prevent. `task-1922` WP4.
@@ -739,6 +740,39 @@ impl UnluminousApp {
         true
     }
 
+    /// Hand `Copy`, `Cut` and `Paste` to the terminal grid that holds the keyboard, and answer whether one did
+    /// (`task-2392`). See `terminal_panel::a_terminal_has_the_keyboard`.
+    ///
+    /// The grid answers `egui`'s own `Copy` and `Paste` events, so those are what is sent, on the next frame. A copy
+    /// with the Apple key held copies the selection and never interrupts the program, which is `clipboard_key`'s
+    /// rule; a cut copies too, because nothing in a terminal can be cut. `Select All` is left alone: the terminal
+    /// has nothing that answers it, and the document behind it is not what the person was looking at.
+    fn give_the_clipboard_entry_to_a_terminal(
+        &mut self,
+        action: &Action,
+        ctx: &egui::Context,
+    ) -> bool {
+        if !crate::components::terminal_panel::a_terminal_has_the_keyboard(ctx) {
+            return false;
+        }
+        let events = match action {
+            Action::Copy | Action::Cut => vec![egui::Event::Copy],
+            Action::Paste => {
+                let text = arboard::Clipboard::new()
+                    .and_then(|mut clipboard| clipboard.get_text())
+                    .unwrap_or_default();
+                if text.is_empty() {
+                    return true;
+                }
+                vec![egui::Event::Paste(text)]
+            }
+            Action::SelectAll => return true,
+            _ => return false,
+        };
+        crate::app::send_on_the_next_frame(ctx, events);
+        true
+    }
+
     /// Hand `Undo`, `Redo`, `Cut`, `Copy`, `Paste` or `Select All` to the Word or workbook tab that holds
     /// the keyboard, and answer whether one did.
     ///
@@ -812,6 +846,9 @@ impl UnluminousApp {
     /// these, so the last arm cannot happen.
     fn an_edit_entry(&mut self, action: Action, ctx: &egui::Context) {
         if self.give_the_clipboard_entry_to_a_text_box(&action, ctx) {
+            return;
+        }
+        if self.give_the_clipboard_entry_to_a_terminal(&action, ctx) {
             return;
         }
         if self.give_the_edit_entry_to_a_plugin_tab(&action, ctx) {

@@ -202,6 +202,7 @@ pub fn provider_for(name: &str, distribution: &Distribution, program: Option<&Pa
         max_tokens: DEFAULT_MAX_TOKENS,
         args,
         env,
+        mode: String::new(),
     }
 }
 

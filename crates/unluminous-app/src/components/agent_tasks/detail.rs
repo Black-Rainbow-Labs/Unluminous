@@ -396,6 +396,22 @@ pub(crate) fn comment_section(
     // starts at the end of it. Each ticket has its own scroll position, so a ticket scrolled up does not open the
     // next one part of the way down.
     let ticket = board.detail().task.as_ref().map(|task| task.id).unwrap_or_default();
+    // **The menu the agent is waiting on, answered under the comment that says so** (`task-2392`). Only under the
+    // newest such comment, only while nothing has answered it, and only while the menu is still on the agent's
+    // screen, so a button never answers a question that has gone.
+    use crate::services::agent_tasks::screen_choice;
+    let waiting_on = board.choice_for(ticket).filter(|_| {
+        screen_choice::the_newest_is_waiting(comments.iter().map(|comment| comment.body.as_str()))
+    });
+    let waiting_comment = waiting_on.as_ref().and_then(|_| {
+        comments
+            .iter()
+            .rev()
+            .find(|comment| comment.body.starts_with(screen_choice::WAITING))
+            .map(|one| one.id)
+    });
+    let ticket_key = board.detail().task.as_ref().map(|task| task.key.clone()).unwrap_or_default();
+    let mut picked: Option<usize> = None;
     let list = Rect::from_min_max(area.min, Pos2::new(area.max.x, room_for_comments));
     let words_left = area.min.x + BESIDE_THE_DISC;
     let words_width = (area.width() - BESIDE_THE_DISC).max(40.0);
@@ -679,6 +695,34 @@ pub(crate) fn comment_section(
                         }
                     }
                 }
+                // The menu's options, as the Chat tab's card draws them: a pill each, the last in the action's gradient.
+                let mut height = height;
+                if let (Some(choice), true) =
+                    (waiting_on.as_ref(), waiting_comment == Some(comment.id))
+                {
+                    let mut drawn = rux::Rux { ui: &mut *ui, state, chrome };
+                    let mut left = words_left;
+                    let mut row_top = pen + height + 10.0;
+                    for (index, option) in choice.options.iter().enumerate() {
+                        let label = format!("{}. {option}", index + 1);
+                        let mut button = rux::components::PillButton::new(&label);
+                        if index + 1 == choice.options.len() {
+                            button = button.primary();
+                        }
+                        let width = button.measure(&drawn).x.min(words_width);
+                        if left + width > words_left + words_width && left > words_left {
+                            left = words_left;
+                            row_top += 42.0;
+                        }
+                        let place =
+                            Rect::from_min_size(Pos2::new(left, row_top), Vec2::new(width, 34.0));
+                        if button.show(&mut drawn, place).clicked() {
+                            picked = Some(index);
+                        }
+                        left = place.right() + 8.0;
+                    }
+                    height = row_top + 34.0 - pen;
+                }
                 pen += height.max(30.0 - HEAD) + 14.0;
             }
             // The room the comments really took, so the scroll area knows how far there is to scroll.
@@ -695,6 +739,12 @@ pub(crate) fn comment_section(
     };
     let box_top = (list.min.y + used + gap).min(area.max.y - composer).max(area.min.y);
     let (resend, edit, save, cancel, typed, view_change, copy) = output.inner;
+    if let Some(index) = picked {
+        match board.answer_a_choice(&ticket_key, &(index + 1).to_string()) {
+            Ok(answer) => requests.push(Request::Message(answer.message)),
+            Err(problem) => requests.push(Request::Message(problem)),
+        }
+    }
     if let Some(text) = copy {
         requests.push(Request::Copy(text));
     }

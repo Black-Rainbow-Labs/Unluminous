@@ -77,6 +77,11 @@ pub struct Session {
     /// it took (`task-2321`). An agent's stream says when a call starts and when it answers and gives no
     /// duration, so the card under a run of commands read `0.0s` whatever they cost.
     calls_started: Vec<(String, std::time::Instant)>,
+    /// What the agent is waiting for the person to allow or refuse, oldest first (`task-2392`).
+    ///
+    /// Held here rather than in the conversation because a question belongs to the turn that asked it: it is
+    /// gone when the turn ends however it ends, and what was decided is kept as a line of the answer's thinking.
+    pub asking: Vec<crate::approval::Question>,
 }
 
 /// How many calls' start times are remembered. A call is answered long before this many more are made.
@@ -93,6 +98,7 @@ impl Session {
             turn: Usage::default(),
             asked: None,
             calls_started: Vec::new(),
+            asking: Vec::new(),
         }
     }
 
@@ -262,8 +268,17 @@ impl Session {
             // rate limit came out as a short answer with nothing to say why. The failure is the news
             // and the end is not; `Decoder::finish` stops saying it as well, and this is the half that
             // holds whatever the transport does.
+            Reply::Asked(question) => {
+                self.asking.retain(|asked| asked.id != question.id);
+                self.asking.push(question);
+            }
+            Reply::Answered { id, said } => {
+                self.asking.retain(|asked| asked.id != id);
+                self.answer().thinking.push_str(&said);
+            }
             Reply::Finished { .. } if matches!(self.state, State::Failed(_)) => {}
             Reply::Finished { reason } => {
+                self.asking.clear();
                 // **Only a call nothing has answered leaves the turn waiting.** An agent runs its own
                 // tools, so by the time its turn ends every call it made has an answer already —
                 // which is what stops a command-line turn sitting in `waiting-for-tools` for ever
@@ -286,6 +301,7 @@ impl Session {
                 };
             }
             Reply::Failed(problem) => {
+                self.asking.clear();
                 // What arrived before the failure is kept: throwing away half an answer somebody
                 // was reading is worse than keeping it beside the reason it stopped.
                 if let Some(message) = self.answering.and_then(|id| self.message_mut(id)) {
@@ -336,6 +352,7 @@ impl Session {
     /// message for it either — there the child is killed. What this does is record that the answer is
     /// short because somebody said so, rather than because the model had finished.
     pub fn stop(&mut self) {
+        self.asking.clear();
         if let Some(message) = self.answering.and_then(|id| self.message_mut(id)) {
             message.finish = Some("stopped".to_owned());
         }
