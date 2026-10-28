@@ -26,6 +26,9 @@ fn a_pane(folder: &Path, project: &Path, provider: Provider) -> AgentChat {
         .expect("opened");
     chat.configuration.chosen = provider.name.clone();
     chat.configuration.providers = vec![provider];
+    // The scripted agent reads its standard input to the end before it answers, as Claude Code without
+    // `--input-format stream-json` does, so these are turns where nobody is asked (`task-2392`).
+    chat.configuration.ask = false;
     chat.project = Some(project.to_path_buf());
     chat
 }

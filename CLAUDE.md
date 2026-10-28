@@ -2724,6 +2724,35 @@ its own custom layout (same behavior as if they were open in different windows).
   Tab`, `Next Project Tab` and `Previous Project Tab` (`Ctrl`/`Cmd`+`Alt`+`PageDown`/`PageUp`) are the agent's half.
   `tests/project_tabs.rs` is the tests.
 
+## What `task-2392` changed, and the rules it left
+
+- **An endpoint has a mode, in the agent's own words** (`Provider::mode`, `ai.provider.<n>.mode`), chosen from
+  `Wire::modes`: Claude Code's `manual`, `acceptEdits`, `plan`, `auto`, `dontAsk` and `bypassPermissions`, Codex's
+  sandboxes and `approve-for-me`, OpenCode's `plan`, `build` and `auto`, Pi's tool sets, and for an ACP agent any of
+  its own modes, asked for with `session/set_mode`. Empty follows `chat.permission` (`agent::mode_of`). Codex's
+  `approve-for-me` is three `-c` values, read out of Codex 0.153.4, because `codex exec resume` lacks the flag.
+- **A mode reaches a ticket's terminal too** (`agent_tasks::agent::Plan::mode`): `claude --permission-mode auto` in
+  place of `--dangerously-skip-permissions`. With no mode a ticket runs as it always did.
+- **Every program row's `args` are added after the arguments Unluminous builds**, and an ACP row's are still which
+  agent it is. `env` applies to every program.
+- **Claude Code and an ACP agent ask the person** (`unluminous_chat::approval`) while `chat.ask` is on, which it is
+  by default. Claude Code then runs with `--input-format stream-json --permission-prompt-tool stdio`, keeps standard
+  input open until its `result`, and writes `control_request` `can_use_tool`; an ACP agent's
+  `session/request_permission` that `chat.permission` does not allow is deferred. Both reach the pane as
+  `Reply::Asked`, drawn by `components::agent_chat::approval` above the prompt, and the person's choice goes back
+  through `Client::answer`. A turn's thread reads its agent's output on a thread of its own
+  (`approval::lines_of`) so it can look for answers while the agent waits. `claude_asks_live` is the live test.
+- **A ticket's agent stopped on a menu gets a comment** (`screen_choice::comment_for`, posted by
+  `post_the_menus_waiting` once the same menu is seen twice), with the options as buttons under the newest such
+  comment while the menu is on the screen. Choosing one, anywhere, posts an `Answered` comment.
+- **`Edit -> Copy`, `Cut` and `Paste` reach a terminal grid that holds the keyboard**
+  (`terminal_panel::a_terminal_has_the_keyboard`), because on macOS they are key equivalents and the grid never saw
+  `Cmd+C` or `Cmd+V`. `Cut` and `Copy` stay enabled while a grid holds the keyboard.
+- **A double or triple click on a field's ground is the box's** (`controls::claim_the_field`, applied in
+  `a_double_click_takes_the_run_under_it` against the nearest line). A field that takes typing goes through
+  `claim_the_field` with the box's own id.
+- **Past the end of a line is its last letter, never the space it wrapped after** (`Layout::character_at`).
+
 ## What `task-2375` changed, and the rules it left
 
 - **Byte offsets into text are moved by a character's own width, never by one.** Word writes U+00A0 between

@@ -142,35 +142,31 @@ pub fn card<R>(
     let top = column.pen;
     let outer =
         Rect::from_min_max(Pos2::new(column.left, top), Pos2::new(column.right, top + 10_000.0));
+    // **Only the part of a card that can be seen is drawn into its canvas** (`task-2392`). A canvas is one texture,
+    // and a card taller than the largest texture the card takes, which AI Configuration with six endpoints is,
+    // stopped the window. The page scrolls inside the dialog, so the part outside the clip is never seen.
+    let drawn = outer.expand(CARD_REACH).intersect(ui.clip_rect().expand(CARD_REACH));
     let outer_id = ui.id().with(("settings-card", title));
     let inner_id = ui.id().with(("settings-card-rows", title));
-    let (result, bottom) =
-        rux::layer(ui, &state, outer_id, outer.expand(CARD_REACH), |outer_rux| {
-            let state = outer_rux.state;
-            let (result, bottom) =
-                rux::layer(&mut *outer_rux.ui, state, inner_id, outer.expand(CARD_REACH), |rux| {
-                    let mut card = Card {
-                        rux,
-                        left: column.left + CARD_SIDE,
-                        right: column.right - CARD_SIDE,
-                        pen: top + CARD_TOP,
-                        rows: 0,
-                    };
-                    card.heading(title, help);
-                    let result = add(&mut card);
-                    (result, card.pen + CARD_BOTTOM)
-                });
-            let chat = outer_rux.theme().chat;
-            let rect =
-                Rect::from_min_max(Pos2::new(column.left, top), Pos2::new(column.right, bottom));
-            outer_rux.chrome.surface(
-                rect,
-                CARD_RADIUS,
-                Fill::gradient(chat.card, rect),
-                chat.raised(),
-            );
-            (result, bottom)
+    let (result, bottom) = rux::layer(ui, &state, outer_id, drawn, |outer_rux| {
+        let state = outer_rux.state;
+        let (result, bottom) = rux::layer(&mut *outer_rux.ui, state, inner_id, drawn, |rux| {
+            let mut card = Card {
+                rux,
+                left: column.left + CARD_SIDE,
+                right: column.right - CARD_SIDE,
+                pen: top + CARD_TOP,
+                rows: 0,
+            };
+            card.heading(title, help);
+            let result = add(&mut card);
+            (result, card.pen + CARD_BOTTOM)
         });
+        let chat = outer_rux.theme().chat;
+        let rect = Rect::from_min_max(Pos2::new(column.left, top), Pos2::new(column.right, bottom));
+        outer_rux.chrome.surface(rect, CARD_RADIUS, Fill::gradient(chat.card, rect), chat.raised());
+        (result, bottom)
+    });
     // A card is named after its title, so a test can find which card a setting is on and a person reading the
     // window out loud hears the group before its settings.
     let rect = Rect::from_min_max(Pos2::new(column.left, top), Pos2::new(column.right, bottom));
