@@ -5953,3 +5953,46 @@ fn the_chat_settings_model_row_is_a_dropdown_when_the_pills_would_not_fit() {
     });
     assert_eq!(chosen, "codex-review-lane");
 }
+
+/// `task-2392`: *"In agent chat we also need to allow for user interaction that allows the model to prompt to
+/// allow."* What the agent asks to do is a card above the prompt box with its choices, the conversation ends above
+/// the card, and pressing a choice answers it and takes the card away. `state` lists the question and `answer`
+/// is the agent's half.
+#[test]
+fn the_agents_question_is_a_card_above_the_prompt_and_a_press_answers_it() {
+    use unluminous_chat::approval::{Choice, Kind, Question};
+    let mut harness = harness("");
+    did(&mut harness, "plugins pane agent-chat/chat --show");
+    let question = |id: &str| Question {
+        id: id.to_owned(),
+        tool: "Bash".to_owned(),
+        title: "Bash: List the files".to_owned(),
+        input: r#"{"command":"ls -la src"}"#.to_owned(),
+        choices: vec![
+            Choice { id: "allow".to_owned(), label: "Allow".to_owned(), kind: Kind::AllowOnce },
+            Choice {
+                id: "always".to_owned(),
+                label: "Always allow Bash(ls:*)".to_owned(),
+                kind: Kind::AllowAlways,
+            },
+            Choice { id: "deny".to_owned(), label: "Deny".to_owned(), kind: Kind::RejectOnce },
+        ],
+    };
+    with_the_chat(&mut harness, |chat| {
+        chat.session_mut().reply(unluminous_chat::Reply::Asked(question("r1")));
+        chat.session_mut().reply(unluminous_chat::Reply::Asked(question("r2")));
+    });
+    steady(&mut harness);
+    let state = did(&mut harness, "plugins run agent-chat state");
+    assert_eq!(state["asking"].as_array().map(Vec::len), Some(2), "{state}");
+    assert_eq!(state["asking"][0]["choices"][1]["kind"], "allow_always");
+    harness.snapshot(shot("agent_chat_approval_card").as_str());
+    harness.get_by_label("1  Allow").click();
+    steady(&mut harness);
+    let state = did(&mut harness, "plugins run agent-chat state");
+    assert_eq!(state["asking"][0]["id"], "r2", "the first is answered and the second shows");
+    let answered = did(&mut harness, "plugins run agent-chat answer deny");
+    assert!(answered["said"].as_str().unwrap_or_default().starts_with("Denied"), "{answered}");
+    steady(&mut harness);
+    assert!(harness.query_by_label("1  Allow").is_none(), "nothing is left to answer");
+}

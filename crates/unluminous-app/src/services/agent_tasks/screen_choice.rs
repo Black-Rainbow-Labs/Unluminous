@@ -31,7 +31,13 @@ pub struct Choice {
     pub options: Vec<String>,
     /// Which option the cursor is on.
     pub cursor: usize,
+    /// What the menu is about, from the lines above its question: the tool and the command it would run, as
+    /// Claude Code draws them (`task-2392`). A question such as "Do you want to proceed?" says nothing on its own.
+    pub context: Vec<String>,
 }
+
+/// The most lines of context a menu carries.
+const CONTEXT_LINES: usize = 8;
 
 /// How a comment saying the agent is waiting on a menu starts (`task-2392`). The ticket modal draws the menu's options
 /// as buttons under the newest such comment while the menu is still on the screen.
@@ -56,8 +62,12 @@ pub fn comment_for(choice: &Choice, key: &str) -> String {
         .enumerate()
         .map(|(index, option)| format!("{}. {option}", index + 1))
         .collect();
+    let context = match choice.context.is_empty() {
+        true => String::new(),
+        false => format!("```\n{}\n```\n\n", choice.context.join("\n")),
+    };
     format!(
-        "{WAITING} \u{b7} {asked}\n\n{}\n\nChoose below, on the Chat tab, or with `plugins run agent-tasks choice {key} <number>`.",
+        "{WAITING} \u{b7} {asked}\n\n{context}{}\n\nChoose below, on the Chat tab, or with `plugins run agent-tasks choice {key} <number>`.",
         options.join("\n")
     )
 }
@@ -111,14 +121,25 @@ pub fn read(screen: &str) -> Option<Choice> {
     if options.iter().any(|option| option.is_empty()) {
         return None;
     }
-    let question = lines[..first]
-        .iter()
-        .rev()
-        .map(|line| line.trim())
-        .find(|line| !line.is_empty() && !is_a_rule(line))
-        .unwrap_or_default()
-        .to_owned();
-    Some(Choice { question, options, cursor: cursor_at - first })
+    let asked_at =
+        lines[..first].iter().rposition(|line| !line.trim().is_empty() && !is_a_rule(line.trim()));
+    let question = asked_at.map(|at| lines[at].trim().to_owned()).unwrap_or_default();
+    // The lines above the question, back to the rule Claude Code draws over a menu, without its own borders.
+    let mut context: Vec<String> = Vec::new();
+    if let Some(at) = asked_at {
+        for line in lines[..at].iter().rev() {
+            if is_a_plain_rule(line) || context.len() >= CONTEXT_LINES {
+                break;
+            }
+            let line = line.trim().trim_start_matches(['│', '|']).trim();
+            if line.is_empty() || is_a_rule(line) {
+                continue;
+            }
+            context.push(line.to_owned());
+        }
+        context.reverse();
+    }
+    Some(Choice { question, options, cursor: cursor_at - first, context })
 }
 
 /// The keys that move the cursor from `choice.cursor` to `option` and press Enter, one write each.
@@ -205,7 +226,9 @@ fn is_a_plain_rule(line: &str) -> bool {
 fn is_a_rule(line: &str) -> bool {
     let trimmed = line.trim();
     trimmed.chars().count() >= 12
-        && trimmed.chars().all(|c| matches!(c, '─' | '━' | '-' | '╭' | '╮' | '╰' | '╯' | '═'))
+        && trimmed.chars().all(|c| {
+            matches!(c, '─' | '━' | '-' | '╭' | '╮' | '╰' | '╯' | '═' | '╌' | '┄' | '┈' | ' ')
+        })
 }
 
 #[cfg(test)]
@@ -274,9 +297,11 @@ mod tests {
                 "No, and tell Claude what to do differently".to_owned(),
             ],
             cursor: 0,
+            context: vec!["Edit file".to_owned(), "a.rs".to_owned()],
         };
         let body = comment_for(&choice, "task-7");
         assert!(body.starts_with(WAITING));
+        assert!(body.contains("```\nEdit file\na.rs\n```"), "what the menu is about: {body}");
         assert!(body.contains(
             "1. Yes
 2. No, and tell Claude"
@@ -286,5 +311,22 @@ mod tests {
         assert!(the_newest_is_waiting(["hello", body.as_str()].into_iter()));
         assert!(!the_newest_is_waiting([body.as_str(), answered.as_str(), "thanks"].into_iter()));
         assert!(!the_newest_is_waiting(["nothing about a menu"].into_iter()));
+    }
+
+    /// `task-2392`: the lines Claude Code draws above a menu's question, the tool and the command it would run,
+    /// are what the menu is about, and go with it. Measured on Claude Code 2.1.312 in a ticket run in `manual`.
+    #[test]
+    fn a_menu_carries_the_lines_above_its_question() {
+        let screen = "● Reading the ticket.\n\n────────────────────────────────────────────\n PowerShell command\n Read the ticket task-1\n ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n │ & unluminous-cli plugins run agent-tasks task task-1\n ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n\n Do you want to proceed?\n ❯ 1. Yes\n   2. No\n\n Esc to cancel · Tab to amend\n";
+        let choice = read(screen).expect("a menu");
+        assert_eq!(choice.question, "Do you want to proceed?");
+        assert_eq!(
+            choice.context,
+            [
+                "PowerShell command",
+                "Read the ticket task-1",
+                "& unluminous-cli plugins run agent-tasks task task-1"
+            ]
+        );
     }
 }

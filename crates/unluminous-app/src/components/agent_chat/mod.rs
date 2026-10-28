@@ -290,9 +290,32 @@ fn surface(mut parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect)
     );
     // **The conversation is the pane's whole width**, and its rows are inset by [`SIDE`] inside it, so a
     // bubble's shadow at the right-hand edge is not cut by the scrolling area's clip.
+    // **What the agent is waiting for the person to allow** sits above the prompt box, and the conversation ends
+    // above it rather than running under it (`task-2392`): a conversation is anchored to its foot, so the question
+    // and the turn that asked it were hidden behind the card.
+    let card = match parts.mirror.is_none() && !parts.state.settings_open {
+        true => parts.session.asking.first().map(|first| {
+            let stacked = !approval::fits_on_one_row(first, inner_width / scale);
+            let tall = approval::height(first, stacked) * scale;
+            let bottom = composer_rect.top() - 10.0 * scale;
+            let top = (bottom - tall).max(header_rect.bottom() + under_header);
+            (
+                Rect::from_min_max(
+                    Pos2::new(area.left() + side, top),
+                    Pos2::new(area.right() - side, bottom),
+                ),
+                stacked,
+            )
+        }),
+        false => None,
+    };
+    let foot = match &card {
+        Some((card, _)) => card.top() - 10.0 * scale,
+        None => gear_rect.top() - ABOVE_GEAR * scale,
+    };
     let body = Rect::from_min_max(
         Pos2::new(area.left(), header_rect.bottom() + under_header),
-        Pos2::new(area.right(), gear_rect.top() - ABOVE_GEAR * scale),
+        Pos2::new(area.right(), foot.max(header_rect.bottom() + under_header)),
     );
     // Forgotten before it is drawn again, so a pane too short to hold a list does not go on answering a
     // wheel with where one used to be. See `PaneState::list_rect`.
@@ -307,17 +330,7 @@ fn surface(mut parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect)
             acts.extend(conversation(&mut parts, ui, look, body));
         }
     }
-    // **What the agent is waiting for the person to allow**, over the foot of the conversation and above the
-    // prompt box, so it is in view however far up the conversation is scrolled (`task-2392`).
-    if parts.mirror.is_none() && !parts.session.asking.is_empty() && !parts.state.settings_open {
-        let first = &parts.session.asking[0];
-        let stacked = !approval::fits_on_one_row(first, inner_width / scale);
-        let tall = approval::height(first, stacked) * scale;
-        let bottom = composer_rect.top() - 10.0 * scale;
-        let card = Rect::from_min_max(
-            Pos2::new(area.left() + side, (bottom - tall).max(body.top())),
-            Pos2::new(area.right() - side, bottom),
-        );
+    if let Some((card, stacked)) = card {
         let asking = parts.session.asking.clone();
         let speaker = parts.state.speaker.clone();
         acts.extend(approval::show(parts.state, ui, look, card, &asking, &speaker, stacked));

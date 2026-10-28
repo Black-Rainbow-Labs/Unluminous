@@ -189,7 +189,7 @@ pub fn preview(question: &Question) -> Vec<String> {
     } else if let Some(path) =
         text("file_path").or_else(|| text("path")).or_else(|| text("filePath"))
     {
-        lines.push(path.to_owned());
+        lines.push(the_end_of(path));
         if let (Some(old), Some(new)) = (text("old_string"), text("new_string")) {
             lines.extend(old.lines().take(2).map(|line| format!("- {line}")));
             lines.extend(new.lines().take(3).map(|line| format!("+ {line}")));
@@ -207,6 +207,22 @@ pub fn preview(question: &Question) -> Vec<String> {
         lines.push("\u{2026}".to_owned());
     }
     lines
+}
+
+/// The most of a path the preview shows, from its end.
+const PATH_SHOWN: usize = 56;
+
+/// A path cut to its last [`PATH_SHOWN`] characters, because the file's name is at the end and the folders a
+/// person already knows are at the start.
+fn the_end_of(path: &str) -> String {
+    let characters: Vec<char> = path.chars().collect();
+    match characters.len() > PATH_SHOWN {
+        true => format!(
+            "\u{2026}{}",
+            characters[characters.len() - PATH_SHOWN..].iter().collect::<String>()
+        ),
+        false => path.to_owned(),
+    }
 }
 
 #[cfg(test)]
@@ -246,6 +262,17 @@ mod tests {
         assert_eq!(lines[0], "src/a.rs");
         assert_eq!(lines[1], "+ line 1");
         assert_eq!(lines.last().map(String::as_str), Some("\u{2026}"));
+    }
+
+    #[test]
+    fn a_long_path_shows_its_end_where_the_files_name_is() {
+        let path = format!("C:\\{}\\project\\hello.txt", "folder\\".repeat(12));
+        let lines =
+            preview(&question("Write", serde_json::json!({ "file_path": path, "content": "hi" })));
+        assert!(
+            lines[0].starts_with('\u{2026}') && lines[0].ends_with("project\\hello.txt"),
+            "{lines:?}"
+        );
     }
 
     #[test]
