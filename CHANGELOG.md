@@ -6,6 +6,10 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.20.1 — 2026-10-28
+
+- The conversation ends above the approval card, a long path shows its end, and a ticket's menu comment carries what the menu is about (`task-2392`)
+
 ## 1.20.0 — 2026-10-28
 
 - Agent modes and arguments for every endpoint, asking the person before an agent acts, terminal copy and paste from the Edit menu, double click anywhere in a field (`task-2392`)
