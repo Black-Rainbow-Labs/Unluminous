@@ -6,6 +6,10 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.19.1 — 2026-10-28
+
+- Publish-open-source deletes its temporary mirror; agents delete retired worktree evidence after a day (`task-2391`)
+
 ## 1.19.0 — 2026-10-27
 
 - Plugins for the file types engineers open every day (`task-2384`)
