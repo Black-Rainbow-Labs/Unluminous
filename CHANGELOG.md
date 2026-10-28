@@ -6,6 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.20.0 — 2026-10-28
+
+- Agent modes and arguments for every endpoint, asking the person before an agent acts, terminal copy and paste from the Edit menu, double click anywhere in a field (`task-2392`)
+- A settings card draws only what can be seen, so a long AI Configuration card fits a texture; the resume tests ask nobody; CLAUDE.md records the rules (`task-2392`)
+- The six endpoint case is a dropdown in Chat settings, with its own test; settings pages draw their tall cards again; the Mode row carries the gear mark (`task-2392`)
+
 ## 1.19.1 — 2026-10-28
 
 - Publish-open-source deletes its temporary mirror; agents delete retired worktree evidence after a day (`task-2391`)
