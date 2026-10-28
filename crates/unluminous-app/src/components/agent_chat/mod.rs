@@ -607,7 +607,10 @@ fn settings(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
                     );
                     let outcome = rux::components::Select::new(words, *selected)
                         .label("Mode")
-                        .chip(rux::components::SelectLead::Mark(rux::Icon::Key, theme.ink.i400))
+                        .chip(rux::components::SelectLead::Mark(
+                            rux::Icon::Settings,
+                            theme.ink.i400,
+                        ))
                         .show(rux, chip, &mut parts.state.mode_list);
                     if let Some(index) = outcome.chosen.filter(|index| Some(*index) != *selected) {
                         parts.state.mode_list.open = false;

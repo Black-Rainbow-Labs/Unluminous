@@ -121,7 +121,7 @@ fn cards(chat: &mut AgentChat, ui: &mut egui::Ui, column: &mut Column) -> Vec<Re
                 changed |= card.switch(
                     "Ask me before what it may not do",
                     Some(
-                        "Claude Code and ACP agents stop and ask in the chat, with Allow and Deny, instead of being                          refused. Codex, OpenCode and Pi cannot ask, so their mode decides. An endpoint's own mode,                          such as Claude Code's auto, is chosen on AI Configuration or in the Chat settings.",
+                        "Claude Code and ACP agents stop and ask in the chat, with Allow and Deny, instead of being refused. Codex, OpenCode and Pi cannot ask, so their mode decides. An endpoint's own mode, such as Claude Code's auto, is chosen on AI Configuration or in the Chat settings.",
                     ),
                     &mut configuration.ask,
                 );

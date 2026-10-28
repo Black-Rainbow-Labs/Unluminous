@@ -2651,9 +2651,11 @@ fn click_at(harness: &mut Harness<'static, UnluminousApp>, at: egui::Pos2) {
 fn the_gear_opens_chat_settings_where_a_pill_chooses_the_model() {
     let mut harness = harness("");
     did(&mut harness, "plugins pane agent-chat/chat --show");
+    // Two endpoints, whose names fit their pills. With more than fit it is a dropdown: see the test below.
     with_the_chat(&mut harness, |chat| {
         let mut second = chat.configuration().providers[0].clone();
         second.name = "second".to_owned();
+        chat.configuration_mut().providers.truncate(1);
         chat.configuration_mut().providers.push(second);
     });
     steady(&mut harness);
@@ -5918,4 +5920,36 @@ fn shift_click_at(harness: &mut Harness<'static, UnluminousApp>, at: egui::Pos2)
     steady(harness);
     harness.input_mut().events.push(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
     steady(harness);
+}
+
+/// `task-2392`: *"in settings the model options get too crowded when there's a bunch of them. should turn into a
+/// dropdown"*. With six endpoints the pills cut every long name to `claude-…`, so the row is a dropdown instead,
+/// and choosing from it chooses the model.
+#[test]
+fn the_chat_settings_model_row_is_a_dropdown_when_the_pills_would_not_fit() {
+    let mut harness = harness("");
+    did(&mut harness, "plugins pane agent-chat/chat --show");
+    with_the_chat(&mut harness, |chat| {
+        let first = chat.configuration().providers[0].clone();
+        for name in ["claude-opus-long", "claude-sonnet-long", "codex-review-lane"] {
+            let mut one = first.clone();
+            one.name = name.to_owned();
+            chat.configuration_mut().providers.push(one);
+        }
+    });
+    steady(&mut harness);
+    harness.get_by_label("Chat settings").click();
+    steady(&mut harness);
+    assert!(
+        harness.query_by_label("Model: codex-review-lane").is_none(),
+        "no pill for each endpoint"
+    );
+    assert!(harness.query_by_label("Model").is_some(), "a dropdown named Model instead");
+    harness.snapshot(shot("agent_chat_settings_model_dropdown").as_str());
+    did(&mut harness, "plugins run agent-chat use codex-review-lane");
+    let mut chosen = String::new();
+    with_the_chat(&mut harness, |chat| {
+        chosen = chat.chosen_provider().map(|one| one.name.clone()).unwrap_or_default();
+    });
+    assert_eq!(chosen, "codex-review-lane");
 }
