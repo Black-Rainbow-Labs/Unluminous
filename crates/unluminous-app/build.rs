@@ -34,9 +34,56 @@ fn main() {
     println!("cargo:rerun-if-changed=../../unluminous-cli");
     println!("cargo:rerun-if-env-changed=UNLUMINOUS_BUILD_DATE");
     println!("cargo:rustc-env=UNLUMINOUS_BUILD_DATE={}", build_date());
+    bundle_the_skills();
 
     #[cfg(windows)]
     embed_windows_resources();
+}
+
+/// Write `$OUT_DIR/skills_bundle.rs`: a table of every file under `skills/`, by its path inside that folder,
+/// compiled in with `include_bytes!` (`task-2396`).
+///
+/// The Skills Manager shows these with no network, so a fresh install has the catalogue, the pictures and the
+/// Unluminous skills. A table written here rather than by hand, because the folder is the source and a list kept
+/// beside it is a list somebody forgets to update.
+fn bundle_the_skills() {
+    let root =
+        std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("cargo sets it"))
+            .join("skills");
+    let mut files = Vec::new();
+    gather(&root, &root, &mut files);
+    files.sort();
+    let mut table = String::from("pub static FILES: &[(&str, &[u8])] = &[\n");
+    for (inside, path) in files {
+        table.push_str(&format!(
+            "    ({inside:?}, include_bytes!({:?})),\n",
+            path.display().to_string()
+        ));
+    }
+    table.push_str("];\n");
+    let out = std::path::PathBuf::from(std::env::var("OUT_DIR").expect("cargo sets it"));
+    std::fs::write(out.join("skills_bundle.rs"), table).expect("write the skills table");
+}
+
+/// Every file under `folder`, as its path inside `root` with `/` between the parts, and its full path.
+fn gather(
+    root: &std::path::Path,
+    folder: &std::path::Path,
+    into: &mut Vec<(String, std::path::PathBuf)>,
+) {
+    let Ok(entries) = std::fs::read_dir(folder) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            gather(root, &path, into);
+        } else if let Ok(inside) = path.strip_prefix(root) {
+            let parts: Vec<String> = inside
+                .components()
+                .map(|part| part.as_os_str().to_string_lossy().into_owned())
+                .collect();
+            into.push((parts.join("/"), path));
+        }
+    }
 }
 
 /// When this build is happening, as `2026-08-25 10:45pm`, in the local time of this machine.

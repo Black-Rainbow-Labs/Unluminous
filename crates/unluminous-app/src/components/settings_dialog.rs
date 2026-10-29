@@ -681,6 +681,7 @@ fn mark_of(page: Page, plugin_page_marks: &[String]) -> PageMark {
             Some("chat") => PageMark::Line(Icon::Bubble),
             Some("board") => PageMark::Svg(&svg_icon::LIST_TODO),
             Some("design") => PageMark::Svg(&svg_icon::PAINTBRUSH_VERTICAL),
+            Some("blocks") => PageMark::Svg(&svg_icon::BLOCKS),
             Some("database") => PageMark::Line(Icon::Database),
             Some("terminal") => PageMark::Line(Icon::Terminal),
             _ => PageMark::Line(Icon::Puzzle),

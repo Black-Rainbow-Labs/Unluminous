@@ -92,7 +92,8 @@ also accepts equivalent camelCase and snake_case spellings, such as `wait-for`, 
 Two more kinds of tool are in both shapes (`task-2314`):
 
 - **A tool for each plugin that draws** — `unluminous_agent_tasks`, `unluminous_agent_chat`,
-  `unluminous_database` and `unluminous_designer` — whose `command` is an enum of the plugin's own commands
+  `unluminous_database`, `unluminous_designer`, `unluminous_skills`, `unluminous_spreadsheet` and
+  `unluminous_word` — whose `command` is an enum of the plugin's own commands
   and whose `words` is the rest of the line. A call is `plugins run <id> <command> <words>`, down the same
   path as before; the verbs come from `src/plugins.rs`, the table the window's plugins answer from too.
   `unluminous_agent_chat` with `node` drives an Agent Chat node on the Realm.

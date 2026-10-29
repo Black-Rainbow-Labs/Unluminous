@@ -565,6 +565,7 @@ pub fn pane_icon(name: &str) -> fn(&egui::Painter, Pos2, egui::Color32) {
         "table" => icon::table,
         "design" => icon::design,
         "document" => icon::document,
+        "blocks" => icon::blocks,
         _ => icon::board,
     }
 }
@@ -575,6 +576,7 @@ fn rail_mark(name: &str) -> IconDrawer {
     match name {
         "board" => IconDrawer::Svg(&svg_icon::LIST_TODO, MARK),
         "design" => IconDrawer::Svg(&svg_icon::PAINTBRUSH_VERTICAL, MARK),
+        "blocks" => IconDrawer::Svg(&svg_icon::BLOCKS, MARK),
         "folder" => IconDrawer::Line(rux::Icon::Project),
         "terminal" => IconDrawer::Line(rux::Icon::Terminal),
         "run" => IconDrawer::Line(rux::Icon::RunTile),

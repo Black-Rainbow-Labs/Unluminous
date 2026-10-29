@@ -52,6 +52,17 @@ pub static LIST_TODO: SvgMark = SvgMark {
     ],
 };
 
+/// Lucide `blocks` (MIT), 24 unit view box: three squares in an L and a fourth lifted away to the top right, the
+/// Skills Manager's mark (`task-2396`, after `LuBlocks`).
+pub static BLOCKS: SvgMark = SvgMark {
+    view: 24.0,
+    stroke: 1.8,
+    parts: &[
+        Part::Path("M10 22V7a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v12a2 2 0 0 0 2 2h16a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1H2"),
+        Part::Rect { x: 14.0, y: 2.0, w: 8.0, h: 8.0, rx: 1.0 },
+    ],
+};
+
 /// Lucide `key-round`'s older drawing, `key` (MIT), 24 unit view box: a ring and a shaft with two teeth.
 ///
 /// The Settings list's Keymap mark since `task-2293`, whose `rux::Icon::Key` sat a unit and a half above the

@@ -2026,6 +2026,27 @@ pub fn design(painter: &egui::Painter, centre: Pos2, color: Color32) {
 
 /// A document: a page with its top right corner folded over and three lines of text, the last one short.
 /// The Word plugin's settings page (`task-2341`).
+/// The Skills Manager's mark: three squares in an L and a fourth lifted away to the top right, after Lucide's
+/// `blocks` (`task-2396`).
+pub fn blocks(painter: &egui::Painter, centre: Pos2, color: Color32) {
+    let stroke = Stroke::new(1.2, color);
+    let cell = 4.6;
+    let gap = 0.0;
+    let left = centre.x - 6.0;
+    let bottom = centre.y + 6.0;
+    let square = |x: f32, y: f32| Rect::from_min_size(Pos2::new(x, y), egui::Vec2::splat(cell));
+    for rect in [
+        square(left, bottom - cell * 2.0 - gap),
+        square(left, bottom - cell),
+        square(left + cell + gap, bottom - cell),
+    ] {
+        painter.rect_stroke(rect, CornerRadius::same(1), stroke, egui::StrokeKind::Inside);
+    }
+    let lifted =
+        Rect::from_min_size(Pos2::new(centre.x + 1.4, centre.y - 6.0), egui::Vec2::splat(cell));
+    painter.rect_stroke(lifted, CornerRadius::same(1), stroke, egui::StrokeKind::Inside);
+}
+
 pub fn document(painter: &egui::Painter, centre: Pos2, color: Color32) {
     let page = Rect::from_center_size(centre, egui::Vec2::new(10.0, 13.0));
     let fold = 3.2;

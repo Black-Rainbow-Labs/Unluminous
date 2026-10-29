@@ -8,6 +8,7 @@ pub mod ai_endpoints;
 // The Agent-Tasks plugin: the first plugin that draws. `agent_tasks::AgentTasks` is the
 // `plugin_ui::UiProvider` the manifest names, and everything under it is testable with no window.
 pub mod agent_tasks;
+pub mod skills;
 // Allocation counters, compiled in only by the `diagnostic-allocations` feature. A release build
 // keeps the system allocator and reads zeroes, which is what makes it safe to ask from a frame.
 #[cfg(feature = "diagnostic-allocations")]

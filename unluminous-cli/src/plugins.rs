@@ -42,6 +42,11 @@ pub const PLUGINS: &[Plugin] = &[
         commands: DESIGNER,
     },
     Plugin {
+        id: "skills",
+        note: "The Skills Manager: agent skills (SKILL.md folders) from unluminous.com, your own, and any found on this machine, installed for Claude Code, Codex, OpenCode, Pi, Cursor, Copilot and more, per project or global. A skill is named by its id, such as caveman.",
+        commands: SKILLS,
+    },
+    Plugin {
         id: "spreadsheet",
         note: "Excel and CSV workbooks in tabs. A range is A1, B2:C9, A:C, 3:5 or Sheet2!A1; a verb chooses the range it names first. `open` a file first.",
         commands: SPREADSHEET,
@@ -234,6 +239,27 @@ pub const DESIGNER: &[(&str, &str)] = &[
     ("restore", "Put a copy back as the design: restore <copy>, by name or by place in the list."),
     ("reload", "Load the page again."),
     ("source", "Open the design's file as text."),
+];
+
+pub const SKILLS: &[(&str, &str)] = &[
+    ("open-pane", "Show the Skills Manager."),
+    ("list", "list [all|installed|mine|updates|unluminous|found]: the skills and where each is installed."),
+    ("show", "show <id>: a skill, its files and installs, and whether it is edited or has an update."),
+    ("text", "text <id>: its SKILL.md."),
+    ("harnesses", "The agents skills install into, with their project and global folders."),
+    ("install", "install <id> [agent...|all] [--project|--global] [--force]"),
+    ("remove", "remove <id> [agent...|all] [--project|--global] [--force]"),
+    ("new", "new <name> [description]: make a skill and open its SKILL.md."),
+    ("edit", "edit <id>: open its SKILL.md; saving updates every installed copy."),
+    ("write", "write <id> <text>: replace its SKILL.md."),
+    ("delete", "delete <id>: delete one of yours, or a found one, and its copies."),
+    ("reset", "reset <id>: put a shipped skill back as it shipped."),
+    ("check", "Read unluminous.com's catalogue now."),
+    ("update", "update <id|all> [--discard]"),
+    ("scope", "scope project|global"),
+    ("filter", "filter all|installed|mine|updates"),
+    ("search", "search <words>"),
+    ("view", "view <id|list>: a skill's page in the pane, or the grid."),
 ];
 
 pub const WORD: &[(&str, &str)] = &[

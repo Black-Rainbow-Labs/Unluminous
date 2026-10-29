@@ -76,6 +76,13 @@ pub const ALL: &[(&str, &str, Option<&[u8]>)] = &[
         include_str!("../../../plugins/spreadsheet/plugin.conf"),
         Some(include_bytes!("../../../plugins/spreadsheet/icon.png")),
     ),
+    // The Skills Manager, `task-2396`. A `ui` plugin whose pane installs agent skills into every coding agent's skills
+    // folder, from unluminous.com's catalogue, the person's own library and what is already on the machine.
+    (
+        "skills",
+        include_str!("../../../plugins/skills/plugin.conf"),
+        Some(include_bytes!("../../../plugins/skills/icon.png")),
+    ),
     // The Realm, `task-2202`. A `ui` plugin whose provider is the window itself: it claims `.realm`, gives
     // those files this icon, shows `.realm-files/` in the explorer, and is the switch for the Realm panel.
     (

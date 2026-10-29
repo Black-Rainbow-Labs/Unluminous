@@ -1,0 +1,4813 @@
+{
+  "schema": 1,
+  "updated": "2026-10-29",
+  "base": "https://unluminous.com/skills",
+  "skills": [
+    {
+      "id": "unluminous-task",
+      "name": "Unluminous Task",
+      "author": "Black Rainbow Labs",
+      "category": "Productivity",
+      "summary": "Works one Agent-Tasks ticket from plan to hand back, through the board's own commands.",
+      "description": "Reads a ticket on the Unluminous Agent-Tasks board, plans it as todos, does the work, comments on what changed and how it was checked, and moves it to Agent Done. Every step goes through the board, so the person watching sees it happen.",
+      "tags": [
+        "unluminous",
+        "agent-tasks",
+        "tickets",
+        "workflow"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/Black-Rainbow-Labs/Unluminous",
+      "path": "crates/unluminous-app/skills/unluminous-task",
+      "homepage": "https://unluminous.com",
+      "unluminous": true,
+      "popularity": "Ships with Unluminous.",
+      "sources": [],
+      "image": "images/unluminous-task.jpg",
+      "sha256": "73929a9e557da6f50ffc6fdc0978732b74de9558713c22e2122a98f8c6765e86",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "62e0107a423f7b4ee7f09b18d0859025c2cf72ee9a57f6dcae40ce9eba845e45",
+          "size": 3916
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "unluminous-supervisor",
+      "name": "Unluminous Supervisor",
+      "author": "Black Rainbow Labs",
+      "category": "Productivity",
+      "summary": "Works the Agent-Tasks board: QA Failed first, then New, one agent a ticket.",
+      "description": "Chooses the next ticket on the Unluminous Agent-Tasks board, starts the agent it is assigned to, watches its terminal, answers what it can, and checks every hand back before moving on, until QA Failed and New are empty.",
+      "tags": [
+        "unluminous",
+        "agent-tasks",
+        "supervisor",
+        "automation"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/Black-Rainbow-Labs/Unluminous",
+      "path": "crates/unluminous-app/skills/unluminous-supervisor",
+      "homepage": "https://unluminous.com",
+      "unluminous": true,
+      "popularity": "Ships with Unluminous.",
+      "sources": [],
+      "image": "images/unluminous-supervisor.jpg",
+      "sha256": "a638cae36c82925a8729917522428526e85f0cf900c5a1085a8599357a0a4096",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "be546825f56330436c8e60823ad744d762844a1b69e43db3f576c93a7d2dfdea",
+          "size": 2845
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "unluminous",
+      "name": "Unluminous",
+      "author": "Black Rainbow Labs",
+      "category": "Productivity",
+      "summary": "Drives the Unluminous window through its MCP tools instead of an agent's own file tools.",
+      "description": "Teaches an agent which Unluminous tool does which job, how a call is written, and what to do when a call is refused, so edits, searches, git and the debugger happen in the window the person is looking at.",
+      "tags": [
+        "unluminous",
+        "mcp",
+        "editor"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/Black-Rainbow-Labs/Unluminous",
+      "path": "crates/unluminous-app/skills/unluminous",
+      "homepage": "https://unluminous.com",
+      "unluminous": true,
+      "popularity": "Ships with Unluminous.",
+      "sources": [],
+      "image": "images/unluminous.jpg",
+      "sha256": "cef7a64de42be66ccf3e495ca520d571df7e414a836b239968265415961b230b",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "aa42bfb9fceb6ff3a0cee8b9425fb1df665472070942632644f4582cb5d60718",
+          "size": 4732
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "find-skills",
+      "name": "Find Skills",
+      "author": "Vercel Labs",
+      "summary": "Searches the open skills registry and installs a skill when you ask for a capability.",
+      "description": "When you ask how to do something or whether a skill exists for it, this skill searches the skills.sh registry and the npx skills command and offers to install a match. It is the entry point for discovering other skills.",
+      "category": "Meta",
+      "tags": [
+        "discovery",
+        "registry",
+        "install",
+        "skills"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/vercel-labs/skills",
+      "path": "skills/find-skills",
+      "homepage": "https://skills.sh",
+      "popularity": "Number 1 on the skills.sh all time leaderboard with 4.1M installs (page read 2026-10-28); repository has 37,038 GitHub stars.",
+      "sources": [
+        "https://skills.sh",
+        "https://vercel.com/blog/state-of-agent-skills"
+      ],
+      "ref": "92a9a34ac3bf88e695e468b90c7bf32f163d32c8",
+      "install": "npx skills add vercel-labs/skills --skill find-skills",
+      "image": "images/find-skills.jpg",
+      "sha256": "b146008599c31057cef1c145774cea5d5afb30e8f43fa802e47a4b461419aaaf",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "c00eeea0e13e74fe4a9d84ba0a8542205a1b736d65f13134fe1a6647eb14976f",
+          "size": 5472
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "grill-me",
+      "name": "Grill Me",
+      "author": "Matt Pocock",
+      "summary": "Interviews you relentlessly about a plan until the design is sharp.",
+      "description": "A small entry point that hands off to the grilling skill, which asks one hard question at a time about your plan or design until gaps and hidden assumptions are exposed. It is one of the most installed skills in Matt Pocock's engineering set.",
+      "category": "Planning",
+      "tags": [
+        "interview",
+        "planning",
+        "design",
+        "review"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/mattpocock/skills",
+      "path": "skills/productivity/grill-me",
+      "popularity": "Number 2 on skills.sh with 1.5M installs (2026-10-28); mattpocock/skills has 305,808 GitHub stars and the repository was updated 2026-10-27.",
+      "sources": [
+        "https://skills.sh",
+        "https://github.com/selan-ai/top-claude-code-skills",
+        "https://skillsclaude.org/leaderboard"
+      ],
+      "ref": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "install": "npx skills add mattpocock/skills --skill grill-me",
+      "image": "images/grill-me.jpg",
+      "sha256": "14c292fe16c0aed833cbbabb0983515c8d665fb6061d9755b13dba870363323b",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "caaf8b8de1684f96e26b28f3c29189db5c89cce4b73e1c93d86164f66ef88637",
+          "size": 157
+        },
+        {
+          "path": "agents/openai.yaml",
+          "sha256": "c061e39c3e0f9d865fb1b97556d485704af2a8a58f4b8221a8917a5c2074a32b",
+          "size": 137
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "hyperframes",
+      "name": "HyperFrames",
+      "author": "HeyGen",
+      "summary": "Teaches an agent to build, animate and render video from HTML with HyperFrames.",
+      "description": "The core skill of HeyGen's open source HyperFrames framework, which renders HTML compositions to video. It covers launch films, explainers, captions, charts, vertical clips and the validation loop an agent needs to produce valid motion graphics.",
+      "category": "Motion",
+      "tags": [
+        "video",
+        "motion",
+        "html",
+        "animation",
+        "gsap"
+      ],
+      "license": "Apache-2.0",
+      "repository": "https://github.com/heygen-com/hyperframes",
+      "path": "skills/hyperframes",
+      "homepage": "https://github.com/heygen-com/hyperframes",
+      "popularity": "1.3M installs on skills.sh (2026-10-28), with sibling skills hyperframes-cli, hyperframes-animation and media-use each above 1M; repository has 74,778 GitHub stars.",
+      "sources": [
+        "https://skills.sh",
+        "https://nevercodealone.de/glossare/ki-tools-2026/hyperframes-lokaler-video-schnitt-open-source-2026"
+      ],
+      "ref": "a5496b1887950777b78ed5ac2bff3505961cb5fe",
+      "install": "npx skills add heygen-com/hyperframes --skill hyperframes",
+      "image": "images/hyperframes.jpg",
+      "sha256": "ec7a77e6b9325a75ff1ddde7b4faeb86a5ecb55f8ae166c8509fad48c783548d",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "96f3793bd677dde345c5aca4aa6484334100a154e8a5d9e2ad07d69c9b9e2b0e",
+          "size": 7165
+        },
+        {
+          "path": "assets/frame-presets/biennale-yellow/FRAME.md",
+          "sha256": "76d22cced9c152b0edb520543cf34c4ce772a312caa7211c40d4315b53c053cf",
+          "size": 17789
+        },
+        {
+          "path": "assets/frame-presets/biennale-yellow/caption-skin.html",
+          "sha256": "b0e4812d9cb5852969be276f8a98ffa2b293ba8cc902fababae3f3f6340088c3",
+          "size": 8131
+        },
+        {
+          "path": "assets/frame-presets/biennale-yellow/frame-showcase.html",
+          "sha256": "5ba04e47cf9897e023dcfa49e1ec26fe26bac0c5061097dc6e7cb1d9ed46d7d0",
+          "size": 34908
+        },
+        {
+          "path": "assets/frame-presets/blockframe/FRAME.md",
+          "sha256": "ef8d9d47a209bed4ccc2d928c14a81cdaecb5129f5dc0cdc0dc40afc7ef92931",
+          "size": 16292
+        },
+        {
+          "path": "assets/frame-presets/blockframe/caption-skin.html",
+          "sha256": "a1073a9910efb0bd146d9ee4513ef95bd72c4993db399ccb4decf2d10002faab",
+          "size": 8345
+        },
+        {
+          "path": "assets/frame-presets/blockframe/frame-showcase.html",
+          "sha256": "8d2e4963713928b353d0aa28c2c83fce415df81b66a500c192b602c0aaf4ddf2",
+          "size": 38856
+        },
+        {
+          "path": "assets/frame-presets/blue-professional/FRAME.md",
+          "sha256": "62e9a445885f6057084493de385a8ce20c3b4a299ae36a553ef54884f06bad68",
+          "size": 17202
+        },
+        {
+          "path": "assets/frame-presets/blue-professional/caption-skin.html",
+          "sha256": "e2524d610d0c833f6b71355357c13b26e670ec581c28ce37d12ead15ce4297b4",
+          "size": 8257
+        },
+        {
+          "path": "assets/frame-presets/blue-professional/frame-showcase.html",
+          "sha256": "715b130d086977a48925a3c79bb079fbc7270274c9c9a7761bf275df3020b0ba",
+          "size": 39108
+        },
+        {
+          "path": "assets/frame-presets/bold-poster/FRAME.md",
+          "sha256": "af756ef993099f9ac78328f676eb79a6572ff0e9c2aacf12787471cd4525b171",
+          "size": 15984
+        },
+        {
+          "path": "assets/frame-presets/bold-poster/caption-skin.html",
+          "sha256": "a19c81d30377687605e2345601efabba5315d0d4db13c3ab4748d7004778c24a",
+          "size": 8720
+        },
+        {
+          "path": "assets/frame-presets/bold-poster/frame-showcase.html",
+          "sha256": "57bbc3374b6a8b37ce59e36ed784c22bbb88fd44d039955221913b3e1bacf159",
+          "size": 32385
+        },
+        {
+          "path": "assets/frame-presets/broadside/FRAME.md",
+          "sha256": "3af0a1e5e61bece19841671672d7732082f03d5699b713475e90323a21dbcc89",
+          "size": 16303
+        },
+        {
+          "path": "assets/frame-presets/broadside/caption-skin.html",
+          "sha256": "f074e1a9662d48ec0008aff7fffa1bdeeda40c5c5e05db9bd0fa6dd2ecdc7a6b",
+          "size": 8431
+        },
+        {
+          "path": "assets/frame-presets/broadside/frame-showcase.html",
+          "sha256": "8d23a2cbeb898568a5626b38ffc864236fb4a09930d59b17c34c45f34c8e4161",
+          "size": 33899
+        },
+        {
+          "path": "assets/frame-presets/capsule/FRAME.md",
+          "sha256": "f06dba67a3859f7c732b5177f7bcc58c94592caa5d6bbbcc6730a7876f5baa7a",
+          "size": 17214
+        },
+        {
+          "path": "assets/frame-presets/capsule/caption-skin.html",
+          "sha256": "0e62f725051213512566b6f615c438b893a3b39507a5a2666a52938c8dd74e46",
+          "size": 8374
+        },
+        {
+          "path": "assets/frame-presets/capsule/frame-showcase.html",
+          "sha256": "b3a642b5df3bbfb1ff227f1b82ee3ea02b51f20a0d7c5c46c97d72b180cddb4f",
+          "size": 43052
+        },
+        {
+          "path": "assets/frame-presets/cartesian/FRAME.md",
+          "sha256": "3dc6a31813a333b2a7a1509ddbd3b4dabbbd7e12e6479b6cff10d69c185fec95",
+          "size": 17294
+        },
+        {
+          "path": "assets/frame-presets/cartesian/caption-skin.html",
+          "sha256": "e3e08147d1725d40576f4f97687ce0c6a4c32ee1b74dac2720f0ba652b9dfcfd",
+          "size": 8315
+        },
+        {
+          "path": "assets/frame-presets/cartesian/frame-showcase.html",
+          "sha256": "d7867cee5e07c4f22345c566071f2ce0261b3fccca111a94dfbec5fde64f3e55",
+          "size": 35340
+        },
+        {
+          "path": "assets/frame-presets/cobalt-grid/FRAME.md",
+          "sha256": "62a6c9e6e5188cc29b9c0098e9bb8e72c23f152d9a99dd92c58139d26b69b19f",
+          "size": 17286
+        },
+        {
+          "path": "assets/frame-presets/cobalt-grid/caption-skin.html",
+          "sha256": "5cc71d8f0669e80d12ccb6bb83722870eecfeccade0bf64f8fb165e23fbadf3f",
+          "size": 8825
+        },
+        {
+          "path": "assets/frame-presets/cobalt-grid/frame-showcase.html",
+          "sha256": "b135214cd2e310273a01e3f72b2828149f022803954a22a13cbf27aa1c2f518a",
+          "size": 47020
+        },
+        {
+          "path": "assets/frame-presets/code-editorial/FRAME.md",
+          "sha256": "c24f6925cf938b88a93368443091440648e715c75ac38bd90abdaab6130bb4ad",
+          "size": 20610
+        },
+        {
+          "path": "assets/frame-presets/code-editorial/caption-skin.html",
+          "sha256": "724a20adff3824e4d31d5d51cc094337209a896a5ef3ae1e4e28aa502ee980e4",
+          "size": 8322
+        },
+        {
+          "path": "assets/frame-presets/code-editorial/fonts/EBGaramond-400.woff2",
+          "sha256": "b63448e2680a0dbde70ebb2f3de78f6c515122835491f938e8a8595b46f29210",
+          "size": 21704
+        },
+        {
+          "path": "assets/frame-presets/code-editorial/fonts/EBGaramond-700.woff2",
+          "sha256": "5d0f8a497a48fd2a3611d07acc844f65c9fbb35419eafa4e1295f5f0f95f86e4",
+          "size": 23076
+        },
+        {
+          "path": "assets/frame-presets/code-editorial/fonts/Inter-400.woff2",
+          "sha256": "8909904ab6c872eb994093482a88a28eca2cd95912d7b6fecd72103b0dc07edc",
+          "size": 23664
+        },
+        {
+          "path": "assets/frame-presets/code-editorial/fonts/Inter-700.woff2",
+          "sha256": "6f56409fd3d64bb85f7d070bce20749db2d66b6d63cec586cc22d1c761be2491",
+          "size": 24356
+        },
+        {
+          "path": "assets/frame-presets/code-editorial/fonts/JetBrainsMono-400.woff2",
+          "sha256": "14425ba9c695763c1547f48a206b7aa60350a33ae23de09f0407877f3fcd89eb",
+          "size": 21168
+        },
+        {
+          "path": "assets/frame-presets/code-editorial/fonts/JetBrainsMono-700.woff2",
+          "sha256": "d0d4e818808f2a0ba39b2b09d1989366f63494e295f003c7ef436697378507e8",
+          "size": 21908
+        },
+        {
+          "path": "assets/frame-presets/code-editorial/fonts/OFL-eb-garamond.txt",
+          "sha256": "f03c8eda63076cd52317dcd40aa04db8472d4cb592dfaafa385129dfdafc7f9c",
+          "size": 4519
+        },
+        {
+          "path": "assets/frame-presets/code-editorial/fonts/OFL-inter.txt",
+          "sha256": "3b0a5fca3d17942cde889069889dedbbbd075e9b599968c82a95f4d944e9b345",
+          "size": 4477
+        },
+        {
+          "path": "assets/frame-presets/code-editorial/fonts/OFL-jetbrains-mono.txt",
+          "sha256": "403581b69dac5cff4079205e01c6b467e56af449ecbd7247693ddb1baafa005b",
+          "size": 4524
+        },
+        {
+          "path": "assets/frame-presets/code-editorial/frame-showcase.html",
+          "sha256": "08d711f5409a6af3fb6de05febe47fee77e4c8e85517bf2d087e2277b524e4ab",
+          "size": 43711
+        },
+        {
+          "path": "assets/frame-presets/coral/FRAME.md",
+          "sha256": "8530ecb36d1bb2d53392d88d972df35beeba19a5bcb3260fc9b18a58de7cdfe8",
+          "size": 18950
+        },
+        {
+          "path": "assets/frame-presets/coral/caption-skin.html",
+          "sha256": "44904b0567292521391fb576f07de7d2f5d8bce81d0369460f1054d093a06877",
+          "size": 8330
+        },
+        {
+          "path": "assets/frame-presets/coral/frame-showcase.html",
+          "sha256": "8ddf31ae13a4e57fe9730892fbbcb171cae67a204b5cb00b00374984f49b8f76",
+          "size": 36472
+        },
+        {
+          "path": "assets/frame-presets/creative-mode/FRAME.md",
+          "sha256": "c1a1359502d9fc79ef267305291fe0f651219c72d88088cee32327dd933dead8",
+          "size": 19605
+        },
+        {
+          "path": "assets/frame-presets/creative-mode/caption-skin.html",
+          "sha256": "2a45f759d64f5f6713ad2d529468df5bb345afe7d441d46c6316072348c1061b",
+          "size": 8389
+        },
+        {
+          "path": "assets/frame-presets/creative-mode/frame-showcase.html",
+          "sha256": "32c1371fcd526c56edb515e5b255ad736a3e330ba3ff2631c61576064b384ef0",
+          "size": 38750
+        },
+        {
+          "path": "assets/frame-presets/daisy-days/FRAME.md",
+          "sha256": "42d827dbd279990052e171d04380b5e6bbc111ae391dc283deb7a452e70b9b97",
+          "size": 17445
+        },
+        {
+          "path": "assets/frame-presets/daisy-days/caption-skin.html",
+          "sha256": "5af839f607efb817d96956f3b016fd6fd065851f69ac1ac223a8634737bd497e",
+          "size": 8516
+        },
+        {
+          "path": "assets/frame-presets/daisy-days/frame-showcase.html",
+          "sha256": "4fb93e5fa3ba12367f303996b6ca8b62f8e18c721d02e8032274df12d49d96f3",
+          "size": 42293
+        },
+        {
+          "path": "assets/frame-presets/editorial-forest/FRAME.md",
+          "sha256": "ceeb2ab768367da1e1f3e1eca36ab9feeb3de3e4d15493319b0044c3d869329c",
+          "size": 17019
+        },
+        {
+          "path": "assets/frame-presets/editorial-forest/caption-skin.html",
+          "sha256": "50427bf7fcec9c8ac22f195a0e7fc442ad85e733198837ee0b9b8050296a0fa5",
+          "size": 8356
+        },
+        {
+          "path": "assets/frame-presets/editorial-forest/frame-showcase.html",
+          "sha256": "bb87b88b91184f4fee7f02eea63ed35d9d378fa89fad8988326e31e82a43dbb1",
+          "size": 36847
+        },
+        {
+          "path": "references/captions.md",
+          "sha256": "e7e2af7eace992487baa455bfa703fb3d770fb29f36732541554e60a46896d54",
+          "size": 4985
+        },
+        {
+          "path": "references/film.md",
+          "sha256": "b684403f725cf720b9f192bafd420ca55f24060114004234a4e46a715de7a183",
+          "size": 7236
+        },
+        {
+          "path": "references/format.md",
+          "sha256": "babb5d4bfeffa8422c8e3474833a827a2a3dd95d234e8a37c130c4973d360533",
+          "size": 13048
+        },
+        {
+          "path": "references/look.md",
+          "sha256": "5128a54cdb75bca2f627170e4a3a9667f4f11cf1579301fc16c53862c29c3ad3",
+          "size": 6031
+        },
+        {
+          "path": "references/motion.md",
+          "sha256": "80b9bd70c011b7fc679f351cb41b993b16d610af1cda316eaf9d19bf9c08372f",
+          "size": 12162
+        },
+        {
+          "path": "references/overlays.md",
+          "sha256": "d87fa3d13e8e0dace593f4aafb68c085b7f4393eee468c7695a74d5665150da3",
+          "size": 2592
+        },
+        {
+          "path": "references/plugin-installation.md",
+          "sha256": "d3268edd1bbf2bc4e077108462aacff8c04bd2660472dd6ca9fd1bb32839b661",
+          "size": 2706
+        },
+        {
+          "path": "references/review.md",
+          "sha256": "90886b58db02aaa53e6b91c433748629eda061b18465804b56ebbbab92508e56",
+          "size": 5327
+        },
+        {
+          "path": "references/runtimes.md",
+          "sha256": "ace12b068aa573717f68e7e3e2e333bed8fc692ba63434efaaf362073b3463b6",
+          "size": 4019
+        },
+        {
+          "path": "references/skill-lifecycle.md",
+          "sha256": "3039b344a4bc63118ff7680a1008bcc7bfc0637563e6ac69f59cc5e06a31874a",
+          "size": 4191
+        },
+        {
+          "path": "references/sound.md",
+          "sha256": "be9e39ef947678b3ffed452063ce414af4a7d7c534b1e6c440bb5ce474d28ab4",
+          "size": 3599
+        },
+        {
+          "path": "references/spec.md",
+          "sha256": "6fa0658c5cf5c23058f70a6549cc952d683979052a0934760ba748bbec88fbc0",
+          "size": 6055
+        },
+        {
+          "path": "references/story.md",
+          "sha256": "3c2b96bb7f262652f4bf5efdef1ae806b47fd259c6704cb131938c5254965f22",
+          "size": 11486
+        },
+        {
+          "path": "references/storyboard-format.md",
+          "sha256": "f79e3be44cf2e506cdd2d1c46926319a0067f11889fe8aaf3a55759a9c61fb86",
+          "size": 6696
+        },
+        {
+          "path": "references/storyboard.md",
+          "sha256": "f757c6d2b26e1a3587a63a4a8f9aafab86d9507ed31579f4dda4279397742fe3",
+          "size": 4067
+        },
+        {
+          "path": "references/types/3d.md",
+          "sha256": "1a8c965d36bac37c5625cd404b37c3d3913632cb858881d89741afacc560ea12",
+          "size": 1673
+        },
+        {
+          "path": "references/types/character.md",
+          "sha256": "e8b4f6fd622acff593e2d7e478aa4e18ace1f9f785d16e42db5faf57ed525498",
+          "size": 1635
+        },
+        {
+          "path": "references/types/data.md",
+          "sha256": "c5fda22433aca573b871eeff956cd57e3773d6b16ffd9b3cc5726937912c1b7a",
+          "size": 1322
+        },
+        {
+          "path": "references/types/explainer.md",
+          "sha256": "ef2bd945bd347e760fd483515189c58e8000bd2cbc5f4b1c2d3e5d34e4d81f4e",
+          "size": 3045
+        },
+        {
+          "path": "references/types/launch.md",
+          "sha256": "1405b663227018d3dd7bfef895bcea3d3dd6c596078316bec30e8686d014f661",
+          "size": 4738
+        },
+        {
+          "path": "references/types/music.md",
+          "sha256": "868df2814d2a8e8f2bc884372d674320aee43c995fc67d25a109ebfdecb58b4a",
+          "size": 1606
+        },
+        {
+          "path": "references/types/vertical.md",
+          "sha256": "fed9f5a1a3ceb204bb54e0dda0fd50befe611d0ab388a5036fc80cbc117a691b",
+          "size": 1646
+        },
+        {
+          "path": "scripts/bake-basemap.mjs",
+          "sha256": "8322256cd43c597e2962af6c33c6be652084ae24c0c9a6af24183388d64e2b8d",
+          "size": 18158
+        },
+        {
+          "path": "scripts/lib/main-module.mjs",
+          "sha256": "61811e09110856e1439c29875e4a4ad7701ae45d4045f9d1dcb6a7929698e4c0",
+          "size": 479
+        },
+        {
+          "path": "scripts/lib/main-module.test.mjs",
+          "sha256": "3d0ee22dd8b7acbdf8997c11449f29f13bafe6b20668a478ba504f66ec1ef151",
+          "size": 1943
+        },
+        {
+          "path": "scripts/locate.mjs",
+          "sha256": "9274b1b63a74b305f044dfd907ae5ddae538d566d31c23b81c39975be6317147",
+          "size": 8234
+        },
+        {
+          "path": "scripts/plugin-cli.mjs",
+          "sha256": "1ec46cdb9d819ecc9367aba719fea9253089617ead8c5454e59ab18b206711fb",
+          "size": 2899
+        },
+        {
+          "path": "scripts/plugin-cli.test.mjs",
+          "sha256": "abfdf2498b57509438077803bee3a626c6fc13e1014ae066e5281edbfc4ca23d",
+          "size": 4398
+        }
+      ],
+      "bundled": "partial"
+    },
+    {
+      "id": "agent-browser",
+      "name": "Agent Browser",
+      "author": "Vercel Labs",
+      "summary": "Drives a real browser from the command line for navigation, forms, screenshots and testing.",
+      "description": "Documents the agent-browser CLI, which lets an agent open pages, click, fill forms, extract data and take screenshots. It is used for web app testing and automation from any coding agent.",
+      "category": "Testing",
+      "tags": [
+        "browser",
+        "automation",
+        "cli",
+        "screenshots"
+      ],
+      "license": "Apache-2.0",
+      "repository": "https://github.com/vercel-labs/agent-browser",
+      "path": "skills/agent-browser",
+      "popularity": "1.3M installs on skills.sh (2026-10-28); vercel-labs/agent-browser has 44,783 GitHub stars.",
+      "sources": [
+        "https://skills.sh"
+      ],
+      "ref": "50d81fc134bf7539b56b3924abc27d371b1e106d",
+      "install": "npx skills add vercel-labs/agent-browser --skill agent-browser",
+      "image": "images/agent-browser.jpg",
+      "sha256": "80161e6836b3b40f4e83730a290deb40ac14d877d38c97ad5f6d71be37ce74c3",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "3a7520e64de2dfaa516b6721c001e84e06e3c06a187b82af029ae721540ebfac",
+          "size": 3457
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "tdd",
+      "name": "Test Driven Development",
+      "author": "Matt Pocock",
+      "summary": "Guides red, green, refactor test first work with integration style tests.",
+      "description": "Walks an agent through building features or fixing bugs test first, one vertical slice at a time. It favors integration style tests over mocks and keeps refactoring as a separate step.",
+      "category": "Testing",
+      "tags": [
+        "tdd",
+        "testing",
+        "refactor",
+        "workflow"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/mattpocock/skills",
+      "path": "skills/engineering/tdd",
+      "popularity": "1.2M installs on skills.sh (2026-10-28); mattpocock/skills has 305,808 GitHub stars.",
+      "sources": [
+        "https://skills.sh",
+        "https://github.com/selan-ai/top-claude-code-skills"
+      ],
+      "ref": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "install": "npx skills add mattpocock/skills --skill tdd",
+      "image": "images/tdd.jpg",
+      "sha256": "aaed5857190bc8088332725c9c8deecf560744f6f7ef0bdfccf4bdf3fe678c16",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "5505d25bbaa8fc14a79e4d20163936958992a2995b7f1dd1d6197edc9ed722e0",
+          "size": 3629
+        },
+        {
+          "path": "agents/openai.yaml",
+          "sha256": "ea6f01cf1b8c06a4b0f5b649d74b1b8ce8685e72af1b38d70d877693e092af0b",
+          "size": 87
+        },
+        {
+          "path": "mocking.md",
+          "sha256": "3ceb807fdf4a47d6a93d4d9a891e5ba6d362a6247bd08adc451feebfc17361ef",
+          "size": 1481
+        },
+        {
+          "path": "tests.md",
+          "sha256": "859f9e592c188fda4fc7277dd180e4ce9c7a2e13f6efe1f6f29eccc9d28c106a",
+          "size": 2214
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "improve-codebase-architecture",
+      "name": "Improve Codebase Architecture",
+      "author": "Matt Pocock",
+      "summary": "Scans a codebase for deepening opportunities and presents them as a visual report.",
+      "description": "Reads a codebase, finds shallow modules and tangled seams, and presents the findings as a visual HTML report. It then grills you through whichever opportunity you pick.",
+      "category": "Planning",
+      "tags": [
+        "architecture",
+        "refactor",
+        "review",
+        "modules"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/mattpocock/skills",
+      "path": "skills/engineering/improve-codebase-architecture",
+      "popularity": "1.2M installs on skills.sh (2026-10-28); mattpocock/skills has 305,808 GitHub stars.",
+      "sources": [
+        "https://skills.sh",
+        "https://github.com/selan-ai/top-claude-code-skills"
+      ],
+      "ref": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "install": "npx skills add mattpocock/skills --skill improve-codebase-architecture",
+      "image": "images/improve-codebase-architecture.jpg",
+      "sha256": "21e81aed6d25a2b16ad0e6b9ec65b398145a110d11fd76951263d13372822e9d",
+      "files": [
+        {
+          "path": "HTML-REPORT.md",
+          "sha256": "581e8bb5a521e46bbda8ca7e19b15948bed882187108092ebb90c62513b77528",
+          "size": 6641
+        },
+        {
+          "path": "SKILL.md",
+          "sha256": "552240a5ab5cec6b67c15dd1ad6e9f6962b1bca6ce870059a8c2713760c20392",
+          "size": 6000
+        },
+        {
+          "path": "agents/openai.yaml",
+          "sha256": "c8cb20f68ebf0edb4e497bc11ae5fcaa196004e661cd189015b04f4109ced7f1",
+          "size": 166
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "frontend-design",
+      "name": "Frontend Design",
+      "author": "Anthropic",
+      "summary": "Pushes an agent toward distinctive, intentional UI instead of templated defaults.",
+      "description": "Anthropic's official skill for aesthetic direction, typography and bold visual choices when building or reshaping an interface. It is meant to stop generated pages from looking like every other AI made site.",
+      "category": "Frontend",
+      "tags": [
+        "design",
+        "ui",
+        "typography",
+        "css"
+      ],
+      "license": "Apache-2.0",
+      "repository": "https://github.com/anthropics/skills",
+      "path": "skills/frontend-design",
+      "popularity": "1.0M installs on skills.sh (2026-10-28); anthropics/skills has 184,531 GitHub stars (2026-10-29).",
+      "sources": [
+        "https://skills.sh",
+        "https://github.com/selan-ai/top-claude-code-skills",
+        "https://www.firecrawl.dev/blog/best-claude-code-skills"
+      ],
+      "ref": "ca45fc496a3436251f191354091d557da31c15b5",
+      "install": "npx skills add anthropics/skills --skill frontend-design",
+      "image": "images/frontend-design.jpg",
+      "sha256": "7e9c2af00fd5b3144f49ce6fb1b16037b392ab9c2f049423b0b6114d99381ba2",
+      "files": [
+        {
+          "path": "LICENSE.txt",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+          "size": 10174
+        },
+        {
+          "path": "SKILL.md",
+          "sha256": "d91970639e9f5c37682ac7ab60094d35f1c7c1f38d731bd56396563aee10c1d3",
+          "size": 9390
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "diagnosing-bugs",
+      "name": "Diagnosing Bugs",
+      "author": "Matt Pocock",
+      "summary": "Runs a disciplined diagnosis loop for hard bugs and performance regressions.",
+      "description": "Applies a structured loop to bugs that resist quick fixes: reproduce, narrow, form a hypothesis, test it, then fix. It triggers when something is broken, throwing, failing or slow.",
+      "category": "Debugging",
+      "tags": [
+        "debugging",
+        "performance",
+        "diagnosis",
+        "workflow"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/mattpocock/skills",
+      "path": "skills/engineering/diagnosing-bugs",
+      "popularity": "858.5K installs on skills.sh (2026-10-28); mattpocock/skills has 305,808 GitHub stars.",
+      "sources": [
+        "https://skills.sh",
+        "https://github.com/selan-ai/top-claude-code-skills"
+      ],
+      "ref": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "install": "npx skills add mattpocock/skills --skill diagnosing-bugs",
+      "image": "images/diagnosing-bugs.jpg",
+      "sha256": "29faf0d352422aa58beb0ce4666a49bdfdd5d2cc065c9dfe9be7b7e89fbdf584",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "849198df88cdb65fd0d97236604c1fca7ff2f22d2f705f9724a800d0266b118d",
+          "size": 8664
+        },
+        {
+          "path": "agents/openai.yaml",
+          "sha256": "3e430dbe4334a87597488c060cb3dc3786bb00c9182877d6f5ec41f62490e90b",
+          "size": 103
+        },
+        {
+          "path": "scripts/hitl-loop.template.sh",
+          "sha256": "35103539fc36873eea36074769ad454f9379d6fc8b2dc0e26ce987fd3bfe5503",
+          "size": 1316
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "vercel-react-best-practices",
+      "name": "React Best Practices",
+      "author": "Vercel Labs",
+      "summary": "React and Next.js performance rules from Vercel Engineering.",
+      "description": "A rule set from Vercel Engineering for writing, reviewing and refactoring React and Next.js code with fewer waterfalls, smaller bundles and better rendering. It is applied automatically when an agent works on React code.",
+      "category": "Frontend",
+      "tags": [
+        "react",
+        "nextjs",
+        "performance",
+        "vercel"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/vercel-labs/agent-skills",
+      "path": "skills/react-best-practices",
+      "popularity": "849.8K installs on skills.sh (2026-10-28); vercel-labs/agent-skills has 33,170 GitHub stars. The repo has no LICENSE file, its README states MIT.",
+      "sources": [
+        "https://skills.sh",
+        "https://vercel.com/blog/state-of-agent-skills"
+      ],
+      "ref": "1a2c79d4e6c4a2283dc2c614b6538cbe1ed5ca62",
+      "install": "npx skills add vercel-labs/agent-skills --skill vercel-react-best-practices",
+      "image": "images/vercel-react-best-practices.jpg",
+      "sha256": "e3f2294574b469c7c198373a443a86571012769d0bbeed68854bd55642ec0d7b",
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "sha256": "fc93e7421177bbf869cce892bc60a6c83a4517d974bc3bf65c4e2c1e58a6ccf6",
+          "size": 108261
+        },
+        {
+          "path": "README.md",
+          "sha256": "9eafb2123d3b8b2aef41fba0db2648a3f4f49996f8c7c8bb2c86263befd8b48a",
+          "size": 3360
+        },
+        {
+          "path": "SKILL.md",
+          "sha256": "71ed7794962fa6e803ee83030517b5b93a9f70fbfeb431ec4535c5480a8d8355",
+          "size": 7251
+        },
+        {
+          "path": "metadata.json",
+          "sha256": "c4e18bac3290fbe1b471a605867d4df68b03144ea26b8befdbe8f9d8fd124354",
+          "size": 921
+        },
+        {
+          "path": "rules/_sections.md",
+          "sha256": "01c59969e4e867f0708c8f8ef9c6d87fab9a07d0586244f429ff84013db8a115",
+          "size": 1554
+        },
+        {
+          "path": "rules/_template.md",
+          "sha256": "99df2a3ea088c6c22de2484ddc7e964d0e9923846f44c63380343ecc64455442",
+          "size": 631
+        },
+        {
+          "path": "rules/advanced-effect-event-deps.md",
+          "sha256": "55ed8f9f27a1bff803d6fa55828176207714b02123cbb97ddb8a90d88024a723",
+          "size": 1802
+        },
+        {
+          "path": "rules/advanced-event-handler-refs.md",
+          "sha256": "a3097edeecfb2ff6851cd66ed8cdf0617c3c88180504bee824aa6e75a215bbbc",
+          "size": 1483
+        },
+        {
+          "path": "rules/advanced-init-once.md",
+          "sha256": "3e4dc22173eb0e2b6dcf583e3babd862b8696328f8f59aee7c4d746c5bc05f6c",
+          "size": 958
+        },
+        {
+          "path": "rules/advanced-use-latest.md",
+          "sha256": "8a3f64dfe5a77d1564248faf17fe662ae75b55d497a243cb30b38eb07ccbbf9a",
+          "size": 1072
+        },
+        {
+          "path": "rules/async-api-routes.md",
+          "sha256": "523338540d73427dc14c0cbb19f2741ebccdf8b105a7b2c1b33d2905cf237a42",
+          "size": 1125
+        },
+        {
+          "path": "rules/async-cheap-condition-before-await.md",
+          "sha256": "03107c1f70a293cd58a8abc5474c5548e20ea4efdf01b6d45aae7ad0ac1cb32c",
+          "size": 1220
+        },
+        {
+          "path": "rules/async-defer-await.md",
+          "sha256": "f3c142d090615abdcc99d31c123be37b31f0f1ed8d9ec9f7789a3bc6883ae0fb",
+          "size": 2208
+        },
+        {
+          "path": "rules/async-dependencies.md",
+          "sha256": "16ef469f877e30c6b8e1e1b4bc3e527312fa3c6318cb785a4eca186ea236131a",
+          "size": 1293
+        },
+        {
+          "path": "rules/async-parallel.md",
+          "sha256": "6d2f841896279e976dfcdc1ac89e70771ac188baadfd43c096b5706cb838b961",
+          "size": 654
+        },
+        {
+          "path": "rules/async-suspense-boundaries.md",
+          "sha256": "de05fedac2eb7ae563b887b5a424464ec3dfaf84e5b7797467ebe2a796ac8afc",
+          "size": 2510
+        },
+        {
+          "path": "rules/bundle-analyzable-paths.md",
+          "sha256": "62090b5c815fd71bf1133dce754f51abc16a9456d0ccd025fd627de27726e92a",
+          "size": 2382
+        },
+        {
+          "path": "rules/bundle-barrel-imports.md",
+          "sha256": "e648f6d54525f07a691357040ca5bff6ea3424788a91ff63812adb29622a671b",
+          "size": 2795
+        },
+        {
+          "path": "rules/bundle-conditional.md",
+          "sha256": "09c8259c3efb04fc0abb8e412ccbda217c222ae8118516283e571c995fe3a7d4",
+          "size": 949
+        },
+        {
+          "path": "rules/bundle-defer-third-party.md",
+          "sha256": "3719fb47b191e8db4fe22686ec88448ad5af9e6838585425abbe103d0b642e37",
+          "size": 920
+        },
+        {
+          "path": "rules/bundle-dynamic-imports.md",
+          "sha256": "401817a7369f315fc5a68a1095742ff7d53d0461906880dc9d64a41495ee1986",
+          "size": 791
+        },
+        {
+          "path": "rules/bundle-preload.md",
+          "sha256": "d1f7cc28da7cd5ab249acd287edc5b761afcfb194e9cb62cd44c5f3543db2de2",
+          "size": 1149
+        },
+        {
+          "path": "rules/client-event-listeners.md",
+          "sha256": "242a873349febc1ce685e85617994784dbab92c2eaa68aed7fed5a83e7680e93",
+          "size": 1969
+        },
+        {
+          "path": "rules/client-localstorage-schema.md",
+          "sha256": "0fb7cdf9dc93fdf22f87e3669f953fb9d4ac9b0be42eec4a29fe9a2560610b88",
+          "size": 1950
+        },
+        {
+          "path": "rules/client-passive-event-listeners.md",
+          "sha256": "1f35016f9053de69e884ee9be00654e37979c2ca85f5e57764dc2626ff7acb4b",
+          "size": 1644
+        },
+        {
+          "path": "rules/client-swr-dedup.md",
+          "sha256": "644652c39c6cc00de8d1c77a7273612e868dc3f7edda30764164c12ec0f764a3",
+          "size": 1159
+        },
+        {
+          "path": "rules/js-batch-dom-css.md",
+          "sha256": "480b891b9eaf96e929dc1e964274a4828e3a78009b7d00ccd965a0d425215959",
+          "size": 3266
+        },
+        {
+          "path": "rules/js-cache-function-results.md",
+          "sha256": "3daaa11d24f4295cb6be8bc6f407f2ce83cc7b5bd1f0e68891ea8ab835721dc7",
+          "size": 1949
+        },
+        {
+          "path": "rules/js-cache-property-access.md",
+          "sha256": "73e47431e74878a927061bf0ddc7cd91a7556cb35d2573f3421e82300d9ae311",
+          "size": 532
+        },
+        {
+          "path": "rules/js-cache-storage.md",
+          "sha256": "11b826b0433898c1ece2d3547010d8e77db9fb240185748c45db91493de9b6cc",
+          "size": 1651
+        },
+        {
+          "path": "rules/js-combine-iterations.md",
+          "sha256": "71add08aeeb43091d4ff4c0b2842cce8b4bdef8ad3e732cc034bb5a84827e746",
+          "size": 753
+        },
+        {
+          "path": "rules/js-early-exit.md",
+          "sha256": "925ce5ce87f3347186ca62212f29cc6baa2b8c85a96d2720ad07c3d0abf781c0",
+          "size": 1133
+        },
+        {
+          "path": "rules/js-flatmap-filter.md",
+          "sha256": "9e5b166a41914d975bef7635467f8fb32cd98b5c3126c0bc6f163490812fb5f0",
+          "size": 1411
+        },
+        {
+          "path": "rules/js-hoist-regexp.md",
+          "sha256": "f9e9aef2f7c2307dd7310f283df85dcada45fc43e9bb941b0c3aa414dec21ec4",
+          "size": 1028
+        },
+        {
+          "path": "rules/js-index-maps.md",
+          "sha256": "5df1bdc2cfabb2c98abd55d26762e5c18189535c2e686184f426082e62920391",
+          "size": 837
+        },
+        {
+          "path": "rules/js-length-check-first.md",
+          "sha256": "8b54a311c826b299272f29187fc58bc55772a04c4a72eeb29456ee96dc9fc624",
+          "size": 1747
+        },
+        {
+          "path": "rules/js-min-max-loop.md",
+          "sha256": "87dfb67e2f39df6ad8bcfb5b78c5fb364d3c07554ad188a202408d99f3763421",
+          "size": 2290
+        },
+        {
+          "path": "rules/js-request-idle-callback.md",
+          "sha256": "ee08f83905b4011abbc33d594033157d77561b5bbd9b36b04f0f409581ffec32",
+          "size": 2647
+        },
+        {
+          "path": "rules/js-set-map-lookups.md",
+          "sha256": "a7fd781a6ba9ad49065961b6f9a90ef486bf6b648390e1a08704025f98e1642b",
+          "size": 532
+        },
+        {
+          "path": "rules/js-tosorted-immutable.md",
+          "sha256": "d0a5e1b0fec48a0a81397957e2f068e224329f7c42cb5feeed8aae6fa64025e8",
+          "size": 1782
+        },
+        {
+          "path": "rules/rendering-activity.md",
+          "sha256": "1e5e7eaf3555e61d6a2e900089c676527d26259501db5594f59544b6c664f85a",
+          "size": 564
+        },
+        {
+          "path": "rules/rendering-animate-svg-wrapper.md",
+          "sha256": "9c6ae0ca7a51434e803887c64cded760956579a1452ccb80a461a03f9c937c77",
+          "size": 1185
+        },
+        {
+          "path": "rules/rendering-conditional-render.md",
+          "sha256": "2ec2fa23c4148285144687050c52369adba3da2fbe3d486f8d3e0aad8f06f2bc",
+          "size": 980
+        },
+        {
+          "path": "rules/rendering-content-visibility.md",
+          "sha256": "64eee6d5b916fe74df33363994b27fc7f71bea3bcedc7ee04bda23107ca3e6e4",
+          "size": 815
+        },
+        {
+          "path": "rules/rendering-hoist-jsx.md",
+          "sha256": "93b229560fae92005ed9a2a829064607b39b2e984e92d221d05b2d41df2b7c0e",
+          "size": 1039
+        },
+        {
+          "path": "rules/rendering-hydration-no-flicker.md",
+          "sha256": "dc7ab358c67c177bca6e6f360fbc935ebe4efa928c0ba3ebd3f9f3d9e2000ca3",
+          "size": 2308
+        },
+        {
+          "path": "rules/rendering-hydration-suppress-warning.md",
+          "sha256": "915bacb934e2927d84b37a3f3d225a47b309ac8f9e494ed2bcb66ce07c5676a2",
+          "size": 872
+        },
+        {
+          "path": "rules/rendering-resource-hints.md",
+          "sha256": "351b1095d641717b930f1b2253282b7120af3023bc74e06c17675168d4286864",
+          "size": 2549
+        },
+        {
+          "path": "rules/rendering-script-defer-async.md",
+          "sha256": "4cea07b7875ba7fc2c7465ff23b63a2bb334f90aaf2d9293d38d67b05fdb32ab",
+          "size": 1868
+        },
+        {
+          "path": "rules/rendering-svg-precision.md",
+          "sha256": "ed468533f6e95f622859c884b122cf21f9f593ed6bb3d500a54de4b9f9bcb9fb",
+          "size": 588
+        },
+        {
+          "path": "rules/rendering-usetransition-loading.md",
+          "sha256": "3a1249c3f13026b6f54ab5712c388df219d6af01b12aa542749acd99a46f4bc1",
+          "size": 2074
+        },
+        {
+          "path": "rules/rerender-defer-reads.md",
+          "sha256": "234050a77faf50cb306be10a9e15bd4421134ab5907e75f13e6d78e2bd262dc9",
+          "size": 973
+        },
+        {
+          "path": "rules/rerender-dependencies.md",
+          "sha256": "17eb5830956fb56486fd3cfc7431f5849d39751730c05ad9e77dd4f0c27169c5",
+          "size": 824
+        },
+        {
+          "path": "rules/rerender-derived-state-no-effect.md",
+          "sha256": "cb11ec76f50aa7b6847269f02d79b120c889a30d9ecd2c1d578f75144419c77a",
+          "size": 1201
+        },
+        {
+          "path": "rules/rerender-derived-state.md",
+          "sha256": "1c326bb67b01fb084eb00c8911b0a7cff54681c2315b629f88e49b64eaa6481d",
+          "size": 728
+        },
+        {
+          "path": "rules/rerender-functional-setstate.md",
+          "sha256": "5e68df6b2ae8058e67f476ff1ac67bde159f5a9d18df439e46eabcdeb7b52e58",
+          "size": 2968
+        },
+        {
+          "path": "rules/rerender-lazy-state-init.md",
+          "sha256": "4ae844740f266fc8cbf050701230286624a2440ec5be67b9a63d9edc3c580573",
+          "size": 2016
+        },
+        {
+          "path": "rules/rerender-memo-with-default-value.md",
+          "sha256": "81c47476564ad8a79fc68fc442734255ca7d6829424359464503fda0a9f9a0dd",
+          "size": 1173
+        },
+        {
+          "path": "rules/rerender-memo.md",
+          "sha256": "1f258990c2f27ff6256b3cc5c43300631bb3f0d81f749aed08d07fcdcc131dd1",
+          "size": 1148
+        },
+        {
+          "path": "rules/rerender-move-effect-to-event.md",
+          "sha256": "abc2cbf167bee056743023351e96806a411d3398da8802093620aecf0721f029",
+          "size": 1268
+        },
+        {
+          "path": "rules/rerender-no-inline-components.md",
+          "sha256": "1cc32907a770272524ba682eef9e7efdd8ad4533b6f89b718a1fcd7d1d0eb6a3",
+          "size": 2135
+        },
+        {
+          "path": "rules/rerender-simple-expression-in-memo.md",
+          "sha256": "5bdcf2d1558ba5204e643c887b7b4060f89630969425651eb68e96427d97f800",
+          "size": 1018
+        },
+        {
+          "path": "rules/rerender-split-combined-hooks.md",
+          "sha256": "6f45d703343484ef9acef9388397f3642966ae6a5a258899a0cf1f9977cfbf6c",
+          "size": 1844
+        },
+        {
+          "path": "rules/rerender-transitions.md",
+          "sha256": "60f4033909a62df5e5b8c601494f9e50a562e2f8c1c2d81eac24f38142265f1c",
+          "size": 1055
+        },
+        {
+          "path": "rules/rerender-use-deferred-value.md",
+          "sha256": "8c3579576a61a949884167745dcfaf1d5426ba305cc61fd0a79602d70fda4909",
+          "size": 1846
+        },
+        {
+          "path": "rules/rerender-use-ref-transient-values.md",
+          "sha256": "f1a649af9d1d0b5c762f6c9c4c1c70c90d7df82aa10296ee87aadb78c1b76c54",
+          "size": 1742
+        },
+        {
+          "path": "rules/server-after-nonblocking.md",
+          "sha256": "d0b8d24a3db9f0f65f9e2bddbf230b0e03a5f60e1229d93a4a18f5e7a991c7c2",
+          "size": 2012
+        },
+        {
+          "path": "rules/server-auth-actions.md",
+          "sha256": "a2ca8aa102839251c7971ec784560fab943c20b36fe6f80365d4110c13260c23",
+          "size": 2649
+        },
+        {
+          "path": "rules/server-cache-lru.md",
+          "sha256": "1924b64561841923b88a657085097a0aeba3e0ba2d5470b9f5c15cc10d6ae70f",
+          "size": 1353
+        },
+        {
+          "path": "rules/server-cache-react.md",
+          "sha256": "fddeea6c870bb3da4134b61d54b7d09b83d2603f929b7547cd3dc1dc269edd5c",
+          "size": 2228
+        },
+        {
+          "path": "rules/server-dedup-props.md",
+          "sha256": "c2747424cdac46be62f835f245a0aa887b0090b416d28e2ac8676702645eeb37",
+          "size": 2060
+        },
+        {
+          "path": "rules/server-hoist-static-io.md",
+          "sha256": "5abea4dd882b13661bd5f7dfb93f9e547d5f08176c61c448ade91b210ed5d49f",
+          "size": 4423
+        },
+        {
+          "path": "rules/server-no-shared-module-state.md",
+          "sha256": "4d869bf1cd2f1632e5ca4c0e64b1cf0e71c5f5a0f940bc8a22174d205e735ed7",
+          "size": 1766
+        },
+        {
+          "path": "rules/server-parallel-fetching.md",
+          "sha256": "569a2e9fc04f9606686cd75c5894ef8781b502786a7fffe241396846c7733472",
+          "size": 1554
+        },
+        {
+          "path": "rules/server-parallel-nested-fetching.md",
+          "sha256": "ad5d9656984d4a959997a2367bf59cc6632297b4634a1dd13a087939d83f30b3",
+          "size": 992
+        },
+        {
+          "path": "rules/server-serialization.md",
+          "sha256": "f4c7d68b29c82381baad059c4a7f09e868e71ec9c3115a26ad3ae7d24c0dfe1f",
+          "size": 996
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "web-design-guidelines",
+      "name": "Web Design Guidelines",
+      "author": "Vercel Labs",
+      "summary": "Reviews UI code against the Web Interface Guidelines for accessibility and UX.",
+      "description": "Fetches the current Web Interface Guidelines and audits your UI files against them. Use it to review a page for accessibility, design and UX problems.",
+      "category": "Frontend",
+      "tags": [
+        "accessibility",
+        "ux",
+        "audit",
+        "guidelines"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/vercel-labs/agent-skills",
+      "path": "skills/web-design-guidelines",
+      "popularity": "797.8K installs on skills.sh (2026-10-28); vercel-labs/agent-skills has 33,170 GitHub stars. The repo has no LICENSE file, its README states MIT.",
+      "sources": [
+        "https://skills.sh",
+        "https://vercel.com/blog/state-of-agent-skills"
+      ],
+      "ref": "1a2c79d4e6c4a2283dc2c614b6538cbe1ed5ca62",
+      "install": "npx skills add vercel-labs/agent-skills --skill web-design-guidelines",
+      "image": "images/web-design-guidelines.jpg",
+      "sha256": "f3bc47f890f42a44db1007ab390709ec368e4b8c089baee6b0007182236ac474",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "f4647ca866a3accf763777f83e7682954f0187cd6bea7eea0399796652414e8f",
+          "size": 1231
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "systematic-debugging",
+      "name": "Systematic Debugging",
+      "author": "Jesse Vincent",
+      "summary": "Forces root cause investigation before any fix is proposed.",
+      "description": "Part of the Superpowers set. It makes an agent find the root cause of a bug, test failure or odd behavior with evidence before it proposes a fix.",
+      "category": "Debugging",
+      "tags": [
+        "debugging",
+        "root-cause",
+        "superpowers",
+        "workflow"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/obra/superpowers",
+      "path": "skills/systematic-debugging",
+      "popularity": "obra/superpowers has 307,497 GitHub stars (2026-10-29), number 1 in the selan.ai ranking; skillsclaude.org lists this skill third among 12,679.",
+      "sources": [
+        "https://github.com/selan-ai/top-claude-code-skills",
+        "https://skillsclaude.org/leaderboard",
+        "https://www.firecrawl.dev/blog/best-claude-code-skills"
+      ],
+      "ref": "2ce8aa15d05bd57213e6f746f953aafb7ded7a8b",
+      "install": "npx skills add obra/superpowers --skill systematic-debugging",
+      "image": "images/systematic-debugging.jpg",
+      "sha256": "7c2628773e52f1687e74f9d802f2ea1c2cbae24ef5ca3fda0b8f21340f50d590",
+      "files": [
+        {
+          "path": "CREATION-LOG.md",
+          "sha256": "c24733a5b1821bd6bed1fc950261f0b9f4e90097e0bbb96459d8179713730789",
+          "size": 4257
+        },
+        {
+          "path": "SKILL.md",
+          "sha256": "51c6435d98c83c42c96ba7c35725a0b2c376cd487fb1a4e6bd0ddbe7e33ef202",
+          "size": 9530
+        },
+        {
+          "path": "condition-based-waiting-example.ts",
+          "sha256": "40ae5ebe497fdf310200e43fe986552546d0a22837c0d39e855db1cfd33eb88e",
+          "size": 5054
+        },
+        {
+          "path": "condition-based-waiting.md",
+          "sha256": "e89fec8400d6cd50f43407cec9fab50976ba4d55d0ec2eb51c0bd68036b54c26",
+          "size": 3516
+        },
+        {
+          "path": "defense-in-depth.md",
+          "sha256": "1e175fb86fc357e58c6aebf5441e481e1b7868b4380c0456b63a17eefbd18ba7",
+          "size": 3650
+        },
+        {
+          "path": "find-polluter.sh",
+          "sha256": "dd7b8f13c4cc2a24b33ff87b18da9248f3e1c80a085c3316224f69ff0fa5c43c",
+          "size": 1986
+        },
+        {
+          "path": "root-cause-tracing.md",
+          "sha256": "75b933b6a8c40bdb2031b10f21654395b56ec6ab6bc7b018c18d3fe57aeb7fb8",
+          "size": 5321
+        },
+        {
+          "path": "test-academic.md",
+          "sha256": "fe2ba480d78ac0d686dc025f41c2a32a43d642bf533f91b0c6053a04d35d6486",
+          "size": 653
+        },
+        {
+          "path": "test-pressure-1.md",
+          "sha256": "0b6a915db0054577819834c79be9eb614e97bddba10d73768e1fbe91cfed048a",
+          "size": 1900
+        },
+        {
+          "path": "test-pressure-2.md",
+          "sha256": "b2030aeffba07050e8ad573ddf87486457c4a016a786bb326235bebd856f2016",
+          "size": 2283
+        },
+        {
+          "path": "test-pressure-3.md",
+          "sha256": "96b50a52e2c7989c9cf20fb752c47c1e9a3a70dc362f8f7989f8f5b64dac7708",
+          "size": 2692
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "writing-plans",
+      "name": "Writing Plans",
+      "author": "Jesse Vincent",
+      "summary": "Turns a spec into a step by step implementation plan before any code is touched.",
+      "description": "Part of the Superpowers set. Given requirements for a multi step task, it writes a detailed plan with small tasks and verification steps so an agent or subagent can follow it.",
+      "category": "Planning",
+      "tags": [
+        "planning",
+        "spec",
+        "superpowers",
+        "tasks"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/obra/superpowers",
+      "path": "skills/writing-plans",
+      "popularity": "obra/superpowers has 307,497 GitHub stars (2026-10-29); skillsclaude.org lists this skill second among 12,679 skills.",
+      "sources": [
+        "https://github.com/selan-ai/top-claude-code-skills",
+        "https://skillsclaude.org/leaderboard"
+      ],
+      "ref": "2ce8aa15d05bd57213e6f746f953aafb7ded7a8b",
+      "install": "npx skills add obra/superpowers --skill writing-plans",
+      "image": "images/writing-plans.jpg",
+      "sha256": "b96f84fcdd4fc87bf3264e960e7a423bf6d3612e2b3355b4d6cd5f61ef7fe45d",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "a6c67c1900064347c2a329990dd3c555657c51c3ec53b259a08aa01a2c26139a",
+          "size": 10335
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "brainstorming",
+      "name": "Brainstorming",
+      "author": "Jesse Vincent",
+      "summary": "Explores intent and design with you before building anything new.",
+      "description": "Part of the Superpowers set. It is meant to run before creative work such as new features or components, asking questions and proposing approaches until a design is approved.",
+      "category": "Planning",
+      "tags": [
+        "brainstorm",
+        "design",
+        "superpowers",
+        "discovery"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/obra/superpowers",
+      "path": "skills/brainstorming",
+      "popularity": "obra/superpowers has 307,497 GitHub stars (2026-10-29); Brainstorming is the first step of its default workflow.",
+      "sources": [
+        "https://github.com/selan-ai/top-claude-code-skills",
+        "https://www.firecrawl.dev/blog/best-claude-code-skills",
+        "https://composio.dev/content/top-claude-skills"
+      ],
+      "ref": "2ce8aa15d05bd57213e6f746f953aafb7ded7a8b",
+      "install": "npx skills add obra/superpowers --skill brainstorming",
+      "image": "images/brainstorming.jpg",
+      "sha256": "c7df2e2fbd0ee30184f631f0ae196a6b591cec122b75a40c93455d947f215a67",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "61a7ef918652108c76a3fd01e02dd92d39996c6b46d4cb2819cbd03f6c45e46a",
+          "size": 13602
+        },
+        {
+          "path": "builder-check-prompt.md",
+          "sha256": "36d51a4723d6f0a3ce5811a0ea3b3a8424f07533947e1355f5d8cb8cce40c55e",
+          "size": 881
+        },
+        {
+          "path": "scripts/frame-template.html",
+          "sha256": "6a8a4e58bd6a44b904e2e3c57de774481d909204597e1498de53f1b2fecc4c4e",
+          "size": 8094
+        },
+        {
+          "path": "scripts/helper.js",
+          "sha256": "43c6d69954a46ec34a2a262bcc62a9a7e83e839c739f199cb72646d397c686e3",
+          "size": 5615
+        },
+        {
+          "path": "scripts/server.cjs",
+          "sha256": "763abf96510e0b892a1141397b31aa82ef900cf87ed34dde94bc8782baf4a7ca",
+          "size": 25699
+        },
+        {
+          "path": "scripts/start-server.sh",
+          "sha256": "a4e5ae84275bcaacd2f84345afeabe59cf7b00ba080e123da7cc1fb226f12847",
+          "size": 6908
+        },
+        {
+          "path": "scripts/stop-server.sh",
+          "sha256": "0b5ccbbd57f62d3ed88993f7940b5ee0e5c0fc9b21c550c623da4f6292e47daf",
+          "size": 3263
+        },
+        {
+          "path": "visual-companion.md",
+          "sha256": "6ffcb038b53254bd31debaa15e12dcd4ff24bd63d690e0b644ac6396701cf2e2",
+          "size": 13413
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "karpathy-guidelines",
+      "name": "Karpathy Guidelines",
+      "author": "multica-ai",
+      "summary": "Behavior rules that cut overcomplication and keep edits small and verifiable.",
+      "description": "Condenses Andrej Karpathy's observations about common LLM coding mistakes into guidelines: think before coding, keep it simple, make surgical changes and define success criteria.",
+      "category": "Productivity",
+      "tags": [
+        "guidelines",
+        "coding",
+        "simplicity",
+        "karpathy"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/multica-ai/andrej-karpathy-skills",
+      "path": "skills/karpathy-guidelines",
+      "popularity": "multica-ai/andrej-karpathy-skills has 226,009 GitHub stars (2026-10-29); the repo's last push was 2026-04-20. The repo has no LICENSE file, its README states MIT.",
+      "sources": [
+        "https://skillsclaude.org/leaderboard",
+        "https://www.firecrawl.dev/blog/best-claude-code-skills"
+      ],
+      "ref": "2c606141936f1eeef17fa3043a72095b4765b9c2",
+      "install": "npx skills add multica-ai/andrej-karpathy-skills --skill karpathy-guidelines",
+      "image": "images/karpathy-guidelines.jpg",
+      "sha256": "5e8a1677df986d47abaf3d42f1ce0c7427ea030f50370c52baf9ba1e2c7c3db9",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "6e22cc54cb02a5e98ae42d06d9d7292db0c1b43894831b32879beb0166b2aea7",
+          "size": 2518
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "skill-creator",
+      "name": "Skill Creator",
+      "author": "Anthropic",
+      "summary": "Creates, tests and improves skills and measures their performance.",
+      "description": "Anthropic's skill for building new skills from scratch, editing existing ones, running evals and tuning descriptions so they trigger correctly. It includes scripts and a viewer for benchmark results.",
+      "category": "Meta",
+      "tags": [
+        "skills",
+        "authoring",
+        "evals",
+        "anthropic"
+      ],
+      "license": "Apache-2.0",
+      "repository": "https://github.com/anthropics/skills",
+      "path": "skills/skill-creator",
+      "popularity": "anthropics/skills has 184,531 GitHub stars (2026-10-29), number 4 in the selan.ai ranking; skill-creator is its most cited authoring skill.",
+      "sources": [
+        "https://github.com/selan-ai/top-claude-code-skills",
+        "https://www.firecrawl.dev/blog/best-claude-code-skills"
+      ],
+      "ref": "ca45fc496a3436251f191354091d557da31c15b5",
+      "install": "npx skills add anthropics/skills --skill skill-creator",
+      "image": "images/skill-creator.jpg",
+      "sha256": "4557d54c524c67984e4bab23fa436e90196292ae8df4d2093f0ce0e6951bfc1c",
+      "files": [
+        {
+          "path": "LICENSE.txt",
+          "sha256": "bc6b3af2f331cbc7fb0da1344efb2cbe5877a31498b4d70dbc7000f3405a1362",
+          "size": 11345
+        },
+        {
+          "path": "SKILL.md",
+          "sha256": "dcd4803e61e913e6fc27294184cd3a71f09f5e924ff20c8a9a20173e7b3c2bcf",
+          "size": 33168
+        },
+        {
+          "path": "agents/analyzer.md",
+          "sha256": "bf68f4cac5a56c673a928c2e6d619586c5b93ea364026ab37547772cb45a663a",
+          "size": 10376
+        },
+        {
+          "path": "agents/comparator.md",
+          "sha256": "fe1fc9787c495d864c5d6eada47396478572325fde1b33a96d78bf4b849b7a3e",
+          "size": 7287
+        },
+        {
+          "path": "agents/grader.md",
+          "sha256": "57134da0c1a4eea33fbd74a1c9c44aa814f07d6bc64de303edb586f941e5d21a",
+          "size": 9049
+        },
+        {
+          "path": "assets/eval_review.html",
+          "sha256": "ce477dcc74dc1c0d1d3352646a79167b5a63634e936b1019160025065974e452",
+          "size": 7058
+        },
+        {
+          "path": "eval-viewer/generate_review.py",
+          "sha256": "fc9d1b9243fe5ab6012ebd579bd76d0035de1b79fd3b969de114defab26478fb",
+          "size": 16365
+        },
+        {
+          "path": "eval-viewer/viewer.html",
+          "sha256": "a53213426ee1100441d701a3a0d49cda7a842f992d2c36463f4d3cc0258575fa",
+          "size": 44998
+        },
+        {
+          "path": "references/schemas.md",
+          "sha256": "8e8876180a8989b406a4d3edddf875b04cdfd5805cc8616686d552b11ce4455f",
+          "size": 12061
+        },
+        {
+          "path": "scripts/__init__.py",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size": 0
+        },
+        {
+          "path": "scripts/aggregate_benchmark.py",
+          "sha256": "123ef128ea5ccc01a4b1ac212ef5567f21e9c13d3d240609780beeb3200c49aa",
+          "size": 14386
+        },
+        {
+          "path": "scripts/generate_report.py",
+          "sha256": "13df7118a3c50c83c4c3250a606d5f2b20b25a3d44cbc392b3d669ec75281453",
+          "size": 12847
+        },
+        {
+          "path": "scripts/improve_description.py",
+          "sha256": "87d864570220b699fac52da309d2d6efdb060647bfebc74f768128e646accf80",
+          "size": 11116
+        },
+        {
+          "path": "scripts/package_skill.py",
+          "sha256": "1a33059b0db1ef73375d46d513e5ea81369d2e8838c970597b0d52ddef8d1c0f",
+          "size": 4234
+        },
+        {
+          "path": "scripts/quick_validate.py",
+          "sha256": "67cf5703402013936c8fb75ad6a1afecd8841d45cc5e606b634eb05825fde365",
+          "size": 3972
+        },
+        {
+          "path": "scripts/run_eval.py",
+          "sha256": "43e3b8f80dbf69c343967ba77e268fae991d9fa3ed68b32a0ff02532cd48657f",
+          "size": 11464
+        },
+        {
+          "path": "scripts/run_loop.py",
+          "sha256": "7bd6f674203168520517eec94c55f493c0d154339b061b4d7c0f0dad187d0f21",
+          "size": 13605
+        },
+        {
+          "path": "scripts/utils.py",
+          "sha256": "3af8ae62c40c73ab712207436a0d9a981e845f25c5a7040229eb189cc8e45bb1",
+          "size": 1661
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "mcp-builder",
+      "name": "MCP Builder",
+      "author": "Anthropic",
+      "summary": "Guides building high quality MCP servers that wrap external APIs.",
+      "description": "Anthropic's guide for designing and building Model Context Protocol servers in Python or TypeScript, with tool design, evaluation and reference documents.",
+      "category": "DevOps",
+      "tags": [
+        "mcp",
+        "servers",
+        "api",
+        "tools"
+      ],
+      "license": "Apache-2.0",
+      "repository": "https://github.com/anthropics/skills",
+      "path": "skills/mcp-builder",
+      "popularity": "anthropics/skills has 184,531 GitHub stars (2026-10-29); mcp-builder appears in the skillsclaude.org top 100 under several publishers.",
+      "sources": [
+        "https://skillsclaude.org/leaderboard",
+        "https://github.com/selan-ai/top-claude-code-skills",
+        "https://www.firecrawl.dev/blog/best-claude-code-skills"
+      ],
+      "ref": "ca45fc496a3436251f191354091d557da31c15b5",
+      "install": "npx skills add anthropics/skills --skill mcp-builder",
+      "image": "images/mcp-builder.jpg",
+      "sha256": "3e62325b392401dfffcc7ce0db0e11e27ed5910d8f903973ee93e860bf067d83",
+      "files": [
+        {
+          "path": "LICENSE.txt",
+          "sha256": "bc6b3af2f331cbc7fb0da1344efb2cbe5877a31498b4d70dbc7000f3405a1362",
+          "size": 11345
+        },
+        {
+          "path": "SKILL.md",
+          "sha256": "b483b56d6673134497e45489c317f26ae0f1429c194db0297e43073e17e6748c",
+          "size": 11129
+        },
+        {
+          "path": "reference/evaluation.md",
+          "sha256": "8c99479f8a2d22a636c38e274537aac3610879e26f34e0709825077c4576f427",
+          "size": 21663
+        },
+        {
+          "path": "reference/mcp_best_practices.md",
+          "sha256": "80fb4369a349447cf18ecdd7494fe7938b6065377e9f08c077cec411093a3007",
+          "size": 7330
+        },
+        {
+          "path": "reference/node_mcp_server.md",
+          "sha256": "ee3c95d812e450f6168b734390d0c9ef6f8ebeef041d73a122c972dfbd4d476a",
+          "size": 28745
+        },
+        {
+          "path": "reference/node_mcp_server_v2.md",
+          "sha256": "49b2fe48f33910b743ae3a56353fffa5d5f252f531053f24f2da4e5914c0d3aa",
+          "size": 35171
+        },
+        {
+          "path": "reference/python_mcp_server.md",
+          "sha256": "2da52f77e675191014ca2e146a4b95aa04d0ca7dd7e2b100322df15ade685e80",
+          "size": 25099
+        },
+        {
+          "path": "scripts/connections.py",
+          "sha256": "9403668a2041568772082a8b334122c1f88daf0541fb393af4522d0094a47a6e",
+          "size": 4875
+        },
+        {
+          "path": "scripts/evaluation.py",
+          "sha256": "49ed1d17cdce5da101b210197740713f49b935c29d4f339542a14b132658e6f7",
+          "size": 12579
+        },
+        {
+          "path": "scripts/example_evaluation.xml",
+          "sha256": "9272b348ddcc4b06ba562367ccd0770e018158c0068ac5116d5e34aaeff8777a",
+          "size": 1194
+        },
+        {
+          "path": "scripts/requirements.txt",
+          "sha256": "d5d7558b2368ecea9dfeed7d1fbc71ee9e0750bebd1282faa527d528a344c3c7",
+          "size": 29
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "webapp-testing",
+      "name": "Web App Testing",
+      "author": "Anthropic",
+      "summary": "Tests local web apps with Playwright, screenshots and browser logs.",
+      "description": "Anthropic's toolkit for verifying frontend behavior with Playwright, capturing screenshots and reading browser logs. It includes helper scripts to start a server and run tests against it.",
+      "category": "Testing",
+      "tags": [
+        "playwright",
+        "testing",
+        "browser",
+        "anthropic"
+      ],
+      "license": "Apache-2.0",
+      "repository": "https://github.com/anthropics/skills",
+      "path": "skills/webapp-testing",
+      "popularity": "anthropics/skills has 184,531 GitHub stars (2026-10-29); named by several guides as one of the official starter skills.",
+      "sources": [
+        "https://www.firecrawl.dev/blog/best-claude-code-skills",
+        "https://github.com/selan-ai/top-claude-code-skills"
+      ],
+      "ref": "ca45fc496a3436251f191354091d557da31c15b5",
+      "install": "npx skills add anthropics/skills --skill webapp-testing",
+      "image": "images/webapp-testing.jpg",
+      "sha256": "abfaf4cc6cf572346e22fed42dc0cfaacd2f64c5d9667f44a94b02ea0d3b1342",
+      "files": [
+        {
+          "path": "LICENSE.txt",
+          "sha256": "bc6b3af2f331cbc7fb0da1344efb2cbe5877a31498b4d70dbc7000f3405a1362",
+          "size": 11345
+        },
+        {
+          "path": "SKILL.md",
+          "sha256": "51b7349e77ec63b7744a6f63647e7566a0b4d2e301121cc10e8c2113af6556a2",
+          "size": 3913
+        },
+        {
+          "path": "examples/console_logging.py",
+          "sha256": "ea46877289acb82da7e7ce59d0bc37c8977cd57e2a006d0c88d7a1c625bf95da",
+          "size": 1027
+        },
+        {
+          "path": "examples/element_discovery.py",
+          "sha256": "d63c89604a22f8845d724e95dda45db49b1bf57c25ce0a83afbb7b8da3d402f0",
+          "size": 1463
+        },
+        {
+          "path": "examples/static_html_automation.py",
+          "sha256": "9d533aafb875ee3ab8b8ebf8f5b9003ac8d999da3d09b285cce252e623140064",
+          "size": 953
+        },
+        {
+          "path": "scripts/with_server.py",
+          "sha256": "b0dcf4918935b795f4eda9821579b9902119235ff4447f687a30286e7d0925fd",
+          "size": 3693
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "ponytail",
+      "name": "Ponytail",
+      "author": "Dietrich Gebert",
+      "summary": "Lazy senior developer mode: the smallest change that fully solves the task.",
+      "description": "Makes the agent write only the code a task needs while keeping validation, security and tests, and replies in short answers a busy human can read in one pass. It has lite, full and ultra levels plus review, audit and debt commands.",
+      "category": "Productivity",
+      "tags": [
+        "minimal",
+        "simplicity",
+        "tokens",
+        "review"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/DietrichGebert/ponytail",
+      "path": "skills/ponytail",
+      "popularity": "179,245 GitHub stars (2026-10-29), number 5 in the selan.ai all time ranking; 13 releases in the last 30 days and about 2,000 forks gained.",
+      "sources": [
+        "https://github.com/selan-ai/top-claude-code-skills"
+      ],
+      "ref": "134b8e1a3a8078302b8ba77f86626c0802b2a6db",
+      "install": "npx skills add DietrichGebert/ponytail --skill ponytail",
+      "image": "images/ponytail.jpg",
+      "sha256": "b40d655883ea462755ae12373b59833fce20ba256bc06b0bc4e08dc59ba2ca5d",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "9badd22a32e19cb884e46dfa8d3aae82bb81dfa5484105b8b4f0262df823a509",
+          "size": 3496
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "ui-ux-pro-max",
+      "name": "UI UX Pro Max",
+      "author": "Next Level Builder",
+      "summary": "Generates a design system from a catalogue of styles, palettes and font pairings.",
+      "description": "A design intelligence skill that picks from large catalogues of UI styles, color palettes and font pairings to produce a design system for web, mobile and desktop projects. It also covers accessibility and interaction review.",
+      "category": "Design",
+      "tags": [
+        "ui",
+        "ux",
+        "design-system",
+        "palettes"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill",
+      "path": ".claude/skills/ui-ux-pro-max",
+      "popularity": "142,106 GitHub stars (2026-10-29), number 6 in the selan.ai ranking; listed at about 135,000 stars in a 12 October 2026 roundup.",
+      "sources": [
+        "https://github.com/selan-ai/top-claude-code-skills",
+        "https://www.firecrawl.dev/blog/best-claude-code-skills"
+      ],
+      "ref": "28b3b8dee8c976df4fa3e94aed4e092ad43fcb03",
+      "install": "npx skills add nextlevelbuilder/ui-ux-pro-max-skill --skill ui-ux-pro-max",
+      "image": "images/ui-ux-pro-max.jpg",
+      "sha256": "0e54f87ea382d98cc580b2a72c79a9864c5486943aee9168df131491a6f8f7f1",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "ea087c341bfb5b23195c7302027268ede86da802554c18a5c4896a6017b439f9",
+          "size": 15969
+        },
+        {
+          "path": "data/app-interface.csv",
+          "sha256": "331e7cf2c0b222d80c566c5f255c63cb339f65bfd02e471a720f28e4864a9f08",
+          "size": 11046
+        },
+        {
+          "path": "data/catalog-summary.json",
+          "sha256": "6638da97231c07fb5cef3cd9d3ce483ca7b2f9748980f8c27490eb03968d8894",
+          "size": 2392
+        },
+        {
+          "path": "data/charts.csv",
+          "sha256": "4115cf1120680f2cedef0676cb648f30c7ef4699e2a947535d4113e71ed3b12a",
+          "size": 23365
+        },
+        {
+          "path": "data/colors.csv",
+          "sha256": "8162429222bce22df62b564085946a30d07cc9722c58d0a3a494bd0d1d00841c",
+          "size": 37940
+        },
+        {
+          "path": "data/data-provenance.json",
+          "sha256": "e82fb33ed49375a300e93d9c11ccd1c1493c999e84ee7ee295e527634786e2e0",
+          "size": 36686
+        },
+        {
+          "path": "data/google-font-licenses.json",
+          "sha256": "35688523f2955795caa1a47c53b83099e60c1708461476f9cc3a050cf3b0148a",
+          "size": 433127
+        },
+        {
+          "path": "data/google-fonts.csv",
+          "sha256": "1c8c3b2ea1faf6a1012da463756def8b3889db33f2226f0343bb4daa80307d03",
+          "size": 747241
+        },
+        {
+          "path": "data/icons.csv",
+          "sha256": "50816c6012030178195a16ee481ebf58b47bd985d70e8ec58886cc83f6eddafc",
+          "size": 57945
+        },
+        {
+          "path": "data/landing.csv",
+          "sha256": "9a2edd3bb676c2a58f00ade7a062e285222d4297bfd847c8d5b056f0dbbf52d0",
+          "size": 25449
+        },
+        {
+          "path": "data/motion.csv",
+          "sha256": "381affe8df8ea1f66fbbda2598827f9f54299107bbe6a1b4e9b68f6b62091ceb",
+          "size": 14679
+        },
+        {
+          "path": "data/phosphor-icons-upstream.json",
+          "sha256": "2399325233b277b5c97a80e6a5e8941154f5d057beee4e7613db87c87d700236",
+          "size": 823933
+        },
+        {
+          "path": "data/products.csv",
+          "sha256": "42473f75e8dde5987bdf89ce55d8c168091b80a356cae691dd60247d80720b70",
+          "size": 75623
+        },
+        {
+          "path": "data/react-performance.csv",
+          "sha256": "3d925802539abac5afeb63ae8aa1960b7229ad271b3a47caed40ab2d97ad0734",
+          "size": 15080
+        },
+        {
+          "path": "data/stacks/angular.csv",
+          "sha256": "704be83f2bad30c7e6de01afb113ffa01e0c458762f48b7102f31ba2367b5553",
+          "size": 19863
+        },
+        {
+          "path": "data/stacks/astro.csv",
+          "sha256": "2c2f55fadaafc05e04cc321c8194a1a28b656e6757fe2ba316f41b16428299c6",
+          "size": 14591
+        },
+        {
+          "path": "data/stacks/avalonia.csv",
+          "sha256": "442fca14675a020683473e7e49f08abb27b9df0765c80efe54aef61f1a4ac258",
+          "size": 27327
+        },
+        {
+          "path": "data/stacks/flutter.csv",
+          "sha256": "64dba0ac17349f28bce517a0f5f48c54d9ed2e487ec0c0258303463b382f41a0",
+          "size": 14192
+        },
+        {
+          "path": "data/stacks/html-tailwind.csv",
+          "sha256": "d05a581d20af57b8ca0104a6d31d90a07c437d500662a96c3029fc2f9a4678ee",
+          "size": 16551
+        },
+        {
+          "path": "data/stacks/javafx.csv",
+          "sha256": "2e819b8d5abdd23ad4dae0991650fdb57af497aabd68b37463aa9c442944c869",
+          "size": 33577
+        },
+        {
+          "path": "data/stacks/jetpack-compose.csv",
+          "sha256": "699de218b286948eaec7d15767b6e1350ee299167e49bf476d82e3ff58724e0a",
+          "size": 12295
+        },
+        {
+          "path": "data/stacks/laravel.csv",
+          "sha256": "854ea4daa5fc61292d22235ad33b49ba3fe22423c3de8d3cb03758ffed3b59f9",
+          "size": 20163
+        },
+        {
+          "path": "data/stacks/nextjs.csv",
+          "sha256": "ecd2c27b2ea0127d203ae726060efcdd7335b5e83f96b99e4f3befbbfeebd5a4",
+          "size": 18687
+        },
+        {
+          "path": "data/stacks/nuxt-ui.csv",
+          "sha256": "fce682a338cfcdbf35d318d20e5befbe7b5d81b05abc37f87677a6d9cde84dc6",
+          "size": 28700
+        },
+        {
+          "path": "data/stacks/nuxtjs.csv",
+          "sha256": "3d9b54ed2d151bd9c86e9e5609b8a6f88a00c4c52fa601a30af96c49b2c4d176",
+          "size": 23014
+        },
+        {
+          "path": "data/stacks/react-native.csv",
+          "sha256": "ba31dd9c0c04da6bc02a74448bf121f9c0728ae5ba3b4d47b487778b0a1135b5",
+          "size": 14049
+        },
+        {
+          "path": "data/stacks/react.csv",
+          "sha256": "4dd176a9787e5c6306b5df94158d75955adcdc6edab41ce5286641a5842303c1",
+          "size": 21166
+        },
+        {
+          "path": "data/stacks/shadcn.csv",
+          "sha256": "e56cfde5b74907836ac3582a4779d5b7f3d206a702ab81b8669a1b668c3eeb51",
+          "size": 23184
+        },
+        {
+          "path": "data/stacks/svelte.csv",
+          "sha256": "f6e379ba802941ba26b01d4ffbe3cd39120f2587659a1d93851c707f66bc13db",
+          "size": 15078
+        },
+        {
+          "path": "data/stacks/swiftui.csv",
+          "sha256": "bdd9231ff3ad658f4e7c063e1eb49df2fd09ac8d90631a86df899b39833b9623",
+          "size": 15323
+        },
+        {
+          "path": "data/stacks/threejs.csv",
+          "sha256": "155d583b9c64da0df4b6c6cb060c02eab222505e0734d6353da02c9e2b5d982b",
+          "size": 46769
+        },
+        {
+          "path": "data/stacks/uno.csv",
+          "sha256": "a0474363e4225b5367214d5675fd3e075f137026f9500f0d04357882ef4f6d48",
+          "size": 30091
+        },
+        {
+          "path": "data/stacks/uwp.csv",
+          "sha256": "c409f08c1fbba1f1029f1acaa554e7b4471cc85517a5751c9f2e62465badcd5c",
+          "size": 24692
+        },
+        {
+          "path": "data/stacks/vue.csv",
+          "sha256": "b655f1ebb9dff2652d15981f31b1784c8a6d4759efd2815a14f3088257569f95",
+          "size": 12813
+        },
+        {
+          "path": "data/stacks/winui.csv",
+          "sha256": "e676dc1c13ee6c205c40b0746f1335150a346c7a49a0616d2545bc3d2c930c85",
+          "size": 27890
+        },
+        {
+          "path": "data/stacks/wpf.csv",
+          "sha256": "9781a9950b20333637b30a02e498b7efca21b618a3eeb8665836f3ac6e974da7",
+          "size": 24158
+        },
+        {
+          "path": "data/styles.csv",
+          "sha256": "a93a4d9d7025856575d7b7583bda020be9043013432c5af7c58af9dbdfb206b7",
+          "size": 149478
+        },
+        {
+          "path": "data/typography.csv",
+          "sha256": "321fc446e89024488ebae96dda93efc4d2307bd8bddb240857ad51364f6782c8",
+          "size": 49997
+        },
+        {
+          "path": "data/ui-reasoning.csv",
+          "sha256": "f0774dd741cecdad5eec842034bd6d5e9ea50e9f220a1910069748daa0bb8e9a",
+          "size": 77360
+        },
+        {
+          "path": "data/ux-guidelines.csv",
+          "sha256": "ff81ec613f70ba9fc3fcce52dbe4ae35d44b2079dbe6dc066d2d6e38c28facd5",
+          "size": 27516
+        },
+        {
+          "path": "references/pro-rules.md",
+          "sha256": "d28442d61c310b49c054a4ea736f89fb3008beebdbbc38c4b3a540b8f7fadf23",
+          "size": 10909
+        },
+        {
+          "path": "references/quick-reference.md",
+          "sha256": "0609bc7c89dacb40472465d8fc14257b56b2c43439660fc8d6fa3b8c022e1876",
+          "size": 24526
+        },
+        {
+          "path": "scripts/core.py",
+          "sha256": "dfb34cbca66a704a5bfae48c1ab5f82d2a6573b9509c5accceb3d248715a18f6",
+          "size": 41242
+        },
+        {
+          "path": "scripts/design_system.py",
+          "sha256": "e7d1c94c4b2eada17c5551157668362659ccf9626d34dbd58e68142410f90103",
+          "size": 71537
+        },
+        {
+          "path": "scripts/reasoning_contract.py",
+          "sha256": "b8bac1af82aa280d3e06f00aabaeac4337e632996b07fed874e2b6ee6e9c5913",
+          "size": 5824
+        },
+        {
+          "path": "scripts/search.py",
+          "sha256": "d54e648fe0ec2932cac66684220cc17be4bd4b4eba1d23d3195d509d398db374",
+          "size": 9373
+        },
+        {
+          "path": "scripts/tests/fixtures/catalogs/google-api.json",
+          "sha256": "22d8dc81a7d6827b7e8b64b53e7d184210fb9759e8e294e0d5133c81cc460176",
+          "size": 1079
+        },
+        {
+          "path": "scripts/tests/fixtures/catalogs/google-catalog.json",
+          "sha256": "c608ad5c4084ebc50a4bbbfb69ea2456c01fd5519c457e18410fffd250ae948f",
+          "size": 1772
+        },
+        {
+          "path": "scripts/tests/fixtures/catalogs/google-existing.csv",
+          "sha256": "4e0761b839dc6b2187a370e82eddc0aed8a7ff10c09e28dd814bb3656dac595b",
+          "size": 480
+        },
+        {
+          "path": "scripts/tests/fixtures/catalogs/google-metadata.json",
+          "sha256": "30bffc29ae348416a2de2f9c6c418e768e4578f136b0f4bac5d2f70124f2e9ba",
+          "size": 328
+        },
+        {
+          "path": "scripts/tests/fixtures/catalogs/google-overrides.json",
+          "sha256": "6243a48a4619986768c4628e2d0c98ff195beba71ba9be5df8f0c52fc6d90c0b",
+          "size": 97
+        },
+        {
+          "path": "scripts/tests/fixtures/catalogs/icons-curated.csv",
+          "sha256": "68362c9a700c13b96f000784a0198c1c7e117a7088a01c85744e44233038fe9d",
+          "size": 495
+        },
+        {
+          "path": "scripts/tests/fixtures/catalogs/phosphor-core.json",
+          "sha256": "ae4d0bb076240824e1b643c2270d1f8cc0952a69502ec1e622b7dedd85b930bb",
+          "size": 571
+        },
+        {
+          "path": "scripts/tests/fixtures/catalogs/phosphor-package.json",
+          "sha256": "500588c757d6de03e3d7e69b27a8b8b1f88ccf6bb0333e4c1e9b0d6a4f112475",
+          "size": 370
+        },
+        {
+          "path": "scripts/tests/fixtures/catalogs/phosphor-react-exports.json",
+          "sha256": "d79f2ee0afdbc2f87776733e145df3538a16a25d7c2fba0056bb48295dad0ded",
+          "size": 87
+        },
+        {
+          "path": "scripts/tests/fixtures/catalogs/phosphor-react-package.json",
+          "sha256": "1c57a1d76bcc0cdd3632d4c18b9c0e79576b4591df39831c9607e5d0eb4f2cec",
+          "size": 81
+        },
+        {
+          "path": "scripts/tests/fixtures/relevance-baseline.json",
+          "sha256": "0df200fc54c1cb97a52d6775e7f501509163cea8f8b73fd7268429bc1f835afe",
+          "size": 89426
+        },
+        {
+          "path": "scripts/tests/fixtures/relevance-cases.json",
+          "sha256": "e77d36eebbf6ddc2860946a02cdb659351da6c09f2688f1ed30939a418099646",
+          "size": 36734
+        },
+        {
+          "path": "scripts/tests/fixtures/relevance-thresholds.json",
+          "sha256": "1fbe8623fe3e49c8d828139bca9df69043746e488e8bf09d93dfb9cbc31f5cef",
+          "size": 5079
+        },
+        {
+          "path": "scripts/tests/test_catalog_refresh.py",
+          "sha256": "3e2ca5d12702318f641ae62d0c14f22a3bcc84d84e79b863c0e947d475604adb",
+          "size": 19466
+        },
+        {
+          "path": "scripts/tests/test_catalog_summary_line_endings.py",
+          "sha256": "fa6ff09f0ec2c99013588c77397f5082dddebe8f467e94c5f8378ec9595f4989",
+          "size": 2947
+        },
+        {
+          "path": "scripts/tests/test_core.py",
+          "sha256": "3527fe2f4b852f69f07c17ddc0d615d9a6e025c924e45a33985579a94a8d2118",
+          "size": 16680
+        },
+        {
+          "path": "scripts/tests/test_core_data_quality.py",
+          "sha256": "3ffc6b4905c9ea26d7ac4527ab154d153584231aee71b2ae4bd017977fa09cc5",
+          "size": 8954
+        },
+        {
+          "path": "scripts/tests/test_data_contracts.py",
+          "sha256": "0360d6e10080c0bca214f2b0bbad582ba50702a542ce21013351aca54938df3a",
+          "size": 19513
+        },
+        {
+          "path": "scripts/tests/test_design_system_mode.py",
+          "sha256": "95ad2c154349f7021f55a558f8dcdd71df1a24fcf531a4364a8e49526a0865ef",
+          "size": 9815
+        },
+        {
+          "path": "scripts/tests/test_design_system_stack.py",
+          "sha256": "83d09ffe8cfbf7b265f362129f061dfe8e5e167ce5db43adaead197cabc9ca38",
+          "size": 2261
+        },
+        {
+          "path": "scripts/tests/test_native_desktop_stack_freshness.py",
+          "sha256": "3942845712b9a829323cd3568511483135f2a8c7cd79ccf61679da4b0f624dbb",
+          "size": 8375
+        },
+        {
+          "path": "scripts/tests/test_relevance_evaluator.py",
+          "sha256": "2fe56a4d6fe5fff15ff592274b0eeaba925146cefea6c0fa29d8f1b77c9aca1f",
+          "size": 8430
+        },
+        {
+          "path": "scripts/tests/test_skill_script_paths.py",
+          "sha256": "7cec24b94be771bc60bc84f8993e614bb16d4047930e1dd3d3bed91628311d44",
+          "size": 4305
+        },
+        {
+          "path": "scripts/tests/test_style_taxonomy.py",
+          "sha256": "cd14d0092e8a454d213aa104b53e4e70ba698491fa00fde9fdec5ca8a3d70011",
+          "size": 7425
+        },
+        {
+          "path": "scripts/tests/test_text_layout_resilience.py",
+          "sha256": "b51d32ee8a15505b87cb81957fb2d1b385e041e8beb4463c311d236bfd29ebd4",
+          "size": 5874
+        },
+        {
+          "path": "scripts/tests/test_web_stack_freshness.py",
+          "sha256": "cba3dd79b3bd7ed9479e8cd0e7efb0594d998160bc712f9865fb0ab6e29dda5a",
+          "size": 8288
+        },
+        {
+          "path": "scripts/validate_data.py",
+          "sha256": "a599aa256049cf30954d1f164721b99e453eb7e4cb8241bcab2d5573e6cf58b8",
+          "size": 52230
+        }
+      ],
+      "bundled": "partial"
+    },
+    {
+      "id": "design-motion",
+      "name": "Design Motion",
+      "author": "Garry Tan",
+      "summary": "Animates an approved design into a seamless MP4 and GIF loop.",
+      "description": "A gstack skill that takes an approved design and produces a looping animation as MP4 and GIF. It is one of the motion focused commands in Garry Tan's engineering team skill pack.",
+      "category": "Motion",
+      "tags": [
+        "motion",
+        "animation",
+        "video",
+        "gstack"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/garrytan/gstack",
+      "path": "design-motion",
+      "popularity": "garrytan/gstack has 138,076 GitHub stars (2026-10-29), number 7 in the selan.ai ranking; skill level installs are not published.",
+      "sources": [
+        "https://github.com/selan-ai/top-claude-code-skills",
+        "https://skillsclaude.org/leaderboard"
+      ],
+      "ref": "8b4f5aaf5c8792d9cf9cbc48ff7aed674d4df7a0",
+      "install": "npx skills add garrytan/gstack --skill design-motion",
+      "image": "images/design-motion.jpg",
+      "sha256": "8e5f857383b88f859bb9feb2322c7baf5b4003ae4cb91238532f99d9cfe8ec9c",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "d56b42c14108f00e2455ef4f2e4e1967d49d8e8bfc29e69cd1d1b052be611f84",
+          "size": 18080
+        },
+        {
+          "path": "SKILL.md.tmpl",
+          "sha256": "f16934ab7b2356e7d97e5f6f1ac3ca11c212ffcfb10e070a7034bd85c9de212f",
+          "size": 11061
+        },
+        {
+          "path": "sections/fidelity.md",
+          "sha256": "f70c1f28f480cf1910d194a8c9f9df5e4b65efe2d53a7fa1e7dcf265d70e4e03",
+          "size": 6093
+        },
+        {
+          "path": "sections/fidelity.md.tmpl",
+          "sha256": "51d2fdb0a23ed39048d4985f0b146de78fa9791579af5d43c447da031a4176e5",
+          "size": 5962
+        },
+        {
+          "path": "sections/figma.md",
+          "sha256": "4f777d311775f456ebbd263f9465a416c253150e360ffacb73086c8762092f1d",
+          "size": 4496
+        },
+        {
+          "path": "sections/figma.md.tmpl",
+          "sha256": "5386552210cda0ce2f4471edc75cd15e57589f937b46df08e9929dd641626f11",
+          "size": 4384
+        },
+        {
+          "path": "sections/manifest.json",
+          "sha256": "25e733338b8970c4804498443ea4c6631f90d9661bae0d0678a08b505cd26fa9",
+          "size": 1308
+        },
+        {
+          "path": "sections/motion.md",
+          "sha256": "692b0d1191d34bc9b75f636cfff5536617a40f31b8d0cd3a9b22c87365caefd1",
+          "size": 8895
+        },
+        {
+          "path": "sections/motion.md.tmpl",
+          "sha256": "a3f8ffe3468ca7d93432cdf6ca5ba0d31eda49d62e0bfa79c6e301e66024f7de",
+          "size": 8782
+        },
+        {
+          "path": "sections/preamble.md",
+          "sha256": "3eeee274045c6af4a3a4a88895944a348e3f8613232f44e04875fd1318861705",
+          "size": 22396
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "caveman",
+      "name": "Caveman",
+      "author": "Julius Brussee",
+      "summary": "Makes the agent answer in terse caveman style to save output tokens.",
+      "description": "Switches the agent to a clipped voice that keeps every technical fact and drops filler words. Toggle it with /caveman and stop it with stop caveman. The project reports about 65 percent fewer output tokens on prose, while independent tests found smaller savings.",
+      "category": "Productivity",
+      "tags": [
+        "tokens",
+        "terse",
+        "style",
+        "efficiency"
+      ],
+      "license": "Apache-2.0",
+      "repository": "https://github.com/JuliusBrussee/caveman",
+      "path": "skills/caveman",
+      "popularity": "115,829 GitHub stars (2026-10-29), number 8 in the selan.ai ranking; listed at about 111,000 stars in a 12 October 2026 roundup.",
+      "sources": [
+        "https://github.com/selan-ai/top-claude-code-skills",
+        "https://dev.to/andrew-ooo/caveman-review-the-claude-code-skill-that-cuts-65-of-tokens-2boe",
+        "https://pasqualepillitteri.it/en/news/846/claude-code-caveman-mode-token-saving"
+      ],
+      "ref": "9b68f7ed12b05e7efaff18e65c5a3fc2849fd0a4",
+      "install": "npx skills add JuliusBrussee/caveman --skill caveman",
+      "image": "images/caveman.jpg",
+      "sha256": "8dd75b3ad1dccebfc375f3ec73e714b02ef5666791416f228d8ebc53c8540597",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "e8b22f37ccb204bd00cdf98c723c0df37aeda1f5863e9ad1d634f5c839d99e5d",
+          "size": 3030
+        },
+        {
+          "path": "SKILL.md",
+          "sha256": "415d43518f2b1a9498c15a445d4657117b129ee5e81b19454ce348439cc6672b",
+          "size": 4678
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "spec-driven-development",
+      "name": "Spec Driven Development",
+      "author": "Addy Osmani",
+      "summary": "Writes a specification before any code for new projects and large changes.",
+      "description": "From Addy Osmani's agent skills set. It creates a PRD style spec with objectives, scope and acceptance criteria before implementation begins.",
+      "category": "Planning",
+      "tags": [
+        "spec",
+        "prd",
+        "planning",
+        "engineering"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/addyosmani/agent-skills",
+      "path": "skills/spec-driven-development",
+      "popularity": "addyosmani/agent-skills has 111,482 GitHub stars (2026-10-29), number 9 in the selan.ai ranking.",
+      "sources": [
+        "https://github.com/selan-ai/top-claude-code-skills"
+      ],
+      "ref": "aeac41d4d005999432bb7312f7ff06383a91d59d",
+      "install": "npx skills add addyosmani/agent-skills --skill spec-driven-development",
+      "image": "images/spec-driven-development.jpg",
+      "sha256": "3dfd09ad332308113a5a400ce059ec2362fd4fca4db863a85e00644ba198f106",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "c4b97ce3d7f24be0e67fd612c7595f65504872e3a9f8d338d098b2363fdb66ef",
+          "size": 13096
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "agent-reach",
+      "name": "Agent Reach",
+      "author": "Neo Reid",
+      "summary": "Lets an agent read and search X, Reddit, YouTube, GitHub, RSS and Chinese platforms.",
+      "description": "Sets up command line tools and a skill for read only access to many platforms, including search, posts, comments, subtitles, stock quotes and job listings. It never posts or logs in for you.",
+      "category": "Research",
+      "tags": [
+        "web",
+        "search",
+        "social",
+        "scraping"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/Panniantong/Agent-Reach",
+      "path": "agent_reach/skill",
+      "popularity": "105,667 GitHub stars (2026-10-29), number 10 in the selan.ai ranking with about 4,700 stars gained in a week.",
+      "sources": [
+        "https://github.com/selan-ai/top-claude-code-skills"
+      ],
+      "ref": "14c213405669414492bda0f8d52cc6531d062c45",
+      "install": "npx skills add Panniantong/Agent-Reach --skill agent-reach",
+      "image": "images/agent-reach.jpg",
+      "sha256": "b26b4cd9580b072732da9da0b215ef9645e95042030d373b9a1f626f49995ffa",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "86f6bd3d377f30ec553e8fdac801fc41fe3eda3e0a9a2aa7690d5adb30e8ad7e",
+          "size": 7119
+        },
+        {
+          "path": "SKILL_en.md",
+          "sha256": "b6f00572f0aec469b0d43e845283650362f71ab184565fe103ef7dc90106ac96",
+          "size": 7855
+        },
+        {
+          "path": "references/capabilities.md",
+          "sha256": "36105d4686493e67eb2f6d7cb47479e06bef6fbfe7159f08d3a6b64314b1cd79",
+          "size": 3431
+        },
+        {
+          "path": "references/maintenance.md",
+          "sha256": "f1bc13d07c631cfe00ebaf69bc0a3243f84b2ffb905d4620c62edcd5644d61f2",
+          "size": 1390
+        },
+        {
+          "path": "references/sessions.md",
+          "sha256": "433c54d462e83ff1255d4d294c4bd6457028ccf3dbbe16c325837d46c336fa0e",
+          "size": 3754
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "design-taste-frontend",
+      "name": "Taste Skill",
+      "author": "Leonxlnx",
+      "summary": "Art direction for websites that avoids generic AI looking design.",
+      "description": "Tasteskill v2 draws researched directions from a library built from a study of curated gallery sites, enforces a strict anti slop house style and runs a look and fix loop on screenshots. It covers landing pages as well as app screens.",
+      "category": "Design",
+      "tags": [
+        "design",
+        "art-direction",
+        "frontend",
+        "anti-slop"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/Leonxlnx/taste-skill",
+      "path": "skills/taste-skill",
+      "popularity": "104,546 GitHub stars (2026-10-29), number 11 in the selan.ai ranking; listed at about 95,000 in a 12 October 2026 roundup.",
+      "sources": [
+        "https://github.com/selan-ai/top-claude-code-skills",
+        "https://skillsclaude.org/leaderboard"
+      ],
+      "ref": "12af471f627f866411b4bd785b19646d3672784c",
+      "install": "npx skills add Leonxlnx/taste-skill --skill design-taste-frontend",
+      "image": "images/design-taste-frontend.jpg",
+      "sha256": "605709c80bbcc526a336849a8ed41e391db4f2c8ce5970b73a43cebc103e430a",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "5e33fd716b3e1ffaca9340f645d44c193f9b446107fa67f0cce498d33025672c",
+          "size": 5345
+        },
+        {
+          "path": "SKILL.md",
+          "sha256": "3435ed963b15a1b6447746ec8844ab2cd38d8d2e8ead3451937f42df01e408c4",
+          "size": 39537
+        },
+        {
+          "path": "assets/app.css",
+          "sha256": "16518c3a999fb81b2698137f1f743128c189272e8b1d411c4b02598c6755b67f",
+          "size": 15918
+        },
+        {
+          "path": "assets/base.css",
+          "sha256": "aa6ea21613c79e06e06dea3d33200c78590c89b0346bb976ec07947bb45ceafa",
+          "size": 6520
+        },
+        {
+          "path": "assets/base.js",
+          "sha256": "8d50416125596b84c0083d5d5ffba09add57db4b06cbf0eedac2d4999b7653bc",
+          "size": 2162
+        },
+        {
+          "path": "assets/charts.js",
+          "sha256": "a7e916594729576b7c7e37048a68508a3243fe8fbc9654775cd245232e9f8100",
+          "size": 59016
+        },
+        {
+          "path": "assets/scenes/stage.css",
+          "sha256": "b5c587dac45ac6fcc34ae7cb4aa2b3e43797b2ef5d71fd32b48483bda3fca3e0",
+          "size": 1141
+        },
+        {
+          "path": "assets/scenes/stage.js",
+          "sha256": "9ce782a94406e6a230c49ca5f87e56aff9d436da3f56416b1659421f8976bc2b",
+          "size": 7691
+        },
+        {
+          "path": "evals/evals.json",
+          "sha256": "df0ee2a248cd5445c0e1600eb095dc0d43dd312f5b4bb4316a78471ae0d22a74",
+          "size": 8198
+        },
+        {
+          "path": "library/app.json",
+          "sha256": "3678ccbe1e8d05feff6d4f07fa16a0d610aefeea5e697e842a876713ba763cf5",
+          "size": 74229
+        },
+        {
+          "path": "library/directions.json",
+          "sha256": "d71e3824af33a92d9e1ca543e17f80baa5b7a30c815df5125cfe3300a14892c1",
+          "size": 61466
+        },
+        {
+          "path": "library/heroes.json",
+          "sha256": "98d5e01104412a5fb27936f9c686f3bc0a5f76ce0793186d3de46b982c65b172",
+          "size": 108240
+        },
+        {
+          "path": "library/motions.json",
+          "sha256": "51815dd09a823c829897f99ed9ea7dc5c35bd305ac989b8a0632ea6d42a3f08b",
+          "size": 9033
+        },
+        {
+          "path": "library/palettes.json",
+          "sha256": "a14be9f45baba848c53436f4aa44eb4f1925ad3e232c5d1dcddf4f565661a525",
+          "size": 34753
+        },
+        {
+          "path": "library/photos.json",
+          "sha256": "8fc3b76bca90f44675bd99d99bb4ce95b0756c6c5d4141b7e917d11d90e61520",
+          "size": 160632
+        },
+        {
+          "path": "library/sections.json",
+          "sha256": "7c2c8a470a22501176948661f803434db8c542a511281752c717252de80c1ad8",
+          "size": 276146
+        },
+        {
+          "path": "library/sites.json",
+          "sha256": "a2bc4d0cff8ebff481f0dfd4879c106d5e1e16cb3122f9ab3702184a5e1f3502",
+          "size": 869073
+        },
+        {
+          "path": "library/type.json",
+          "sha256": "dbabf41a468775cf6cc5ea5f3c898b0663293822e167b72b02feba1ef03ebf37",
+          "size": 82326
+        },
+        {
+          "path": "references/app-screens.md",
+          "sha256": "55e937ec30de605b53a11310b446f328a3ce7403de24fff008920a00be1a5ed4",
+          "size": 85358
+        },
+        {
+          "path": "references/colour.md",
+          "sha256": "6556bcc7eed48b7bc2d0d281c28bf57c1b75e94d7ca0bde49f5d9df8c6a09351",
+          "size": 6853
+        },
+        {
+          "path": "references/copy.md",
+          "sha256": "676edbe75d5f3cfd8a793010ea9f730525ae074b231a674c2426264d3398262e",
+          "size": 9436
+        },
+        {
+          "path": "references/critique.md",
+          "sha256": "9c2f4392674530b3f02ac529fba53d82ab37b85f401c4c1989fbe98d6217f0b4",
+          "size": 11157
+        },
+        {
+          "path": "references/imagery.md",
+          "sha256": "518def6b2c643b295e13e66b09b66f2e3fc1421d3cf6c7dbb1dc749097ad2ad9",
+          "size": 51025
+        },
+        {
+          "path": "references/layout.md",
+          "sha256": "40080640719b07737afb94a8868afef87767a1ab4892814d9b6882e2d283453b",
+          "size": 18315
+        },
+        {
+          "path": "references/motion.md",
+          "sha256": "79f94d8469898d2bf6186c198ad86ddf691a67c6536eaec36a4ec101285d9a37",
+          "size": 55400
+        },
+        {
+          "path": "references/research.md",
+          "sha256": "83433646a352cae588591e05bc0a75fe1deadff55ede8851bc8dd5dd483adfc5",
+          "size": 24262
+        },
+        {
+          "path": "references/scenes.md",
+          "sha256": "733ac7258a1a28f2f6ae8205bc36ba66c563594ad0a2e2f829c5eaaba3199a61",
+          "size": 9817
+        },
+        {
+          "path": "references/tells.md",
+          "sha256": "8e6de4411c43d3108f832b3f33bb1a2a838148a72b92a176df893b67d99a0da9",
+          "size": 7420
+        },
+        {
+          "path": "references/type.md",
+          "sha256": "6353ff1d0ce2f9913628c88fbcb7dad3cc3877e61196848bce99e33a17d20611",
+          "size": 8495
+        },
+        {
+          "path": "scripts/assets.mjs",
+          "sha256": "b4b4b99b5634735f5a0b4213169cda5240ee6bbed8ed8042ad1bcf2b6607c1fa",
+          "size": 64522
+        },
+        {
+          "path": "scripts/draw.mjs",
+          "sha256": "6c2047d207d2400d3b099956dfe2ac306203b614246e66bc8760212a7f797dbf",
+          "size": 54140
+        },
+        {
+          "path": "scripts/inspect.mjs",
+          "sha256": "c0d7366f789b3f594787b37a525d1d7096104a499aac8a97ae04b405046cf02c",
+          "size": 28853
+        },
+        {
+          "path": "scripts/lib/app-draw.mjs",
+          "sha256": "aa0802d341d19b53ec14ec21746e428be49a8ec3ed7b30253194105fc18a8df6",
+          "size": 14715
+        },
+        {
+          "path": "scripts/lib/cdp.mjs",
+          "sha256": "320fb75c6454a97b88458e5c33559a1188042aa0041bd5eff53455900236c88a",
+          "size": 11920
+        },
+        {
+          "path": "scripts/lib/inspection-files.mjs",
+          "sha256": "5635c0d5fbe0f5bd012e58534bcd554ff7440a4e5c724a61a61c476c7f42e918",
+          "size": 478
+        },
+        {
+          "path": "scripts/lib/probe.mjs",
+          "sha256": "a5a17df891e438f55f196d8233601c3c79c873755f442c1ac5c3568de4e6bb48",
+          "size": 82552
+        },
+        {
+          "path": "scripts/lib/rules.mjs",
+          "sha256": "8244aa9f53e77a59a562410310414e6b1a0f0cf002ce8f5aa792740b7f0149bf",
+          "size": 37298
+        },
+        {
+          "path": "scripts/lint.mjs",
+          "sha256": "05f2fae2f56fc051b539cdbacb43a6f78fbbfb9644bb74aa11be472ff12dcaf5",
+          "size": 11747
+        },
+        {
+          "path": "scripts/scenes.mjs",
+          "sha256": "234ec582e2b841457c33033feeeba8535f9ac285495a74d08dc533a1566c90d5",
+          "size": 8980
+        }
+      ],
+      "bundled": "partial"
+    },
+    {
+      "id": "impeccable",
+      "name": "Impeccable",
+      "author": "Paul Bakaus",
+      "summary": "Gives an agent commands and detector rules to avoid generic AI looking frontend design.",
+      "description": "A design skill with 24 commands and 62 detector rules for critique, audit, polish, motion and typography on websites and product UI. It gained about 65,800 GitHub stars in the week to 28 October 2026.",
+      "category": "Design",
+      "tags": [
+        "design",
+        "frontend",
+        "audit",
+        "polish"
+      ],
+      "license": "Apache-2.0",
+      "repository": "https://github.com/pbakaus/impeccable",
+      "path": "plugin/skills/impeccable",
+      "homepage": "https://impeccable.style",
+      "popularity": "92,816 GitHub stars (2026-10-29) and number 1 on selan.ai's trending week with +65,848 stars, 90 commits and 4 releases in 7 days.",
+      "sources": [
+        "https://github.com/selan-ai/top-claude-code-skills",
+        "https://www.firecrawl.dev/blog/best-claude-code-skills"
+      ],
+      "ref": "5e745ace7e151feb2a93d360d0281fe39448b857",
+      "install": "npx skills add pbakaus/impeccable --skill impeccable",
+      "image": "images/impeccable.jpg",
+      "sha256": "7b6db9213e83a6682b550a1c2020135554377354ff00c4a0faf8699899a8eee1",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "068987f99e59dfaa78288e0927b2a985a1237c4154de93baf03efbc544d06cb8",
+          "size": 12042
+        },
+        {
+          "path": "reference/adapt.md",
+          "sha256": "5826bb4bca75d7b891bed17ff03bd3b685dff0e4f26d387fa6190d4ba3f065e4",
+          "size": 11313
+        },
+        {
+          "path": "reference/adapt.native.md",
+          "sha256": "acbeecbcbf6558d438ed4aec6b85027d72587bf181b8ae12d4dfbe8dce62e9a5",
+          "size": 3910
+        },
+        {
+          "path": "reference/android.md",
+          "sha256": "43780abcf10ac12a569d98001ae38af2b337727a0f7ce66268246ac1d54b5d34",
+          "size": 4203
+        },
+        {
+          "path": "reference/animate.md",
+          "sha256": "94b4ce6299fea93d9f256b2d25705961a76bc5ea940c56db4145686ebc99df1b",
+          "size": 5236
+        },
+        {
+          "path": "reference/audit.md",
+          "sha256": "b98d7278f83affc885913a46b8d1c90c63662f9723e95dbc958ca37359bdcc3f",
+          "size": 9577
+        },
+        {
+          "path": "reference/audit.native.md",
+          "sha256": "33a4ac3906140cfd73f65cd35026867e261adf411da0fc6da95770d9b6edeb81",
+          "size": 8326
+        },
+        {
+          "path": "reference/bolder.md",
+          "sha256": "bd217b7bc011c2346ce94902071ecd940aa017e8f563539e31c1ad38ce256401",
+          "size": 3497
+        },
+        {
+          "path": "reference/clarify.md",
+          "sha256": "6c382f8283756e8a693d832b750f7e4cbff1ca5bdcc3825b2b4ef4da9f21876a",
+          "size": 4590
+        },
+        {
+          "path": "reference/colorize.md",
+          "sha256": "d1fbd55074abb2251bdaa03749d34acc42c38e46e47549f18f5848df57d43c42",
+          "size": 4537
+        },
+        {
+          "path": "reference/component-review.md",
+          "sha256": "7780461422046ea2d7ae8b62558cbcb2a32a3c8160af8f1cb16f3c434abc00bc",
+          "size": 7954
+        },
+        {
+          "path": "reference/craft-floor.md",
+          "sha256": "ba01bbab98671095b76c2170324abdcceb55fd39fd281bc46daddc2b3c2b0753",
+          "size": 4516
+        },
+        {
+          "path": "reference/craft.md",
+          "sha256": "9205e222bc6565b37fb504ceec93233c2d2a456802b69d16e6b1c44723907c4c",
+          "size": 555
+        },
+        {
+          "path": "reference/critique.md",
+          "sha256": "87839097f6fbc2502569c0449e585bb27a4d50de5013cb2e6cbd83ca7d9fc412",
+          "size": 45587
+        },
+        {
+          "path": "reference/degraded/asset-producer.md",
+          "sha256": "37c023b8bbb99221516d3c73f1f1b1be7da3a6dd75c1376799e940b5e6d55223",
+          "size": 8401
+        },
+        {
+          "path": "reference/degraded/documenter.md",
+          "sha256": "bcc05ea92faebb5c74037a9d4263a5ce9a56f5ab07c8ab3c59ee704d8cade745",
+          "size": 3325
+        },
+        {
+          "path": "reference/degraded/finish-reviewer.md",
+          "sha256": "c33c4cfa7f0ce0bedde80d4fc3b595e747d0e9b43a77f06cacb8e899802f709d",
+          "size": 15803
+        },
+        {
+          "path": "reference/degraded/manual-edit-applier.md",
+          "sha256": "cf9048c15e1b0935d8b38be54c4d21f77cce60e7c1ef28a6d9bab4b008977c4b",
+          "size": 7636
+        },
+        {
+          "path": "reference/delight.md",
+          "sha256": "56500b1f9d2fcec8324d7f448d813048b5831a46d3feeb1055bd3eb17ec3660f",
+          "size": 3716
+        },
+        {
+          "path": "reference/distill.md",
+          "sha256": "09785674279df0a5df6623e5bb986f5445810e4f40ce4407d30f5c175dde279e",
+          "size": 5529
+        },
+        {
+          "path": "reference/doctor.md",
+          "sha256": "28518a3a6c6e6d8aa0256cb3ed76e7530807bab6a23617a563e211f47b01c8ac",
+          "size": 5603
+        },
+        {
+          "path": "reference/document.md",
+          "sha256": "677004e61b08d2e04d3578e394fdd991cfa33c0111a7d85b5b66c80326c615fc",
+          "size": 27457
+        },
+        {
+          "path": "reference/extract.md",
+          "sha256": "29044a3df6598786b2f9023af89aa6683b9745b7cd9a0c89386da2d0e50e0166",
+          "size": 3337
+        },
+        {
+          "path": "reference/generate.md",
+          "sha256": "5fc5387b24e74b4b530c97c486b068ce171cda07c8cccd0354d868d75bbb328e",
+          "size": 13110
+        },
+        {
+          "path": "reference/harden.md",
+          "sha256": "98244db22d907a134cac0c94ffb829ba480ba61cfac67ae155ac2f46444da7c9",
+          "size": 10748
+        },
+        {
+          "path": "reference/hooks.md",
+          "sha256": "6850273eb82902b759076a7347061f62810542d5f835064b9badb26d72362db9",
+          "size": 15086
+        },
+        {
+          "path": "reference/init.md",
+          "sha256": "fd37f029837277e93f26d69ddb6cc74af2ffe7d71f56df9d9c04adec77ae77d7",
+          "size": 11697
+        },
+        {
+          "path": "reference/ios.md",
+          "sha256": "40c87038b5f75147a5952a96237acf312a327bf70c1bcd8e0a5f064625ae9668",
+          "size": 3812
+        },
+        {
+          "path": "reference/layout.md",
+          "sha256": "1d6d2658482b7e2df0c4d27b1b29c5195f0803b402278b96590598f4d3e57aa7",
+          "size": 5154
+        },
+        {
+          "path": "reference/live-setup.md",
+          "sha256": "73058cdbe80f7387a8b063db4e2376d0d7276ddaff6bd5e14d3473aecb640465",
+          "size": 8179
+        },
+        {
+          "path": "reference/live.md",
+          "sha256": "031b73ecd5f14d603fd7d5887ac61dc75c3ad8a376a3cb308d3ba6925ebf5acf",
+          "size": 37146
+        },
+        {
+          "path": "reference/mode-operate.md",
+          "sha256": "7a52dd7a94ee75f6ae89542c86a1b6e1d306812b16e0d9dbf12d4acad44d148b",
+          "size": 4716
+        },
+        {
+          "path": "reference/mode-persuade.md",
+          "sha256": "21e78c8a77badb3f83290cd4577ed3b24bd4dd3b57136d7da75733d4f3ee9ac0",
+          "size": 3638
+        },
+        {
+          "path": "reference/mode-read.md",
+          "sha256": "a569989e6a3d6453b4c45e9474e162a15cc54e11732ac6baa7990a6e7cccc0b5",
+          "size": 4396
+        },
+        {
+          "path": "reference/new-work.md",
+          "sha256": "ef6e0d12db9347f97801a22157b34568a30a0af9e22992407a9412390a52a93b",
+          "size": 62993
+        },
+        {
+          "path": "reference/onboard.md",
+          "sha256": "eb713f3d6686bac6431dd874f7b02358b4cf08e879e11bf747d75660dedd685a",
+          "size": 7688
+        },
+        {
+          "path": "reference/operate.md",
+          "sha256": "a9d2203acd45ca33a13d5c68b02b23ed512425ac15f0e8438318ed124b43729d",
+          "size": 4145
+        },
+        {
+          "path": "reference/optimize.md",
+          "sha256": "7ecc07226fa99b198eba37ea57f3c3e2465a80cc65093f0098dc888f7ee27273",
+          "size": 7577
+        },
+        {
+          "path": "reference/overdrive.md",
+          "sha256": "83c7786c640b0e6ea61e2b2ff0f93193ba1f68e907b32f2bd56f32bb7a60018f",
+          "size": 9010
+        },
+        {
+          "path": "reference/polish.md",
+          "sha256": "73893e18e874e14beccd7fca92335d9036f5a5e068fd8815fd7daceadf186a43",
+          "size": 6632
+        },
+        {
+          "path": "reference/quieter.md",
+          "sha256": "b0018ae21f320aabfe3ca9d9f8e0c2c5a5bf74c6eb4e572e3d408c38cd19f5ec",
+          "size": 4951
+        },
+        {
+          "path": "reference/region-map.md",
+          "sha256": "5c0d1dca9ab72c3ae4a0ea728d6acecf8af980a5b7defa1c7a3924992b62f69a",
+          "size": 3340
+        },
+        {
+          "path": "reference/routing.md",
+          "sha256": "dd6c5877467a30cb328789297bb5250b21c1c673d25c570a990043aa07ed01ac",
+          "size": 3322
+        },
+        {
+          "path": "reference/shape.md",
+          "sha256": "a55f016c046cb6a27c55bd7f346375aeb506a755c4fbca19a5f92dbd42309c23",
+          "size": 3547
+        },
+        {
+          "path": "reference/typeset.md",
+          "sha256": "9956a95c41154b07c9eec5047f2123038b1c6e90e3c4f69eb3d8833ba2698e27",
+          "size": 6256
+        },
+        {
+          "path": "reference/visualize.md",
+          "sha256": "4bce9bc4303688a88cad08e3ba091fc7756f804b91b89449256df9c59b3ca342",
+          "size": 13949
+        },
+        {
+          "path": "scripts/VERSION",
+          "sha256": "447836d46f39c5900faf74ad6a6554b8e1fafeca1f78de0416d5f05c6e09a080",
+          "size": 7
+        },
+        {
+          "path": "scripts/command-metadata.json",
+          "sha256": "c6dcbeed7f13152205ca022c8f24d08683770835083f0a7325261c1c2d5f215c",
+          "size": 8318
+        },
+        {
+          "path": "scripts/data/font-index-failures.json",
+          "sha256": "835f19a0a3812f3652dd6979a2ce5597f654fd01f26e1b420b92d5f42b997ce4",
+          "size": 2437
+        },
+        {
+          "path": "scripts/data/font-index.json",
+          "sha256": "47edbdfaf27073c47033d1ac7dfee881be49e2dcbda7671d1157300481dde6da",
+          "size": 1100013
+        },
+        {
+          "path": "scripts/engine-checksums.txt",
+          "sha256": "2f0235179cbc515d7c7ec71a9a08283d0cb88a5238d35ffa5a5f42122e78fe35",
+          "size": 787
+        },
+        {
+          "path": "scripts/impeccable",
+          "sha256": "d9709ee88e790bda2d98f55c4d1abe42e28b91db849882a2998bac79b1e074cb",
+          "size": 10167
+        },
+        {
+          "path": "scripts/impeccable.cmd",
+          "sha256": "5d36d9b48e050e20ac5b3823db4d49fd4e84086d4acae6630cade81fd971b68d",
+          "size": 10817
+        },
+        {
+          "path": "scripts/live-browser-dom.js",
+          "sha256": "4b379aff87ce0f485008a2b6a0dc711d00a869f5cf0ec2459279d6364fbf0c9e",
+          "size": 12283
+        },
+        {
+          "path": "scripts/live-browser-ignores.js",
+          "sha256": "ba8905ab865fde5162e34fc17eb80eba26cc990b319b14a6eed6ca89fd491897",
+          "size": 10423
+        },
+        {
+          "path": "scripts/live-browser-session.js",
+          "sha256": "e042339a54d4521fc47555b602013ed5b51410ec9d7d8878d99a526f5f237f68",
+          "size": 5838
+        },
+        {
+          "path": "scripts/live-browser.js",
+          "sha256": "3beaec74d362b64fd32656b22e3bd09f3b983ed2b3068625475dbe46b6867ed9",
+          "size": 563193
+        },
+        {
+          "path": "scripts/modern-screenshot.umd.js",
+          "sha256": "bb36665889124a0b6e15f16045265737449c3bdcf2712cdb08af3cfa01563e2b",
+          "size": 29290
+        }
+      ],
+      "bundled": "partial"
+    },
+    {
+      "id": "archify",
+      "name": "Archify",
+      "author": "tt-a1i",
+      "summary": "Turns a description, plan or repository into an interactive HTML diagram.",
+      "description": "Creates validated architecture, workflow, sequence, data flow, ERD, class and timeline diagrams as explorable standalone HTML with dark and light themes and export to image, SVG and WebM.",
+      "category": "Documents",
+      "tags": [
+        "diagrams",
+        "architecture",
+        "html",
+        "visualization"
+      ],
+      "license": "Apache-2.0",
+      "repository": "https://github.com/tt-a1i/archify",
+      "path": "archify",
+      "popularity": "91,023 GitHub stars (2026-10-29), number 14 in the selan.ai ranking with about 935 commits in 30 days.",
+      "sources": [
+        "https://github.com/selan-ai/top-claude-code-skills"
+      ],
+      "ref": "d6059331abbddb49bca380ff46dca8ce33158b04",
+      "install": "npx skills add tt-a1i/archify --skill archify",
+      "image": "images/archify.jpg",
+      "sha256": "2525be5cc6c39391ae6dc84f656b657306ca81bd4c1575b55bbd341a4da1df93",
+      "files": [
+        {
+          "path": "LICENSE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "size": 11358
+        },
+        {
+          "path": "LICENSE-MIT",
+          "sha256": "b799ab081703e7821ae5096d2c1abdf14bbdc75e8ea1c4045998c36ed6db9706",
+          "size": 1102
+        },
+        {
+          "path": "NOTICE",
+          "sha256": "665eb53e6fcf09cee183c9f23c8052645dc95570d9ccbbf53dc0f5213a1b5edd",
+          "size": 1340
+        },
+        {
+          "path": "SKILL.md",
+          "sha256": "1382cfb7108b05e500b82af93c04fd7b694430d3908039bd92d634f01c1e7181",
+          "size": 18877
+        },
+        {
+          "path": "THIRD_PARTY_NOTICES.md",
+          "sha256": "b5e129197f391568f7abf287c74b24f4835f10e5388f600407c8788feaeb9015",
+          "size": 5669
+        },
+        {
+          "path": "assets/JetBrainsMono-OFL.txt",
+          "sha256": "c1ab7c666206842a02b35b30770dac0d7a10156ed401c9defc3f02a754d89e90",
+          "size": 4398
+        },
+        {
+          "path": "assets/template.html",
+          "sha256": "9689eeec1a5918aea571eb84d66ea28c7b5bcdcbcf2ae71666bad19d44cc89bc",
+          "size": 787334
+        },
+        {
+          "path": "bin/archify.mjs",
+          "sha256": "3cebcee3fa339e3b98deacae8cb9a5570525e003d8823368d304d904ba9ceecd",
+          "size": 288781
+        },
+        {
+          "path": "bin/delivery-update.mjs",
+          "sha256": "24d92f908d91ece10ddcefe979f7950f9250023813c41777022ae5d948aa8e2c",
+          "size": 3700
+        },
+        {
+          "path": "bin/finalize.mjs",
+          "sha256": "766e053afaeaca8045b8a0558f50cb6b685dfe21cb9d00e7776d407d6db364e8",
+          "size": 50052
+        },
+        {
+          "path": "bin/open-artifact.mjs",
+          "sha256": "b0ab5f37c4f4556f76040dc862744afe9d4b65f319f35e1f9b505e0344b9c409",
+          "size": 4144
+        },
+        {
+          "path": "bin/preview.mjs",
+          "sha256": "a37f4f0985339933e8d89ef664d27988afac557b52084ec04407848b936989bd",
+          "size": 36668
+        },
+        {
+          "path": "bin/recover-output.mjs",
+          "sha256": "b3f7db21b3fc5341326207c1259aa787730120f42179eff50e481b0c6ad1e2d4",
+          "size": 1367
+        },
+        {
+          "path": "bin/visual-check.mjs",
+          "sha256": "72a8eec9793588552da4013f228eb3fb5ad4936a3d3cf31920de883b77ca3dfd",
+          "size": 120537
+        },
+        {
+          "path": "brand-marks/README.md",
+          "sha256": "8b771a16322ce9ea47fdc00b9935e33adf0f3af608f2d735235443e15ef622e2",
+          "size": 1449
+        },
+        {
+          "path": "brand-marks/catalog.json",
+          "sha256": "e1a6c555cbf8ea36fb8100a4a25824e7ab87bebe9871e450ba05b6dea3b036d6",
+          "size": 14162
+        },
+        {
+          "path": "delta/architecture-delta.mjs",
+          "sha256": "479c55681f6a5b24d187d6e45a585792384e5dc56aa583131d189366b950a1c5",
+          "size": 79087
+        },
+        {
+          "path": "explainer/browser-check.mjs",
+          "sha256": "cbbebfca2cb58cde0791f349e4f13490c0d085ce2f8653279139cf2aed334677",
+          "size": 30708
+        },
+        {
+          "path": "explainer/charts.mjs",
+          "sha256": "bb49c5e8e5d6ba70a511d292dbac6a47953a010b67a8563e5f68222c7b220390",
+          "size": 5997
+        },
+        {
+          "path": "explainer/check.mjs",
+          "sha256": "151211edd6f1b842ee63b1aef8682cb68e6237ce3b9e7a81e09667420f2b9b3b",
+          "size": 14888
+        },
+        {
+          "path": "explainer/diagrams.mjs",
+          "sha256": "bb4aae343968db5a5ad70c368ad41dcc9d2ac93f3ace02645059daf33cab16ba",
+          "size": 38710
+        },
+        {
+          "path": "explainer/diff.mjs",
+          "sha256": "0851a6b9715a3f277308cb88c84a5ef5fc943f09a9e0a391a573438fe8a30fbb",
+          "size": 8454
+        },
+        {
+          "path": "explainer/inline.mjs",
+          "sha256": "e024b719a365077b547cb3d50ac9909db7e080ca5bde62387e5d62ead3f819f3",
+          "size": 8721
+        },
+        {
+          "path": "explainer/layout.mjs",
+          "sha256": "656232369fe0394e35f827c1b5295fb8f14d315e7fa53d5f16248440519736c8",
+          "size": 2571
+        },
+        {
+          "path": "explainer/page-bundle.mjs",
+          "sha256": "1d4fc3f65b4eb4207a0c3b86a2968310f931a9b945fcd1fc3021ce98a29f7310",
+          "size": 1138
+        },
+        {
+          "path": "explainer/parse.mjs",
+          "sha256": "dd0d05672e92453b1b1cea31372792cbe03aecdd80f21e2f3aa0eda49d3be853",
+          "size": 27256
+        },
+        {
+          "path": "explainer/patch.mjs",
+          "sha256": "b2721021de474431537705d696325ea01eb946e9095e8476fad1802d2fb5be4d",
+          "size": 12039
+        },
+        {
+          "path": "explainer/prepare.mjs",
+          "sha256": "d8ff050738d7c858d62641b069455482814de0c4bdf7c0872d0a2a663b1b0643",
+          "size": 9819
+        },
+        {
+          "path": "explainer/reader.css",
+          "sha256": "20ae425a84157c2d478241250975e74fca8938b47b85c5414149710ff4a3538f",
+          "size": 47157
+        },
+        {
+          "path": "explainer/reader.js",
+          "sha256": "202d3ad200accd89a1484fe64610d9bc8bb4544c14c3f51522ba74f965b332c6",
+          "size": 51676
+        },
+        {
+          "path": "explainer/render.mjs",
+          "sha256": "18ac4f6dbc0c476c5be24f41719bc6f3d2027fa91a50e2902dd818317088c57d",
+          "size": 34005
+        },
+        {
+          "path": "explainer/revision.mjs",
+          "sha256": "29032cab30c03b2e4c48730f40175e0e59aa4794893c02e5ae38668776c18288",
+          "size": 1965
+        },
+        {
+          "path": "explainer/sources.mjs",
+          "sha256": "c6aae2ef90b6e49d16c1ccd5cfc5351a7716b8f9150e1c261dbd6ca8b8ca9ab5",
+          "size": 20882
+        },
+        {
+          "path": "explainer/validate.mjs",
+          "sha256": "4e14063082b4bced482e0d2f771de5b29ef805677fcc354dfd283b9e16bd1b0a",
+          "size": 14520
+        },
+        {
+          "path": "explainer/vendor/pele/LICENSE",
+          "sha256": "311bccc30de6f7b9cbfb64232bb0c911ccb2191abe316550813ae25b2c7925b9",
+          "size": 1934
+        },
+        {
+          "path": "explainer/vendor/pele/README.md",
+          "sha256": "47cb1894b1d248c49b7d79590a97fba294b090a7f2bac178a85baa79f2dae0d6",
+          "size": 475
+        },
+        {
+          "path": "explainer/vendor/pele/chunks/3DKXF73K.js",
+          "sha256": "5901afffb8349d0cb095e93494e8d3f36f09497b28a9255e066c52b6ce0a6c31",
+          "size": 3429
+        },
+        {
+          "path": "explainer/vendor/pele/chunks/42UTT654.js",
+          "sha256": "365a5dcd61413ed715d375c053466ef89652aaa5065214720045d22d3198d7ed",
+          "size": 11384
+        },
+        {
+          "path": "explainer/vendor/pele/chunks/DKTLEL5E.js",
+          "sha256": "91864eed78a6a3cc9791d20fb9b61fd8f458c12101662883cd23e755fd2a4cb6",
+          "size": 838
+        },
+        {
+          "path": "explainer/vendor/pele/chunks/EEIX5ZYH.js",
+          "sha256": "1e097466abf989151f92368e6ff7cb463e2ae191724e307ca2d004a58126b651",
+          "size": 14177
+        },
+        {
+          "path": "explainer/vendor/pele/chunks/EJ5KOXYD.js",
+          "sha256": "cb84c22da57a11eb988d4e671b12ff17018923619883ddf49cd0b0ab270c4bbe",
+          "size": 7664
+        },
+        {
+          "path": "explainer/vendor/pele/chunks/GUJTEFZK.js",
+          "sha256": "e8584ce5872c50c6370efc1fbce911848506d84ff6fa88e4f079f412b5e2f068",
+          "size": 511
+        },
+        {
+          "path": "explainer/vendor/pele/chunks/IZOKQ2GT.js",
+          "sha256": "80d3ebe446ae5447bf88c7f01b762478f51ce8cdd6e270b90f4b58534fc363f8",
+          "size": 8651
+        },
+        {
+          "path": "explainer/vendor/pele/chunks/L4LY553T.js",
+          "sha256": "d574102b3e5499e752513c2ba75f152cd447b9f81d877ddffd37faed0e7dae16",
+          "size": 14810
+        },
+        {
+          "path": "explainer/vendor/pele/chunks/MSKIJHB2.js",
+          "sha256": "94317f9dabbe5793c8ed57a298b5a68474fcca6c62ecd07fabd9a3c6f15d3e23",
+          "size": 5132
+        },
+        {
+          "path": "explainer/vendor/pele/chunks/RVARI57O.js",
+          "sha256": "3dc7661b060578920eab83aafd1fa261886e7e331d44f8f5d2f34bd0804027a3",
+          "size": 159
+        },
+        {
+          "path": "explainer/vendor/pele/chunks/UKSIWDDN.js",
+          "sha256": "c0f5a984eaefaefa550d525670624e9d426bb7280ba33fcb5f9fa8adca804fc3",
+          "size": 7382
+        },
+        {
+          "path": "explainer/vendor/pele/chunks/UPTXNAXN.js",
+          "sha256": "f2fc18109dfb5ca72ea43c7951c4ce36d20a890b2fefb2d531fa751aa9911b87",
+          "size": 9468
+        },
+        {
+          "path": "explainer/vendor/pele/chunks/XTDUIGUI.js",
+          "sha256": "1ed02bff674691de6cb6ce6b3863fb021b1508f33b992515faeac876d0716c39",
+          "size": 5037
+        },
+        {
+          "path": "explainer/vendor/pele/chunks/YAYTP6L5.js",
+          "sha256": "9246835c2b1544ab95dd1b89b7ce4cfaa2a89aa26873f3d52f7e4a17ef957da6",
+          "size": 15746
+        },
+        {
+          "path": "explainer/vendor/pele/core.js",
+          "sha256": "ac428c1ca244f030f363e0d0f12e623df92c1439d2a211310d1ff73f0ed224a4",
+          "size": 347
+        },
+        {
+          "path": "explainer/vendor/pele/diagrams/pie.js",
+          "sha256": "a2bc92d2f8842b476cdb8a039455493db2c71d6a4e3a1b3dc97cfc1f409056d1",
+          "size": 184
+        },
+        {
+          "path": "explainer/vendor/pele/diagrams/quadrantChart.js",
+          "sha256": "9ac8fc714b3973854efdd960fb6831c973e72624bb9b0bc091ada8958794ebfb",
+          "size": 209
+        },
+        {
+          "path": "explainer/vendor/pele/diagrams/radar.js",
+          "sha256": "379748e709992f9e242028ad4a1b103f75ad693a84331c8fc33df0f258a7a9fe",
+          "size": 179
+        },
+        {
+          "path": "explainer/vendor/pele/diagrams/sankey.js",
+          "sha256": "a789e591ba81fd434418a64561005caf50760f11cbaa9d4dd589e777bbfe8e36",
+          "size": 179
+        },
+        {
+          "path": "explainer/vendor/pele/diagrams/venn.js",
+          "sha256": "e4bc9943916a8ce8b07d0848eda99d38f7e8334708998a5d951acf27a5f4a059",
+          "size": 154
+        },
+        {
+          "path": "explainer/vendor/pele/diagrams/xychart.js",
+          "sha256": "817de14381d9ba413dc70947824ff2538ba532c232592035a5b836094434e4bb",
+          "size": 209
+        },
+        {
+          "path": "explainer/writing.mjs",
+          "sha256": "1030bc5b09f932e805f87390d8b51a1a23bc8dab2cc02068873621e26da8781f",
+          "size": 11389
+        },
+        {
+          "path": "locales/README.md",
+          "sha256": "f1f59d12d490927bfdb804b1a71e76ea057f2ef8dc1d98f9aa053343e0f80056",
+          "size": 2235
+        },
+        {
+          "path": "locales/ar.json",
+          "sha256": "4a8d5c821a16fa94c97b68784481841c323e288d841acd84ac8415c063483a9f",
+          "size": 33837
+        },
+        {
+          "path": "locales/en.json",
+          "sha256": "1e8b43d8ba6d8ae75c2b393b2edb43cac5e142f33cbc2d1a2351e0e8baf9e1aa",
+          "size": 27386
+        },
+        {
+          "path": "locales/es.json",
+          "sha256": "f2b971994cb9f7091758e605931b4b4959103ed0090916fe281bfb2f2e1e5cc7",
+          "size": 29504
+        },
+        {
+          "path": "locales/ko.json",
+          "sha256": "b7f2be52c61e4ced665ea62bb0670b4c2615a6c706127246a44bbcffdf65f8be",
+          "size": 30852
+        },
+        {
+          "path": "locales/manifest.json",
+          "sha256": "9a377676b5d16f97a6a1f9326aadbb447321e9ceb5744718181796ce3dcce0d8",
+          "size": 293
+        },
+        {
+          "path": "locales/zh-CN.json",
+          "sha256": "83d870452e9ff3459a3cae88be6900d9a98b268e6cfba94b608a7c10f484e485",
+          "size": 27080
+        },
+        {
+          "path": "locales/zh-TW.json",
+          "sha256": "0db367aec82cf92b08d4335d5ed021480801f7ae79b1e2c1a0c79b27d4eafb2e",
+          "size": 27147
+        },
+        {
+          "path": "migrations/workflow-v2.mjs",
+          "sha256": "0eec02057b8490afca9b093de5ea6e636c7fad2361cd28a04cf2f3e4b6197434",
+          "size": 9204
+        },
+        {
+          "path": "package-lock.json",
+          "sha256": "ab7a1438a8edbd26ceda9cf9648e3ad50542bffd7cc87f9ec83793cde1f26287",
+          "size": 3232
+        },
+        {
+          "path": "package.json",
+          "sha256": "ea99289562037cae2deeced0b45e1374ce4c4b4f23a53a607a6aada62c803cd0",
+          "size": 1485
+        },
+        {
+          "path": "recipes/scenarios.mjs",
+          "sha256": "1e93ba15d0782be535251bfb406cf8cc056291d84d77d33ca9dca01df743528f",
+          "size": 41520
+        },
+        {
+          "path": "references/architecture-layout-repair.md",
+          "sha256": "6c90caa232c004fa43b8770c745b83672919deaf8909f2592a3ad5fcd4031953",
+          "size": 4449
+        },
+        {
+          "path": "references/authoring-contract.md",
+          "sha256": "c7c9918ee28e213defd4cb504f0440ae366a8db4665938d2a0db0b62da565901",
+          "size": 42749
+        },
+        {
+          "path": "references/authoring-defaults.md",
+          "sha256": "11a2c60b31cb8a4bc19e83ff2e8351c1b5af93cfa091512e6d053a13288eaf6c",
+          "size": 12862
+        },
+        {
+          "path": "references/brand-marks.md",
+          "sha256": "d6e1a6ceafd07e48f27caf01655ea642365a5416ed0543b4022ca62750b58f0f",
+          "size": 5771
+        },
+        {
+          "path": "references/delivery-contract.md",
+          "sha256": "0e283a418871a19c7adcc493c461ae6180e9b233f14ad95a19a9c15e109d2415",
+          "size": 49894
+        },
+        {
+          "path": "references/explainer-authoring.md",
+          "sha256": "722c126f05192da499f75468e9c1b3001daa4a844894ebf45a854b6687a4af18",
+          "size": 18968
+        },
+        {
+          "path": "references/repository-authoring.md",
+          "sha256": "c1648fc0c1b85a3a9bfbf3a8919dfa741ff0b5a55ea310d1fcacbf6ee837e139",
+          "size": 8004
+        },
+        {
+          "path": "references/update-awareness.md",
+          "sha256": "16b437a47790fda48f0e74f6aa053715fb06b6e8cd1ba994d1c01ffefa12a76b",
+          "size": 1957
+        },
+        {
+          "path": "references/viewer-runtime.md",
+          "sha256": "7d35ef52a8f47e77e8ec827cea7c71219bf1aafa53b5ef72ad4f1e1437f882a4",
+          "size": 5692
+        },
+        {
+          "path": "renderers/architecture/grid.mjs",
+          "sha256": "f6de99c32436feed3378b0ddef516bb4732ff27a89c543b50635d4d14a15a55a",
+          "size": 2071
+        },
+        {
+          "path": "renderers/architecture/labels.mjs",
+          "sha256": "3a0066a987d8ad20121d0f7261d8bcfd3659443a335ea5e47938e7779ae12d31",
+          "size": 155
+        },
+        {
+          "path": "renderers/architecture/render-architecture.mjs",
+          "sha256": "50bf6f0748446ba99c4236e29e2e39755d5a2b8894fb598f104f7b3107063ca3",
+          "size": 58551
+        },
+        {
+          "path": "renderers/architecture/routing.mjs",
+          "sha256": "908ddaf85caaa2d5d4a17c0544489ad9500614914c64a1d2ee2b96c4cc9ad4b3",
+          "size": 74482
+        },
+        {
+          "path": "renderers/class/README.md",
+          "sha256": "33074161e184a98dbb2b65d0ee308779b216a3c97dda4dfaa2bd6e2fb2e9f526",
+          "size": 6781
+        },
+        {
+          "path": "renderers/class/render-class.mjs",
+          "sha256": "e4943c1e91062aba7c72715e4887165f03908de03a1c99dc71f296bb0d1214cf",
+          "size": 53567
+        },
+        {
+          "path": "renderers/dataflow/README.md",
+          "sha256": "3e9c8368e5aab1e686817745628d6da6e584b5009973ae1ee8e4fbea1f324ba5",
+          "size": 9193
+        },
+        {
+          "path": "renderers/dataflow/dataflow-compiler.mjs",
+          "sha256": "e27a9b69876927b7285ce14569d22b92e32e8173fd953184ac13a8a02408e257",
+          "size": 91209
+        },
+        {
+          "path": "renderers/dataflow/joint-label-routing.mjs",
+          "sha256": "8d1fd73d0d6055f6c551dcbc7ea3b01e4b801216c3101b2246e4172a564beea8",
+          "size": 10827
+        },
+        {
+          "path": "renderers/dataflow/label-capacity.mjs",
+          "sha256": "187af128f09630e512931b22bb301115d2a4d72c925cf02d3fc4736fb1846cb9",
+          "size": 4454
+        },
+        {
+          "path": "renderers/dataflow/render-dataflow.mjs",
+          "sha256": "befc8bdacd86c07dd0b65a4b9635632a1246dd8dae7cb98dcf6d31dde361da2c",
+          "size": 960
+        },
+        {
+          "path": "renderers/erd/README.md",
+          "sha256": "2dce4b5da474d2b1f4190d34f5f3b625e2a479460da8ee89b8dbe0481e9245f4",
+          "size": 14516
+        },
+        {
+          "path": "renderers/erd/grid.mjs",
+          "sha256": "1aa4644d8ef13fdebe5adf48377c0755222a0288f6cc487faf052d7957a78a32",
+          "size": 7038
+        },
+        {
+          "path": "renderers/erd/render-erd.mjs",
+          "sha256": "ed180a39c00bec377bde0c48c8af798bb93e97d0cf006dd321a9ba14d5c50d7e",
+          "size": 80473
+        },
+        {
+          "path": "renderers/explainer/render-explainer.mjs",
+          "sha256": "a646f6e5450bfcde6bd0aac23487d0f9d7feb947b307079f9a6f2df27087fe93",
+          "size": 3292
+        },
+        {
+          "path": "renderers/lifecycle/README.md",
+          "sha256": "42aa4d37721661d1f59babb7e6467d910c7569d8573add2679c04942f5ebd72a",
+          "size": 6167
+        },
+        {
+          "path": "renderers/lifecycle/render-lifecycle.mjs",
+          "sha256": "b700af01fa3848d7dfdf492b9efaccc7b384e6ad509a75bf9ac9af2038e4efc6",
+          "size": 61373
+        },
+        {
+          "path": "renderers/sequence/README.md",
+          "sha256": "d93cdf05140ae60f8a5df495da5cd5c9dc492f2338760c53626f3943454d00b3",
+          "size": 8667
+        },
+        {
+          "path": "renderers/sequence/render-sequence.mjs",
+          "sha256": "249689c4de5636bf7d746a04b3369f5576b91f76ea533502b313f943da4a8a95",
+          "size": 57144
+        },
+        {
+          "path": "renderers/shared/atomic-output.mjs",
+          "sha256": "f804d66d1801ac2dadc9d0a4c334645cfbb7a8cd1a7de112ddfb952c056a580b",
+          "size": 70372
+        },
+        {
+          "path": "renderers/shared/automatic-labels.mjs",
+          "sha256": "3f3b63cd9cfd242968a739ca703291d7788567ec5699b5e7d6a11a4079e15917",
+          "size": 14771
+        },
+        {
+          "path": "renderers/shared/brand-marks.mjs",
+          "sha256": "87436fa956c98dc9bbabf826d5f254587c1b3e7a829883f4098e04c62f4b5345",
+          "size": 28938
+        },
+        {
+          "path": "renderers/shared/cli.mjs",
+          "sha256": "039c3fbb0d46436d387629ce16b737a7c3247dfb79a9e77c1487ca49c0afbbe0",
+          "size": 19047
+        },
+        {
+          "path": "renderers/shared/desktop-readability.mjs",
+          "sha256": "55ee7aba702d7883a08b6e54b39b00d5a17918a0c6bcf0c0fea19034f4de8990",
+          "size": 6929
+        },
+        {
+          "path": "renderers/shared/diagnostics.mjs",
+          "sha256": "4635119e65f77f28f0a81c038642c7d7de318ba9400073f37decd59df258dcd6",
+          "size": 8272
+        },
+        {
+          "path": "renderers/shared/engineering-profiles.mjs",
+          "sha256": "7e99f9d5423f66cc9ab6224da56dc2d5aa6c6faec29178034794e9db6b5b2889",
+          "size": 6936
+        },
+        {
+          "path": "renderers/shared/generated-brand-marks.mjs",
+          "sha256": "0f157d229c12df6f53763a3b88684baa5803a52484c49c4d34ec40b8743beea2",
+          "size": 163612
+        },
+        {
+          "path": "renderers/shared/generated-validators.mjs",
+          "sha256": "f9e6d4f4ef5c5ab98013563c7ea1d27d58c67111832bd4167989dc0c88405181",
+          "size": 1020040
+        },
+        {
+          "path": "renderers/shared/geometry.mjs",
+          "sha256": "818f6c000595f11a915cce2f73b5deb1a82ececf6c578a22bee70099988ea7a5",
+          "size": 89929
+        },
+        {
+          "path": "renderers/shared/i18n.mjs",
+          "sha256": "1e6601157babd70c455dcddc93868f4665e56e7e723708d95dcc791dd1b636b9",
+          "size": 13869
+        },
+        {
+          "path": "renderers/shared/layout-report.mjs",
+          "sha256": "979da7226c5080cb16fb352236d5705cc79c06c15d0a3550b95963af02c63b6e",
+          "size": 1587
+        },
+        {
+          "path": "renderers/shared/legend.mjs",
+          "sha256": "c33fcb54cc5aa60d788154036daa165f85d2e06d28aa9f1d4a73705fa278de70",
+          "size": 9225
+        },
+        {
+          "path": "renderers/shared/node-card-style.mjs",
+          "sha256": "80a0d473b936ee198e73cb89addd43a6344fb81da94f9fc88c53ae759cbf748d",
+          "size": 2470
+        },
+        {
+          "path": "renderers/shared/output-path.mjs",
+          "sha256": "7422139101abd93493918898a97bed06f2212bfd411d3514cd229b6d57a3797e",
+          "size": 19029
+        },
+        {
+          "path": "renderers/shared/owned-temp-directory.mjs",
+          "sha256": "fb94515f8cd4b6b28799a7367745235822e2169534b8200791600ce7c3953a0e",
+          "size": 3198
+        },
+        {
+          "path": "renderers/shared/path-semantics.mjs",
+          "sha256": "4ef002af9061c06634a07de6d199fd7d13e6c50561c792fd018118bf3e065f52",
+          "size": 32406
+        },
+        {
+          "path": "renderers/shared/portable-path.mjs",
+          "sha256": "26130cbcdae9b9f082486aeb5feec9c5fe57905d2ed8e30c8081b9710e2e8ac3",
+          "size": 12543
+        },
+        {
+          "path": "renderers/shared/repository-evidence.mjs",
+          "sha256": "d1e14f82ba07eb4df9fb0986b4d0c02110d1eaa05a4454f33e92bd1e5dfdc8d3",
+          "size": 20342
+        },
+        {
+          "path": "renderers/shared/repository-location.mjs",
+          "sha256": "344044d8240a093919894bd63278652bd01b3717c5b49fb174a6f77bea28b839",
+          "size": 4349
+        },
+        {
+          "path": "renderers/shared/route-quality.mjs",
+          "sha256": "c9cb9aae3a1623667f0490ba755bbc0ba57e5957e7ea56379d872eb1f2bb2090",
+          "size": 26944
+        },
+        {
+          "path": "renderers/shared/sidecar-path.mjs",
+          "sha256": "c23cac8bcc265a74e2920c58d0968d1ffa06c1328bdd9cfd07755d4df2f22974",
+          "size": 1269
+        },
+        {
+          "path": "renderers/shared/software-notices.mjs",
+          "sha256": "8bfc9ee3dc35eb0aa9860f71e7038f15647ed24d6ce7386e0e24870766e10bfe",
+          "size": 506
+        },
+        {
+          "path": "renderers/shared/spatial-grid.mjs",
+          "sha256": "e728bf6a729972f95ae09e368ea370490d10ff94d49debe2fab2e9bac923ee1a",
+          "size": 2440
+        },
+        {
+          "path": "renderers/shared/svg-path-analysis.mjs",
+          "sha256": "4c498ef5ba090a2d658c2ce3d80145f4cc63da9462f547b621206250096957c5",
+          "size": 5429
+        },
+        {
+          "path": "renderers/shared/text-fit.mjs",
+          "sha256": "ebd499072ef4fe31c9aabf45a01c204a9c2c142d45f087c3240673f90f477038",
+          "size": 5195
+        },
+        {
+          "path": "renderers/shared/utils.mjs",
+          "sha256": "d0e8692b8acdc6993578c5d4aeb67065effdf5bf4cf2cd127bf561c677af38f5",
+          "size": 12972
+        },
+        {
+          "path": "renderers/shared/validator.mjs",
+          "sha256": "f5cf5b9aa3623a456e9a07f0c5f08fe09a0a67d3ba356e32937c3287c75c3bc9",
+          "size": 3336
+        },
+        {
+          "path": "renderers/timeline/README.md",
+          "sha256": "377cb185f8ddfca2a0349d122e736a6fc832d5c8e0555039f0e0bcc4f5038c86",
+          "size": 4087
+        },
+        {
+          "path": "renderers/timeline/render-timeline.mjs",
+          "sha256": "125fc65b2cd2ac725a3ad655f4dcb8f14e158e21d04af72924839830181e294c",
+          "size": 30321
+        },
+        {
+          "path": "renderers/tree/README.md",
+          "sha256": "c1afbcb94e026910987199776d76896b58b7947db2f94d90d1da608e44ca9a35",
+          "size": 4255
+        },
+        {
+          "path": "renderers/tree/render-tree.mjs",
+          "sha256": "4e2ba7d4a3f567760c3801e7439bd18fa28acfe51e581479bd56ad549e240b68",
+          "size": 30666
+        },
+        {
+          "path": "renderers/waterfall/README.md",
+          "sha256": "13afed9d91d02bdabea0b920c23cd6ee851a42e53d30e80042e2aee4f845ecd0",
+          "size": 3501
+        },
+        {
+          "path": "renderers/waterfall/render-waterfall.mjs",
+          "sha256": "df95d32ef3b790c9b830f5e7a5741d71ae14b9f602d65db84bc60235a74d3290",
+          "size": 23030
+        },
+        {
+          "path": "renderers/workflow/README.md",
+          "sha256": "d6f13218145cf373fafa6005eb718c1564a424b486253048b11d242c33c445aa",
+          "size": 17670
+        },
+        {
+          "path": "renderers/workflow/render-workflow.mjs",
+          "sha256": "304df0df006c44ab01ad534f34cb48cbe163f7ed2e7e2e8490dfee88827d3aba",
+          "size": 1654
+        },
+        {
+          "path": "renderers/workflow/workflow-compiler.mjs",
+          "sha256": "a84fa7570341166e9190892b4ab9bd5fd1ac63290cc9ec5a48dcaaf8a4183a3f",
+          "size": 250196
+        },
+        {
+          "path": "renderers/workflow/workflow-migration-geometry.mjs",
+          "sha256": "47729f32eae163c05c249cc0a663949fae745a9c74fe9548c83eb361b31e285a",
+          "size": 6331
+        },
+        {
+          "path": "renderers/workflow/workflow-placement-repair.mjs",
+          "sha256": "3ee6e83c3a5279e1af2b06db39fd39c3348264b2daa159a94cda3e1d8de5ed7c",
+          "size": 4762
+        },
+        {
+          "path": "schemas/README.md",
+          "sha256": "dcb6e86f3d1591004c669764ec62558bd01384c2e9155bb82d8a3be1c3842e05",
+          "size": 15049
+        },
+        {
+          "path": "schemas/architecture.schema.json",
+          "sha256": "aef992b585a18a4016b8207254fe43a6227b0d45322a1ba95e0f69a80fc8f8c1",
+          "size": 6024
+        },
+        {
+          "path": "schemas/class.schema.json",
+          "sha256": "0ecfb9948563166c4f23df784d618ddd93f003ee61402a9349c5f63b0284ff2a",
+          "size": 8120
+        },
+        {
+          "path": "schemas/common.schema.json",
+          "sha256": "3bb6bde1122ebc1d47f73cf12400015baa0c7e5650e5780b0e89773d7ead4def",
+          "size": 5785
+        },
+        {
+          "path": "schemas/dataflow.schema.json",
+          "sha256": "f01b2faafa5fd6e300f6b5045eeca70f70226552411180442d6e528dd45172f1",
+          "size": 6320
+        },
+        {
+          "path": "schemas/erd.schema.json",
+          "sha256": "83aef0349f3cd415a00da4ed30c7864056dc9599627e004e6b7168ad4149ebc8",
+          "size": 9329
+        },
+        {
+          "path": "schemas/explainer.schema.json",
+          "sha256": "9fc54042927602b1c37dd130061989f7d9a90718888ad75943275be2fd7d1371",
+          "size": 19246
+        },
+        {
+          "path": "schemas/lifecycle.schema.json",
+          "sha256": "151befae29a68833ba26e7848769e89ab9dc71fc5bba234a91a62307338cfa49",
+          "size": 5342
+        },
+        {
+          "path": "schemas/sequence.schema.json",
+          "sha256": "97af565f8b6d8fbd4b5be40ddb52f4943accab2cf4f386d695e800d367dd4f89",
+          "size": 6178
+        },
+        {
+          "path": "schemas/timeline.schema.json",
+          "sha256": "4a657251d454bde44ef4697c960fe7503eeb4db4e50f9540c7e2d54046dd0769",
+          "size": 3951
+        },
+        {
+          "path": "schemas/tree.schema.json",
+          "sha256": "65c794a1f522ce336afe787bd59adb63a81f57a5bba3ac266f2bae5c3a07b8c3",
+          "size": 3172
+        },
+        {
+          "path": "schemas/waterfall.schema.json",
+          "sha256": "7c3000534b491ce86b96ace528e9bd5a453ba3d14294a724da3ece4bd83b51f6",
+          "size": 3526
+        },
+        {
+          "path": "schemas/workflow.schema.json",
+          "sha256": "e13a1ce3b841376c8c6f6b9cb8152f8c0c7d70a77a2960fecdfe9025de83dc25",
+          "size": 10165
+        },
+        {
+          "path": "scripts/check-render-output.mjs",
+          "sha256": "dcfb6c8eccd08bd7ce4b9fc1928cd4c3a6794b49a512e0afa1aea87e1e332195",
+          "size": 68465
+        },
+        {
+          "path": "scripts/check-update.mjs",
+          "sha256": "a1ed8be99a484d81964c9d66938f813fb3726690aace3e982e777ea8bca5ebbc",
+          "size": 59332
+        },
+        {
+          "path": "scripts/delivery-update-child.mjs",
+          "sha256": "ec231c992ab9b548c735698f209cb350d4b137aad2a5e8cb1374e692b6b38064",
+          "size": 1296
+        },
+        {
+          "path": "scripts/generate-brand-marks.mjs",
+          "sha256": "0434c31903b831382a91e85a329bcbcb39b32f29c656273a273f896b3b0a42e7",
+          "size": 5136
+        },
+        {
+          "path": "scripts/generate-validators.mjs",
+          "sha256": "f6ec68d16b8b2a8a1c55b3e5cbb121a8557b86a5c59a6a0503e798db9c0e75ee",
+          "size": 4172
+        },
+        {
+          "path": "scripts/render-examples.mjs",
+          "sha256": "c2c99c4153cf21f0526cf3f041c1d81716017be182d404173f8961fa494e8c8c",
+          "size": 2024
+        },
+        {
+          "path": "scripts/update-contract.mjs",
+          "sha256": "b6eb5e18ebea770c0a0c2cf2ba45d122d85abe61e94b9a5426602a9f84910b31",
+          "size": 6826
+        },
+        {
+          "path": "skill-release.json",
+          "sha256": "1ea25551e0359e547267d40e83812ffd1a7bdf7398826b65f2a2fcf1a11ba596",
+          "size": 260
+        }
+      ],
+      "bundled": "partial"
+    },
+    {
+      "id": "last30days",
+      "name": "Last 30 Days",
+      "author": "Matt Van Horn",
+      "summary": "Researches what people say about any topic across Reddit, X, YouTube and more in the last 30 days.",
+      "description": "Pulls posts and engagement from Reddit, X, YouTube, TikTok, Hacker News, Polymarket and GitHub, ranks them by real engagement and writes a sourced synthesis. It also ships a doctor check for broken sources.",
+      "category": "Research",
+      "tags": [
+        "research",
+        "social",
+        "trends",
+        "reddit"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/mvanhorn/last30days-skill",
+      "path": "skills/last30days",
+      "popularity": "65,794 GitHub stars (2026-10-29); listed at about 64,000 stars in a 12 October 2026 roundup.",
+      "sources": [
+        "https://www.firecrawl.dev/blog/best-claude-code-skills",
+        "https://github.com/mvanhorn/last30days-skill"
+      ],
+      "ref": "7efc0ef764765ed9ceff5ce1204462b35b89d680",
+      "install": "npx skills add mvanhorn/last30days-skill --skill last30days",
+      "image": "images/last30days.jpg",
+      "sha256": "1cf6c27897e5de9459e5876d1a10437d18175236e97b839b4556ad9bbc971f5c",
+      "files": [
+        {
+          "path": ".skillignore",
+          "sha256": "133b60f94a87f03f65212674a15eb4be36791956600f9cf9057cb2d3d66946b1",
+          "size": 438
+        },
+        {
+          "path": "SKILL.md",
+          "sha256": "812d2be80add87b953a2775d0b7581989528d78d7c5f52952af636176d791736",
+          "size": 31689
+        },
+        {
+          "path": "agents/openai.yaml",
+          "sha256": "f46e7f09d3118dee7324ac165391ccb7ffe55323d1d75304e34062017913939c",
+          "size": 448
+        },
+        {
+          "path": "references/agent-mode.md",
+          "sha256": "72fd3e5772c9113a936084bbdf13e503c52231f46bfbababef90adc4e1e8118b",
+          "size": 2294
+        },
+        {
+          "path": "references/category-peers.md",
+          "sha256": "a973e60f03ed242e769767b24c85c6a1fe412bc853796ada75f25eab68152bd0",
+          "size": 3485
+        },
+        {
+          "path": "references/comparison.md",
+          "sha256": "5ff8a3ccc535dbd9a87dfc98e1ee1916fe88ff052fa09c53fe3b5e0bd374b965",
+          "size": 17648
+        },
+        {
+          "path": "references/competitors.md",
+          "sha256": "4fa74d57ae7bda234303fce9e48491baf1f08af49d07528c04663bd43c3d494e",
+          "size": 4417
+        },
+        {
+          "path": "references/discovery.md",
+          "sha256": "241ad76580f141b6ea166e399bddf49af01f8806609e2a3ed183a688520ff56e",
+          "size": 9414
+        },
+        {
+          "path": "references/followups.md",
+          "sha256": "e3fac96a65ad776780c839cb2a38867545a1be53a3c5cd66dcc306f0382f88c6",
+          "size": 8119
+        },
+        {
+          "path": "references/grok-bot-x.md",
+          "sha256": "7d64183c1643f87b0f85ffdfea647e881fb98bf09bf8d8b0e8482bb006a3705b",
+          "size": 9196
+        },
+        {
+          "path": "references/hiring-signals.md",
+          "sha256": "07e033c4c1eca04110d4ee5d813b8d46215e8e51d459e43fe78875da1a98a046",
+          "size": 3677
+        },
+        {
+          "path": "references/library-queue.md",
+          "sha256": "afa78974a77896fa6ba3fd8457f116b5ee73252b4f2cf86107edb5bd5afe6b79",
+          "size": 3664
+        },
+        {
+          "path": "references/recommendations.md",
+          "sha256": "e7df955868a25dfa0e47286523d2260e5d0f658065c6912b0585e032b8de653b",
+          "size": 6787
+        },
+        {
+          "path": "references/research-runbook.md",
+          "sha256": "ecf497eddb4ccbd039de4d85d08cb1b2ce95b04db5eaada636dfa855522493fa",
+          "size": 73947
+        },
+        {
+          "path": "references/runtime.md",
+          "sha256": "671b2f0eac5d7a7dc8e89610b9186d29797008830ac690db4c276c4082d7766d",
+          "size": 11052
+        },
+        {
+          "path": "references/save-html-brief.md",
+          "sha256": "ced7054d56e17d7047f60f606a883739c2b92a964fcfc86131b890ece16d5ae8",
+          "size": 15102
+        },
+        {
+          "path": "references/setup-wizard.md",
+          "sha256": "66976967174f3d2281840577e79471f49b534d5694c59b95f74d2109f10e656b",
+          "size": 46255
+        },
+        {
+          "path": "references/synthesis.md",
+          "sha256": "2a33baa2f085076f25897d70e3606db08db8db18caee783a4984dcc69498136f",
+          "size": 26981
+        },
+        {
+          "path": "scripts/box_chrome_login.py",
+          "sha256": "62fce18be22d69909c9df420eb300314d45256d50f02cdc322da252515ee1311",
+          "size": 8141
+        },
+        {
+          "path": "scripts/briefing.py",
+          "sha256": "8219f60e9bc5ac84757996053318087a24d2bce7fc2623231be8bb10d446f50a",
+          "size": 8449
+        },
+        {
+          "path": "scripts/build-skill.sh",
+          "sha256": "4cca2468149ae1d807a1e84d6f7bd8cdb82fbea6042fa52842ef606f4224e3b9",
+          "size": 1330
+        },
+        {
+          "path": "scripts/compare.sh",
+          "sha256": "88e7100c6c6759a811521155cb4664ae8b0886eb0b455072c4df2b34a8d46c12",
+          "size": 2229
+        },
+        {
+          "path": "scripts/evaluate_search_quality.py",
+          "sha256": "c79989beba5cc1b867d3fb94c92a6f86d242d013ab1ff8a34c844d10e2b6091c",
+          "size": 21334
+        },
+        {
+          "path": "scripts/last30days.py",
+          "sha256": "3bd16ecea7911b5a92e257de2f439be42402489b00c2a57279871d43a5a68ee7",
+          "size": 201980
+        },
+        {
+          "path": "scripts/lib/__init__.py",
+          "sha256": "3fb925405f898201188f9b5eea04e214ea8c8a64643397fd727f08ffeea234d9",
+          "size": 29
+        },
+        {
+          "path": "scripts/lib/agentcookie.py",
+          "sha256": "73ad5b6ff8711dc7688aa80120b3a52ad0bccfd9ddb3f5fdfb850b91687d08d5",
+          "size": 7697
+        },
+        {
+          "path": "scripts/lib/amazon.py",
+          "sha256": "00e6612bdec32a235fd994b271230cfab96e4b590f26ed19f681289d4fcf22df",
+          "size": 34211
+        },
+        {
+          "path": "scripts/lib/arxiv.py",
+          "sha256": "f16b089906833d6c8e5f9458febeced48c87a360efba1eb87c7633c5eda89de3",
+          "size": 12353
+        },
+        {
+          "path": "scripts/lib/backends.py",
+          "sha256": "46da15b2350f695dd7a7e39bf2586528b808517d3d124b05363924cc0868f103",
+          "size": 30635
+        },
+        {
+          "path": "scripts/lib/bird_x.py",
+          "sha256": "04dfd9bf9844df4a22b0785cfdf746bc9fff64c409c46aaab7ea4f00f1eeaeb6",
+          "size": 37235
+        },
+        {
+          "path": "scripts/lib/bluesky.py",
+          "sha256": "7c9b0095b108499824cee27e673ddb9984fde0e9446dfb64b653e046c9fc2d7d",
+          "size": 16088
+        },
+        {
+          "path": "scripts/lib/bounded_get.py",
+          "sha256": "f994ec7f44120eb15f7d9c5dc090ef4c2f486d59cae9316c387c884071071627",
+          "size": 5262
+        },
+        {
+          "path": "scripts/lib/brightdata.py",
+          "sha256": "1213bc29f14a8fa0b9b79e3dc2be9fc1542911d14dfe1bb27a645da75fd37487",
+          "size": 11475
+        },
+        {
+          "path": "scripts/lib/categories.py",
+          "sha256": "849e8e57375962bbc705c05dcfcc538db839ac6454133e1aa7252bcd4cb090e0",
+          "size": 7973
+        },
+        {
+          "path": "scripts/lib/chrome_cdp.py",
+          "sha256": "26ce60a3ff92122b6707db2b47a18ee49be4ff4426f631e9dd59b45b3c245bf4",
+          "size": 18480
+        },
+        {
+          "path": "scripts/lib/chrome_cookies.py",
+          "sha256": "16da9ecf11f93477aedc5fc3b54a88709c5c7e4a99bf00979c831d7ad4477fd5",
+          "size": 18856
+        },
+        {
+          "path": "scripts/lib/cjk.py",
+          "sha256": "92279dd6d6643b1d4e95793f23e082579c18392114ee19b27a3cdb48cb67d890",
+          "size": 4843
+        },
+        {
+          "path": "scripts/lib/cluster.py",
+          "sha256": "c141ad3974cd8fce9d895f32c905b14156695c8dba1d021c4b7b4fc99b677174",
+          "size": 9830
+        },
+        {
+          "path": "scripts/lib/competitors.py",
+          "sha256": "8c77edd2af77944ae7d578679a1f11f0eadbc74e0d4485db70473335587b25bc",
+          "size": 7695
+        },
+        {
+          "path": "scripts/lib/cookie_extract.py",
+          "sha256": "25330a1e94df529e5711f94bfcf0e6880b28de277c3ef37ba2e5a822f42c5f49",
+          "size": 25265
+        },
+        {
+          "path": "scripts/lib/cookie_paths.py",
+          "sha256": "dd2d36cf9335b22a4db36294995a07e4cfb36b6c4ab2a7088e739bb8d4a47857",
+          "size": 570
+        },
+        {
+          "path": "scripts/lib/corpus.py",
+          "sha256": "f19f17f246bebf8663ed61289cb1b6143eb7cbac7254a630c93bd17d3345c053",
+          "size": 15797
+        },
+        {
+          "path": "scripts/lib/dates.py",
+          "sha256": "e54b037e6cab8d76cfdc40ebdf8b0a0b413e57afcb01ad41dbc2da64ddae7eee",
+          "size": 5044
+        },
+        {
+          "path": "scripts/lib/dedupe.py",
+          "sha256": "f089918c3a118a0099ea572cb33725bfa15584d1b0e37cb1081c2440085c7d36",
+          "size": 3973
+        },
+        {
+          "path": "scripts/lib/devto.py",
+          "sha256": "054cab9ded966dd4ceb43b0c95abad637103c938b296b0e88adf1b329d2f3300",
+          "size": 16575
+        },
+        {
+          "path": "scripts/lib/digg.py",
+          "sha256": "f16b258fd3a45730f21db244f08183fbae467bb4d5e89fcdaf62aa8f9422583c",
+          "size": 18606
+        },
+        {
+          "path": "scripts/lib/discovery_handoff.py",
+          "sha256": "cf3a8ce245bdfaac98d03a6238f1845cf754e2d38a36c27e6d67a0579872e34a",
+          "size": 38740
+        },
+        {
+          "path": "scripts/lib/doctor.py",
+          "sha256": "bfbbd547996f23f64b8d998e89c600f2acc5ba55d2037e24ff8bc822051938b3",
+          "size": 88445
+        },
+        {
+          "path": "scripts/lib/dripstack.py",
+          "sha256": "1a9fb0c84fc811c7b2419f007b63edda19732a3ac1d7519175d0f8f3de9c4d16",
+          "size": 8141
+        },
+        {
+          "path": "scripts/lib/entity_extract.py",
+          "sha256": "beef10b22a82860dfd2ca1b177d59b23192849b31403047c9e29e42214aa692b",
+          "size": 7308
+        },
+        {
+          "path": "scripts/lib/env.py",
+          "sha256": "7447fd42f852058bbc3db4d6dd420a2b8e750976120a60e763e9b69a5e011fbc",
+          "size": 87857
+        },
+        {
+          "path": "scripts/lib/fanout.py",
+          "sha256": "f5ecc513fdc7b6db21f086174716793476ede51b8e4bea86e7709465f2d9cdce",
+          "size": 3682
+        },
+        {
+          "path": "scripts/lib/feed.py",
+          "sha256": "9bf0a9d2862851121dc7d3642cec6fc6d64627ede5f47d363a935c239858718e",
+          "size": 2374
+        },
+        {
+          "path": "scripts/lib/fetch_memo.py",
+          "sha256": "aeb136e654736b7154307ae79a3bbacb8372d73b07c36df22cf19c4adb9ad723",
+          "size": 4446
+        },
+        {
+          "path": "scripts/lib/freshness.py",
+          "sha256": "7c29866063b562bdf0398846071ca5934b9ccebcc7b74b5e78652a411dce6ba9",
+          "size": 22481
+        },
+        {
+          "path": "scripts/lib/fusion.py",
+          "sha256": "5d1c9017875def8e0d1494912d6f3dbda55fccaeaf534c969066829a967111e3",
+          "size": 20739
+        },
+        {
+          "path": "scripts/lib/github.py",
+          "sha256": "c7b3fe78ee2a904d47645f6e7b9bf6666d14752ee1b1d51efcae434e13bf3410",
+          "size": 55932
+        },
+        {
+          "path": "scripts/lib/grok_audit.py",
+          "sha256": "b75a2605364ecd660e3006c3b1af7b0ca20eb9b1e09d141a696245cd9341682d",
+          "size": 25045
+        },
+        {
+          "path": "scripts/lib/grok_x.py",
+          "sha256": "28aa71d96d61af84374c2529f741ddac522ee5cdfbe8b779595f864bb29b3d8b",
+          "size": 49770
+        },
+        {
+          "path": "scripts/lib/grounding.py",
+          "sha256": "d6e1b5dc7ca73079ab107aa1c9942a4c1aefc5beb416234a28c37b28001bab3c",
+          "size": 17255
+        },
+        {
+          "path": "scripts/lib/hackernews.py",
+          "sha256": "bd3f8257b76dfb18142e92c56a681f325031d9ff3006c3aac162eb88fa8569da",
+          "size": 17446
+        },
+        {
+          "path": "scripts/lib/health.py",
+          "sha256": "caf67d6d09989bb9bd11f9325470aec19bc704a82f21ae6336d7e64de498a8b7",
+          "size": 18500
+        },
+        {
+          "path": "scripts/lib/hiring_signals.py",
+          "sha256": "dbd253a46337284514cfe8a525e083ced59dc85e202f4d518be97c27eaec0082",
+          "size": 12025
+        },
+        {
+          "path": "scripts/lib/hosted.py",
+          "sha256": "715494725adb7097b8a063a15689835c0808a714d9c23c5ecee168c66d5f1713",
+          "size": 12169
+        },
+        {
+          "path": "scripts/lib/html_publish.py",
+          "sha256": "cccf0115c6250d68372667c3fb3163c5469dff7cfafce6cf36713aaddbbe5d27",
+          "size": 3452
+        },
+        {
+          "path": "scripts/lib/html_render.py",
+          "sha256": "ba8e26419881b326616ff0ebcdf7d676d5348bae8cd8ddf58dfbaca023b9d5cb",
+          "size": 27677
+        },
+        {
+          "path": "scripts/lib/http.py",
+          "sha256": "f47082fb930c1154a286fe6fba26938c85a88b9af53cf7187f062ba47ee0192e",
+          "size": 57953
+        },
+        {
+          "path": "scripts/lib/instagram.py",
+          "sha256": "ae46f275c498d6093a70817c033ebabd54ff3f241ee1b74fc2cd50008d7fd7e4",
+          "size": 36207
+        },
+        {
+          "path": "scripts/lib/jobs.py",
+          "sha256": "53ea415dcb2431770d64b4023610dcdea637dc846d59cfa4f7e1372d60b7abfd",
+          "size": 26922
+        },
+        {
+          "path": "scripts/lib/library.py",
+          "sha256": "164b353536fc19dc2b7b6bb8528db31f4bb3fd87fe0007c679a1a357e40d31d0",
+          "size": 12002
+        },
+        {
+          "path": "scripts/lib/library_index.py",
+          "sha256": "aec704ed09fdbb2b7225756f2f7b6ed2d3a91bb7cf7f6c4859038716405ee222",
+          "size": 16366
+        },
+        {
+          "path": "scripts/lib/linkedin.py",
+          "sha256": "5885297c6a6bc9341b1d9dacf37b88f33a2e5aad87d84bb2d7216a646060c880",
+          "size": 22499
+        },
+        {
+          "path": "scripts/lib/log.py",
+          "sha256": "93ca3211f50076840ab221a318219d05f6ab638c6ecbe3f8ff0dfa9b203e85b9",
+          "size": 1286
+        },
+        {
+          "path": "scripts/lib/meta_ads.py",
+          "sha256": "767389c18109131511411b537bb9e7cf59352dc5758a64e7a97ff91c9f2d7979",
+          "size": 36687
+        },
+        {
+          "path": "scripts/lib/normalize.py",
+          "sha256": "a3e72e3552169f3d5d8eb013cdcbe8412d13684f724f138cc1316b0abca63c82",
+          "size": 41647
+        },
+        {
+          "path": "scripts/lib/parallel_mcp.py",
+          "sha256": "d15d484a6fb4f6a70edbdb7e0264684c39c9529ea9bd7f137b3572679c274b48",
+          "size": 9677
+        },
+        {
+          "path": "scripts/lib/permission_preflight.py",
+          "sha256": "57f2ca8e1e8c4992692ef92d2f0056d75609cc89422b2d970fdda7e0834bf7f5",
+          "size": 11144
+        },
+        {
+          "path": "scripts/lib/perplexity.py",
+          "sha256": "ae658bd4948a173ca2965e6a3b1bc419383be4d036105e9eac1d2ce892440941",
+          "size": 44059
+        },
+        {
+          "path": "scripts/lib/pinterest.py",
+          "sha256": "75c5098b298dadbeeb82d78ea988200ea8354834b02f0c57ea4e6a58da886b13",
+          "size": 5021
+        },
+        {
+          "path": "scripts/lib/pipeline.py",
+          "sha256": "b6790d224b319f84148dc53ee759460c3322c406ce4935fc71fbb8e51da08431",
+          "size": 299433
+        },
+        {
+          "path": "scripts/lib/planner.py",
+          "sha256": "08e53b922b46efc17bfbc7c66dfdd8d26dcba9694121f62ed0612675d59fa193",
+          "size": 48697
+        },
+        {
+          "path": "scripts/lib/polymarket.py",
+          "sha256": "8c906b1f63beef7217a2f55bc13a7be12fc07fd471b4a23ce24a7143b31acc61",
+          "size": 41806
+        },
+        {
+          "path": "scripts/lib/preflight.py",
+          "sha256": "0fafa53bc63a44ad4525d99d6bb37080b0693e2d45265ce36af09b4a0e9b2c9b",
+          "size": 4541
+        },
+        {
+          "path": "scripts/lib/prescriptions.py",
+          "sha256": "0e2e80fc3ee1f532eff3369785eeea48e20fb918a02996b1e8853b7bbe1b2c46",
+          "size": 17590
+        },
+        {
+          "path": "scripts/lib/private_files.py",
+          "sha256": "747913b70a70bc8c53906ce2b3a87445f0e3bb5f82d0e2a15c53239a81dc8f7f",
+          "size": 609
+        },
+        {
+          "path": "scripts/lib/providers.py",
+          "sha256": "e4318ed414c905782eabd01f204379f8643978eb1920eccc3fe2117b5335e610",
+          "size": 21019
+        },
+        {
+          "path": "scripts/lib/quality_nudge.py",
+          "sha256": "71586bbcfe3761550f4f49204d634a5c2ec9d656404c8cf77978d49c8be607bc",
+          "size": 22115
+        },
+        {
+          "path": "scripts/lib/query.py",
+          "sha256": "8f15b67e312a4dbeff4a634f013fd8a54e35a4e20e9adc282777ac2e09c13235",
+          "size": 7760
+        },
+        {
+          "path": "scripts/lib/reddit.py",
+          "sha256": "0ebdebff30710dca4a3956736044085f73a52da1378da72be5fe40ed168eff44",
+          "size": 31812
+        },
+        {
+          "path": "scripts/lib/reddit_arctic.py",
+          "sha256": "8a90578b6c5d69660198909e08919794809c968040a6e0a4c1b0084b18677478",
+          "size": 15291
+        },
+        {
+          "path": "scripts/lib/reddit_enrich.py",
+          "sha256": "652a9c5abecf22f3c26ff6d6b732a43703113a559ce31acab7af012eb25d4e7a",
+          "size": 9535
+        },
+        {
+          "path": "scripts/lib/reddit_keyless.py",
+          "sha256": "9c65a023db57b74df44590f22a3cf13abe169c3b5db27b96fd5b7f3f3fd9a473",
+          "size": 17355
+        },
+        {
+          "path": "scripts/lib/reddit_listing.py",
+          "sha256": "c3f1de3ba1254e68906d4983e68dcf6e90346a3177a75897446c78ead5579342",
+          "size": 14636
+        },
+        {
+          "path": "scripts/lib/reddit_public.py",
+          "sha256": "d33e1067a8b00deeab95fe9fc9ac477b76152a3b8ee5fe10ee439e29f203f25a",
+          "size": 9549
+        },
+        {
+          "path": "scripts/lib/reddit_search.py",
+          "sha256": "bce58e389f9c1a7bb8bf4163c7ef0d78017b7659be3f8a14419157172660c839",
+          "size": 12181
+        },
+        {
+          "path": "scripts/lib/reddit_shreddit.py",
+          "sha256": "e17d9f200657cdd084d388a2c32f9324010b0eb7dc395fcf3d0f67d5c0a4b11a",
+          "size": 8904
+        },
+        {
+          "path": "scripts/lib/registers.py",
+          "sha256": "b0c3873dda0e08939c1189e4521c13d9ca7e176a69bf3f35195f2b288db44ea6",
+          "size": 3601
+        },
+        {
+          "path": "scripts/lib/relevance.py",
+          "sha256": "4a5305be75dcd8c912e101e26c5d650e541f0b2e2bcba6cfe84036aaa59b6057",
+          "size": 8816
+        },
+        {
+          "path": "scripts/lib/render.py",
+          "sha256": "32ada2653d539b2bea31c3cf0f9874e68242207a28531c7c2d2ab8dfbd4439fc",
+          "size": 156925
+        },
+        {
+          "path": "scripts/lib/rerank.py",
+          "sha256": "74de1411441c74d37209f991efef2a8deefa8965f46785a6daa1ca9fd52db3e6",
+          "size": 56157
+        },
+        {
+          "path": "scripts/lib/resolve.py",
+          "sha256": "4c107a92586e19fd8c9ca1ca36125ed287cc5be69d0f2279e32d280e758e4f9c",
+          "size": 19702
+        },
+        {
+          "path": "scripts/lib/safari_cookies.py",
+          "sha256": "6920ee3c6dac1af26f79099ce2278c1e62525c8700cde30d7e965e254f91c682",
+          "size": 6741
+        },
+        {
+          "path": "scripts/lib/schema.py",
+          "sha256": "940fc27f30dd6573b3d83dd499cb423a76b1b1dd24497291a6631f9c6bf510fd",
+          "size": 41094
+        },
+        {
+          "path": "scripts/lib/setup_wizard.py",
+          "sha256": "b0b7c089d64e6fb798b241394454b805cd70e6a8206f5fa44db0f1bdca4d9de5",
+          "size": 62057
+        },
+        {
+          "path": "scripts/lib/signals.py",
+          "sha256": "3e23133f865eb2fe7d4c74f7aaa2c0d5caa13948107690f741d5211e590f5f9b",
+          "size": 22847
+        },
+        {
+          "path": "scripts/lib/skill_meta.py",
+          "sha256": "41502f6cccff432fe598af5e56c8fe1672f25155f39c07c4b08358a96cd83acd",
+          "size": 1223
+        },
+        {
+          "path": "scripts/lib/snippet.py",
+          "sha256": "6bd2143a4264fe11d5be1b805742336ab82397ae0293c13e8b5b3084bfa2612d",
+          "size": 1560
+        },
+        {
+          "path": "scripts/lib/sqlite_snapshot.py",
+          "sha256": "45228834236aa903e5cb9ae354990c14ea8f1648fb62d3e2327f232f78ae966f",
+          "size": 1058
+        },
+        {
+          "path": "scripts/lib/stocktwits.py",
+          "sha256": "b6051824d6703dbd32bb1bcdfb263b9164d15a145955f1a2a3227bd5e433c309",
+          "size": 15390
+        },
+        {
+          "path": "scripts/lib/subproc.py",
+          "sha256": "9c5c08ffcfdb48b57ea7df61e32424fcf78e4afb7d797a72f3ad2d94e7ff5c7c",
+          "size": 14609
+        },
+        {
+          "path": "scripts/lib/techmeme.py",
+          "sha256": "5b22a1a6e6a78e47748d851ad474815b6c7c5e555346cb5630250bae786f8d44",
+          "size": 10527
+        },
+        {
+          "path": "scripts/lib/telegram.py",
+          "sha256": "5f18e48993e6eae63e0b1dc2acb33ffc7ad6039f886f15ebcebaed3adeb61725",
+          "size": 9526
+        },
+        {
+          "path": "scripts/lib/threads.py",
+          "sha256": "8e14334c4bf316288c44c716aa275c2b79b4da8bbaffeabb656c5063804d7e49",
+          "size": 6818
+        },
+        {
+          "path": "scripts/lib/tiktok.py",
+          "sha256": "f4dfaba3310f51fe11070c60ec966cdcf07ede2a42c3c31b81c368c0577132d9",
+          "size": 23049
+        },
+        {
+          "path": "scripts/lib/topic_shape.py",
+          "sha256": "c5ed0dc374818a9925e6f76bf650438ee670191f429d0fb05647455ac79029f9",
+          "size": 14345
+        },
+        {
+          "path": "scripts/lib/transcribe.py",
+          "sha256": "5044e14d662b70342333d1c122f2b5b0b6e0b387fc44fb49ddd98ab98417529a",
+          "size": 8826
+        },
+        {
+          "path": "scripts/lib/trustpilot.py",
+          "sha256": "d01f516decdecb1c57bb4ecae49e8ce5b911c978725c12e98a77f579264ff110",
+          "size": 21691
+        },
+        {
+          "path": "scripts/lib/truthsocial.py",
+          "sha256": "ad6cc7327a2bc1417c8f23545ad6f34e1cae584f8e904f599ab86f12dd01538a",
+          "size": 5417
+        },
+        {
+          "path": "scripts/lib/ui.py",
+          "sha256": "78cf4051be26fda2120254925c219dea38c6f0bfa04fd4fd19bf5aa15d024965",
+          "size": 26768
+        },
+        {
+          "path": "scripts/lib/usage.py",
+          "sha256": "e921e6e0d1b833b2e2d9e848678f0b08f4c8643bf2c9aaa61ea1e8a713a5218f",
+          "size": 4659
+        },
+        {
+          "path": "scripts/lib/vendor/bird-search/LICENSE",
+          "sha256": "62316704df7426e5a79d2827ff8aca36e9abb3a73b8e68557030749ebefec667",
+          "size": 1074
+        },
+        {
+          "path": "scripts/lib/vendor/bird-search/bird-search.mjs",
+          "sha256": "584482e894c38bbde7a915013f741974fa8ea722ac34c56704dccf184f7c3d56",
+          "size": 3998
+        },
+        {
+          "path": "scripts/lib/vendor/bird-search/lib/cookies.js",
+          "sha256": "66044440cef3d3b3e3136091b6e224051e8ff97fb1d156f40ccf2d4f3cf203ae",
+          "size": 8153
+        },
+        {
+          "path": "scripts/lib/vendor/bird-search/lib/features.json",
+          "sha256": "36361f4cae0040255f84709459ebb1f0131566a567269ed7b99d073cad930f66",
+          "size": 523
+        },
+        {
+          "path": "scripts/lib/vendor/bird-search/lib/paginate-cursor.js",
+          "sha256": "5f20227de1d68250ad59b7ad593db4bfb1d0f1a21694963eab3ed413c2d0d5c0",
+          "size": 1225
+        },
+        {
+          "path": "scripts/lib/vendor/bird-search/lib/query-ids.json",
+          "sha256": "eba47a9d26f87d0b4eb8a4f554833ed8d11b3d8728e363deeae702d09f87fc02",
+          "size": 815
+        },
+        {
+          "path": "scripts/lib/vendor/bird-search/lib/runtime-features.js",
+          "sha256": "f41614d62b6c91dfc85fc4af389e6f49435324bf26460b715a991486609579d8",
+          "size": 5036
+        },
+        {
+          "path": "scripts/lib/vendor/bird-search/lib/runtime-query-ids.js",
+          "sha256": "0f5c61dbaad3de7fb44a14c57ed005228e51f9fc361472eff59bff4cb2a1199e",
+          "size": 9424
+        },
+        {
+          "path": "scripts/lib/vendor/bird-search/lib/twitter-client-base.js",
+          "sha256": "ea972b7894458e78edd1927d102a052ae45726a7c967b376ac7f5544f5b65499",
+          "size": 4853
+        },
+        {
+          "path": "scripts/lib/vendor/bird-search/lib/twitter-client-constants.js",
+          "sha256": "27bd1416ff1f5d4f4516d784a8fb9ee08a87413f07b375752821a32e5b0cd6e3",
+          "size": 2535
+        },
+        {
+          "path": "scripts/lib/vendor/bird-search/lib/twitter-client-features.js",
+          "sha256": "4b4f2048069f751a821777cb2084f3b9126d99a958494fef71f0699d8145c4dd",
+          "size": 18400
+        },
+        {
+          "path": "scripts/lib/vendor/bird-search/lib/twitter-client-search.js",
+          "sha256": "3dfbe18ea54215d9a6393ff0884d9977dd9ddf0884a06486bdaee8a4e30d4616",
+          "size": 7310
+        },
+        {
+          "path": "scripts/lib/vendor/bird-search/lib/twitter-client-types.js",
+          "sha256": "6450f74c664db958d703e09288184ef1ca5f622782f9e11a5a9bfa3d3c78c534",
+          "size": 59
+        },
+        {
+          "path": "scripts/lib/vendor/bird-search/lib/twitter-client-utils.js",
+          "sha256": "b230db5583760ccd0b5b5fb1592f449a7d0bc92f6184808e8ffb6f8968df20e9",
+          "size": 19169
+        },
+        {
+          "path": "scripts/lib/vendor/bird-search/package.json",
+          "sha256": "96b65305969a179ee7a7735f1b475599d6035f32fda1fd030ea57ee09380cdb5",
+          "size": 331
+        },
+        {
+          "path": "scripts/lib/web_fetch_keyless.py",
+          "sha256": "3cc82640488812026009d5993b0aef6e04b54d1a9ade0773bd7c2310f9833d00",
+          "size": 3429
+        },
+        {
+          "path": "scripts/lib/web_search_keyless.py",
+          "sha256": "aac358f1722a11739bf4f21697675a8aafa30a47999d9a2581f90b348cfdd0af",
+          "size": 8845
+        },
+        {
+          "path": "scripts/lib/windows_job.py",
+          "sha256": "3a7077172e393baa4bf35663ad9d6055746aa0d3677968083d6fa989fbe67d58",
+          "size": 5368
+        },
+        {
+          "path": "scripts/lib/x_api.py",
+          "sha256": "5564e7335275dedc7faf6b2b3e387ad0eb681fe85b466ec55f675fb710443e56",
+          "size": 31630
+        },
+        {
+          "path": "scripts/lib/x_envelope.py",
+          "sha256": "e3ef4459257118ae492353126f7f534da29b536489cae17cadb7a44d7ab4c788",
+          "size": 26353
+        },
+        {
+          "path": "scripts/lib/x_judge.py",
+          "sha256": "4972ac7d573fbec0e399e99d4cee9cc2602b9719867e0f932a23d7c0f15c5f7b",
+          "size": 10081
+        },
+        {
+          "path": "scripts/lib/xai_x.py",
+          "sha256": "e541925a7e721d1c4b0e304f3fbe88ed132732e96783897fc45acb0dbb79d6c7",
+          "size": 8811
+        },
+        {
+          "path": "scripts/lib/xiaohongshu_api.py",
+          "sha256": "c7a29dfa03f871993dc13a8ad528beed8a648102404b658242ca57878077ef60",
+          "size": 5321
+        },
+        {
+          "path": "scripts/lib/xquik.py",
+          "sha256": "cddd7b95ead48331484f13bc85b1c50ccb22c3156922a2118ab71ed80b1ad2fe",
+          "size": 17914
+        },
+        {
+          "path": "scripts/lib/xurl_x.py",
+          "sha256": "347ecf5b39bc1d792f4cc9e41705352c66abb87fafa68855ac2c7a5eee3e366c",
+          "size": 14536
+        },
+        {
+          "path": "scripts/lib/youtube_yt.py",
+          "sha256": "515435cd91111104223f59a2bfc76f4a86bdc64662a74b791ba3896781c936b6",
+          "size": 86424
+        },
+        {
+          "path": "scripts/setup-keychain.sh",
+          "sha256": "32c73cd7a7fc7e56bb88de825fabcda726831dbf8e5dfe33f897ed074daa4097",
+          "size": 3404
+        },
+        {
+          "path": "scripts/setup-pass.sh",
+          "sha256": "7bca9084d2e4d1d10f8b292f281a6ac3884c4d63111bc3aa9368e2c09f06abfc",
+          "size": 4171
+        },
+        {
+          "path": "scripts/store.py",
+          "sha256": "e8babfbb590d789593a0dda842b745e26209adb8cc7cb44fb07187b55051ebcc",
+          "size": 49472
+        },
+        {
+          "path": "scripts/test-v1-vs-v2.sh",
+          "sha256": "65d9c05d5c478263f8307379c234ad0f0c927900186b74633b6e1eaad6ed1e72",
+          "size": 5918
+        },
+        {
+          "path": "scripts/test_device_auth.py",
+          "sha256": "98b5f350936bf1664afd0cf40a668b0ab04c3b3da28f8dbf36d52e74a7ec6a74",
+          "size": 3943
+        },
+        {
+          "path": "scripts/verify_v3.py",
+          "sha256": "d154d5c670d315d48ca10073eeac0c804b23b46c8e4f60704621cdf21d078370",
+          "size": 6356
+        },
+        {
+          "path": "scripts/watchlist.py",
+          "sha256": "0f6f88160d7936600edaadac31a42396d8ac561848b807641fb9050225f59dc1",
+          "size": 11715
+        },
+        {
+          "path": "scripts/x_lane_parity.py",
+          "sha256": "84c67104874856ebe0faa063345d4c3f042fd4ba17e8b76b15f18680ce2d1767",
+          "size": 3894
+        }
+      ],
+      "bundled": "partial"
+    },
+    {
+      "id": "humanizer",
+      "name": "Humanizer",
+      "author": "blader",
+      "summary": "Rewrites AI sounding prose so it reads like a person wrote it.",
+      "description": "Detects patterns from Wikipedia's Signs of AI writing, such as inflated claims, forced triads and stock phrases, and rewrites the text without changing its meaning.",
+      "category": "Writing",
+      "tags": [
+        "writing",
+        "editing",
+        "style",
+        "prose"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/blader/humanizer",
+      "path": ".",
+      "popularity": "61,968 GitHub stars (2026-10-29); listed at about 56,000 in a 12 October 2026 roundup.",
+      "sources": [
+        "https://www.firecrawl.dev/blog/best-claude-code-skills"
+      ],
+      "ref": "0ef9fe5bc3572734fd3ae6c448fe00a30cd5dcf0",
+      "install": "npx skills add blader/humanizer --skill humanizer",
+      "image": "images/humanizer.jpg",
+      "sha256": "e137b31423c2707bb604ac9b5c71aba9c7d1390d207cae70c3704ff263b24712",
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "sha256": "de84a449da400454df1225ddb1ced728c35bf0be7811b239e3370c7dbe1f4e69",
+          "size": 3439
+        },
+        {
+          "path": "CHANGELOG.md",
+          "sha256": "b3591fe203429f1a6bd2f713c79272e9a8e58a487843d0908d2bbe0700722afa",
+          "size": 5922
+        },
+        {
+          "path": "LICENSE",
+          "sha256": "4ac4810254ab36d45419141aeb8e69bf50652cfafe5b2dab947d06d44e5cbf96",
+          "size": 1066
+        },
+        {
+          "path": "README.md",
+          "sha256": "500b53c0d29cd3219d160b5f9a109c0969f706aec74b49a4a081d2026ba48ec7",
+          "size": 12926
+        },
+        {
+          "path": "SKILL.md",
+          "sha256": "0612f1dfb1672b0ea9b97e139bf1f06cabe98d8b27424fe8ff01e1fb4cc99cad",
+          "size": 32348
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "planning-with-files",
+      "name": "Planning With Files",
+      "author": "OthmanAdi",
+      "summary": "Keeps task plans, findings and progress in files on disk for long agent work.",
+      "description": "Maintains task_plan.md, findings.md and progress.md so multi step work survives context resets, with lifecycle hooks that reinject the current plan. It supports many agents beyond Claude Code.",
+      "category": "Planning",
+      "tags": [
+        "planning",
+        "memory",
+        "files",
+        "context"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/OthmanAdi/planning-with-files",
+      "path": ".agents/skills/planning-with-files",
+      "popularity": "27,738 GitHub stars (2026-10-29); the repository was updated 2026-10-28.",
+      "sources": [
+        "https://www.firecrawl.dev/blog/best-claude-code-skills",
+        "https://github.com/OthmanAdi/planning-with-files"
+      ],
+      "ref": "5d29800bf8b919ca9a88ee7885b90050b5cb64ed",
+      "install": "npx skills add OthmanAdi/planning-with-files --skill planning-with-files",
+      "image": "images/planning-with-files.jpg",
+      "sha256": "0d32911d02c817925fc622c1a92b31da3e6b288e3f0b8ffd44690478f2ea9880",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "ddef2d7f6ff8f7894b8b55604dafbe3158b9a311edba4a1745a7099684979593",
+          "size": 37890
+        },
+        {
+          "path": "examples.md",
+          "sha256": "450355fac69e0fac93453b6c7383c8fb9ba3470662f6c8291080028f73ce00dc",
+          "size": 4518
+        },
+        {
+          "path": "reference.md",
+          "sha256": "8f7d9cfe1971c5a32f3e5edb63ddfad73a11cc7de19d5065a6ec75fd118c0fdb",
+          "size": 8455
+        },
+        {
+          "path": "scripts/attest-plan.ps1",
+          "sha256": "290380786906513e86546b5db3dce2b3e178fc4d8809627345945acaeae74654",
+          "size": 21608
+        },
+        {
+          "path": "scripts/attest-plan.sh",
+          "sha256": "4ec2159e6b09d4e5e85082f8491eb8cd2e1addb79e96ad931aa97d51e4f48320",
+          "size": 13616
+        },
+        {
+          "path": "scripts/check-complete.ps1",
+          "sha256": "c3b3d3a6067c1781647526d0d4367a04bdacf9f8165940cb6d699fb194d794cd",
+          "size": 12857
+        },
+        {
+          "path": "scripts/check-complete.sh",
+          "sha256": "1b051cfad0e03a207322989fff4b620799bd2463c62c03ebef350fce1d4e1b08",
+          "size": 13730
+        },
+        {
+          "path": "scripts/gate-stop.sh",
+          "sha256": "ed4f138ccd9ec727ccc5d966a523c8f8506779d93a30ec0329282b23c511c0e6",
+          "size": 1452
+        },
+        {
+          "path": "scripts/init-session.ps1",
+          "sha256": "6e5935cf51d435be418e9453d32a6aabc2e78e31f5b34d523fd0ef73f1b54c33",
+          "size": 18452
+        },
+        {
+          "path": "scripts/init-session.sh",
+          "sha256": "5e1fad55b3623e2d5d726094002999598337911ab919265c60d7efbd321562e2",
+          "size": 15690
+        },
+        {
+          "path": "scripts/inject-plan.py",
+          "sha256": "89233f24eb693592123889af9c9fa030c001b3b3be2d3c4840ddc3040e844b2e",
+          "size": 67611
+        },
+        {
+          "path": "scripts/inject-plan.sh",
+          "sha256": "c925c072977f5de2db5f91dd060d712e7f0457b03b6b62e3d3cd4bc7ae5562d5",
+          "size": 63029
+        },
+        {
+          "path": "scripts/ledger-append.ps1",
+          "sha256": "d88796090a234f78ae07131e7dfe7ca6de0987d6fd5a4588fffa89bdb1d569c7",
+          "size": 6877
+        },
+        {
+          "path": "scripts/ledger-append.sh",
+          "sha256": "d918315f8b73a2a1e1dddef1c76798d1fd72f5f99644ff34115d0e7ac7e69290",
+          "size": 12190
+        },
+        {
+          "path": "scripts/ledger-summary.ps1",
+          "sha256": "eea1e8f5e4a6b5fabc1acac22c94fae9ccac6c01a5dbf726503b64125a1acd62",
+          "size": 5368
+        },
+        {
+          "path": "scripts/ledger-summary.sh",
+          "sha256": "064486ba5c0519eb9df7e5fb2f8c98e121b9d4b454ccaa1550bab6dffb047839",
+          "size": 6705
+        },
+        {
+          "path": "scripts/phase-status.ps1",
+          "sha256": "14af4ffbbbb11295839cffe3fbc1970dc131d26b5e3eecf0e9775315341b9473",
+          "size": 10457
+        },
+        {
+          "path": "scripts/phase-status.sh",
+          "sha256": "364fa7568fb93efcb485468ae47033f1350c1e0a8bfb00f5857d3e07424c82a9",
+          "size": 7567
+        },
+        {
+          "path": "scripts/plan-doctor.sh",
+          "sha256": "5a4ef77e2889469f7d1172acde7edb6bf65134d70455aa632f405fea8dbf772d",
+          "size": 9248
+        },
+        {
+          "path": "scripts/resolve-plan-dir.ps1",
+          "sha256": "fc47c52f30aab6d2cb24714526d83792c315f591abc9c26ddc8be17eb15aeeab",
+          "size": 11062
+        },
+        {
+          "path": "scripts/resolve-plan-dir.sh",
+          "sha256": "3a4cbbefb518147a34081f747e677ce228b80eca886e849c132990362314a65d",
+          "size": 15717
+        },
+        {
+          "path": "scripts/session-catchup.py",
+          "sha256": "ce8e81ff88748185d6afc82860cdfa37bf5134d92ceb7db674585e1db1a4003d",
+          "size": 37323
+        },
+        {
+          "path": "scripts/set-active-plan.ps1",
+          "sha256": "2d7e010f913311dd6d0019eb0914363906c5d1d91539a6f2217e7a45477ae729",
+          "size": 18377
+        },
+        {
+          "path": "scripts/set-active-plan.sh",
+          "sha256": "236e069f2e26b25358e7e2882d36376ed64f290de0d3c34a9ffff1b6c8b07de3",
+          "size": 15855
+        },
+        {
+          "path": "scripts/skill-hook.sh",
+          "sha256": "94222927ed8a8f9f4cade8cf8911059dd40fa5090b8728fde007bfbee7782cb9",
+          "size": 19809
+        },
+        {
+          "path": "templates/analytics_findings.md",
+          "sha256": "cd46495d0a7d59f150f1ecc7f9528bb1b0856bec73a2d04e06f48cdb6798ec0f",
+          "size": 1803
+        },
+        {
+          "path": "templates/analytics_task_plan.md",
+          "sha256": "c58c0cff7148117a0728c136462faf256848f1e5ef9a7ed528b4f60b7a831ff9",
+          "size": 2581
+        },
+        {
+          "path": "templates/findings.md",
+          "sha256": "bb9237ccbf08148d7f7f23ad58fbc9bd7c879c6d0cbca1d533b5b5f21c26c529",
+          "size": 1161
+        },
+        {
+          "path": "templates/loop.md",
+          "sha256": "cb13b5f1030a015442a981da69fa0dc910f78f4782ebfa2fd0eac00d6e71a143",
+          "size": 2143
+        },
+        {
+          "path": "templates/progress.md",
+          "sha256": "28fc357000ed2b18910c4e436f0f2e02f4abf0acd29cce370a2670640974f31c",
+          "size": 1547
+        },
+        {
+          "path": "templates/task_plan.md",
+          "sha256": "3c4b61444270f689c3dab81b7113467fb87e9705175aea9c3a3b970bd4e777a3",
+          "size": 2257
+        },
+        {
+          "path": "templates/task_plan_autonomous.md",
+          "sha256": "5a93e639a15a3d0e4f89d915199cf09cdd211441547eba86bed34164edc25891",
+          "size": 3268
+        }
+      ],
+      "bundled": "partial"
+    },
+    {
+      "id": "algorithmic-art",
+      "name": "Algorithmic Art",
+      "author": "Anthropic",
+      "summary": "Makes generative art in p5.js with seeded randomness and live controls for its parameters.",
+      "description": "Anthropic's skill for flow fields, particle systems and other generative pieces. It writes a philosophy for the piece first, then a p5.js sketch in a viewer with sliders, so a result can be explored and reproduced from its seed.",
+      "category": "Motion",
+      "tags": [
+        "generative",
+        "p5js",
+        "animation",
+        "art"
+      ],
+      "license": "Apache-2.0",
+      "repository": "https://github.com/anthropics/skills",
+      "path": "skills/algorithmic-art",
+      "homepage": "",
+      "popularity": "anthropics/skills has 184,531 GitHub stars (2026-10-29).",
+      "sources": [
+        "https://github.com/anthropics/skills"
+      ],
+      "ref": "ca45fc496a3436251f191354091d557da31c15b5",
+      "install": "npx skills add anthropics/skills --skill algorithmic-art",
+      "image": "images/algorithmic-art.jpg",
+      "sha256": "8c15717769d76330df4387b85402a3754d858b97749ae259d3365ea9ea394f89",
+      "files": [
+        {
+          "path": "LICENSE.txt",
+          "sha256": "bc6b3af2f331cbc7fb0da1344efb2cbe5877a31498b4d70dbc7000f3405a1362",
+          "size": 11345
+        },
+        {
+          "path": "SKILL.md",
+          "sha256": "3bc4092c09804853186524c826bc0621b940bb6122c05b84496dff95388e6eef",
+          "size": 19769
+        },
+        {
+          "path": "templates/generator_template.js",
+          "sha256": "9ee0f1da52ef8f7bbfde1917123654880890d43f2d388642d71eab6dd78f94c4",
+          "size": 7826
+        },
+        {
+          "path": "templates/viewer.html",
+          "sha256": "86c79d7ce97d2599ebe4bd9b97fdeb7295c9d3ed61ceeb513cbe1b2bb5d1ce29",
+          "size": 20844
+        }
+      ],
+      "bundled": "complete"
+    }
+  ]
+}

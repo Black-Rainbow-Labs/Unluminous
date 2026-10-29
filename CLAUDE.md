@@ -7782,6 +7782,39 @@ skip with a printed line without it. The pictures are `notebook_top`, `notebook_
 `notebook_traceback` and `notebook_kernel_picker`.
 
 
+## The Skills Manager installs agent skills into every coding agent (`task-2396`)
+
+`tasks/task-2396-skills-manager-tdd.md` is the design. The `skills` plugin's pane lists agent skills (a folder with a
+`SKILL.md`) as cards and installs them into the skills folders of 17 coding agents, for the project or for everyone.
+`services::skills` is all of it with no window; `components::skills` draws it with the Designer's kit. Seven rules:
+
+- **The skills are a folder in this crate, `crates/unluminous-app/skills/`**, compiled in by `build.rs`
+  (`$OUT_DIR/skills_bundle.rs`). The Unluminous skills (`unluminous`, `unluminous-task`, `unluminous-supervisor`) are
+  written there by hand; `skills/unluminous/SKILL.md` must equal `unluminous-cli/skills/unluminous/SKILL.md`, which a
+  test checks. Everything else there is written by `node tools/skills/snapshot.mjs` from what unluminous.com publishes.
+- **unluminous.com is the source of the catalogue.** In black-rainbow-labs-sites, `sites/unluminous/skills/
+  catalogue.source.json` and `skills/mirror/<id>/` are the list and the files of every skill somebody else made, and
+  `scripts/sync-skills.mjs` publishes `public/skills/catalogue.json`, the files and the pictures, reading the
+  Unluminous skills from this checkout. After changing a skill here, run the sync there and the snapshot here.
+- **A skill larger than 256 KB ships only its `SKILL.md` and licence** (`bundled: partial`); the rest is fetched from
+  the site, checked against each file's SHA-256, the first time it is installed or edited.
+- **`harness::HARNESSES` is the table of agents and folders**, read out of each agent's documentation
+  (`_agent_output/task-2396-skills/research/harnesses.md`). An agent that reads a folder this install already wrote
+  is not given a second copy.
+- **Every installed copy carries `installed-by: unluminous` in its frontmatter**, and a folder without it (or
+  `mcp::skill`'s `installed-by: unluminous-cli`) is never replaced or removed without `--force`, which moves it to the
+  Recycle Bin first.
+- **The library, `<plugin folder>/library/<id>/`, is the working copy.** Editing a shipped skill writes it there with
+  `.unluminous-skill.json` recording the hash it came from; a library skill whose files changed is copied again into
+  every place it is installed (`ops::keep_in_step`, every `LOOK_AGAIN`). An update is a different `sha256` on the site.
+- **A window with no settings folder installs under the temporary folder** (`home_for_a_window_with_no_settings`), so
+  a test never touches the person's own agents, and nothing is fetched unless `main` called `allow_fetching` or
+  `UNLUMINOUS_SKILLS_CATALOGUE` names a catalogue.
+
+`plugins run skills <verb>` and the generated `unluminous_skills` MCP tool are the agent's half; the verbs are
+`unluminous_cli::plugins::SKILLS`. `tests/skills.rs` is the window tests, and `skills_pane` and `skills_page` the
+pictures.
+
 ## A Word document is pages in a tab of the Word plugin, and Word itself is the oracle (`task-2341`)
 
 `tasks/task-2341-word-prd.md` and `tasks/task-2341-word-tdd.md` are the design. A `.docx`, `.dotx` or `.docm`

@@ -1017,6 +1017,7 @@ pub fn provider(name: &str) -> Option<Box<dyn UiProvider>> {
         "designer" => Some(Box::new(crate::services::designer::Designer::new())),
         "word" => Some(Box::new(crate::services::word::Word::new())),
         "spreadsheet" => Some(Box::new(crate::services::spreadsheet::Spreadsheet::new())),
+        "skills" => Some(Box::new(crate::services::skills::Skills::new())),
         // Drawn by the window itself — see `plugins::CORE_PROVIDERS`.
         "realm" => None,
         _ => None,

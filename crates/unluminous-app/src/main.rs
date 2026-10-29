@@ -439,6 +439,8 @@ fn main() -> eframe::Result {
             unluminous_app::services::word::files::allow_the_office_template();
             // And read the ACP registry when the AI Configuration page is shown, which a test's window does not.
             app.endpoints.acp.read_when_shown();
+            // And read unluminous.com's skills catalogue when the Skills Manager is shown (`task-2396`).
+            unluminous_app::services::skills::allow_fetching();
             // The Background grid's thumbnails for every picture already there, on a thread, so the grid opens
             // at once (`task-2293`). A test's window makes them only when its grid asks.
             app.make_the_missing_background_thumbnails(&cc.egui_ctx);
