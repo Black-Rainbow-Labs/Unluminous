@@ -95,6 +95,40 @@ fn install_writes_a_marked_copy_for_the_project_and_remove_takes_it_away() {
 }
 
 #[test]
+fn a_skill_is_installed_with_the_skills_it_calls_and_its_edit_opens_them_beside_it() {
+    // Grill Me's whole SKILL.md is "Call the Skill tool with grilling" (`task-2402`).
+    let mut bench = Bench::new("calls");
+    let said = bench.run("install", &["grill-with-docs", "claude", "--global"]).unwrap();
+    let global = bench.home().join(".claude").join("skills");
+    for id in ["grill-with-docs", "grilling", "domain-modeling"] {
+        assert!(frontmatter::has_mark(&read(&global.join(id).join("SKILL.md"))), "{id}: {said}");
+    }
+    assert!(said.contains("Grill With Docs calls Grilling, so it was installed too"), "{said}");
+    // A second skill calling one already there leaves it as it is.
+    let again = bench.run("install", &["grill-me", "claude", "--global"]).unwrap();
+    assert!(!again.contains("Grilling, so it was installed too"), "{again}");
+    // Edit opens what it calls first, so the skill asked for is the tab that is showing.
+    let _ = bench.skills.asking();
+    let opened = bench.run("edit", &["grill-me"]).unwrap();
+    assert!(opened.contains("Grill Me calls Grilling, which is open beside it"), "{opened}");
+    let files: Vec<PathBuf> = bench
+        .skills
+        .asking()
+        .into_iter()
+        .filter_map(|request| match request {
+            crate::services::plugin_ui::Request::OpenFile(path) => Some(path),
+            _ => None,
+        })
+        .collect();
+    let library = bench.root.join("plugin").join("library");
+    assert_eq!(
+        files,
+        [library.join("grilling").join("SKILL.md"), library.join("grill-me").join("SKILL.md")]
+    );
+    assert!(read(&files[0]).contains("Interview the user relentlessly"), "Grilling is the interview");
+}
+
+#[test]
 fn agents_that_share_a_folder_get_one_copy() {
     let mut bench = Bench::new("shared");
     let said = bench.run("install", &["tdd", "codex", "cursor", "--global"]).unwrap();

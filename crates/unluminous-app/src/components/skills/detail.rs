@@ -4,6 +4,10 @@
 //!
 //! The `SKILL.md` is not drawn here: View / Edit opens it in a tab, where it can be read and changed, and
 //! saving it reaches every installed copy.
+//!
+//! A skill that calls others with the Skill tool has a `Calls` row under its buttons, one chip a skill it calls,
+//! which opens that skill's page (`task-2402`). Grill Me's own `SKILL.md` is one line; what it does is in
+//! `grilling`.
 
 use egui::{CornerRadius, Pos2, Rect, Vec2};
 use rux::icon::Icon;
@@ -35,6 +39,15 @@ pub fn show(skills: &Skills, id: &str, ui: &mut egui::Ui, look: &Look<'_>) -> Ve
     let banner_height = (width * 0.34).min(230.0 * scale);
     let description_height = description_height(ui, skill, width, scale);
     let rows = agents_here(skills).len() as f32;
+    let called: Vec<(String, String)> = skill
+        .entry
+        .requires
+        .iter()
+        .map(|id| {
+            let name = skills.shelf.get(id).map(|other| other.entry.name.clone());
+            (id.clone(), name.unwrap_or_else(|| id.clone()))
+        })
+        .collect();
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner));
     child.set_clip_rect(inner.intersect(ui.clip_rect()));
     egui::ScrollArea::vertical().id_salt(("skills-detail", id)).auto_shrink([false, false]).show(
@@ -57,15 +70,23 @@ pub fn show(skills: &Skills, id: &str, ui: &mut egui::Ui, look: &Look<'_>) -> Ve
                 Pos2::new(top.x, words.bottom() + 12.0 * scale),
                 Vec2::new(width, BUTTONS * scale),
             );
+            let calls_height = match called.is_empty() {
+                true => 0.0,
+                false => (BUTTONS + 10.0) * scale,
+            };
+            let calls = Rect::from_min_size(
+                Pos2::new(top.x, buttons.bottom() + 10.0 * scale),
+                Vec2::new(width, if called.is_empty() { 0.0 } else { BUTTONS * scale }),
+            );
             let agents = Rect::from_min_size(
-                Pos2::new(top.x, buttons.bottom() + 22.0 * scale),
+                Pos2::new(top.x, buttons.bottom() + calls_height + 22.0 * scale),
                 Vec2::new(width, (rows * ROW + HEAD + 8.0) * scale),
             );
             kit::layer(
                 ui,
                 scale,
                 ("skills-detail-top", id),
-                Rect::from_min_max(back.min, buttons.max),
+                Rect::from_min_max(back.min, buttons.max.max(calls.max)),
                 |rux| {
                     if kit::button(rux, back, "All skills", Some(Icon::ChevLeft), kit::Look::Ghost)
                     {
@@ -87,6 +108,7 @@ pub fn show(skills: &Skills, id: &str, ui: &mut egui::Ui, look: &Look<'_>) -> Ve
                     }
                     the_words(rux, words, skill, scale);
                     acts.extend(the_buttons(rux, buttons, skill, scale));
+                    acts.extend(the_calls(rux, calls, &called, scale));
                 },
             );
             kit::layer(ui, scale, ("skills-detail-agents", id), agents, |rux| {
@@ -230,6 +252,45 @@ fn the_buttons(rux: &mut rux::Rux<'_>, rect: Rect, skill: &Skill, scale: f32) ->
             true => Act::AskToDelete(skill.id.clone()),
             false => Act::RemoveEverywhere(skill.id.clone()),
         });
+    }
+    acts
+}
+
+/// The `Calls` row: the word, then one chip a skill this one calls with the Skill tool, each opening that skill's
+/// page. A chip is named by the skill's name, which is what a person and a test call it.
+fn the_calls(
+    rux: &mut rux::Rux<'_>,
+    rect: Rect,
+    called: &[(String, String)],
+    scale: f32,
+) -> Vec<Act> {
+    let mut acts = Vec::new();
+    if called.is_empty() {
+        return acts;
+    }
+    let style = rux.zs(Style::mono(11.0));
+    let ink = rux.theme().ink;
+    let galley = rux.text(style, "CALLS", ink.i500);
+    let label_width = galley.size().x;
+    rux::text::draw_left_capitals(
+        rux.painter(),
+        Pos2::new(rect.left() + 4.0 * scale, rect.center().y),
+        galley,
+        style,
+        ink.i500,
+    );
+    let mut left = rect.left() + label_width + 18.0 * scale;
+    for (id, name) in called {
+        let width = kit::button_width(rux, name, false);
+        if left + width > rect.right() {
+            break;
+        }
+        let chip =
+            Rect::from_min_size(Pos2::new(left, rect.top()), Vec2::new(width, rect.height()));
+        if kit::button(rux, chip, name, None, kit::Look::Chip) {
+            acts.push(Act::Open(id.clone()));
+        }
+        left += width + 8.0 * scale;
     }
     acts
 }

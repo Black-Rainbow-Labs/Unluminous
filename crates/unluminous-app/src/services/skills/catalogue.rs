@@ -49,6 +49,9 @@ pub struct Entry {
     pub install: String,
     /// The source repository's GitHub stars when the list was made, 0 when not known.
     pub stars: u64,
+    /// The skills this one calls with the Skill tool, by id, which are installed with it (`task-2402`). Grill Me
+    /// calls `grilling`, and is one line without it.
+    pub requires: Vec<String>,
     /// Written by the site: the hash of the skill's files ([`hash`]).
     pub sha256: String,
     /// Written by the site: the skill's files.
@@ -133,6 +136,7 @@ impl Entry {
             unluminous: value.get("unluminous").and_then(|field| field.as_bool()).unwrap_or(false),
             install: text(value, "install"),
             stars: value.get("stars").and_then(|field| field.as_u64()).unwrap_or(0),
+            requires: texts(value, "requires"),
             sha256: text(value, "sha256"),
             files,
             reference: text(value, "ref"),
@@ -308,6 +312,20 @@ mod tests {
                 "{} is described",
                 entry.id
             );
+        }
+    }
+
+    #[test]
+    fn every_skill_a_skill_calls_is_in_the_catalogue_and_its_name_is_in_the_skill_md() {
+        let catalogue = bundled();
+        let grill_me = catalogue.entry("grill-me").expect("grill-me ships");
+        assert_eq!(grill_me.requires, ["grilling"], "Grill Me is one line without the skill it calls");
+        for entry in &catalogue.skills {
+            let text = String::from_utf8_lossy(&bundled_files(&entry.id)["SKILL.md"]).into_owned();
+            for needed in &entry.requires {
+                assert!(catalogue.entry(needed).is_some(), "{} calls {needed}, which ships", entry.id);
+                assert!(text.contains(needed.as_str()), "{}'s SKILL.md names {needed}", entry.id);
+            }
         }
     }
 

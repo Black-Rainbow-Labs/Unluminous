@@ -436,7 +436,8 @@ impl Skills {
             .collect()
     }
 
-    /// Install a skill, fetching its files from the site first when the binary holds only part of it.
+    /// Install a skill, fetching its files from the site first when the binary holds only part of it, and then the
+    /// skills it calls with the Skill tool ([`Skills::install_what_it_calls`]).
     pub fn install(
         &mut self,
         id: &str,
@@ -454,8 +455,60 @@ impl Skills {
             return self.fetch_the_files(&skill, after);
         }
         let report = ops::install(&self.here(), &skill, harnesses, scope, force)?;
+        let mut lines = vec![report.said()];
+        lines.extend(self.install_what_it_calls(&skill, harnesses, scope));
         self.refresh();
-        Ok(report.said())
+        Ok(lines.join("
+"))
+    }
+
+    /// Install for `harnesses` every skill `skill` calls with the Skill tool, and every skill those call
+    /// (`task-2402`). Grill Me is one line, "Call the Skill tool with grilling", so on its own it calls something
+    /// that is not there. A harness that already reads a called skill in `scope`, from a copy of anybody's, is left
+    /// as it is, and a called skill this catalogue does not hold is said rather than refused.
+    fn install_what_it_calls(
+        &mut self,
+        skill: &Skill,
+        harnesses: &[&'static Harness],
+        scope: Scope,
+    ) -> Vec<String> {
+        let mut lines = Vec::new();
+        let mut done = vec![skill.id.clone()];
+        let mut waiting = skill.entry.requires.clone();
+        while let Some(id) = waiting.pop() {
+            if done.contains(&id) {
+                continue;
+            }
+            done.push(id.clone());
+            let Some(called) = self.shelf.get(&id).cloned() else {
+                lines.push(format!("{} calls {id}, which Unluminous does not have.", skill.entry.name));
+                continue;
+            };
+            waiting.extend(called.entry.requires.iter().cloned());
+            let project = self.project.as_deref();
+            let missing: Vec<&'static Harness> = harnesses
+                .iter()
+                .copied()
+                .filter(|harness| !called.seen_by(&self.places, harness, scope, project))
+                .collect();
+            if missing.is_empty() {
+                continue;
+            }
+            match ops::install(&self.here(), &called, &missing, scope, false) {
+                Ok(report) => lines.push(format!(
+                    "{} calls {}, so it was installed too.
+{}",
+                    skill.entry.name,
+                    called.entry.name,
+                    report.said()
+                )),
+                Err(why) => lines.push(format!(
+                    "{} calls {}, which could not be installed: {why}",
+                    skill.entry.name, called.entry.name
+                )),
+            }
+        }
+        lines
     }
 
     pub fn remove(
@@ -472,15 +525,40 @@ impl Skills {
     }
 
     /// Open a skill's `SKILL.md` in a tab, writing what shipped into the library first.
+    ///
+    /// The skills it calls with the Skill tool are opened in tabs before it, so the one asked for is the tab that
+    /// is showing and the rest of what it does is beside it (`task-2402`): Grill Me's own file is one line, and
+    /// what it asks is in `grilling`'s.
     pub fn edit(&mut self, id: &str) -> Result<String, String> {
         let skill = self.skill(id)?.clone();
         if skill.partial && skill.library.is_none() {
             return self.fetch_the_files(&skill, After::Edit);
         }
+        let mut called = Vec::new();
+        for needed in &skill.entry.requires {
+            let Some(other) = self.shelf.get(needed).cloned() else { continue };
+            if other.partial && other.library.is_none() {
+                continue;
+            }
+            if let Ok(file) = ops::file_to_edit(&self.here(), &other) {
+                self.open_beside_its_preview(&file);
+                called.push(other.entry.name.clone());
+            }
+        }
         let file = ops::file_to_edit(&self.here(), &skill)?;
         self.open_beside_its_preview(&file);
         self.refresh();
-        Ok(format!("Opened {}. Saving it updates every place {id} is installed.", file.display()))
+        let mut said =
+            format!("Opened {}. Saving it updates every place {id} is installed.", file.display());
+        if !called.is_empty() {
+            said.push_str(&format!(
+                " {} calls {}, which {} open beside it.",
+                skill.entry.name,
+                called.join(" and "),
+                if called.len() == 1 { "is" } else { "are" }
+            ));
+        }
+        Ok(said)
     }
 
     pub fn new_skill(

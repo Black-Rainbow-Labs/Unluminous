@@ -1390,6 +1390,49 @@ pub fn row_label(painter: &egui::Painter, at: Pos2, name: &str) {
 /// inside the window, the explorer's context menu and the gutter's — and one renderer is what stops
 /// them growing three row heights.
 pub fn menu_rows(ui: &mut egui::Ui, entries: &[Entry], indent: f32) -> Option<Action> {
+    menu_rows_marked(ui, entries, indent, &[])
+}
+
+/// A picture or a mark drawn in a menu row's left column, where a tick goes when the row is switched on
+/// (`task-2402`). The explorer's `New` menu gives each kind of file the picture the explorer draws beside a file of
+/// that kind, so a row says what it makes before its name is read.
+#[derive(Clone)]
+pub enum RowMark {
+    /// A plugin's picture, the one its files have in the explorer and on their tabs.
+    Picture(egui::TextureHandle),
+    /// A folder, in the explorer's folder colour.
+    Folder,
+    /// The explorer's sheet of paper in `color`, with lines of writing on it when the file is text to read.
+    File { prose: bool, color: Color32 },
+}
+
+impl RowMark {
+    /// Draw the mark centred at `centre`, fourteen points across, faded when the row cannot be used.
+    fn draw(&self, painter: &egui::Painter, centre: Pos2, enabled: bool) {
+        let fade = |colour: Color32| if enabled { colour } else { colour.gamma_multiply(0.4) };
+        match self {
+            RowMark::Picture(texture) => {
+                let rect = Rect::from_center_size(centre, Vec2::splat(crate::services::icons::SIZE));
+                painter.image(
+                    texture.id(),
+                    rect,
+                    Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+                    fade(Color32::WHITE), // any ground: a picture's own colours, untinted
+                );
+            }
+            RowMark::Folder => icon::list_folder(painter, centre, fade(color::folder())),
+            RowMark::File { prose, color } => icon::file_mark(painter, centre, *prose, fade(*color), 1.0),
+        }
+    }
+}
+
+/// [`menu_rows`] with a mark in front of every row whose action is in `marks`, in submenus too.
+pub fn menu_rows_marked(
+    ui: &mut egui::Ui,
+    entries: &[Entry],
+    indent: f32,
+    marks: &[(Action, RowMark)],
+) -> Option<Action> {
     // A menu taller than the window scrolls rather than running off the bottom of it. The Git menu
     // has twenty-two entries and does not fit in a small window; before this, its last few could
     // not be reached at all.
@@ -1406,10 +1449,10 @@ pub fn menu_rows(ui: &mut egui::Ui, entries: &[Entry], indent: f32) -> Option<Ac
             // room there is rather than against the number it was given.
             .min_scrolled_height(room)
             .id_salt("unluminous-menu-scroll")
-            .show(ui, |ui| rows(ui, entries, indent))
+            .show(ui, |ui| rows(ui, entries, indent, marks))
             .inner;
     }
-    rows(ui, entries, indent)
+    rows(ui, entries, indent, marks)
 }
 
 /// The frame a menu drops down in: a raised card eighteen points round with `padding: 8px` and a long soft
@@ -1438,7 +1481,12 @@ pub fn menu_frame_in(style: &egui::Style) -> egui::Frame {
 }
 
 /// The rows themselves, once it has been decided whether they scroll.
-fn rows(ui: &mut egui::Ui, entries: &[Entry], indent: f32) -> Option<Action> {
+fn rows(
+    ui: &mut egui::Ui,
+    entries: &[Entry],
+    indent: f32,
+    marks: &[(Action, RowMark)],
+) -> Option<Action> {
     let mut chosen = None;
     for entry in entries {
         match entry {
@@ -1454,12 +1502,13 @@ fn rows(ui: &mut egui::Ui, entries: &[Entry], indent: f32) -> Option<Action> {
             }
             Entry::Item { name, action, shortcut, enabled, checked, .. } => {
                 let keys = shortcut.map(|shortcut| shortcut.label()).unwrap_or_default();
-                if menu_row(ui, name, &keys, *enabled, *checked, indent) {
+                let mark = marks.iter().find(|(marked, _)| marked == action).map(|(_, mark)| mark);
+                if menu_row_marked(ui, name, &keys, *enabled, *checked, indent, mark) {
                     chosen = Some(action.clone());
                 }
             }
             Entry::Submenu { name, entries } => {
-                if let Some(action) = submenu(ui, name, entries, indent) {
+                if let Some(action) = submenu(ui, name, entries, indent, marks) {
                     chosen = Some(action);
                 }
             }
@@ -1517,7 +1566,13 @@ pub fn submenus_drawn_open(ctx: &egui::Context) -> Vec<String> {
     ctx.data_mut(|data| data.remove_temp::<Vec<String>>(open_submenus_id())).unwrap_or_default()
 }
 
-fn submenu(ui: &mut egui::Ui, name: &str, entries: &[Entry], indent: f32) -> Option<Action> {
+fn submenu(
+    ui: &mut egui::Ui,
+    name: &str,
+    entries: &[Entry],
+    indent: f32,
+    marks: &[(Action, RowMark)],
+) -> Option<Action> {
     let enabled = !entries.is_empty();
     let sense = if enabled { Sense::click() } else { Sense::hover() };
     let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), MENU_ROW), sense);
@@ -1576,7 +1631,7 @@ fn submenu(ui: &mut egui::Ui, name: &str, entries: &[Entry], indent: f32) -> Opt
         egui::containers::menu::SubMenu::new()
             .show(ui, &response, |ui| {
                 ui.set_width(280.0);
-                rows(ui, entries, 0.0)
+                rows(ui, entries, 0.0, marks)
             })
             .and_then(|inner| inner.inner)
     })
@@ -1595,6 +1650,19 @@ pub fn menu_row(
     enabled: bool,
     checked: bool,
     indent: f32,
+) -> bool {
+    menu_row_marked(ui, name, shortcut, enabled, checked, indent, None)
+}
+
+/// [`menu_row`] with `mark` drawn in the column the tick uses, when the row is not ticked.
+fn menu_row_marked(
+    ui: &mut egui::Ui,
+    name: &str,
+    shortcut: &str,
+    enabled: bool,
+    checked: bool,
+    indent: f32,
+    mark: Option<&RowMark>,
 ) -> bool {
     let sense = if enabled { Sense::click() } else { Sense::hover() };
     let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), MENU_ROW), sense);
@@ -1622,6 +1690,8 @@ pub fn menu_row(
         // already records for the shift symbol. `icon::tick` is the same tick every tick box in
         // Unluminous draws.
         icon::tick(painter, Pos2::new(left + 9.0, rect.center().y), chat.faster);
+    } else if let Some(mark) = mark {
+        mark.draw(painter, Pos2::new(left + 9.0, rect.center().y), enabled);
     }
     // The quiet column first, because the name is cut to whatever room it leaves. `task-2229`.
     let mut name_right = rect.right() - 12.0;

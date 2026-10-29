@@ -33,6 +33,18 @@ pub struct ContextMenuOutcome {
 /// `name` separates one menu from another in egui's own bookkeeping, so the explorer's menu and the
 /// gutter's do not share a rectangle when both have been open.
 pub fn show(ui: &mut egui::Ui, name: &str, at: Pos2, entries: &[Entry]) -> ContextMenuOutcome {
+    show_marked(ui, name, at, entries, &[])
+}
+
+/// [`show`] with a mark in front of every row whose action is in `marks`, which is how the explorer's `New` menu
+/// puts each kind of file's picture beside its row (`task-2402`).
+pub fn show_marked(
+    ui: &mut egui::Ui,
+    name: &str,
+    at: Pos2,
+    entries: &[Entry],
+    marks: &[(Action, controls::RowMark)],
+) -> ContextMenuOutcome {
     let mut outcome = ContextMenuOutcome::default();
     let popup = egui::Popup::new(
         egui::Id::new(("unluminous-context-menu", name)),
@@ -48,7 +60,7 @@ pub fn show(ui: &mut egui::Ui, name: &str, at: Pos2, entries: &[Entry]) -> Conte
     .frame(controls::menu_frame(ui))
     .width(WIDTH);
 
-    if let Some(response) = popup.show(|ui| controls::menu_rows(ui, entries, 0.0)) {
+    if let Some(response) = popup.show(|ui| controls::menu_rows_marked(ui, entries, 0.0, marks)) {
         outcome.chosen = response.inner;
         outcome.close = response.response.should_close();
     }

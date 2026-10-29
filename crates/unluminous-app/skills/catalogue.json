@@ -24,14 +24,14 @@
       "popularity": "Ships with Unluminous.",
       "sources": [],
       "image": "images/unluminous-task.jpg",
-      "imageSha256": "ef8f8925b2ba0d2ccd4eab16b7440c1795373795d1a0bf5327424c764c8a94c3",
       "stars": 1,
+      "imageSha256": "ef8f8925b2ba0d2ccd4eab16b7440c1795373795d1a0bf5327424c764c8a94c3",
       "sha256": "73929a9e557da6f50ffc6fdc0978732b74de9558713c22e2122a98f8c6765e86",
       "files": [
         {
           "path": "SKILL.md",
           "sha256": "62e0107a423f7b4ee7f09b18d0859025c2cf72ee9a57f6dcae40ce9eba845e45",
-          "size": 3916
+          "size": 3981
         }
       ],
       "bundled": "complete"
@@ -57,14 +57,14 @@
       "popularity": "Ships with Unluminous.",
       "sources": [],
       "image": "images/unluminous-supervisor.jpg",
-      "imageSha256": "610be390334217fa718ca3c09344e6a62aaed59e6d993f1d67c06f5f4fbb011a",
       "stars": 1,
+      "imageSha256": "610be390334217fa718ca3c09344e6a62aaed59e6d993f1d67c06f5f4fbb011a",
       "sha256": "a638cae36c82925a8729917522428526e85f0cf900c5a1085a8599357a0a4096",
       "files": [
         {
           "path": "SKILL.md",
           "sha256": "be546825f56330436c8e60823ad744d762844a1b69e43db3f576c93a7d2dfdea",
-          "size": 2845
+          "size": 2887
         }
       ],
       "bundled": "complete"
@@ -89,8 +89,8 @@
       "popularity": "Ships with Unluminous.",
       "sources": [],
       "image": "images/unluminous.jpg",
-      "imageSha256": "ba84c2f568ea7d3acf65764e48c69bd2f4cf60fece98e6fcf128ddc34074c28f",
       "stars": 1,
+      "imageSha256": "ba84c2f568ea7d3acf65764e48c69bd2f4cf60fece98e6fcf128ddc34074c28f",
       "sha256": "cef7a64de42be66ccf3e495ca520d571df7e414a836b239968265415961b230b",
       "files": [
         {
@@ -126,8 +126,8 @@
       "ref": "92a9a34ac3bf88e695e468b90c7bf32f163d32c8",
       "install": "npx skills add vercel-labs/skills --skill find-skills",
       "image": "images/find-skills.jpg",
-      "imageSha256": "83399b16ad15e4b51e7ef311917f3d499cfb0860851e9d391d41f5a49ba3e40d",
       "stars": 37044,
+      "imageSha256": "83399b16ad15e4b51e7ef311917f3d499cfb0860851e9d391d41f5a49ba3e40d",
       "sha256": "b146008599c31057cef1c145774cea5d5afb30e8f43fa802e47a4b461419aaaf",
       "files": [
         {
@@ -163,8 +163,11 @@
       "ref": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
       "install": "npx skills add mattpocock/skills --skill grill-me",
       "image": "images/grill-me.jpg",
-      "imageSha256": "1db496bd1616ca5a923c50afa2370742d693e80237ec221d768f460d0e82a75b",
       "stars": 305863,
+      "requires": [
+        "grilling"
+      ],
+      "imageSha256": "1db496bd1616ca5a923c50afa2370742d693e80237ec221d768f460d0e82a75b",
       "sha256": "14c292fe16c0aed833cbbabb0983515c8d665fb6061d9755b13dba870363323b",
       "files": [
         {
@@ -206,8 +209,8 @@
       "ref": "a5496b1887950777b78ed5ac2bff3505961cb5fe",
       "install": "npx skills add heygen-com/hyperframes --skill hyperframes",
       "image": "images/hyperframes.jpg",
-      "imageSha256": "11885293a0d82c0a8a05c7db9e28f48388bd3cb225f2add2c6fcbda1f0c517ad",
       "stars": 74841,
+      "imageSha256": "11885293a0d82c0a8a05c7db9e28f48388bd3cb225f2add2c6fcbda1f0c517ad",
       "sha256": "ec7a77e6b9325a75ff1ddde7b4faeb86a5ecb55f8ae166c8509fad48c783548d",
       "files": [
         {
@@ -621,8 +624,8 @@
       "ref": "50d81fc134bf7539b56b3924abc27d371b1e106d",
       "install": "npx skills add vercel-labs/agent-browser --skill agent-browser",
       "image": "images/agent-browser.jpg",
-      "imageSha256": "0c5bda805dc12c4b9c752965c44275b25434c926ea250aea54276797e1d80870",
       "stars": 44790,
+      "imageSha256": "0c5bda805dc12c4b9c752965c44275b25434c926ea250aea54276797e1d80870",
       "sha256": "80161e6836b3b40f4e83730a290deb40ac14d877d38c97ad5f6d71be37ce74c3",
       "files": [
         {
@@ -657,8 +660,11 @@
       "ref": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
       "install": "npx skills add mattpocock/skills --skill tdd",
       "image": "images/tdd.jpg",
-      "imageSha256": "597c5be865582f98df9ca93f189169eed318672ff074b14c8df65bab7390c38b",
       "stars": 305863,
+      "requires": [
+        "codebase-design"
+      ],
+      "imageSha256": "597c5be865582f98df9ca93f189169eed318672ff074b14c8df65bab7390c38b",
       "sha256": "aaed5857190bc8088332725c9c8deecf560744f6f7ef0bdfccf4bdf3fe678c16",
       "files": [
         {
@@ -708,8 +714,13 @@
       "ref": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
       "install": "npx skills add mattpocock/skills --skill improve-codebase-architecture",
       "image": "images/improve-codebase-architecture.jpg",
-      "imageSha256": "2fdbd91c90dfb031e6fe2174cb80fc0ca8bb9c04dd600cdbb7d8dd6d6ba3ba33",
       "stars": 305863,
+      "requires": [
+        "codebase-design",
+        "grilling",
+        "domain-modeling"
+      ],
+      "imageSha256": "2fdbd91c90dfb031e6fe2174cb80fc0ca8bb9c04dd600cdbb7d8dd6d6ba3ba33",
       "sha256": "21e81aed6d25a2b16ad0e6b9ec65b398145a110d11fd76951263d13372822e9d",
       "files": [
         {
@@ -726,6 +737,57 @@
           "path": "agents/openai.yaml",
           "sha256": "c8cb20f68ebf0edb4e497bc11ae5fcaa196004e661cd189015b04f4109ced7f1",
           "size": 171
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "codebase-design",
+      "name": "Codebase Design",
+      "author": "Matt Pocock",
+      "summary": "Gives an agent the words for deep modules, seams and adapters, so design advice is specific and consistent.",
+      "description": "The shared vocabulary that TDD and Improve Codebase Architecture call: module, interface, depth, seam, adapter, leverage and locality, with the principles behind them such as the deletion test and \"the interface is the test surface\". It also carries two guides, one on deepening a shallow module and one on designing an interface twice with parallel sub-agents. Installing either of those skills installs this one too.",
+      "category": "Planning",
+      "tags": [
+        "architecture",
+        "design",
+        "modules",
+        "refactoring"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/mattpocock/skills",
+      "path": "skills/engineering/codebase-design",
+      "popularity": "Called by TDD and Improve Codebase Architecture; the repository has 305,864 GitHub stars.",
+      "sources": [
+        "https://github.com/mattpocock/skills/tree/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/engineering/codebase-design"
+      ],
+      "ref": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "stars": 305864,
+      "homepage": "",
+      "image": "images/codebase-design.jpg",
+      "install": "npx skills add mattpocock/skills --skill codebase-design",
+      "imageSha256": "8de079374dd2faec14fc195d86748de0d1f12411cda51da8e370e80709a8db0a",
+      "sha256": "e91e18258598832efe27af7e3c423ab262c6f8b8ecb6262d8fbb80d626ef0e19",
+      "files": [
+        {
+          "path": "DEEPENING.md",
+          "sha256": "f3dd099ce99289bd213914d8ee3e2429b78309c3957ca4583f7659551b1d53c1",
+          "size": 2553
+        },
+        {
+          "path": "DESIGN-IT-TWICE.md",
+          "sha256": "52b52e75655a27aea59c6966b410bac82448968ad46ef1ebb9f07c274e3ae010",
+          "size": 2665
+        },
+        {
+          "path": "SKILL.md",
+          "sha256": "2c20617f87ec8af6a434859f381b2f061a69b530444e74eb39e78bb016a6d1e2",
+          "size": 6446
+        },
+        {
+          "path": "agents/openai.yaml",
+          "sha256": "edebc9e4fcfe102114012575eaa9600b9b5fd08c311664f389c36e7bc717740f",
+          "size": 102
         }
       ],
       "bundled": "complete"
@@ -755,8 +817,8 @@
       "ref": "ca45fc496a3436251f191354091d557da31c15b5",
       "install": "npx skills add anthropics/skills --skill frontend-design",
       "image": "images/frontend-design.jpg",
-      "imageSha256": "197e90c0b38dc706bd80460ab94c6c8bdfe3c3a9cab305db4e0613d0f7174d16",
       "stars": 184549,
+      "imageSha256": "197e90c0b38dc706bd80460ab94c6c8bdfe3c3a9cab305db4e0613d0f7174d16",
       "sha256": "7e9c2af00fd5b3144f49ce6fb1b16037b392ab9c2f049423b0b6114d99381ba2",
       "files": [
         {
@@ -796,8 +858,8 @@
       "ref": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
       "install": "npx skills add mattpocock/skills --skill diagnosing-bugs",
       "image": "images/diagnosing-bugs.jpg",
-      "imageSha256": "5ac77e8cb9b7d0b5f5a67b667e77eb7931157ab4b93848e40b81829e101a22f4",
       "stars": 305863,
+      "imageSha256": "5ac77e8cb9b7d0b5f5a67b667e77eb7931157ab4b93848e40b81829e101a22f4",
       "sha256": "29faf0d352422aa58beb0ce4666a49bdfdd5d2cc065c9dfe9be7b7e89fbdf584",
       "files": [
         {
@@ -842,8 +904,8 @@
       "ref": "1a2c79d4e6c4a2283dc2c614b6538cbe1ed5ca62",
       "install": "npx skills add vercel-labs/agent-skills --skill vercel-react-best-practices",
       "image": "images/vercel-react-best-practices.jpg",
-      "imageSha256": "6f920602503f9879e293ab7c5c4eeff4dad0357e11e4298dccf9cc26fec6c4b5",
       "stars": 33171,
+      "imageSha256": "6f920602503f9879e293ab7c5c4eeff4dad0357e11e4298dccf9cc26fec6c4b5",
       "sha256": "e3f2294574b469c7c198373a443a86571012769d0bbeed68854bd55642ec0d7b",
       "files": [
         {
@@ -1253,8 +1315,8 @@
       "ref": "1a2c79d4e6c4a2283dc2c614b6538cbe1ed5ca62",
       "install": "npx skills add vercel-labs/agent-skills --skill web-design-guidelines",
       "image": "images/web-design-guidelines.jpg",
-      "imageSha256": "54b2bac0bff30d625f0f92b10eda01bca9c5173f3ce0c69c781326c1ccbeafbd",
       "stars": 33171,
+      "imageSha256": "54b2bac0bff30d625f0f92b10eda01bca9c5173f3ce0c69c781326c1ccbeafbd",
       "sha256": "f3bc47f890f42a44db1007ab390709ec368e4b8c089baee6b0007182236ac474",
       "files": [
         {
@@ -1290,8 +1352,8 @@
       "ref": "2ce8aa15d05bd57213e6f746f953aafb7ded7a8b",
       "install": "npx skills add obra/superpowers --skill systematic-debugging",
       "image": "images/systematic-debugging.jpg",
-      "imageSha256": "8717ba1f7260f2deafdd4e945130b003b4637718e771434c00a2007581855c79",
       "stars": 307555,
+      "imageSha256": "8717ba1f7260f2deafdd4e945130b003b4637718e771434c00a2007581855c79",
       "sha256": "7c2628773e52f1687e74f9d802f2ea1c2cbae24ef5ca3fda0b8f21340f50d590",
       "files": [
         {
@@ -1376,8 +1438,8 @@
       "ref": "2ce8aa15d05bd57213e6f746f953aafb7ded7a8b",
       "install": "npx skills add obra/superpowers --skill writing-plans",
       "image": "images/writing-plans.jpg",
-      "imageSha256": "d4266de2cdacc42714a4c34a66aacfe4aa9f73360c332c96b8f380d226147bfa",
       "stars": 307555,
+      "imageSha256": "d4266de2cdacc42714a4c34a66aacfe4aa9f73360c332c96b8f380d226147bfa",
       "sha256": "b96f84fcdd4fc87bf3264e960e7a423bf6d3612e2b3355b4d6cd5f61ef7fe45d",
       "files": [
         {
@@ -1413,8 +1475,8 @@
       "ref": "2ce8aa15d05bd57213e6f746f953aafb7ded7a8b",
       "install": "npx skills add obra/superpowers --skill brainstorming",
       "image": "images/brainstorming.jpg",
-      "imageSha256": "a31d118ec887a31492d52647c4acd32162a25082b686363e6f398ede6e45918a",
       "stars": 307555,
+      "imageSha256": "a31d118ec887a31492d52647c4acd32162a25082b686363e6f398ede6e45918a",
       "sha256": "c7df2e2fbd0ee30184f631f0ae196a6b591cec122b75a40c93455d947f215a67",
       "files": [
         {
@@ -1484,8 +1546,8 @@
       "ref": "2c606141936f1eeef17fa3043a72095b4765b9c2",
       "install": "npx skills add multica-ai/andrej-karpathy-skills --skill karpathy-guidelines",
       "image": "images/karpathy-guidelines.jpg",
-      "imageSha256": "36659e79aa9706db2db4eca7a00561d11ae00c3036e676e8c588b3520fe68870",
       "stars": 226028,
+      "imageSha256": "36659e79aa9706db2db4eca7a00561d11ae00c3036e676e8c588b3520fe68870",
       "sha256": "5e8a1677df986d47abaf3d42f1ce0c7427ea030f50370c52baf9ba1e2c7c3db9",
       "files": [
         {
@@ -1520,8 +1582,8 @@
       "ref": "ca45fc496a3436251f191354091d557da31c15b5",
       "install": "npx skills add anthropics/skills --skill skill-creator",
       "image": "images/skill-creator.jpg",
-      "imageSha256": "5d1e3952fd24645f22b2315359aa0d5a0faa1e3ae3c8aed663382af0ad498bd4",
       "stars": 184549,
+      "imageSha256": "5d1e3952fd24645f22b2315359aa0d5a0faa1e3ae3c8aed663382af0ad498bd4",
       "sha256": "4557d54c524c67984e4bab23fa436e90196292ae8df4d2093f0ce0e6951bfc1c",
       "files": [
         {
@@ -1642,8 +1704,8 @@
       "ref": "ca45fc496a3436251f191354091d557da31c15b5",
       "install": "npx skills add anthropics/skills --skill mcp-builder",
       "image": "images/mcp-builder.jpg",
-      "imageSha256": "c78ad9ea0763059cd3dffad7d6335bc43d39b22219304732aa3fdd2d808b88f4",
       "stars": 184549,
+      "imageSha256": "c78ad9ea0763059cd3dffad7d6335bc43d39b22219304732aa3fdd2d808b88f4",
       "sha256": "3e62325b392401dfffcc7ce0db0e11e27ed5910d8f903973ee93e860bf067d83",
       "files": [
         {
@@ -1728,8 +1790,8 @@
       "ref": "ca45fc496a3436251f191354091d557da31c15b5",
       "install": "npx skills add anthropics/skills --skill webapp-testing",
       "image": "images/webapp-testing.jpg",
-      "imageSha256": "e640ab018ea9f29d12ce6da0ce9214a6e2cfab0ed41b89ed3f49eb3fe1a39479",
       "stars": 184549,
+      "imageSha256": "e640ab018ea9f29d12ce6da0ce9214a6e2cfab0ed41b89ed3f49eb3fe1a39479",
       "sha256": "abfaf4cc6cf572346e22fed42dc0cfaacd2f64c5d9667f44a94b02ea0d3b1342",
       "files": [
         {
@@ -1788,8 +1850,8 @@
       "ref": "134b8e1a3a8078302b8ba77f86626c0802b2a6db",
       "install": "npx skills add DietrichGebert/ponytail --skill ponytail",
       "image": "images/ponytail.jpg",
-      "imageSha256": "1a503c3cd9352c9100f19c2971e6dc5e3e47fc4d1d7365393abd2a145d5c0989",
       "stars": 179303,
+      "imageSha256": "1a503c3cd9352c9100f19c2971e6dc5e3e47fc4d1d7365393abd2a145d5c0989",
       "sha256": "b40d655883ea462755ae12373b59833fce20ba256bc06b0bc4e08dc59ba2ca5d",
       "files": [
         {
@@ -1824,8 +1886,8 @@
       "ref": "28b3b8dee8c976df4fa3e94aed4e092ad43fcb03",
       "install": "npx skills add nextlevelbuilder/ui-ux-pro-max-skill --skill ui-ux-pro-max",
       "image": "images/ui-ux-pro-max.jpg",
-      "imageSha256": "6c9c07188f3a62b8dfea0a599b5c8c31175941fe1e27fff5c4d7d99416945095",
       "stars": 142141,
+      "imageSha256": "6c9c07188f3a62b8dfea0a599b5c8c31175941fe1e27fff5c4d7d99416945095",
       "sha256": "0e54f87ea382d98cc580b2a72c79a9864c5486943aee9168df131491a6f8f7f1",
       "files": [
         {
@@ -2220,8 +2282,8 @@
       "ref": "8b4f5aaf5c8792d9cf9cbc48ff7aed674d4df7a0",
       "install": "npx skills add garrytan/gstack --skill design-motion",
       "image": "images/design-motion.jpg",
-      "imageSha256": "02f10d6fc8f060ff4131825b3b47b660de2185498672708b46542ce1f0b09b21",
       "stars": 138085,
+      "imageSha256": "02f10d6fc8f060ff4131825b3b47b660de2185498672708b46542ce1f0b09b21",
       "sha256": "8e5f857383b88f859bb9feb2322c7baf5b4003ae4cb91238532f99d9cfe8ec9c",
       "files": [
         {
@@ -2302,8 +2364,8 @@
       "ref": "9b68f7ed12b05e7efaff18e65c5a3fc2849fd0a4",
       "install": "npx skills add JuliusBrussee/caveman --skill caveman",
       "image": "images/caveman.jpg",
-      "imageSha256": "1c855c776d3550ee77068421958d01739c54c4ce317c1991cfee2509e0b44556",
       "stars": 115852,
+      "imageSha256": "1c855c776d3550ee77068421958d01739c54c4ce317c1991cfee2509e0b44556",
       "sha256": "8dd75b3ad1dccebfc375f3ec73e714b02ef5666791416f228d8ebc53c8540597",
       "files": [
         {
@@ -2342,8 +2404,8 @@
       "ref": "aeac41d4d005999432bb7312f7ff06383a91d59d",
       "install": "npx skills add addyosmani/agent-skills --skill spec-driven-development",
       "image": "images/spec-driven-development.jpg",
-      "imageSha256": "cae0be90aec16f922bc93fe22d34b5906b36a9ce0d1a90a9b36e1ef6c8e29ad6",
       "stars": 111493,
+      "imageSha256": "cae0be90aec16f922bc93fe22d34b5906b36a9ce0d1a90a9b36e1ef6c8e29ad6",
       "sha256": "3dfd09ad332308113a5a400ce059ec2362fd4fca4db863a85e00644ba198f106",
       "files": [
         {
@@ -2377,8 +2439,8 @@
       "ref": "14c213405669414492bda0f8d52cc6531d062c45",
       "install": "npx skills add Panniantong/Agent-Reach --skill agent-reach",
       "image": "images/agent-reach.jpg",
-      "imageSha256": "32ecee93ec04dbee159046856f843b45de44bb31cde0753aee52fd38a4e5e420",
       "stars": 105716,
+      "imageSha256": "32ecee93ec04dbee159046856f843b45de44bb31cde0753aee52fd38a4e5e420",
       "sha256": "b26b4cd9580b072732da9da0b215ef9645e95042030d373b9a1f626f49995ffa",
       "files": [
         {
@@ -2433,8 +2495,8 @@
       "ref": "12af471f627f866411b4bd785b19646d3672784c",
       "install": "npx skills add Leonxlnx/taste-skill --skill design-taste-frontend",
       "image": "images/design-taste-frontend.jpg",
-      "imageSha256": "a8598658b8114fb4f4c7866d76f90b73fc13c34aeac7bc110da3e51017c176ea",
       "stars": 104649,
+      "imageSha256": "a8598658b8114fb4f4c7866d76f90b73fc13c34aeac7bc110da3e51017c176ea",
       "sha256": "605709c80bbcc526a336849a8ed41e391db4f2c8ce5970b73a43cebc103e430a",
       "files": [
         {
@@ -2660,8 +2722,8 @@
       "ref": "5e745ace7e151feb2a93d360d0281fe39448b857",
       "install": "npx skills add pbakaus/impeccable --skill impeccable",
       "image": "images/impeccable.jpg",
-      "imageSha256": "9876d94207331ea934620defcd5fe402fbc2aa6a5c414ae42ad828316c27c32b",
       "stars": 93065,
+      "imageSha256": "9876d94207331ea934620defcd5fe402fbc2aa6a5c414ae42ad828316c27c32b",
       "sha256": "7b6db9213e83a6682b550a1c2020135554377354ff00c4a0faf8699899a8eee1",
       "files": [
         {
@@ -2980,8 +3042,8 @@
       "ref": "d6059331abbddb49bca380ff46dca8ce33158b04",
       "install": "npx skills add tt-a1i/archify --skill archify",
       "image": "images/archify.jpg",
-      "imageSha256": "ece6d1f619efdb3a680841787c3ec940416588a138c304a875fa1894e551e062",
       "stars": 91063,
+      "imageSha256": "ece6d1f619efdb3a680841787c3ec940416588a138c304a875fa1894e551e062",
       "sha256": "2525be5cc6c39391ae6dc84f656b657306ca81bd4c1575b55bbd341a4da1df93",
       "files": [
         {
@@ -3801,8 +3863,8 @@
       "ref": "7efc0ef764765ed9ceff5ce1204462b35b89d680",
       "install": "npx skills add mvanhorn/last30days-skill --skill last30days",
       "image": "images/last30days.jpg",
-      "imageSha256": "7e868498fdb5ec027123debe571b379858b26a9c743d219b4de381bb384266a0",
       "stars": 65797,
+      "imageSha256": "7e868498fdb5ec027123debe571b379858b26a9c743d219b4de381bb384266a0",
       "sha256": "1cf6c27897e5de9459e5876d1a10437d18175236e97b839b4556ad9bbc971f5c",
       "files": [
         {
@@ -4601,8 +4663,8 @@
       "ref": "0ef9fe5bc3572734fd3ae6c448fe00a30cd5dcf0",
       "install": "npx skills add blader/humanizer --skill humanizer",
       "image": "images/humanizer.jpg",
-      "imageSha256": "78e24f6b6b67e7df819f509ef525f7b8eddcba8652d66a2e6924bdc506a434a0",
       "stars": 62001,
+      "imageSha256": "78e24f6b6b67e7df819f509ef525f7b8eddcba8652d66a2e6924bdc506a434a0",
       "sha256": "e137b31423c2707bb604ac9b5c71aba9c7d1390d207cae70c3704ff263b24712",
       "files": [
         {
@@ -4657,8 +4719,8 @@
       "ref": "5d29800bf8b919ca9a88ee7885b90050b5cb64ed",
       "install": "npx skills add OthmanAdi/planning-with-files --skill planning-with-files",
       "image": "images/planning-with-files.jpg",
-      "imageSha256": "5d57f6e4f72318ae416fa4cf5dca45d971afe8e13265b87aa3fade7da5783d4e",
       "stars": 27740,
+      "imageSha256": "5d57f6e4f72318ae416fa4cf5dca45d971afe8e13265b87aa3fade7da5783d4e",
       "sha256": "0d32911d02c817925fc622c1a92b31da3e6b288e3f0b8ffd44690478f2ea9880",
       "files": [
         {
@@ -4848,8 +4910,8 @@
       "ref": "ca45fc496a3436251f191354091d557da31c15b5",
       "install": "npx skills add anthropics/skills --skill algorithmic-art",
       "image": "images/algorithmic-art.jpg",
-      "imageSha256": "e8c8aa976ec062beee35e97146da63add54ad6b775b009ab0bad55ce1cfc6c42",
       "stars": 184549,
+      "imageSha256": "e8c8aa976ec062beee35e97146da63add54ad6b775b009ab0bad55ce1cfc6c42",
       "sha256": "8c15717769d76330df4387b85402a3754d858b97749ae259d3365ea9ea394f89",
       "files": [
         {
@@ -4901,74 +4963,74 @@
       "stars": 74844,
       "homepage": "",
       "image": "images/hyperframes-cli.jpg",
-      "imageSha256": "e822f5fd821e1aad1a53645d6a281de73e50a3d177633d6d238c7ffe08551355",
       "install": "npx skills add heygen-com/hyperframes --skill hyperframes-cli",
+      "imageSha256": "e822f5fd821e1aad1a53645d6a281de73e50a3d177633d6d238c7ffe08551355",
       "sha256": "19e8e8f081dabdfd8452ded86073d232052487d58051e3b5f0137be95830b120",
       "files": [
         {
           "path": "SKILL.md",
           "sha256": "44a48ccfa4cbd4f4234f8306c96268a4be56a0f2376abedbf31d2167b3c21286",
-          "size": 7131
+          "size": 7228
         },
         {
           "path": "references/beats.md",
           "sha256": "a14417f6308c1bb5cae7f1244635abb634003a1befe0972666924a2a2078751e",
-          "size": 955
+          "size": 972
         },
         {
           "path": "references/cloud.md",
           "sha256": "8191550a036130249c26b37912dfd321c771c6670223cc7e0fff7aedd67607bf",
-          "size": 11149
+          "size": 11312
         },
         {
           "path": "references/cloudrun.md",
           "sha256": "16f46a18ee3d165dba3b7ee50362bb32cb0a927643a90821e7b63494fe0bde83",
-          "size": 3553
+          "size": 3615
         },
         {
           "path": "references/compare-and-batch.md",
           "sha256": "d17fa5a16707d981fa6473b99a28aa45abf41bca0fd96c5157c632abd0bfc222",
-          "size": 4378
+          "size": 4483
         },
         {
           "path": "references/conventions.md",
           "sha256": "5012403aa194bc350bdfd89d7c9f00e85c0ecc0356a1417ae4146b7bb8bb7b07",
-          "size": 2092
+          "size": 2109
         },
         {
           "path": "references/doctor-browser.md",
           "sha256": "9747dd5a545d2528914c58d55d0c54281ace686fc5c782072334c6ba0ff65c55",
-          "size": 4357
+          "size": 4437
         },
         {
           "path": "references/feedback.md",
           "sha256": "ae188d5c3e90f0e011b1e322bbfbe10575667b2a5073cffdac05026ac59925a7",
-          "size": 2539
+          "size": 2553
         },
         {
           "path": "references/init-and-scaffold.md",
           "sha256": "dad4c2212f6df8ed4ff8d7b8154c2f8a6bdeec0fa27562b0b6c4d8da9d2e1078",
-          "size": 6337
+          "size": 6416
         },
         {
           "path": "references/lambda.md",
           "sha256": "80b8ce187a1dec26bf8bed682cdd1415a79a5d72ba6ef07650c58f5d3795845b",
-          "size": 17907
+          "size": 18096
         },
         {
           "path": "references/lint-validate-inspect.md",
           "sha256": "8144df629f9b913e1237539f2eafa24d8413be0ec4cf694264c6eab33b903904",
-          "size": 18061
+          "size": 18216
         },
         {
           "path": "references/preview-render.md",
           "sha256": "851d85d7f4e6939d90ed6e350180a8edadc67b44dfc5d19163376485324d00b2",
-          "size": 34299
+          "size": 34501
         },
         {
           "path": "references/upgrade-info-misc.md",
           "sha256": "a46662ad866669d1cf70bfa6404e9a01f68d2db4eb667fe6dc8a8442f6a069d8",
-          "size": 11709
+          "size": 11843
         }
       ],
       "bundled": "complete"
@@ -4999,8 +5061,12 @@
       "stars": 305864,
       "homepage": "",
       "image": "images/grill-with-docs.jpg",
-      "imageSha256": "70a00e481239660fc801ced167df78af7b55157c5a295ffcf526b502c72e0278",
       "install": "npx skills add mattpocock/skills --skill grill-with-docs",
+      "requires": [
+        "grilling",
+        "domain-modeling"
+      ],
+      "imageSha256": "70a00e481239660fc801ced167df78af7b55157c5a295ffcf526b502c72e0278",
       "sha256": "2dff19547f0f72000f8b88868e21b7d76c27cf5c7ececc6edf4042bbe06157ac",
       "files": [
         {
@@ -5012,6 +5078,47 @@
           "path": "agents/openai.yaml",
           "sha256": "94cd0ab161fb468a836349f5ed482ba58ce8e709a05c57ce533d739dbd35cca9",
           "size": 150
+        }
+      ],
+      "bundled": "complete"
+    },
+    {
+      "id": "grilling",
+      "name": "Grilling",
+      "author": "Matt Pocock",
+      "summary": "Asks about a plan in rounds of numbered questions, each with a recommended answer, until no decision is left assumed.",
+      "description": "The interview that Grill Me, Grill With Docs, Triage and Improve Codebase Architecture call. It maps a plan as a tree of decisions and asks every question that can be answered now in one round, numbered, each with the answer it recommends, worded so that yes accepts it. Facts it can look up itself are found by a sub-agent rather than asked. It stops only when every branch has been visited and you agree you share one understanding. Installing any of those skills installs this one too.",
+      "category": "Planning",
+      "tags": [
+        "interview",
+        "planning",
+        "design",
+        "questions"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/mattpocock/skills",
+      "path": "skills/productivity/grilling",
+      "popularity": "Called by Grill Me, Grill With Docs, Triage and Improve Codebase Architecture; the repository has 305,864 GitHub stars.",
+      "sources": [
+        "https://github.com/mattpocock/skills/tree/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/productivity/grilling"
+      ],
+      "ref": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "stars": 305864,
+      "homepage": "",
+      "image": "images/grilling.jpg",
+      "install": "npx skills add mattpocock/skills --skill grilling",
+      "imageSha256": "d9e40267779b0923cf7acfb41e4874d7c706fbff8284032204ec4d8e0b024703",
+      "sha256": "84ca0320c5fa81a1261d6d1d4c120ada9dea80f856a2c2565404f7125a809b86",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "befdff1e27a1dfe2a294d5871169ac1afe16d983911daa4f32627514a48c1e15",
+          "size": 2049
+        },
+        {
+          "path": "agents/openai.yaml",
+          "sha256": "1411d7df7d99b7e621a1ff8283c8133cc2464be63d064e52d8ce169c6800ee9b",
+          "size": 113
         }
       ],
       "bundled": "complete"
@@ -5042,24 +5149,24 @@
       "stars": 74844,
       "homepage": "",
       "image": "images/media-use.jpg",
-      "imageSha256": "81aff57d2d58866cbf480d084af076665ce0b523fec0ad6801d3f79fdbc9dd2b",
       "install": "npx skills add heygen-com/hyperframes --skill media-use",
+      "imageSha256": "81aff57d2d58866cbf480d084af076665ce0b523fec0ad6801d3f79fdbc9dd2b",
       "sha256": "938c00af915a46b51962ddbe5b26e4df60955cd634e5061c9576d7b32a0b70e4",
       "files": [
         {
           "path": ".gitignore",
           "sha256": "a299ec0fcdb6bc6670cf9fb22eefe3fcc37730e2e554b7f54e25de88be1ede02",
-          "size": 17
+          "size": 18
         },
         {
           "path": "SKILL.md",
           "sha256": "ef3976a02ff516d8e5ed0b7fff19d4bbf9358264233bace33fdacaa3aa7f37de",
-          "size": 5120
+          "size": 5180
         },
         {
           "path": "audio/assets/sfx/CREDITS.md",
           "sha256": "79590c7738b0427b10f362f76b02cfd2643158a40e1d5fd787f9ac6b33bcf4ce",
-          "size": 1183
+          "size": 1218
         },
         {
           "path": "audio/assets/sfx/chime.mp3",
@@ -5114,7 +5221,7 @@
         {
           "path": "audio/assets/sfx/manifest.json",
           "sha256": "1b1aae06c6e25412e1d217ebf1e646a0ed36410c0fcad11acdb8f5d5e5b7dc10",
-          "size": 3721
+          "size": 3818
         },
         {
           "path": "audio/assets/sfx/notification.mp3",
@@ -5164,467 +5271,467 @@
         {
           "path": "audio/references/bgm.md",
           "sha256": "d21a03d47aa8b77ef74bd8a1e91a06de71085ec15312cc71d3b7b52d655c93b4",
-          "size": 8119
+          "size": 8195
         },
         {
           "path": "audio/references/captions/authoring.md",
           "sha256": "c1f159e6a99b5ed65812fbc777fabdbf8cb82dec7fcb2e970b9524653d96bb59",
-          "size": 9422
+          "size": 9584
         },
         {
           "path": "audio/references/captions/motion.md",
           "sha256": "ee1b89fc53e7433e1c1192c24e09365a3894bae653d8061c2bbc4202c097250f",
-          "size": 5480
+          "size": 5567
         },
         {
           "path": "audio/references/captions/transcript-handling.md",
           "sha256": "84c4d5181749022c00b6de62ffe95fe257598fb5f9111d9e8541d25a13836287",
-          "size": 5439
+          "size": 5536
         },
         {
           "path": "audio/references/remove-background.md",
           "sha256": "fb6b38a25c6535c57a461bbe2ca681b38f18e5f09b1e904e4a0b5f6eca7a5b98",
-          "size": 8472
+          "size": 8615
         },
         {
           "path": "audio/references/requirements.md",
           "sha256": "3a9092a3ad9e3133dc2d4888c73c9373e988cbcc5dd46997cd800e075127d09c",
-          "size": 4319
+          "size": 4348
         },
         {
           "path": "audio/references/sfx.md",
           "sha256": "b89b14e4d819594d07cf2899e3ca59ceafe743e77e7df46dafdbebe4effebe75",
-          "size": 4137
+          "size": 4185
         },
         {
           "path": "audio/references/transcribe.md",
           "sha256": "5525a555f5356766a5e3333a945b5f90af51f63b2b98210d23e3a605a5de8703",
-          "size": 2847
+          "size": 2899
         },
         {
           "path": "audio/references/tts-to-captions.md",
           "sha256": "bc74fa83c096d64997dde33c9873c01b23c3b575b80689793440cd91466c8bd1",
-          "size": 1755
+          "size": 1790
         },
         {
           "path": "audio/references/tts.md",
           "sha256": "37ce53c1744359b68f09b31878ede560c75791ecd73b4e7bbaaff0b147cbc442",
-          "size": 13822
+          "size": 14079
         },
         {
           "path": "audio/scripts/audio.mjs",
           "sha256": "f41c88d86aa3c87c41a8edfe1017a41c86ea44a6e5bdd5f5442fb4046c63f8ef",
-          "size": 13375
+          "size": 13685
         },
         {
           "path": "audio/scripts/audio.test.mjs",
           "sha256": "07df6c38f1d98305fce9f37848334d6c84e26bceb52eca1e0ee3f9fa2fd2ae12",
-          "size": 6046
+          "size": 6212
         },
         {
           "path": "audio/scripts/carve.mjs",
           "sha256": "7ddef413955ca81b66eba4630e3296220613150d428795f636577f2d8626c160",
-          "size": 23848
+          "size": 24408
         },
         {
           "path": "audio/scripts/carve.test.mjs",
           "sha256": "6f72d9e0a349d9deaee62f1835b9c5639dc71389643f5d37accc0844958b43f6",
-          "size": 11818
+          "size": 12072
         },
         {
           "path": "audio/scripts/extract-audio-data.py",
           "sha256": "2b72d7aaa8688a4c524042274364f9696fb26fa9dd7125c58798cbdf021950e8",
-          "size": 7214
+          "size": 7413
         },
         {
           "path": "audio/scripts/gemini-pipeline.test.mjs",
           "sha256": "1caced7d5d088cc1281d7ba4346bf3bb540870482a56515f5a6a35352fbbc0f9",
-          "size": 4932
+          "size": 5063
         },
         {
           "path": "audio/scripts/heygen-tts.mjs",
           "sha256": "7cf5e907807e0df919fdff2c762733c9d6dbdad5b605d05236ea788d8aecf5ff",
-          "size": 4388
+          "size": 4510
         },
         {
           "path": "audio/scripts/heygen-tts.test.mjs",
           "sha256": "55f54468f0ba01f24c7a587f1b58d7d128a9c03919dfadd92dc2929aa1e8ed69",
-          "size": 1408
+          "size": 1446
         },
         {
           "path": "audio/scripts/heygen-voice.mjs",
           "sha256": "1ab6d29860c106b49ca0c3dec408d99a8d3297a5bbc953d21f1148c3d8568064",
-          "size": 3859
+          "size": 3957
         },
         {
           "path": "audio/scripts/heygen-voice.test.mjs",
           "sha256": "d0920895246ee7679a424ffa36ed13d3f1bb7c03b8641c8bbb4a4efd4ede320b",
-          "size": 8536
+          "size": 8769
         },
         {
           "path": "audio/scripts/lib/audio-meta.mjs",
           "sha256": "94e1b4cf242362eeb52bb8a5665b5b50fe4ffdc7854f4366b82e290c33d03890",
-          "size": 1166
+          "size": 1205
         },
         {
           "path": "audio/scripts/lib/audio-meta.test.mjs",
           "sha256": "dcb64fed2a256b0f9305f1434024e588adf312d787e8a8dfdc9349193d37f2ad",
-          "size": 4586
+          "size": 4722
         },
         {
           "path": "audio/scripts/lib/bgm-volume.mjs",
           "sha256": "bb9debebdbd09724f6d07cd10b3982a076639664420ff8caf5f5a36ae7429a8c",
-          "size": 236
+          "size": 240
         },
         {
           "path": "audio/scripts/lib/bgm.mjs",
           "sha256": "2e7e7590bef554c4aa8fa0250ca4fd0dc96da5e388644c90128cf7767c6a7532",
-          "size": 11558
+          "size": 11815
         },
         {
           "path": "audio/scripts/lib/bgm.test.mjs",
           "sha256": "59b6b3d23a7de4b8dcaef846290ec14c6f74530a4e9a8fd5fa354501c35c73ad",
-          "size": 2639
+          "size": 2713
         },
         {
           "path": "audio/scripts/lib/concurrency.mjs",
           "sha256": "36a28dc1a0528b5605cba29a593dd54a786ad6283611b09a634946b12a5ed32e",
-          "size": 527
+          "size": 541
         },
         {
           "path": "audio/scripts/lib/concurrency.test.mjs",
           "sha256": "daf0b162a9c3fc1a20cc22dff19566530e198459a10afcdf42ad39bec2426f55",
-          "size": 1654
+          "size": 1695
         },
         {
           "path": "audio/scripts/lib/gemini-auth.mjs",
           "sha256": "72fa1b984693279656ef5398bbdc48c074040ac4feafaedd1b7c45f12545bf10",
-          "size": 1610
+          "size": 1653
         },
         {
           "path": "audio/scripts/lib/gemini-auth.py",
           "sha256": "5ba85af3b5b46bfa04013f5d24b2c5b72dc7677b6cc5ef5ef926de82be4f8542",
-          "size": 1981
+          "size": 2033
         },
         {
           "path": "audio/scripts/lib/gemini-auth.test.mjs",
           "sha256": "4a74c9e910914d57c715b0ed487e6e8ce2af265e32edfe04e8432780a6ffe0b0",
-          "size": 3097
+          "size": 3183
         },
         {
           "path": "audio/scripts/lib/gemini-auth_test.py",
           "sha256": "5f524492aa5d4fa77c45bfed0002a33045677bd1c28027ff80554c9911f32b66",
-          "size": 4430
+          "size": 4520
         },
         {
           "path": "audio/scripts/lib/gemini-tts.mjs",
           "sha256": "cf34c6781e809d39b7d36a8f0caf32afd23a21860db45ccdc4cd70c6a08e9597",
-          "size": 4711
+          "size": 4833
         },
         {
           "path": "audio/scripts/lib/gemini-tts.test.mjs",
           "sha256": "c36d0a99d85dd377ba4f1314e8dc15a6f8e55284fc0176a6bcd529017767eff8",
-          "size": 9018
+          "size": 9261
         },
         {
           "path": "audio/scripts/lib/heygen.mjs",
           "sha256": "65c996c8f494248aba28030888b43b32e1da659a48842ad2ba259c64b4a2967e",
-          "size": 10925
+          "size": 11165
         },
         {
           "path": "audio/scripts/lib/heygen.test.mjs",
           "sha256": "eedb0c96ebb8a1e04fad51d0f400a450d9f304e4961684f0d98b138aa48f9463",
-          "size": 10191
+          "size": 10483
         },
         {
           "path": "audio/scripts/lib/main-module.mjs",
           "sha256": "61811e09110856e1439c29875e4a4ad7701ae45d4045f9d1dcb6a7929698e4c0",
-          "size": 479
+          "size": 492
         },
         {
           "path": "audio/scripts/lib/media-record.mjs",
           "sha256": "bf904e88b0038b6fbae8b562ff1fc99ff8794383c5b3470773c7692162c948e9",
-          "size": 4233
+          "size": 4351
         },
         {
           "path": "audio/scripts/lib/media-record.test.mjs",
           "sha256": "922738b67e8baa5bbf958ac02e92e3192e51f5b6c66d8bbd3f544151c5a22523",
-          "size": 7835
+          "size": 8059
         },
         {
           "path": "audio/scripts/lib/openverse.mjs",
           "sha256": "e2b176ed6e0b91231debab84ef6633a1a4885e400b9511a39f11e97acef261bd",
-          "size": 4999
+          "size": 5133
         },
         {
           "path": "audio/scripts/lib/python.mjs",
           "sha256": "cfcee5d30291edc45f0bf3779ee346adb5bb91ae3b6e9e504d4b4f63259fdd4f",
-          "size": 3290
+          "size": 3367
         },
         {
           "path": "audio/scripts/lib/python.test.mjs",
           "sha256": "f8e1e5df3977691772605867ebe8ae2d02a8132c1745dfd3cbf6453f351bcc79",
-          "size": 5282
+          "size": 5418
         },
         {
           "path": "audio/scripts/lib/sfx.mjs",
           "sha256": "ddd7da6f359011f2aaa9e3b78e62246766be4dedb4825b5c40f2c287c0c2c62c",
-          "size": 7354
+          "size": 7550
         },
         {
           "path": "audio/scripts/lib/sfx.test.mjs",
           "sha256": "87bc81631a1dae1e251e13bb219521815f1cc14f7ec30b8d29b38885138f360d",
-          "size": 11893
+          "size": 12224
         },
         {
           "path": "audio/scripts/lib/tts.cleanup.test.mjs",
           "sha256": "bacb2ac60b7d755237aad3535b90c0093d0ff1b3cd71c9c8dc80cfc37f4efdf8",
-          "size": 6752
+          "size": 6927
         },
         {
           "path": "audio/scripts/lib/tts.mjs",
           "sha256": "0a706b9f83ba1b8723d5f8247b5d35c6f85b28b6849bbf47a7bef2f413eb2ffd",
-          "size": 17468
+          "size": 17862
         },
         {
           "path": "audio/scripts/lib/tts.spawn.test.mjs",
           "sha256": "62ec9589648477e8c7242567e9daa67d1cf07a0fbe2cf9968acef8df8e982ef2",
-          "size": 5249
+          "size": 5407
         },
         {
           "path": "audio/scripts/lib/tts.test.mjs",
           "sha256": "47185cb0d6ac4ca9350d65640a93e9f477d022a8a48d614f51e2ca57f3ca4a39",
-          "size": 8282
+          "size": 8512
         },
         {
           "path": "audio/scripts/lyria-recipe.py",
           "sha256": "07bcba4a128430545a03e7ced49b9a6750a77d72a3659d67e4e9886fe9731436",
-          "size": 5023
+          "size": 5159
         },
         {
           "path": "audio/scripts/wait-bgm.mjs",
           "sha256": "bb9cf35cae4342ca1b03c1c129df199d6e389b67a8d5be9d4973a3bc20d585e3",
-          "size": 5813
+          "size": 5988
         },
         {
           "path": "audio/scripts/wait-bgm.test.mjs",
           "sha256": "8f3c50a19e14c6d0b6c2d871892be8fa1022d6ee5653f3f5224c955f4afdf862",
-          "size": 3336
+          "size": 3444
         },
         {
           "path": "luts/README.md",
           "sha256": "c06cbbf2aab80cbf8aa25c83497202a63107a61e083b6c199a89d513e8096a3b",
-          "size": 1087
+          "size": 1115
         },
         {
           "path": "luts/index.json",
           "sha256": "988ac83c14bc3a9ef09aa6ab64459a0aa9e766e96361738136970ec89df1675a",
-          "size": 1997
+          "size": 2054
         },
         {
           "path": "references/audio.md",
           "sha256": "4c2602fec675b5234b18a0a03ac05aa6c380398c75176c6a071ce683d5107973",
-          "size": 2435
+          "size": 2455
         },
         {
           "path": "references/grading.md",
           "sha256": "430e2b57dfb64c3acfbdd02317ba967ebb580d42b348686ccffbc175d3de8392",
-          "size": 7150
+          "size": 7313
         },
         {
           "path": "references/local.md",
           "sha256": "659271d787fe3bdd39f0bc32b1eeb03860b9c76c2672cb71b6bb8d4a88fe4385",
-          "size": 2626
+          "size": 2651
         },
         {
           "path": "references/media-treatment-recipes.md",
           "sha256": "852e7e978af56c9e99ba14f19009da974cd78f99b399ca194dc416c31c49bda5",
-          "size": 35868
+          "size": 36797
         },
         {
           "path": "references/media-treatments.md",
           "sha256": "2125e106e7f891e14716efabda40f5d6a46284592c6f37d5a14b2b86bda96c1a",
-          "size": 14168
+          "size": 14374
         },
         {
           "path": "references/memory.md",
           "sha256": "55477edafb7f9c8294cafd3f1633b7a1820d538695c0868f9c3ddb6b418dadbc",
-          "size": 3828
+          "size": 3869
         },
         {
           "path": "references/meta.md",
           "sha256": "0397b11301e10de6b126f6f39e5ad8bac68f8b22a5ab32236fb6a8f0e5c279dd",
-          "size": 6442
+          "size": 6503
         },
         {
           "path": "references/mixing.md",
           "sha256": "0ac67d3230cf1a6e31ca9355371ea133557d7e2fdb541742a02f086eac20a574",
-          "size": 4636
+          "size": 4708
         },
         {
           "path": "references/operations.md",
           "sha256": "a40792b8f01f99ccf3ccab8f15b0b9285fa08d5ac9fa1f189cf60efdf3e17b30",
-          "size": 14857
+          "size": 15186
         },
         {
           "path": "references/resolve.md",
           "sha256": "c90a833f6c3dcc8f33b289f5ad90e9f835f59581873bdc774035f25b6eb72314",
-          "size": 9605
+          "size": 9755
         },
         {
           "path": "references/setup-providers.md",
           "sha256": "76f133bb9c4b1e0323b58544e2e7235f5ac09408adad1502e69e64c92eeeb085",
-          "size": 8636
+          "size": 8730
         },
         {
           "path": "references/telemetry-dashboard.md",
           "sha256": "bdc30ad1ff84ebe7f5ca835acb9f47b33717e041ea79b41c6f0db489b86094a7",
-          "size": 4200
+          "size": 4249
         },
         {
           "path": "scripts/audio-duck.mjs",
           "sha256": "6beac3c1c6c0e0375e67a04c184406ced3740cc832bb3ba9a09c796bbe16d40e",
-          "size": 4069
+          "size": 4182
         },
         {
           "path": "scripts/compatibility.test.mjs",
           "sha256": "3263a2e82b06560d2c0ea9f7e41b3fe46bec624b70c539ccb121b880dae2250e",
-          "size": 1610
+          "size": 1651
         },
         {
           "path": "scripts/dither.mjs",
           "sha256": "8e9f437526f39f417f6793912ddeef71094ddb5a5b8d4893c5339086bc39547f",
-          "size": 9969
+          "size": 10297
         },
         {
           "path": "scripts/dither.test.mjs",
           "sha256": "c22c3a0ae41647ac3f733b489a6bc6043fd294155d00954be5d901b3cff7d216",
-          "size": 4723
+          "size": 4899
         },
         {
           "path": "scripts/eval.mjs",
           "sha256": "fadf274111a682acbfdff91eca75b977e3821c53026cd058551c538027f21f51",
-          "size": 14891
+          "size": 15260
         },
         {
           "path": "scripts/lib/config-lock.mjs",
           "sha256": "a9d1679e2039be38cd1756a1011f813ae4be0577c2ff77b9ed411b99b1c94275",
-          "size": 1520
+          "size": 1565
         },
         {
           "path": "scripts/lib/cutlist.mjs",
           "sha256": "c395f49bdb602b29dfc1ea98b7f6d0d5d8781f00eca1c16d009d10e7ef0205be",
-          "size": 6381
+          "size": 6572
         },
         {
           "path": "scripts/lib/duck.mjs",
           "sha256": "0930aea672a8cb204d344902cb90442491a8979f9f554f9c7c61cd13666a6846",
-          "size": 3849
+          "size": 3961
         },
         {
           "path": "scripts/lib/error-diffusion.mjs",
           "sha256": "aa718fe95f98087979bab5ea31d68b8e45fbde0c5b874c6888ad21923fb45936",
-          "size": 6631
+          "size": 6861
         },
         {
           "path": "scripts/lib/index-gen.mjs",
           "sha256": "fde84f36ebfb4fa819935956b2b6dc43a70b749a5c846d5470295d7c439e40e6",
-          "size": 1924
+          "size": 1987
         },
         {
           "path": "scripts/lib/manifest.mjs",
           "sha256": "67f827f7591241c170fd92eb7fa789df2f1756b2cd4889907141936179f5d00f",
-          "size": 9424
+          "size": 9706
         },
         {
           "path": "scripts/lib/media-fetch.mjs",
           "sha256": "6a90740eee3e4765b83b4c9726676b2935a7fbc9990f61ad5b166f9263188366",
-          "size": 2838
+          "size": 2923
         },
         {
           "path": "scripts/lib/media-home.mjs",
           "sha256": "7f69890d7b822f202b44ddec0d8176c767cd8b1da4dfc4d918599c6a05cfecb1",
-          "size": 730
+          "size": 750
         },
         {
           "path": "scripts/lib/npx-sync.mjs",
           "sha256": "1dc7f6372da36242f8c373defcba80fe9e006ce824e0f459e6d56226b3bf919a",
-          "size": 2328
+          "size": 2385
         },
         {
           "path": "scripts/lib/parakeet-words.mjs",
           "sha256": "d5b66efe6cb8975beab2f523503113c3be3117e687ebc20695e7ab08c2ba1b4d",
-          "size": 1149
+          "size": 1176
         },
         {
           "path": "scripts/lib/prefs-store.mjs",
           "sha256": "960429595e5c5dda3f88f2899852d2ac2322a7d26b27ed8139612d0161fff749",
-          "size": 7012
+          "size": 7210
         },
         {
           "path": "scripts/lib/recipe-store.mjs",
           "sha256": "6d2786c2ba4959178351047c3b6d1d2b29a701685c9b256fcc4793c50717ce83",
-          "size": 13287
+          "size": 13658
         },
         {
           "path": "scripts/lib/telemetry.mjs",
           "sha256": "292ca36e91189e69d36b197311a345664a3a407b4e3fdb91f8044190649961cd",
-          "size": 7332
+          "size": 7545
         },
         {
           "path": "scripts/lib/telemetry.test.mjs",
           "sha256": "b7f6513eede2eb33f6fde626162b2fd4ef74b0034a3e81b9eebdede89f766373",
-          "size": 2233
+          "size": 2306
         },
         {
           "path": "scripts/lib/transcriptCutFade.mjs",
           "sha256": "ee9c7ec28650cf0f6a0f1f21f1c6a1faa5e152337163cccc0cc9a109b3c99805",
-          "size": 911
+          "size": 932
         },
         {
           "path": "scripts/lib/words.mjs",
           "sha256": "bfc1f93523d2fc8ce55580b262efcca537c7feabaf029c1c6f33433591377adb",
-          "size": 728
+          "size": 746
         },
         {
           "path": "scripts/prefs.mjs",
           "sha256": "f551d5efe51dea7b59d37595c052b950111c6734d913567630181959e7497a04",
-          "size": 2350
+          "size": 2419
         },
         {
           "path": "scripts/recipe.mjs",
           "sha256": "97d2a12604084668599c44f235d6300b77593f86a9a58a6034cf5aa92c98fcba",
-          "size": 3892
+          "size": 3993
         },
         {
           "path": "scripts/resolve-plugin.test.mjs",
           "sha256": "fe8f4dce139b3a88e9ba817da335ae7667a644a715f250613901f7cc1e75f0ed",
-          "size": 2512
+          "size": 2574
         },
         {
           "path": "scripts/resolve.mjs",
           "sha256": "85aec401d22b65639fa6a91056e515563135962a127516aaae1e2644d48fa0b9",
-          "size": 1305
+          "size": 1336
         },
         {
           "path": "scripts/transcribe.mjs",
           "sha256": "9e0f2fd2775e3a76267fc219d4b5aa52373a95478812884f8f40f6292e09dac7",
-          "size": 7510
+          "size": 7704
         },
         {
           "path": "scripts/transcribe.test.mjs",
           "sha256": "39a456ac37a0eca282417b09d7e556c0f2ac11ab3726bc361ff077e75a963ae1",
-          "size": 4074
+          "size": 4186
         },
         {
           "path": "scripts/transcript-cut.mjs",
           "sha256": "17e148571738ad8cf30b0ccb3f28d0837df5072114b9dfb63bc8d9f5d25e5a5d",
-          "size": 10266
+          "size": 10555
         },
         {
           "path": "scripts/transcript-cut.test.mjs",
           "sha256": "af546cd7d473eb5f4258148a8dd8ec637a67a242cd50948abe1e0dcd6f64c527",
-          "size": 9849
+          "size": 10190
         }
       ],
       "bundled": "partial"
@@ -5655,8 +5762,8 @@
       "stars": 305864,
       "homepage": "",
       "image": "images/setup-matt-pocock-skills.jpg",
-      "imageSha256": "1e1f6bd02065ac3d0c0043c3ce637b2cdff6bbeb4690be0c89fd300319ec19bf",
       "install": "npx skills add mattpocock/skills --skill setup-matt-pocock-skills",
+      "imageSha256": "1e1f6bd02065ac3d0c0043c3ce637b2cdff6bbeb4690be0c89fd300319ec19bf",
       "sha256": "d1d1b40f71fcb294d27a1b00297d1d25bcff3bc1e8759794a4af906b243d8e31",
       "files": [
         {
@@ -5723,8 +5830,8 @@
       "stars": 305864,
       "homepage": "",
       "image": "images/handoff.jpg",
-      "imageSha256": "69d4835b307751abff944c3af08af9f4970f9a3e03994036aa357d03802b2376",
       "install": "npx skills add mattpocock/skills --skill handoff",
+      "imageSha256": "69d4835b307751abff944c3af08af9f4970f9a3e03994036aa357d03802b2376",
       "sha256": "77c2607c751b7c522e0208ab113ba4949f8267610d6061323c7ccd3ace21d7da",
       "files": [
         {
@@ -5766,8 +5873,8 @@
       "stars": 20,
       "homepage": "",
       "image": "images/design-mobile-apps.jpg",
-      "imageSha256": "528e8db228280503ff4bd3c0fce68c5bf7c21f478dc8b5613b4fedcce944593e",
       "install": "npx skills add designed-by-ai/skills --skill design-mobile-apps",
+      "imageSha256": "528e8db228280503ff4bd3c0fce68c5bf7c21f478dc8b5613b4fedcce944593e",
       "sha256": "f9875ebfee265912b89da9ac0c5f358cf35671d20261263842b4c9148258ae48",
       "files": [
         {
@@ -5834,8 +5941,12 @@
       "stars": 305864,
       "homepage": "",
       "image": "images/triage.jpg",
-      "imageSha256": "c22c7baf0aca8eee76a6f2315b8f1024792cad6cd5a365615c6022c00e69f10d",
       "install": "npx skills add mattpocock/skills --skill triage",
+      "requires": [
+        "grilling",
+        "domain-modeling"
+      ],
+      "imageSha256": "c22c7baf0aca8eee76a6f2315b8f1024792cad6cd5a365615c6022c00e69f10d",
       "sha256": "9c6b69d13831d354c1a62eaa047e3160617f9b035d411555268a343b51e96a0c",
       "files": [
         {
@@ -5887,8 +5998,8 @@
       "stars": 305864,
       "homepage": "",
       "image": "images/prototype.jpg",
-      "imageSha256": "c52ff42aa21394cc22dfb9286ab524f6e8b4fb31fea435989cb7780339c6e987",
       "install": "npx skills add mattpocock/skills --skill prototype",
+      "imageSha256": "c52ff42aa21394cc22dfb9286ab524f6e8b4fb31fea435989cb7780339c6e987",
       "sha256": "c4efd5e0f1c302b6225be83e8e42abdb05e13fde900484e4e2240e90b4e83eb6",
       "files": [
         {
@@ -5940,8 +6051,8 @@
       "stars": 305864,
       "homepage": "",
       "image": "images/domain-modeling.jpg",
-      "imageSha256": "bb3b3d33c0e54f0d20d00e4e12e2b8c19330bd02910f419a14bf01a60a43355b",
       "install": "npx skills add mattpocock/skills --skill domain-modeling",
+      "imageSha256": "bb3b3d33c0e54f0d20d00e4e12e2b8c19330bd02910f419a14bf01a60a43355b",
       "sha256": "18a9314d338b8135e4108d1d31d2fd57ad289cf8bf31d2acd6a6f3053ac22a38",
       "files": [
         {
@@ -5993,8 +6104,8 @@
       "stars": 305864,
       "homepage": "",
       "image": "images/teach.jpg",
-      "imageSha256": "5164e29ddb2e838c79ab862199d913f12fb990ee69c45d468e184621fdd0ed2a",
       "install": "npx skills add mattpocock/skills --skill teach",
+      "imageSha256": "5164e29ddb2e838c79ab862199d913f12fb990ee69c45d468e184621fdd0ed2a",
       "sha256": "9aaf696786348313963552e446415c67fdd8129276b61f02be6dcedb208cd381",
       "files": [
         {
@@ -6056,8 +6167,8 @@
       "stars": 305864,
       "homepage": "",
       "image": "images/code-review.jpg",
-      "imageSha256": "6d255926a0a259f79d67f1314045912cafa80588c108419371758301efba8bd6",
       "install": "npx skills add mattpocock/skills --skill code-review",
+      "imageSha256": "6d255926a0a259f79d67f1314045912cafa80588c108419371758301efba8bd6",
       "sha256": "780be2eef8e387f5d0c07473485cdce4dd2e55c0587f1e96635eb7e929ed1123",
       "files": [
         {
@@ -6099,8 +6210,8 @@
       "stars": 305864,
       "homepage": "",
       "image": "images/research.jpg",
-      "imageSha256": "6f2adf6a1f249ae4cde0e8597f46709093119ce17f7b07dd56382ee03f2c1652",
       "install": "npx skills add mattpocock/skills --skill research",
+      "imageSha256": "6f2adf6a1f249ae4cde0e8597f46709093119ce17f7b07dd56382ee03f2c1652",
       "sha256": "b1976e3b4a7cdcee2f7ade52c0cf072bafdbac9cf3284568cab1aa258e584e69",
       "files": [
         {
@@ -6142,8 +6253,8 @@
       "stars": 1603,
       "homepage": "",
       "image": "images/azure-compliance.jpg",
-      "imageSha256": "a0d701f75a02a3531ffbc661d85e012067fbde249d10839c7ea7583bb7090d4d",
       "install": "npx skills add microsoft/azure-skills --skill azure-compliance",
+      "imageSha256": "a0d701f75a02a3531ffbc661d85e012067fbde249d10839c7ea7583bb7090d4d",
       "sha256": "1d661e50af3e98d608446be66d767e306c82c766744505243fc756723177aca9",
       "files": [
         {
@@ -6255,8 +6366,8 @@
       "stars": 1603,
       "homepage": "",
       "image": "images/azure-compute.jpg",
-      "imageSha256": "146b07c8f78d8eafffd53aec71b6801bf6c2b66a78aabcf2e93410814da4fa25",
       "install": "npx skills add microsoft/azure-skills --skill azure-compute",
+      "imageSha256": "146b07c8f78d8eafffd53aec71b6801bf6c2b66a78aabcf2e93410814da4fa25",
       "sha256": "5c803d3039229538bb07e23a483ffb73b8e6a8cdb82f0b36a240389f143e3592",
       "files": [
         {
@@ -6493,8 +6604,8 @@
       "stars": 1603,
       "homepage": "",
       "image": "images/azure-cloud-migrate.jpg",
-      "imageSha256": "4765266cc86473e21225d4f191c476802156576c5b31da7549b8e25dad28840d",
       "install": "npx skills add microsoft/azure-skills --skill azure-cloud-migrate",
+      "imageSha256": "4765266cc86473e21225d4f191c476802156576c5b31da7549b8e25dad28840d",
       "sha256": "e9ca8c01b5a29cef9c390654ccc4cc6b511d6426edd177d99b3391c1a750d73b",
       "files": [
         {
@@ -6681,8 +6792,8 @@
       "stars": 2944,
       "homepage": "",
       "image": "images/supabase-postgres-best-practices.jpg",
-      "imageSha256": "97234c8b9a21e4252a7400b6132ff53cb68c7b7907cb999d82605b324fe5d97e",
       "install": "npx skills add supabase/agent-skills --skill supabase-postgres-best-practices",
+      "imageSha256": "97234c8b9a21e4252a7400b6132ff53cb68c7b7907cb999d82605b324fe5d97e",
       "sha256": "a714d433362542f2d52e8b7958d1691c49fa4f43c9645c9a647895fb3ca85f92",
       "files": [
         {
@@ -6894,8 +7005,8 @@
       "stars": 33172,
       "homepage": "",
       "image": "images/vercel-composition-patterns.jpg",
-      "imageSha256": "2ee32e308e2c901ec35458fbb2f46e52727c569d5560f9c98307dbeb0fd1fdee",
       "install": "npx skills add vercel-labs/agent-skills --skill vercel-composition-patterns",
+      "imageSha256": "2ee32e308e2c901ec35458fbb2f46e52727c569d5560f9c98307dbeb0fd1fdee",
       "sha256": "646f870906914c3787efa7403ec4716dfddf78fc17a12ec1f0556caf2143ac66",
       "files": [
         {
@@ -6997,49 +7108,49 @@
       "stars": 307556,
       "homepage": "",
       "image": "images/using-superpowers.jpg",
-      "imageSha256": "055f2e677ea8a975b14d953de8becdccbffeff3751df2e95350b73ee8233b339",
       "install": "npx skills add obra/superpowers --skill using-superpowers",
+      "imageSha256": "055f2e677ea8a975b14d953de8becdccbffeff3751df2e95350b73ee8233b339",
       "sha256": "bcdbc241f63b69c68e66b9168012dc703ef955ac381a955a72aa2c0f256495bc",
       "files": [
         {
           "path": "SKILL.md",
           "sha256": "82c5c8866ad7f5dd4440ce66bd7806ba48a2f13771beae5cf112e53f08fe36ba",
-          "size": 3192
+          "size": 3257
         },
         {
           "path": "references/antigravity-tools.md",
           "sha256": "4880f6de3da4e32f9659ebe7a72b9e0ebfff04e028c2ed96173f86d0387a04c0",
-          "size": 1495
+          "size": 1518
         },
         {
           "path": "references/claude-code-tools.md",
           "sha256": "21479a3fee27448cab8748a3b5687e53bb257883bda9c070426f9a1ab5cebf1b",
-          "size": 1469
+          "size": 1498
         },
         {
           "path": "references/codex-tools.md",
           "sha256": "1a38ad9b188c393052f58d95657a1c35ea6aafc8b5a27f198f3922912f70bbe7",
-          "size": 4762
+          "size": 4870
         },
         {
           "path": "references/gemini-tools.md",
           "sha256": "62b9157bcb0ee3c6784e3d0da0798ddfa5872f9e0c34bea48f3079dabea71965",
-          "size": 4598
+          "size": 4661
         },
         {
           "path": "references/hermes-tools.md",
           "sha256": "e2185c976a3c87503910e05e2aea58cc89bc8e569bb624b93df9958ac47a9190",
-          "size": 1964
+          "size": 2020
         },
         {
           "path": "references/muse-tools.md",
           "sha256": "5a1da5c575fe18456ca71cd47ebfd8a38c745f8d82a67fe64d5b83080000eeb3",
-          "size": 1908
+          "size": 1943
         },
         {
           "path": "references/pi-tools.md",
           "sha256": "703dbc83d23ecab9c6f388460c38abc482e9dee2fe6772a8c7a255152ad3a4d5",
-          "size": 1242
+          "size": 1258
         }
       ],
       "bundled": "complete"
@@ -7070,19 +7181,19 @@
       "stars": 307556,
       "homepage": "",
       "image": "images/requesting-code-review.jpg",
-      "imageSha256": "5c6aa65821f9465634e196ef76bb4a809a7e9eb677c510992ca211a4842670ef",
       "install": "npx skills add obra/superpowers --skill requesting-code-review",
+      "imageSha256": "5c6aa65821f9465634e196ef76bb4a809a7e9eb677c510992ca211a4842670ef",
       "sha256": "da21da5cdf7894945c3990bdea317b1be4e2cf553831d22027558ca45a6cc45b",
       "files": [
         {
           "path": "SKILL.md",
           "sha256": "2180e14a448e9410bec88e6646a2d1f0ce7fdd58de27388c1e052e929679d2bc",
-          "size": 2974
+          "size": 3069
         },
         {
           "path": "code-reviewer.md",
           "sha256": "82e370be6b3447523816286195571e4216ba56ba1ad6ad0e87862294c4c78dcb",
-          "size": 6449
+          "size": 6647
         }
       ],
       "bundled": "complete"
@@ -7113,19 +7224,19 @@
       "stars": 307556,
       "homepage": "",
       "image": "images/test-driven-development.jpg",
-      "imageSha256": "4decf4d13b870f33c96d8fb846b636305ba0a18d75664cd14328c42a16bd0b27",
       "install": "npx skills add obra/superpowers --skill test-driven-development",
+      "imageSha256": "4decf4d13b870f33c96d8fb846b636305ba0a18d75664cd14328c42a16bd0b27",
       "sha256": "8e8772822d25e4dfc9295cf4526c6251a10458c7417ac50c4b42e5d9fc91e0b0",
       "files": [
         {
           "path": "SKILL.md",
           "sha256": "64b03fce4aee5a97a93160cea8111f3ba13a17b7c001db4bd5836d67fd10705d",
-          "size": 9578
+          "size": 9908
         },
         {
           "path": "writing-good-tests.md",
           "sha256": "51471c853306ff92ca8bb41dcaea05f31c0e46b03651f8f3c99754b7172f4ae1",
-          "size": 8268
+          "size": 8466
         }
       ],
       "bundled": "complete"
@@ -7156,8 +7267,8 @@
       "stars": 33172,
       "homepage": "",
       "image": "images/vercel-react-native-skills.jpg",
-      "imageSha256": "4b1272766b808ead7d7921a9f5099661f35dff52862d1500796f6952d5ed1980",
       "install": "npx skills add vercel-labs/agent-skills --skill vercel-react-native-skills",
+      "imageSha256": "4b1272766b808ead7d7921a9f5099661f35dff52862d1500796f6952d5ed1980",
       "sha256": "7a13afc40d6cf74e431d845f5c19a3047caf4fdfe2d1fed1dbd0c77ed2db7b0b",
       "files": [
         {
@@ -7399,14 +7510,14 @@
       "stars": 307556,
       "homepage": "",
       "image": "images/verification-before-completion.jpg",
-      "imageSha256": "48c366af6b215c0d8bd5316469e4de93938acaadb8a432ab84f0e17048c8dd18",
       "install": "npx skills add obra/superpowers --skill verification-before-completion",
+      "imageSha256": "48c366af6b215c0d8bd5316469e4de93938acaadb8a432ab84f0e17048c8dd18",
       "sha256": "d8a53168f152b6163bd3447f7d4c20b6b4cddf6bd907f9aa5856b514c032db0e",
       "files": [
         {
           "path": "SKILL.md",
           "sha256": "2befe7fc55bcadaa3d97dd9e8efeb633d2561c0ebe74c5a8b17c4d9e7e4520b3",
-          "size": 3646
+          "size": 3766
         }
       ],
       "bundled": "complete"
@@ -7437,59 +7548,59 @@
       "stars": 307556,
       "homepage": "",
       "image": "images/subagent-driven-development.jpg",
-      "imageSha256": "de23e5bbf9a8fb674fa0a4274697e88b841ef7d45c2c585487856a02dc5f6151",
       "install": "npx skills add obra/superpowers --skill subagent-driven-development",
+      "imageSha256": "de23e5bbf9a8fb674fa0a4274697e88b841ef7d45c2c585487856a02dc5f6151",
       "sha256": "249b79397489aaf48e90da699e777cd1f88073a85160c45594107242b7e5a5a0",
       "files": [
         {
           "path": "SKILL.md",
           "sha256": "ba41f697136cba88a7962d60c8e2f97488ba04a8688b1d0fbeb27f6953808e75",
-          "size": 19506
+          "size": 19842
         },
         {
           "path": "implementer-prompt.md",
           "sha256": "81dd9d5a3fb0b09b96b5829f03b9796842f3199ef7591d1ba1c2db2a515f64d0",
-          "size": 6335
+          "size": 6489
         },
         {
           "path": "re-review-prompt.md",
           "sha256": "0828a5e9cbb12ba49f14621dd8c3953c48c0fc383e75bb5494f055ed0d6d824f",
-          "size": 4761
+          "size": 4876
         },
         {
           "path": "references/batching.md",
           "sha256": "b54dc7e23dbfb90db89bcb2fb3af591aabf6a271a165fbc0da4c6f9439980eac",
-          "size": 583
+          "size": 594
         },
         {
           "path": "references/cannot-verify.md",
           "sha256": "e698713a15e0eabf1a2ab26ffe1bb04bf70c9d6d2e2060d44a0f9a1bdd4408bf",
-          "size": 513
+          "size": 523
         },
         {
           "path": "references/final-review.md",
           "sha256": "2fd999d86e5dd0b9b32aaf93f2a41663ef30b3e3cb78fb2fd5cb450eb59eb9de",
-          "size": 2447
+          "size": 2494
         },
         {
           "path": "references/fix-loop.md",
           "sha256": "eafff1f801af2ced86e8761f3eeef04b701860d986ba5d0a8b20d506a75104bb",
-          "size": 4249
+          "size": 4326
         },
         {
           "path": "references/handling-reports.md",
           "sha256": "8f759cdd4936220c38aab05b6d6c48c6df8ac8f146b0f37a6d2facbf87133c67",
-          "size": 1062
+          "size": 1077
         },
         {
           "path": "references/preflight.md",
           "sha256": "3ea21c5fc1af1a190ac8a9d19ceb0849b47bf2ffe27b87dffcc21b6a0539776c",
-          "size": 1353
+          "size": 1379
         },
         {
           "path": "references/resuming.md",
           "sha256": "ff6e38bde2276faa2a7e93513086caded0ea10edbf2ec7f349a7e3b0d7c668c4",
-          "size": 614
+          "size": 626
         },
         {
           "path": "scripts/review-package",
@@ -7509,7 +7620,7 @@
         {
           "path": "task-reviewer-prompt.md",
           "sha256": "bfed55c8f19d0ff6ed57b0fe09127c92890e9311c6c73917129598826bf9ebe8",
-          "size": 9031
+          "size": 9238
         }
       ],
       "bundled": "complete"
@@ -7540,39 +7651,39 @@
       "stars": 307556,
       "homepage": "",
       "image": "images/writing-skills.jpg",
-      "imageSha256": "2cf113d2be26c67f76ff1b9e689619baba4372ee4b1082773f23951d658db70a",
       "install": "npx skills add obra/superpowers --skill writing-skills",
+      "imageSha256": "2cf113d2be26c67f76ff1b9e689619baba4372ee4b1082773f23951d658db70a",
       "sha256": "9ca4cdbef07abe834a36aeed5434f0afed6d3679dab61041e0ba9cf9a99ea425",
       "files": [
         {
           "path": "SKILL.md",
           "sha256": "8cb3ac68c6d8c4bb46886b998b09af7989643cab8bd0e46ee86dd62e64546bbe",
-          "size": 16738
+          "size": 17137
         },
         {
           "path": "references/CLAUDE_MD_TESTING.md",
           "sha256": "0b379a3415e185d3c434b3ad283d8aa132f3022c2a4f210f168865b5986bcef0",
-          "size": 5423
+          "size": 5612
         },
         {
           "path": "references/anthropic-best-practices.md",
           "sha256": "217629b356c09c9bd11017c9788e8fc654ca1b32c92d4a51cd490e16dd65e59a",
-          "size": 46197
+          "size": 47347
         },
         {
           "path": "references/bulletproofing.md",
           "sha256": "9397023e6bc85b556a57f3097371363bf03e28e755c57f403f470bcda90e0a23",
-          "size": 2577
+          "size": 2657
         },
         {
           "path": "references/discovery.md",
           "sha256": "c6bbc74af3be90f693f7cbc986af6fa94e8df75f65109b52e96032587f5b92af",
-          "size": 7616
+          "size": 7817
         },
         {
           "path": "references/flowcharts.md",
           "sha256": "8b1f542391f274f0d33f3457ac099a3d317d6877eaa3b8d3b1ebef151b55fda7",
-          "size": 1262
+          "size": 1299
         },
         {
           "path": "references/graphviz-conventions.dot",
@@ -7582,17 +7693,17 @@
         {
           "path": "references/persuasion-principles.md",
           "sha256": "a51bc9bf75189ea73a27b3fb504a2fdfdb966fb1f7f1cdf03203230a216ccc03",
-          "size": 5901
+          "size": 6088
         },
         {
           "path": "references/testing-skills-with-subagents.md",
           "sha256": "ed8a6862c085900135962390530d9dc7637ad6d650b4324ce3b051287a5c3f22",
-          "size": 12557
+          "size": 12941
         },
         {
           "path": "render-graphs.js",
           "sha256": "c7f412cc629461c4d10287e668731874c0497707023e3e3f74a5355eb2cee196",
-          "size": 4968
+          "size": 5137
         }
       ],
       "bundled": "complete"
@@ -7623,8 +7734,8 @@
       "stars": 33172,
       "homepage": "",
       "image": "images/deploy-to-vercel.jpg",
-      "imageSha256": "47363f5a02ef628492163d1f0d9f370c77bc682f80b8b9a70f13a46570a62dfa",
       "install": "npx skills add vercel-labs/agent-skills --skill deploy-to-vercel",
+      "imageSha256": "47363f5a02ef628492163d1f0d9f370c77bc682f80b8b9a70f13a46570a62dfa",
       "sha256": "9b883827e904cd6c93a98457f1ea5aaae1dfdb30ae704bddf5e9e70c9d10de36",
       "files": [
         {
@@ -7661,8 +7772,8 @@
       "stars": 33172,
       "homepage": "",
       "image": "images/vercel-react-view-transitions.jpg",
-      "imageSha256": "174cd0ca69d1b0ea64b421cdac76b5bfbbc35ef2ddf5314faddc67c700a1e3d2",
       "install": "npx skills add vercel-labs/agent-skills --skill vercel-react-view-transitions",
+      "imageSha256": "174cd0ca69d1b0ea64b421cdac76b5bfbbc35ef2ddf5314faddc67c700a1e3d2",
       "sha256": "a664f7da07d8cc78dbbbd1f075ab3a0381a43f46fdaa63712c89242f2e4be5be",
       "files": [
         {
@@ -7739,8 +7850,8 @@
       "stars": 184549,
       "homepage": "",
       "image": "images/canvas-design.jpg",
-      "imageSha256": "cd13d1ee6c352cc5c25f6cba793d18c38f3245793c4b5aa8d040329d5dc94534",
       "install": "npx skills add anthropics/skills --skill canvas-design",
+      "imageSha256": "cd13d1ee6c352cc5c25f6cba793d18c38f3245793c4b5aa8d040329d5dc94534",
       "sha256": "b958beb4e89a524215b7a5b5f2aa3e0d8b49ba516b74b5fcd704b1d48addad67",
       "files": [
         {
@@ -8187,8 +8298,8 @@
       "stars": 184549,
       "homepage": "",
       "image": "images/web-artifacts-builder.jpg",
-      "imageSha256": "fcf23a0f374c471c952137be60df9b98bc4bcc3af8575b5a14495332830cc0a1",
       "install": "npx skills add anthropics/skills --skill web-artifacts-builder",
+      "imageSha256": "fcf23a0f374c471c952137be60df9b98bc4bcc3af8575b5a14495332830cc0a1",
       "sha256": "0f102ba19f13b4deb19f2248a5014952d2af1521129a5a0e4f3d805f74632b75",
       "files": [
         {
@@ -8245,8 +8356,8 @@
       "stars": 184549,
       "homepage": "",
       "image": "images/brand-guidelines.jpg",
-      "imageSha256": "35612b87dd69130008b8b6fd8a1127c4784db6d28ef64af9463bd5a0775cbd45",
       "install": "npx skills add anthropics/skills --skill brand-guidelines",
+      "imageSha256": "35612b87dd69130008b8b6fd8a1127c4784db6d28ef64af9463bd5a0775cbd45",
       "sha256": "ddf22e788d6aa33e818ec59be85d4fba5aeda23075518dafc412bb90b7cc63ce",
       "files": [
         {
@@ -8288,8 +8399,8 @@
       "stars": 33172,
       "homepage": "",
       "image": "images/writing-guidelines.jpg",
-      "imageSha256": "dfed1e05e07840cd49ed6348d4c394a0876c7844841d69878dfdd99e3b4ab1d4",
       "install": "npx skills add vercel-labs/agent-skills --skill writing-guidelines",
+      "imageSha256": "dfed1e05e07840cd49ed6348d4c394a0876c7844841d69878dfdd99e3b4ab1d4",
       "sha256": "25aa3a33a97bddbcb1847ce4a6169106ec25e5b19b15b99c66e75ab383866ef2",
       "files": [
         {
@@ -8326,8 +8437,8 @@
       "stars": 184549,
       "homepage": "",
       "image": "images/theme-factory.jpg",
-      "imageSha256": "aba4cd79382efb66cba669ffba77f2af62c83d00ec3fc880f750ee69d8552637",
       "install": "npx skills add anthropics/skills --skill theme-factory",
+      "imageSha256": "aba4cd79382efb66cba669ffba77f2af62c83d00ec3fc880f750ee69d8552637",
       "sha256": "50bc5c8d91691c22c80aa3a77d437243398121a724531737530f4ed30cddf879",
       "files": [
         {
@@ -8424,8 +8535,8 @@
       "stars": 184549,
       "homepage": "",
       "image": "images/internal-comms.jpg",
-      "imageSha256": "f10dc6a28ffa3c9c50a2cf8f617cb8a2b9ca968aff3a9cdcf0b5412c03a40556",
       "install": "npx skills add anthropics/skills --skill internal-comms",
+      "imageSha256": "f10dc6a28ffa3c9c50a2cf8f617cb8a2b9ca968aff3a9cdcf0b5412c03a40556",
       "sha256": "9ad903576ebda039209c784708f8a69135aef47ce3532438d0870a00ca30d00d",
       "files": [
         {
@@ -8487,8 +8598,8 @@
       "stars": 184549,
       "homepage": "",
       "image": "images/slack-gif-creator.jpg",
-      "imageSha256": "ce5b3ab0e0ede9b79a2c86bdbd2e552774438faf844a0b3eb0fc4f7937861962",
       "install": "npx skills add anthropics/skills --skill slack-gif-creator",
+      "imageSha256": "ce5b3ab0e0ede9b79a2c86bdbd2e552774438faf844a0b3eb0fc4f7937861962",
       "sha256": "4d8f2d75bc0f0ff84efe56ee3abf91ac9ae14a892b48c32f0222df14c6eb96fb",
       "files": [
         {
@@ -8555,8 +8666,8 @@
       "stars": 184549,
       "homepage": "",
       "image": "images/claude-api.jpg",
-      "imageSha256": "1b835033ced737adefd0637353134630beaa16460bc80e066283f1b4de29b9bd",
       "install": "npx skills add anthropics/skills --skill claude-api",
+      "imageSha256": "1b835033ced737adefd0637353134630beaa16460bc80e066283f1b4de29b9bd",
       "sha256": "fde28004c33b154afbffdb032db0ce41d4244fd3fdd12a779ae3f7a260413d61",
       "files": [
         {
@@ -9068,14 +9179,14 @@
       "stars": 111494,
       "homepage": "",
       "image": "images/code-review-and-quality.jpg",
-      "imageSha256": "4549d3f0e1dbe048f87db47e06440c63229998d19d384aa02354ec354ebfb09b",
       "install": "npx skills add addyosmani/agent-skills --skill code-review-and-quality",
+      "imageSha256": "4549d3f0e1dbe048f87db47e06440c63229998d19d384aa02354ec354ebfb09b",
       "sha256": "e60dfee4a81d66a1d8b766516ba4cf7e0d53afbf7d9f82f0054c389e8a2c0d81",
       "files": [
         {
           "path": "SKILL.md",
           "sha256": "2db1e850379f255fd3091ef278cde24cd6c7d2ba23e360cc52ea522c40d4396e",
-          "size": 20976
+          "size": 21374
         }
       ],
       "bundled": "complete"
@@ -9106,19 +9217,19 @@
       "stars": 111494,
       "homepage": "",
       "image": "images/security-and-hardening.jpg",
-      "imageSha256": "42f6ee9ce604830ce6b17d1de0adad580e0784428ada79579e4233ed04c84b3d",
       "install": "npx skills add addyosmani/agent-skills --skill security-and-hardening",
+      "imageSha256": "42f6ee9ce604830ce6b17d1de0adad580e0784428ada79579e4233ed04c84b3d",
       "sha256": "b8cd1febebf5d3d29952fb7e3d886227a90c5137ca1e4d8fe78858121aebd940",
       "files": [
         {
           "path": "SKILL.md",
           "sha256": "2e3fc60eed5aba97fe416f3f3c9317fdb014a682925ec70a733c3ff99e4b9858",
-          "size": 17559
+          "size": 17775
         },
         {
           "path": "references/hardening-patterns.md",
           "sha256": "2e1b93a502b4cdb0258404441f3aab029b0cce4003fbbcc61af9a2de18bab9ab",
-          "size": 13036
+          "size": 13360
         }
       ],
       "bundled": "complete"
@@ -9149,14 +9260,14 @@
       "stars": 111494,
       "homepage": "",
       "image": "images/frontend-ui-engineering.jpg",
-      "imageSha256": "4a2795a09b02b24ce4ffb19b12d4398ff3c36eb63646db0836822756c92757bb",
       "install": "npx skills add addyosmani/agent-skills --skill frontend-ui-engineering",
+      "imageSha256": "4a2795a09b02b24ce4ffb19b12d4398ff3c36eb63646db0836822756c92757bb",
       "sha256": "657534f12775d9a679bb15a07ed3b3f1fc6f49a0a5244e05fa0ac21ee30aecd9",
       "files": [
         {
           "path": "SKILL.md",
           "sha256": "29a3e53d57c0a128831a20730ae874a8c4fda40c001fcdc15f8e9ad4b5f72f1b",
-          "size": 11721
+          "size": 12061
         }
       ],
       "bundled": "complete"
@@ -9187,19 +9298,19 @@
       "stars": 111494,
       "homepage": "",
       "image": "images/performance-optimization.jpg",
-      "imageSha256": "8a835cb4926b4b4f2bfb49ec67b037b07eb3511172143bbdd508fbcf6c49e235",
       "install": "npx skills add addyosmani/agent-skills --skill performance-optimization",
+      "imageSha256": "8a835cb4926b4b4f2bfb49ec67b037b07eb3511172143bbdd508fbcf6c49e235",
       "sha256": "341feba20dc59f22df9ca539f7a7a07e9bdc5252060fc250fb93f31542fc6c5b",
       "files": [
         {
           "path": "SKILL.md",
           "sha256": "bd36a30e55a5f84329a6977eba5e1ab7654146e71eaba88e34337d4ee020460f",
-          "size": 16698
+          "size": 16965
         },
         {
           "path": "references/optimization-patterns.md",
           "sha256": "fbf724076ffb8ac1a28e1a2773c0b550f5361090024b2dd32e5a682c69b7945f",
-          "size": 9692
+          "size": 9942
         }
       ],
       "bundled": "complete"
@@ -9230,14 +9341,14 @@
       "stars": 111494,
       "homepage": "",
       "image": "images/documentation-and-adrs.jpg",
-      "imageSha256": "0104d7ce3d078068b02fadc1fef538001cf594419e193c3772a17e75e0f2c888",
       "install": "npx skills add addyosmani/agent-skills --skill documentation-and-adrs",
+      "imageSha256": "0104d7ce3d078068b02fadc1fef538001cf594419e193c3772a17e75e0f2c888",
       "sha256": "7e0166ce8935fa8a13c22b1c463d4f1a816c539077406eb4c03f9909b96b8545",
       "files": [
         {
           "path": "SKILL.md",
           "sha256": "b60d503925bbaacee7fd63935db70b9ced5b2514ff5a56a672130e01b9690bc5",
-          "size": 10910
+          "size": 11207
         }
       ],
       "bundled": "complete"
@@ -9268,14 +9379,14 @@
       "stars": 111494,
       "homepage": "",
       "image": "images/ci-cd-and-automation.jpg",
-      "imageSha256": "631be8e3a0eaeec343deec07f9968e8812fe3a873c97c38d130b38082ea934ff",
       "install": "npx skills add addyosmani/agent-skills --skill ci-cd-and-automation",
+      "imageSha256": "631be8e3a0eaeec343deec07f9968e8812fe3a873c97c38d130b38082ea934ff",
       "sha256": "706d42c02e056cfd0509172fa294ecbdec8509aac9dc25862310800892709d9d",
       "files": [
         {
           "path": "SKILL.md",
           "sha256": "a6ed8ed56456b01ff8314c44eefc69897d9905ae4e06bb2b7036286efb79b5f0",
-          "size": 11332
+          "size": 11722
         }
       ],
       "bundled": "complete"
@@ -9306,8 +9417,8 @@
       "stars": 33679,
       "homepage": "",
       "image": "images/data-visualization.jpg",
-      "imageSha256": "96956c94b04320eaddec4fccdac35d672de3b8fb15d425fd5fbe54cce50c54c5",
       "install": "npx skills add anthropics/knowledge-work-plugins --skill data-visualization",
+      "imageSha256": "96956c94b04320eaddec4fccdac35d672de3b8fb15d425fd5fbe54cce50c54c5",
       "sha256": "882ab3711a9794b23681725501dcb700c1962aa7778fb0f8effcd1dfd6528b66",
       "files": [
         {
@@ -9344,8 +9455,8 @@
       "stars": 33679,
       "homepage": "",
       "image": "images/incident-response.jpg",
-      "imageSha256": "c5ed433b99e2ad6b12557ba17d7a6f497a8c62f56cd9543bc6811308bac480f7",
       "install": "npx skills add anthropics/knowledge-work-plugins --skill incident-response",
+      "imageSha256": "c5ed433b99e2ad6b12557ba17d7a6f497a8c62f56cd9543bc6811308bac480f7",
       "sha256": "96fb38ab29648fa8c5e1e201a3769866ecdf6dbb11620c9596bcb0b4438f9273",
       "files": [
         {
@@ -9382,8 +9493,8 @@
       "stars": 33679,
       "homepage": "",
       "image": "images/statistical-analysis.jpg",
-      "imageSha256": "def07255dbbd7c29173104fe85e9cc0265aa31aeed0ec46b2e99409e858abc7d",
       "install": "npx skills add anthropics/knowledge-work-plugins --skill statistical-analysis",
+      "imageSha256": "def07255dbbd7c29173104fe85e9cc0265aa31aeed0ec46b2e99409e858abc7d",
       "sha256": "277f41b3b27a069ae93d9b1636260e815fa17407c176e911f4a8b1d2e501eae2",
       "files": [
         {
@@ -9420,8 +9531,8 @@
       "stars": 33679,
       "homepage": "",
       "image": "images/sql-queries.jpg",
-      "imageSha256": "b8ca2d5987f9205469ff91c184f4351c6347324e7cdae583bea55de3ea89abdd",
       "install": "npx skills add anthropics/knowledge-work-plugins --skill sql-queries",
+      "imageSha256": "b8ca2d5987f9205469ff91c184f4351c6347324e7cdae583bea55de3ea89abdd",
       "sha256": "704804855efc4186d8567c6db527fe8f14ceaeafba93028829e6aba318495365",
       "files": [
         {
@@ -9458,8 +9569,8 @@
       "stars": 33679,
       "homepage": "",
       "image": "images/accessibility-review.jpg",
-      "imageSha256": "e8abd9054e7bef6c2836f87cb173936d1398268e39a00fb42b849a59a217f425",
       "install": "npx skills add anthropics/knowledge-work-plugins --skill accessibility-review",
+      "imageSha256": "e8abd9054e7bef6c2836f87cb173936d1398268e39a00fb42b849a59a217f425",
       "sha256": "9a05421d7e605129f75e16bae4cee8b23bec9d441b06fdeaa54cdd6cc42f59c7",
       "files": [
         {

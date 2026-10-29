@@ -10,8 +10,10 @@ use std::path::{Path, PathBuf};
 
 use unluminous_core::{Command, Document};
 
+use crate::app::actions::{Action, Entry};
 use crate::app::files::OpenFile;
 use crate::app::UnluminousApp;
+use crate::components::controls::RowMark;
 use crate::components::prompt_dialog::{Made, Prompt, Purpose};
 use crate::components::templates_dialog::{self, Answer, TemplatesDialog};
 use crate::services::file_templates::{self, Template};
@@ -34,6 +36,59 @@ impl UnluminousApp {
             .filter(|template| !template.is_a_common_type())
             .map(|template| template.name)
             .collect()
+    }
+
+    /// The picture in front of each row of the explorer's `New` menu that makes a file or a folder: the picture the
+    /// explorer draws beside a file of that kind, or its sheet of paper for a kind no plugin draws (`task-2402`).
+    /// Worked out from a name the new file would have, so a row and the file it makes always agree.
+    pub(crate) fn marks_for_new_files(
+        &mut self,
+        ctx: &egui::Context,
+        entries: &[Entry],
+    ) -> Vec<(Action, RowMark)> {
+        let templates = self.file_templates();
+        let mut marks = Vec::new();
+        let mut waiting: Vec<&Entry> = entries.iter().collect();
+        while let Some(entry) = waiting.pop() {
+            let action = match entry {
+                Entry::Submenu { entries, .. } => {
+                    waiting.extend(entries.iter());
+                    continue;
+                }
+                Entry::Item { action, .. } => action,
+                Entry::Separator => continue,
+            };
+            let extension = match action {
+                Action::NewFolder(_) => {
+                    marks.push((action.clone(), RowMark::Folder));
+                    continue;
+                }
+                Action::NewFile(_) => "",
+                Action::NewFileFromTemplate { template, .. } => {
+                    match file_templates::find(&templates, template) {
+                        Some(found) => found.extension.as_str(),
+                        None => continue,
+                    }
+                }
+                Action::NewNotebookIn(_) => "ipynb",
+                Action::NewPageIn(_) => "docx",
+                Action::NewWorkbookIn(_) => "xlsx",
+                _ => continue,
+            };
+            let sample = match extension.is_empty() {
+                true => PathBuf::from("untitled"),
+                false => PathBuf::from(format!("untitled.{extension}")),
+            };
+            let mark = match self.plugin_icon(ctx, Some(&sample)) {
+                Some(texture) => RowMark::Picture(texture),
+                None => RowMark::File {
+                    prose: crate::services::file_kind::is_prose(&sample),
+                    color: crate::theme::file_marker(&sample),
+                },
+            };
+            marks.push((action.clone(), mark));
+        }
+        marks
     }
 
     /// The template a menu entry or a command names, or why there is none.

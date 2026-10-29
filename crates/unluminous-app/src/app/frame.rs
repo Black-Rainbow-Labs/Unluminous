@@ -1174,7 +1174,8 @@ impl UnluminousApp {
             );
             // Every right click menu shows the chord the keymap put its entries on. `task-2286`.
             crate::services::keymap::apply_entries(&mut entries, &self.keymap);
-            let outcome = context_menu::show(ui, "explorer", at, &entries);
+            let marks = self.marks_for_new_files(ui.ctx(), &entries);
+            let outcome = context_menu::show_marked(ui, "explorer", at, &entries, &marks);
             if let Some(chosen) = outcome.chosen {
                 *action = Some(chosen);
             }

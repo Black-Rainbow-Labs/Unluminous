@@ -297,6 +297,13 @@ pub fn folder_mark(painter: &egui::Painter, centre: Pos2, open: bool, color: Col
     material_folder(painter, centre, open, color, scale * 0.85);
 }
 
+/// The explorer's filled folder whichever set is on, for a list that marks a folder beside files: the explorer's
+/// `New` menu (`task-2402`). The classic set draws no folder in the tree, and a menu row with nothing in front of
+/// it would be the one row of its list that says nothing.
+pub fn list_folder(painter: &egui::Painter, centre: Pos2, color: Color32) {
+    material_folder(painter, centre, false, color, 0.85);
+}
+
 /// The mark in front of a file's name in the explorer and in `Go to File`, for a file whose plugin gives
 /// it no picture of its own.
 ///

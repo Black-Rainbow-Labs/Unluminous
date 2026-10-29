@@ -52,14 +52,19 @@ pub static LIST_TODO: SvgMark = SvgMark {
     ],
 };
 
-/// Lucide `blocks` (MIT), 24 unit view box: three squares in an L and a fourth lifted away to the top right, the
-/// Skills Manager's mark (`task-2396`, after `LuBlocks`).
+/// After Lucide `blocks` (MIT), 24 unit view box: three squares in an L and a fourth lifted away to the top
+/// right, the Skills Manager's mark (`task-2396`, after `LuBlocks`).
+///
+/// Redrawn for `task-2402`. Lucide's own path runs its middle line to y 22, a unit past the outline's bottom
+/// at 21, and its bottom right block is 11 units wide beside two of 8. Here every square is 8 by 8, the
+/// dividers stop at the outline, and the whole mark fills 2 to 21 both ways.
 pub static BLOCKS: SvgMark = SvgMark {
     view: 24.0,
     stroke: 1.8,
     parts: &[
-        Part::Path("M10 22V7a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v12a2 2 0 0 0 2 2h16a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1H2"),
-        Part::Rect { x: 14.0, y: 2.0, w: 8.0, h: 8.0, rx: 1.0 },
+        Part::Path("M2 6a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v7h7a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"),
+        Part::Path("M2 13H10V21"),
+        Part::Rect { x: 13.0, y: 2.0, w: 8.0, h: 8.0, rx: 1.0 },
     ],
 };
 
