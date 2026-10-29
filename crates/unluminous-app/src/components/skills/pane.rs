@@ -221,22 +221,6 @@ fn the_list(skills: &Skills, ui: &mut egui::Ui, list: Rect, scale: f32) -> Vec<A
                     );
                 });
                 y += HEADING * scale;
-                // A skill of the person's own, or one found on the machine, has no picture: it is a row rather
-                // than a card, so the pictures the catalogue has are what the grid is made of.
-                if matches!(source, Source::Mine | Source::Found) {
-                    for skill in members {
-                        let rect = Rect::from_min_size(
-                            Pos2::new(left, y),
-                            Vec2::new(width, card::ROW * scale),
-                        );
-                        if ui.is_rect_visible(rect.expand(kit::REACH * scale)) {
-                            acts.extend(card::row(skills, ui, rect, skill, scale));
-                        }
-                        y += (card::ROW + 8.0) * scale;
-                    }
-                    y += GAP * scale;
-                    continue;
-                }
                 for (index, skill) in members.iter().enumerate() {
                     let (row, column) = (index / columns, index % columns);
                     let rect = Rect::from_min_size(

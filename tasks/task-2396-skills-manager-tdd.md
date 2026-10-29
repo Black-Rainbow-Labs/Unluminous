@@ -147,8 +147,11 @@ The Skills Manager pane docks on the right, 760 points wide. From the top:
    the top with rounded top corners, the name in 13 point semibold, the author in the quiet ink, two lines of
    summary, the tags as carved chips, and a foot with one small disc per harness lit where it is installed and a
    round button: `+` installs into the chosen scope for every harness that is on, a tick says it is installed
-   there, an arrow says there is an update. `Unluminous` skills are under their own heading first, then `Mine`,
-   then `Found on this machine`, then the catalogue by popularity.
+   there, an arrow says there is an update. `Unluminous` skills are under their own heading first, then the
+   catalogue by popularity, then `Mine`, then `Found on this machine`. Every skill is a card. A skill with no
+   picture (every one of the person's own and every one found on the machine) has the stand in: a dark ground with
+   a glow in a colour worked out from its name and the blocks mark over it (`components::skills::paint_placeholder`),
+   on its card and as its page's banner.
 5. **A card opens the skill's page in the pane**: a back chip, the picture as a banner, the name, author and stars,
    the description, `View / Edit` (the `SKILL.md` in a tab), `Update` and `Reset` when they apply, and two round
    icon buttons, Reveal and the trash (which removes the skill from every agent, or deletes one of the person's own,

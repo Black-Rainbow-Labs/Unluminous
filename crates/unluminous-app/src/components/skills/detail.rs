@@ -30,13 +30,9 @@ pub fn show(skills: &Skills, id: &str, ui: &mut egui::Ui, look: &Look<'_>) -> Ve
     let mut acts = Vec::new();
     let inner = area.shrink(MARGIN * scale);
     let width = inner.width() - 10.0 * scale;
-    // A skill with no picture, the person's own or one found on the machine, has no banner at all rather than a
-    // stand in.
+    // A skill with no picture, the person's own or one found on the machine, has the stand in its card has.
     let picture = super::picture(skills, ui.ctx(), &skill.id);
-    let banner_height = match picture {
-        Some(_) => (width * 0.34).min(230.0 * scale),
-        None => 0.0,
-    };
+    let banner_height = (width * 0.34).min(230.0 * scale);
     let description_height = description_height(ui, skill, width, scale);
     let rows = agents_here(skills).len() as f32;
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner));
@@ -76,19 +72,18 @@ pub fn show(skills: &Skills, id: &str, ui: &mut egui::Ui, look: &Look<'_>) -> Ve
                         acts.push(Act::Back);
                     }
                     let radius = 20.0 * scale;
-                    if let Some(texture) = &picture {
-                        rux.chrome.surface(
-                            banner,
-                            radius,
-                            rux.theme().chat.well,
-                            rux.theme().chat.carved_sm(),
-                        );
-                        super::paint_cover(
-                            rux.painter(),
-                            banner,
-                            texture,
-                            CornerRadius::same(radius as u8),
-                        );
+                    rux.chrome.surface(
+                        banner,
+                        radius,
+                        rux.theme().chat.well,
+                        rux.theme().chat.carved_sm(),
+                    );
+                    let corners = CornerRadius::same(radius as u8);
+                    match &picture {
+                        Some(texture) => {
+                            super::paint_cover(rux.painter(), banner, texture, corners)
+                        }
+                        None => super::paint_placeholder(rux.painter(), banner, &skill.id, corners),
                     }
                     the_words(rux, words, skill, scale);
                     acts.extend(the_buttons(rux, buttons, skill, scale));

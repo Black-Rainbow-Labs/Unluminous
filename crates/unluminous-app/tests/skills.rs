@@ -120,6 +120,35 @@ fn new_skill_makes_one_and_opens_its_skill_md() {
     assert!(listed.as_array().unwrap().iter().any(|id| id == "release-notes"));
 }
 
+/// A skill found in an agent's folder is a card like the catalogue's, with the stand in picture, and its page
+/// has the stand in as its banner. The picture is `skills_found`.
+#[test]
+fn a_skill_found_on_the_machine_is_a_card_with_the_stand_in_picture() {
+    let (_folder, home, mut harness) = a_window("unluminous-skills-found");
+    let found = home.join(".claude").join("skills").join("my-notes");
+    std::fs::create_dir_all(&found).unwrap();
+    std::fs::write(
+        found.join("SKILL.md"),
+        "---\nname: my-notes\ndescription: Keeps notes about the project as the work goes.\n---\n",
+    )
+    .unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    loop {
+        steady(&mut harness);
+        let listed = did(&mut harness, "plugins view skills")["listed"].clone();
+        if listed.as_array().unwrap().iter().any(|id| id == "my-notes") {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline, "the found skill never appeared");
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+    did(&mut harness, "plugins run skills search my-notes");
+    steady(&mut harness);
+    harness.get_by_label("Skill: My Notes");
+    harness.get_by_label("Install My Notes for Project");
+    harness.snapshot(shot("skills_found").as_str());
+}
+
 #[test]
 fn skills_pane() {
     let (_folder, _home, mut harness) = a_window("unluminous-skills-shot-pane");
