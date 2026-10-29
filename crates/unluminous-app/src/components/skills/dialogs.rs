@@ -46,10 +46,10 @@ fn cards(skills: &mut Skills, ui: &mut egui::Ui, column: &mut Column) -> Vec<Req
     requests
 }
 
-/// `Where installs go`: this project or everyone.
+/// `Where installs go`: this project or global.
 fn the_installs_card(skills: &mut Skills, ui: &mut egui::Ui, column: &mut Column) -> bool {
     let mut changed = false;
-    let help = Some("A skill installed for this project is written into the project's own folder for each agent, such as .claude/skills, and is read only there. One installed for everyone goes in your home folder.");
+    let help = Some("A skill installed for this project is written into the project's own folder for each agent, such as .claude/skills, and is read only there. One installed globally goes in your home folder, for every project.");
     kit::card(ui, column, "Where installs go", help, |card| {
         let choices = [Scope::Project.label(), Scope::Global.label()];
         let chosen = Some(match skills.config.scope {

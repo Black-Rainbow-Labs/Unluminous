@@ -45,7 +45,7 @@ fn the_pane_lists_the_unluminous_skills_first_and_a_card_installs_into_the_proje
     assert_eq!(listed[0], "unluminous-task");
     assert_eq!(listed[1], "unluminous-supervisor");
     harness.get_by_label("Skill: Unluminous Task");
-    harness.get_by_label("Install Unluminous Task for This project").click();
+    harness.get_by_label("Install Unluminous Task for Project").click();
     steady(&mut harness);
     let copy = folder.join(".claude").join("skills").join("unluminous-task").join("SKILL.md");
     assert!(copy.exists(), "Claude Code's project folder has it");
@@ -57,30 +57,36 @@ fn the_pane_lists_the_unluminous_skills_first_and_a_card_installs_into_the_proje
     let installed = shown["installed"].as_array().unwrap();
     assert!(installed.iter().any(|row| row["harness"] == "claude" && row["scope"] == "project"));
     // The same card's button now removes it.
-    harness.get_by_label("Remove Unluminous Task from This project").click();
+    harness.get_by_label("Remove Unluminous Task from Project").click();
     steady(&mut harness);
     assert!(!copy.exists());
 }
 
+/// A skill's page lists the agents on this machine (none in a test's home, so the ones an install goes to: Claude
+/// Code and Codex), with one switch between the project and global and one Install button a row.
 #[test]
-fn a_skills_page_has_a_switch_for_each_agent_and_scope() {
+fn a_skills_page_lists_the_agents_here_with_one_switch_and_an_install_button_each() {
     let (_folder, home, mut harness) = a_window("unluminous-skills-page");
     did(&mut harness, "plugins run skills view caveman");
     steady(&mut harness);
     harness.get_by_label("All skills");
-    harness.get_by_label("Pi everyone").click();
+    assert!(harness.query_by_label("Install for Pi").is_none(), "Pi is not on this machine");
+    harness.get_by_label("Install for: Global").click();
     steady(&mut harness);
-    let pi = home.join(".pi").join("agent").join("skills").join("caveman").join("SKILL.md");
-    assert!(pi.exists(), "Pi's own folder for everyone has it");
+    assert_eq!(did(&mut harness, "plugins view skills")["scope"], "global");
+    harness.get_by_label("Install for Codex").click();
+    steady(&mut harness);
+    let codex = home.join(".agents").join("skills").join("caveman").join("SKILL.md");
+    assert!(codex.exists(), "Codex's global folder has it");
     let shown = did(&mut harness, "plugins run skills show caveman");
     assert!(shown["installed"]
         .as_array()
         .unwrap()
         .iter()
-        .any(|row| row["harness"] == "pi" && row["scope"] == "global"));
-    harness.get_by_label("Pi everyone").click();
+        .any(|row| row["harness"] == "codex" && row["scope"] == "global"));
+    harness.get_by_label("Remove for Codex").click();
     steady(&mut harness);
-    assert!(!pi.exists(), "pressed again, it is removed");
+    assert!(!codex.exists(), "Remove takes it away");
     harness.get_by_label("All skills").click();
     steady(&mut harness);
     assert_eq!(did(&mut harness, "plugins view skills")["viewing"], serde_json::Value::Null);

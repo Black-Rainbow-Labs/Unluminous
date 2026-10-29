@@ -43,6 +43,8 @@ pub struct Entry {
     pub unluminous: bool,
     /// The upstream project's own install line, such as `npx skills add obra/superpowers`, when it has one.
     pub install: String,
+    /// The source repository's GitHub stars when the list was made, 0 when not known.
+    pub stars: u64,
     /// Written by the site: the hash of the skill's files ([`hash`]).
     pub sha256: String,
     /// Written by the site: the skill's files.
@@ -125,6 +127,7 @@ impl Entry {
             image: text(value, "image"),
             unluminous: value.get("unluminous").and_then(|field| field.as_bool()).unwrap_or(false),
             install: text(value, "install"),
+            stars: value.get("stars").and_then(|field| field.as_u64()).unwrap_or(0),
             sha256: text(value, "sha256"),
             files,
             reference: text(value, "ref"),
@@ -159,6 +162,18 @@ impl Catalogue {
 
     pub fn entry(&self, id: &str) -> Option<&Entry> {
         self.skills.iter().find(|entry| entry.id == id)
+    }
+}
+
+/// A star count as a person reads it: `950`, `12.4k`, `184k`.
+pub fn stars_said(stars: u64) -> String {
+    match stars {
+        0..=999 => stars.to_string(),
+        1_000..=99_999 => {
+            let tenths = (stars as f64 / 100.0).round() / 10.0;
+            format!("{}k", tenths.to_string().trim_end_matches(".0"))
+        }
+        _ => format!("{}k", (stars as f64 / 1000.0).round()),
     }
 }
 
@@ -323,6 +338,14 @@ mod tests {
     /// Worked out by the site script; see the test above.
     const EXPECTED_SITE_HASH: &str =
         "eeaaa3d17b80b1e05a779439bb042938459833c1f11091840ee6b54e8487d62e";
+
+    #[test]
+    fn stars_are_written_the_short_way() {
+        assert_eq!(stars_said(950), "950");
+        assert_eq!(stars_said(12_430), "12.4k");
+        assert_eq!(stars_said(37_000), "37k");
+        assert_eq!(stars_said(184_549), "185k");
+    }
 
     #[test]
     fn a_path_that_climbs_out_is_refused() {

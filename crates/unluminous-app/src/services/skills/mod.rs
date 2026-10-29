@@ -182,7 +182,7 @@ impl Skills {
         }
     }
 
-    /// Where an install goes now: the chosen scope, or everyone when no project is open.
+    /// Where an install goes now: the chosen scope, or global when no project is open.
     pub fn scope_now(&self) -> Scope {
         match (self.scope, self.project.is_some()) {
             (Scope::Project, false) => Scope::Global,

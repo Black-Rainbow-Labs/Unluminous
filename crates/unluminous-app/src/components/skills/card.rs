@@ -48,11 +48,13 @@ pub fn show(skills: &Skills, ui: &mut egui::Ui, rect: Rect, skill: &Skill, scale
     let scope = skills.scope_now();
     let picture = super::picture(skills, ui.ctx(), &skill.id);
     let installed = installed_for_the_chosen(skills, skill, scope);
-    kit::layer(ui, scale, ("skill-card-surface", &skill.id), rect, |rux| {
+    super::roomy_layer(ui, scale, ("skill-card-surface", &skill.id), rect, |rux| {
         let chat = rux.theme().chat;
         let ink = rux.theme().ink;
         let radius = RADIUS * scale;
-        rux.chrome.surface(rect, radius, Fill::gradient(chat.card, rect), chat.raised());
+        // The small raised shadow: the full one's lit half reaches further than rux keeps it, and was cut off in a
+        // straight pale line above the dark picture.
+        rux.chrome.surface(rect, radius, Fill::gradient(chat.card, rect), chat.raised_sm());
         let wide = is_wide(rect.width(), scale);
         let (top, corners) = match wide {
             true => (
@@ -102,6 +104,11 @@ pub fn show(skills: &Skills, ui: &mut egui::Ui, rect: Rect, skill: &Skill, scale
         let by = match skill.source {
             Source::Found => "Found on this machine".to_owned(),
             _ if skill.entry.author.is_empty() => skill.entry.category.clone(),
+            _ if skill.entry.stars > 0 => format!(
+                "{} \u{00B7} {} stars on GitHub",
+                skill.entry.author,
+                crate::services::skills::catalogue::stars_said(skill.entry.stars)
+            ),
             _ => format!("{} \u{00B7} {}", skill.entry.author, skill.entry.category),
         };
         kit::quiet(rux, Pos2::new(inner.left(), inner.top() + 27.0 * scale), &by, 11.0, room);

@@ -35,8 +35,8 @@ impl Scope {
     /// What a person reads for it.
     pub fn label(self) -> &'static str {
         match self {
-            Scope::Project => "This project",
-            Scope::Global => "Everyone",
+            Scope::Project => "Project",
+            Scope::Global => "Global",
         }
     }
 }

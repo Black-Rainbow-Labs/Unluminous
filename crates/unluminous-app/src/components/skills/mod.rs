@@ -31,6 +31,8 @@ pub enum Act {
     /// Install for the chosen agents in the chosen scope, or for one agent in one scope.
     Install(String, Option<&'static str>, Scope),
     Remove(String, Option<&'static str>, Scope),
+    /// Remove the skill from every agent's folders, for this project and globally.
+    RemoveEverywhere(String),
     Edit(String),
     Reset(String),
     Update(String),
@@ -90,6 +92,17 @@ fn apply_one(skills: &mut Skills, act: Act) -> Result<Option<String>, String> {
             let harnesses = targets(skills, one)?;
             skills.remove(&id, &harnesses, scope, false).map(Some)
         }
+        Act::RemoveEverywhere(id) => {
+            let every: Vec<&'static harness::Harness> = harness::HARNESSES.iter().collect();
+            let mut lines = Vec::new();
+            for scope in [Scope::Project, Scope::Global] {
+                if scope == Scope::Project && skills.project.is_none() {
+                    continue;
+                }
+                lines.push(skills.remove(&id, &every, scope, false)?);
+            }
+            Ok(Some(lines.join(" ")))
+        }
         Act::Edit(id) => skills.edit(&id).map(Some),
         Act::Reset(id) => run(skills, "reset", &[id]),
         Act::Update(id) => skills.update(&id, false).map(Some),
@@ -127,6 +140,25 @@ fn apply_one(skills: &mut Skills, act: Act) -> Result<Option<String>, String> {
         Act::Reveal(_) => Ok(None),
     }
 }
+
+/// Draw with `rux` into `rect` in a layer with room for the whole of a raised card's shadow.
+///
+/// The Designer's kit reaches [`kit::REACH`] points past a rectangle, and the lit half of a card's shadow reaches
+/// further than that above it, so its top was cut off in a straight line over every card.
+pub fn roomy_layer<R>(
+    ui: &mut egui::Ui,
+    zoom: f32,
+    salt: impl std::hash::Hash + std::fmt::Debug,
+    rect: egui::Rect,
+    add: impl FnOnce(&mut rux::Rux<'_>) -> R,
+) -> R {
+    let state = crate::components::designer::kit::state(ui.ctx(), zoom);
+    let id = ui.id().with(("skills-layer", salt));
+    rux::layer(ui, &state, id, rect.expand(ROOM * zoom), add)
+}
+
+/// How far past a card its layer reaches.
+const ROOM: f32 = 64.0;
 
 /// The harnesses an act is for: the one named, or the ones Settings chooses.
 fn targets(
