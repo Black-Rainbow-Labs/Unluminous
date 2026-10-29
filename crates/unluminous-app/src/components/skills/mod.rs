@@ -153,6 +153,7 @@ pub fn roomy_layer<R>(
     add: impl FnOnce(&mut rux::Rux<'_>) -> R,
 ) -> R {
     let state = crate::components::designer::kit::state(ui.ctx(), zoom);
+    crate::theme::in_step(&state);
     let id = ui.id().with(("skills-layer", salt));
     rux::layer(ui, &state, id, rect.expand(ROOM * zoom), add)
 }
