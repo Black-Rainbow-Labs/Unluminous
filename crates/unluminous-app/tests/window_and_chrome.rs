@@ -4229,6 +4229,8 @@ const EVERY_VARIANT: &[&str] = &[
     "NewNotebook",
     "NewRustNotebook",
     "NewNotebookIn",
+    "NewPageIn",
+    "NewWorkbookIn",
     "ConvertToNotebook",
     "ConvertToPython",
     "OpenFolder",
@@ -4421,6 +4423,8 @@ fn variant_name(action: &Action) -> &'static str {
         Action::NewNotebook => "NewNotebook",
         Action::NewRustNotebook => "NewRustNotebook",
         Action::NewNotebookIn(_) => "NewNotebookIn",
+        Action::NewPageIn(_) => "NewPageIn",
+        Action::NewWorkbookIn(_) => "NewWorkbookIn",
         Action::ConvertToNotebook(_) => "ConvertToNotebook",
         Action::ConvertToPython(_) => "ConvertToPython",
         Action::Debug(_) => "Debug",
@@ -5317,6 +5321,8 @@ fn every_step() -> Vec<Step> {
     steps.push(Step::new(Action::NewNotebook));
     steps.push(Step::new(Action::NewRustNotebook));
     steps.push(Step::new(Action::NewNotebookIn(folder.join("docs"))));
+    steps.push(Step::new(Action::NewPageIn(folder.join("docs"))));
+    steps.push(Step::new(Action::NewWorkbookIn(folder.join("docs"))));
     steps.push(Step::new(Action::ConvertToNotebook(folder.join("tool.py"))));
     steps.push(Step::new(Action::ConvertToPython(folder.join("book.ipynb"))));
     // The notebook's own actions that change the cells or what is drawn without a kernel, on the
