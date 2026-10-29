@@ -49,6 +49,7 @@ pub enum Act {
 
 /// Draw the pane and apply what was pressed.
 pub fn show(skills: &mut Skills, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request> {
+    take_the_pictures_that_arrived(skills, ui.ctx());
     let acts = match skills.viewing.clone() {
         Some(id) if skills.shelf.get(&id).is_some() => detail::show(skills, &id, ui, look),
         _ => pane::show(skills, ui, look),
@@ -176,30 +177,51 @@ fn run(skills: &mut Skills, verb: &str, words: &[String]) -> Result<Option<Strin
 }
 
 thread_local! {
-    /// The pictures decoded for this window, by skill: `None` when a skill has none.
+    /// The pictures on the graphics card for this window, by the window and the picture's key: `None` when a
+    /// skill's picture could not be found, which is drawn as the stand in.
     static PICTURES: RefCell<std::collections::HashMap<(u64, String), Option<egui::TextureHandle>>> =
         RefCell::new(std::collections::HashMap::new());
 }
 
-/// A skill's picture on the graphics card, decoded the first time it is drawn.
+/// How many pictures go to the graphics card in one frame. Each is 480 by 328 pixels, about 0.6 MB, so two keep a
+/// frame's uploads near the 2 MB that `services::backgrounds` measured a DX12 driver keeping for good after one
+/// large upload. The rest follow on the next frames.
+const PICTURES_A_FRAME: usize = 2;
+
+/// A skill's picture on the graphics card, or `None` while it is still being read or when it has none, which the
+/// card draws as the stand in.
+///
+/// Nothing is read or decoded here: the first time a card is drawn its picture is asked of the loader's thread
+/// ([`crate::services::skills::pictures`]), and [`take_the_pictures_that_arrived`] puts it on the card when it
+/// comes back - `task-2401`.
 pub fn picture(skills: &Skills, ctx: &egui::Context, id: &str) -> Option<egui::TextureHandle> {
-    let owner = crate::components::chrome_kit::owner(ctx);
-    let key = (owner, id.to_owned());
+    let wanted = skills.shelf.get(id).and_then(|skill| skills.picture_wanted(skill))?;
+    let key = (crate::components::chrome_kit::owner(ctx), wanted.key.clone());
     if let Some(known) = PICTURES.with(|pictures| pictures.borrow().get(&key).cloned()) {
         return known;
     }
-    let made =
-        skills.shelf.get(id).and_then(|skill| skills.picture_bytes(skill)).and_then(|bytes| {
-            let image = crate::services::picture::decode_bytes(&bytes).ok()?;
-            Some(crate::services::picture::upload(
+    skills.pictures.ask(wanted);
+    None
+}
+
+/// Put the pictures the loader's thread has decoded on the graphics card, a few a frame, and ask for another frame
+/// while more are on their way.
+pub fn take_the_pictures_that_arrived(skills: &Skills, ctx: &egui::Context) {
+    let owner = crate::components::chrome_kit::owner(ctx);
+    for arrived in skills.pictures.take(PICTURES_A_FRAME) {
+        let texture = arrived.image.map(|image| {
+            crate::services::picture::upload(
                 ctx,
-                format!("skill-{id}"),
+                format!("skill-{}", arrived.key),
                 image,
                 egui::TextureOptions::LINEAR,
-            ))
+            )
         });
-    PICTURES.with(|pictures| pictures.borrow_mut().insert(key, made.clone()));
-    made
+        PICTURES.with(|pictures| pictures.borrow_mut().insert((owner, arrived.key), texture));
+    }
+    if skills.pictures.waiting() > 0 {
+        ctx.request_repaint();
+    }
 }
 
 /// Paint `texture` over `rect`, cropped to fill it the way CSS's `object-fit: cover` does, with the corners rounded.

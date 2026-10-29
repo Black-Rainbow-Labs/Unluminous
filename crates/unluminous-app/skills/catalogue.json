@@ -24,6 +24,7 @@
       "popularity": "Ships with Unluminous.",
       "sources": [],
       "image": "images/unluminous-task.jpg",
+      "imageSha256": "ef8f8925b2ba0d2ccd4eab16b7440c1795373795d1a0bf5327424c764c8a94c3",
       "stars": 1,
       "sha256": "73929a9e557da6f50ffc6fdc0978732b74de9558713c22e2122a98f8c6765e86",
       "files": [
@@ -56,6 +57,7 @@
       "popularity": "Ships with Unluminous.",
       "sources": [],
       "image": "images/unluminous-supervisor.jpg",
+      "imageSha256": "610be390334217fa718ca3c09344e6a62aaed59e6d993f1d67c06f5f4fbb011a",
       "stars": 1,
       "sha256": "a638cae36c82925a8729917522428526e85f0cf900c5a1085a8599357a0a4096",
       "files": [
@@ -87,6 +89,7 @@
       "popularity": "Ships with Unluminous.",
       "sources": [],
       "image": "images/unluminous.jpg",
+      "imageSha256": "ba84c2f568ea7d3acf65764e48c69bd2f4cf60fece98e6fcf128ddc34074c28f",
       "stars": 1,
       "sha256": "cef7a64de42be66ccf3e495ca520d571df7e414a836b239968265415961b230b",
       "files": [
@@ -123,6 +126,7 @@
       "ref": "92a9a34ac3bf88e695e468b90c7bf32f163d32c8",
       "install": "npx skills add vercel-labs/skills --skill find-skills",
       "image": "images/find-skills.jpg",
+      "imageSha256": "83399b16ad15e4b51e7ef311917f3d499cfb0860851e9d391d41f5a49ba3e40d",
       "stars": 37044,
       "sha256": "b146008599c31057cef1c145774cea5d5afb30e8f43fa802e47a4b461419aaaf",
       "files": [
@@ -159,6 +163,7 @@
       "ref": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
       "install": "npx skills add mattpocock/skills --skill grill-me",
       "image": "images/grill-me.jpg",
+      "imageSha256": "1db496bd1616ca5a923c50afa2370742d693e80237ec221d768f460d0e82a75b",
       "stars": 305863,
       "sha256": "14c292fe16c0aed833cbbabb0983515c8d665fb6061d9755b13dba870363323b",
       "files": [
@@ -201,6 +206,7 @@
       "ref": "a5496b1887950777b78ed5ac2bff3505961cb5fe",
       "install": "npx skills add heygen-com/hyperframes --skill hyperframes",
       "image": "images/hyperframes.jpg",
+      "imageSha256": "11885293a0d82c0a8a05c7db9e28f48388bd3cb225f2add2c6fcbda1f0c517ad",
       "stars": 74841,
       "sha256": "ec7a77e6b9325a75ff1ddde7b4faeb86a5ecb55f8ae166c8509fad48c783548d",
       "files": [
@@ -615,6 +621,7 @@
       "ref": "50d81fc134bf7539b56b3924abc27d371b1e106d",
       "install": "npx skills add vercel-labs/agent-browser --skill agent-browser",
       "image": "images/agent-browser.jpg",
+      "imageSha256": "0c5bda805dc12c4b9c752965c44275b25434c926ea250aea54276797e1d80870",
       "stars": 44790,
       "sha256": "80161e6836b3b40f4e83730a290deb40ac14d877d38c97ad5f6d71be37ce74c3",
       "files": [
@@ -650,6 +657,7 @@
       "ref": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
       "install": "npx skills add mattpocock/skills --skill tdd",
       "image": "images/tdd.jpg",
+      "imageSha256": "597c5be865582f98df9ca93f189169eed318672ff074b14c8df65bab7390c38b",
       "stars": 305863,
       "sha256": "aaed5857190bc8088332725c9c8deecf560744f6f7ef0bdfccf4bdf3fe678c16",
       "files": [
@@ -700,6 +708,7 @@
       "ref": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
       "install": "npx skills add mattpocock/skills --skill improve-codebase-architecture",
       "image": "images/improve-codebase-architecture.jpg",
+      "imageSha256": "2fdbd91c90dfb031e6fe2174cb80fc0ca8bb9c04dd600cdbb7d8dd6d6ba3ba33",
       "stars": 305863,
       "sha256": "21e81aed6d25a2b16ad0e6b9ec65b398145a110d11fd76951263d13372822e9d",
       "files": [
@@ -746,6 +755,7 @@
       "ref": "ca45fc496a3436251f191354091d557da31c15b5",
       "install": "npx skills add anthropics/skills --skill frontend-design",
       "image": "images/frontend-design.jpg",
+      "imageSha256": "197e90c0b38dc706bd80460ab94c6c8bdfe3c3a9cab305db4e0613d0f7174d16",
       "stars": 184549,
       "sha256": "7e9c2af00fd5b3144f49ce6fb1b16037b392ab9c2f049423b0b6114d99381ba2",
       "files": [
@@ -786,6 +796,7 @@
       "ref": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
       "install": "npx skills add mattpocock/skills --skill diagnosing-bugs",
       "image": "images/diagnosing-bugs.jpg",
+      "imageSha256": "5ac77e8cb9b7d0b5f5a67b667e77eb7931157ab4b93848e40b81829e101a22f4",
       "stars": 305863,
       "sha256": "29faf0d352422aa58beb0ce4666a49bdfdd5d2cc065c9dfe9be7b7e89fbdf584",
       "files": [
@@ -831,6 +842,7 @@
       "ref": "1a2c79d4e6c4a2283dc2c614b6538cbe1ed5ca62",
       "install": "npx skills add vercel-labs/agent-skills --skill vercel-react-best-practices",
       "image": "images/vercel-react-best-practices.jpg",
+      "imageSha256": "6f920602503f9879e293ab7c5c4eeff4dad0357e11e4298dccf9cc26fec6c4b5",
       "stars": 33171,
       "sha256": "e3f2294574b469c7c198373a443a86571012769d0bbeed68854bd55642ec0d7b",
       "files": [
@@ -1241,6 +1253,7 @@
       "ref": "1a2c79d4e6c4a2283dc2c614b6538cbe1ed5ca62",
       "install": "npx skills add vercel-labs/agent-skills --skill web-design-guidelines",
       "image": "images/web-design-guidelines.jpg",
+      "imageSha256": "54b2bac0bff30d625f0f92b10eda01bca9c5173f3ce0c69c781326c1ccbeafbd",
       "stars": 33171,
       "sha256": "f3bc47f890f42a44db1007ab390709ec368e4b8c089baee6b0007182236ac474",
       "files": [
@@ -1277,6 +1290,7 @@
       "ref": "2ce8aa15d05bd57213e6f746f953aafb7ded7a8b",
       "install": "npx skills add obra/superpowers --skill systematic-debugging",
       "image": "images/systematic-debugging.jpg",
+      "imageSha256": "8717ba1f7260f2deafdd4e945130b003b4637718e771434c00a2007581855c79",
       "stars": 307555,
       "sha256": "7c2628773e52f1687e74f9d802f2ea1c2cbae24ef5ca3fda0b8f21340f50d590",
       "files": [
@@ -1362,6 +1376,7 @@
       "ref": "2ce8aa15d05bd57213e6f746f953aafb7ded7a8b",
       "install": "npx skills add obra/superpowers --skill writing-plans",
       "image": "images/writing-plans.jpg",
+      "imageSha256": "d4266de2cdacc42714a4c34a66aacfe4aa9f73360c332c96b8f380d226147bfa",
       "stars": 307555,
       "sha256": "b96f84fcdd4fc87bf3264e960e7a423bf6d3612e2b3355b4d6cd5f61ef7fe45d",
       "files": [
@@ -1398,6 +1413,7 @@
       "ref": "2ce8aa15d05bd57213e6f746f953aafb7ded7a8b",
       "install": "npx skills add obra/superpowers --skill brainstorming",
       "image": "images/brainstorming.jpg",
+      "imageSha256": "a31d118ec887a31492d52647c4acd32162a25082b686363e6f398ede6e45918a",
       "stars": 307555,
       "sha256": "c7df2e2fbd0ee30184f631f0ae196a6b591cec122b75a40c93455d947f215a67",
       "files": [
@@ -1468,6 +1484,7 @@
       "ref": "2c606141936f1eeef17fa3043a72095b4765b9c2",
       "install": "npx skills add multica-ai/andrej-karpathy-skills --skill karpathy-guidelines",
       "image": "images/karpathy-guidelines.jpg",
+      "imageSha256": "36659e79aa9706db2db4eca7a00561d11ae00c3036e676e8c588b3520fe68870",
       "stars": 226028,
       "sha256": "5e8a1677df986d47abaf3d42f1ce0c7427ea030f50370c52baf9ba1e2c7c3db9",
       "files": [
@@ -1503,6 +1520,7 @@
       "ref": "ca45fc496a3436251f191354091d557da31c15b5",
       "install": "npx skills add anthropics/skills --skill skill-creator",
       "image": "images/skill-creator.jpg",
+      "imageSha256": "5d1e3952fd24645f22b2315359aa0d5a0faa1e3ae3c8aed663382af0ad498bd4",
       "stars": 184549,
       "sha256": "4557d54c524c67984e4bab23fa436e90196292ae8df4d2093f0ce0e6951bfc1c",
       "files": [
@@ -1624,6 +1642,7 @@
       "ref": "ca45fc496a3436251f191354091d557da31c15b5",
       "install": "npx skills add anthropics/skills --skill mcp-builder",
       "image": "images/mcp-builder.jpg",
+      "imageSha256": "c78ad9ea0763059cd3dffad7d6335bc43d39b22219304732aa3fdd2d808b88f4",
       "stars": 184549,
       "sha256": "3e62325b392401dfffcc7ce0db0e11e27ed5910d8f903973ee93e860bf067d83",
       "files": [
@@ -1709,6 +1728,7 @@
       "ref": "ca45fc496a3436251f191354091d557da31c15b5",
       "install": "npx skills add anthropics/skills --skill webapp-testing",
       "image": "images/webapp-testing.jpg",
+      "imageSha256": "e640ab018ea9f29d12ce6da0ce9214a6e2cfab0ed41b89ed3f49eb3fe1a39479",
       "stars": 184549,
       "sha256": "abfaf4cc6cf572346e22fed42dc0cfaacd2f64c5d9667f44a94b02ea0d3b1342",
       "files": [
@@ -1768,6 +1788,7 @@
       "ref": "134b8e1a3a8078302b8ba77f86626c0802b2a6db",
       "install": "npx skills add DietrichGebert/ponytail --skill ponytail",
       "image": "images/ponytail.jpg",
+      "imageSha256": "1a503c3cd9352c9100f19c2971e6dc5e3e47fc4d1d7365393abd2a145d5c0989",
       "stars": 179303,
       "sha256": "b40d655883ea462755ae12373b59833fce20ba256bc06b0bc4e08dc59ba2ca5d",
       "files": [
@@ -1803,6 +1824,7 @@
       "ref": "28b3b8dee8c976df4fa3e94aed4e092ad43fcb03",
       "install": "npx skills add nextlevelbuilder/ui-ux-pro-max-skill --skill ui-ux-pro-max",
       "image": "images/ui-ux-pro-max.jpg",
+      "imageSha256": "6c9c07188f3a62b8dfea0a599b5c8c31175941fe1e27fff5c4d7d99416945095",
       "stars": 142141,
       "sha256": "0e54f87ea382d98cc580b2a72c79a9864c5486943aee9168df131491a6f8f7f1",
       "files": [
@@ -2198,6 +2220,7 @@
       "ref": "8b4f5aaf5c8792d9cf9cbc48ff7aed674d4df7a0",
       "install": "npx skills add garrytan/gstack --skill design-motion",
       "image": "images/design-motion.jpg",
+      "imageSha256": "02f10d6fc8f060ff4131825b3b47b660de2185498672708b46542ce1f0b09b21",
       "stars": 138085,
       "sha256": "8e5f857383b88f859bb9feb2322c7baf5b4003ae4cb91238532f99d9cfe8ec9c",
       "files": [
@@ -2279,6 +2302,7 @@
       "ref": "9b68f7ed12b05e7efaff18e65c5a3fc2849fd0a4",
       "install": "npx skills add JuliusBrussee/caveman --skill caveman",
       "image": "images/caveman.jpg",
+      "imageSha256": "1c855c776d3550ee77068421958d01739c54c4ce317c1991cfee2509e0b44556",
       "stars": 115852,
       "sha256": "8dd75b3ad1dccebfc375f3ec73e714b02ef5666791416f228d8ebc53c8540597",
       "files": [
@@ -2318,6 +2342,7 @@
       "ref": "aeac41d4d005999432bb7312f7ff06383a91d59d",
       "install": "npx skills add addyosmani/agent-skills --skill spec-driven-development",
       "image": "images/spec-driven-development.jpg",
+      "imageSha256": "cae0be90aec16f922bc93fe22d34b5906b36a9ce0d1a90a9b36e1ef6c8e29ad6",
       "stars": 111493,
       "sha256": "3dfd09ad332308113a5a400ce059ec2362fd4fca4db863a85e00644ba198f106",
       "files": [
@@ -2352,6 +2377,7 @@
       "ref": "14c213405669414492bda0f8d52cc6531d062c45",
       "install": "npx skills add Panniantong/Agent-Reach --skill agent-reach",
       "image": "images/agent-reach.jpg",
+      "imageSha256": "32ecee93ec04dbee159046856f843b45de44bb31cde0753aee52fd38a4e5e420",
       "stars": 105716,
       "sha256": "b26b4cd9580b072732da9da0b215ef9645e95042030d373b9a1f626f49995ffa",
       "files": [
@@ -2407,6 +2433,7 @@
       "ref": "12af471f627f866411b4bd785b19646d3672784c",
       "install": "npx skills add Leonxlnx/taste-skill --skill design-taste-frontend",
       "image": "images/design-taste-frontend.jpg",
+      "imageSha256": "a8598658b8114fb4f4c7866d76f90b73fc13c34aeac7bc110da3e51017c176ea",
       "stars": 104649,
       "sha256": "605709c80bbcc526a336849a8ed41e391db4f2c8ce5970b73a43cebc103e430a",
       "files": [
@@ -2633,6 +2660,7 @@
       "ref": "5e745ace7e151feb2a93d360d0281fe39448b857",
       "install": "npx skills add pbakaus/impeccable --skill impeccable",
       "image": "images/impeccable.jpg",
+      "imageSha256": "9876d94207331ea934620defcd5fe402fbc2aa6a5c414ae42ad828316c27c32b",
       "stars": 93065,
       "sha256": "7b6db9213e83a6682b550a1c2020135554377354ff00c4a0faf8699899a8eee1",
       "files": [
@@ -2952,6 +2980,7 @@
       "ref": "d6059331abbddb49bca380ff46dca8ce33158b04",
       "install": "npx skills add tt-a1i/archify --skill archify",
       "image": "images/archify.jpg",
+      "imageSha256": "ece6d1f619efdb3a680841787c3ec940416588a138c304a875fa1894e551e062",
       "stars": 91063,
       "sha256": "2525be5cc6c39391ae6dc84f656b657306ca81bd4c1575b55bbd341a4da1df93",
       "files": [
@@ -3772,6 +3801,7 @@
       "ref": "7efc0ef764765ed9ceff5ce1204462b35b89d680",
       "install": "npx skills add mvanhorn/last30days-skill --skill last30days",
       "image": "images/last30days.jpg",
+      "imageSha256": "7e868498fdb5ec027123debe571b379858b26a9c743d219b4de381bb384266a0",
       "stars": 65797,
       "sha256": "1cf6c27897e5de9459e5876d1a10437d18175236e97b839b4556ad9bbc971f5c",
       "files": [
@@ -4571,6 +4601,7 @@
       "ref": "0ef9fe5bc3572734fd3ae6c448fe00a30cd5dcf0",
       "install": "npx skills add blader/humanizer --skill humanizer",
       "image": "images/humanizer.jpg",
+      "imageSha256": "78e24f6b6b67e7df819f509ef525f7b8eddcba8652d66a2e6924bdc506a434a0",
       "stars": 62001,
       "sha256": "e137b31423c2707bb604ac9b5c71aba9c7d1390d207cae70c3704ff263b24712",
       "files": [
@@ -4626,6 +4657,7 @@
       "ref": "5d29800bf8b919ca9a88ee7885b90050b5cb64ed",
       "install": "npx skills add OthmanAdi/planning-with-files --skill planning-with-files",
       "image": "images/planning-with-files.jpg",
+      "imageSha256": "5d57f6e4f72318ae416fa4cf5dca45d971afe8e13265b87aa3fade7da5783d4e",
       "stars": 27740,
       "sha256": "0d32911d02c817925fc622c1a92b31da3e6b288e3f0b8ffd44690478f2ea9880",
       "files": [
@@ -4816,6 +4848,7 @@
       "ref": "ca45fc496a3436251f191354091d557da31c15b5",
       "install": "npx skills add anthropics/skills --skill algorithmic-art",
       "image": "images/algorithmic-art.jpg",
+      "imageSha256": "e8c8aa976ec062beee35e97146da63add54ad6b775b009ab0bad55ce1cfc6c42",
       "stars": 184549,
       "sha256": "8c15717769d76330df4387b85402a3754d858b97749ae259d3365ea9ea394f89",
       "files": [
@@ -4868,6 +4901,7 @@
       "stars": 74844,
       "homepage": "",
       "image": "images/hyperframes-cli.jpg",
+      "imageSha256": "e822f5fd821e1aad1a53645d6a281de73e50a3d177633d6d238c7ffe08551355",
       "install": "npx skills add heygen-com/hyperframes --skill hyperframes-cli",
       "sha256": "19e8e8f081dabdfd8452ded86073d232052487d58051e3b5f0137be95830b120",
       "files": [
@@ -4965,6 +4999,7 @@
       "stars": 305864,
       "homepage": "",
       "image": "images/grill-with-docs.jpg",
+      "imageSha256": "70a00e481239660fc801ced167df78af7b55157c5a295ffcf526b502c72e0278",
       "install": "npx skills add mattpocock/skills --skill grill-with-docs",
       "sha256": "2dff19547f0f72000f8b88868e21b7d76c27cf5c7ececc6edf4042bbe06157ac",
       "files": [
@@ -5007,6 +5042,7 @@
       "stars": 74844,
       "homepage": "",
       "image": "images/media-use.jpg",
+      "imageSha256": "81aff57d2d58866cbf480d084af076665ce0b523fec0ad6801d3f79fdbc9dd2b",
       "install": "npx skills add heygen-com/hyperframes --skill media-use",
       "sha256": "938c00af915a46b51962ddbe5b26e4df60955cd634e5061c9576d7b32a0b70e4",
       "files": [
@@ -5619,6 +5655,7 @@
       "stars": 305864,
       "homepage": "",
       "image": "images/setup-matt-pocock-skills.jpg",
+      "imageSha256": "1e1f6bd02065ac3d0c0043c3ce637b2cdff6bbeb4690be0c89fd300319ec19bf",
       "install": "npx skills add mattpocock/skills --skill setup-matt-pocock-skills",
       "sha256": "d1d1b40f71fcb294d27a1b00297d1d25bcff3bc1e8759794a4af906b243d8e31",
       "files": [
@@ -5686,6 +5723,7 @@
       "stars": 305864,
       "homepage": "",
       "image": "images/handoff.jpg",
+      "imageSha256": "69d4835b307751abff944c3af08af9f4970f9a3e03994036aa357d03802b2376",
       "install": "npx skills add mattpocock/skills --skill handoff",
       "sha256": "77c2607c751b7c522e0208ab113ba4949f8267610d6061323c7ccd3ace21d7da",
       "files": [
@@ -5728,6 +5766,7 @@
       "stars": 20,
       "homepage": "",
       "image": "images/design-mobile-apps.jpg",
+      "imageSha256": "528e8db228280503ff4bd3c0fce68c5bf7c21f478dc8b5613b4fedcce944593e",
       "install": "npx skills add designed-by-ai/skills --skill design-mobile-apps",
       "sha256": "f9875ebfee265912b89da9ac0c5f358cf35671d20261263842b4c9148258ae48",
       "files": [
@@ -5795,6 +5834,7 @@
       "stars": 305864,
       "homepage": "",
       "image": "images/triage.jpg",
+      "imageSha256": "c22c7baf0aca8eee76a6f2315b8f1024792cad6cd5a365615c6022c00e69f10d",
       "install": "npx skills add mattpocock/skills --skill triage",
       "sha256": "9c6b69d13831d354c1a62eaa047e3160617f9b035d411555268a343b51e96a0c",
       "files": [
@@ -5847,6 +5887,7 @@
       "stars": 305864,
       "homepage": "",
       "image": "images/prototype.jpg",
+      "imageSha256": "c52ff42aa21394cc22dfb9286ab524f6e8b4fb31fea435989cb7780339c6e987",
       "install": "npx skills add mattpocock/skills --skill prototype",
       "sha256": "c4efd5e0f1c302b6225be83e8e42abdb05e13fde900484e4e2240e90b4e83eb6",
       "files": [
@@ -5899,6 +5940,7 @@
       "stars": 305864,
       "homepage": "",
       "image": "images/domain-modeling.jpg",
+      "imageSha256": "bb3b3d33c0e54f0d20d00e4e12e2b8c19330bd02910f419a14bf01a60a43355b",
       "install": "npx skills add mattpocock/skills --skill domain-modeling",
       "sha256": "18a9314d338b8135e4108d1d31d2fd57ad289cf8bf31d2acd6a6f3053ac22a38",
       "files": [
@@ -5951,6 +5993,7 @@
       "stars": 305864,
       "homepage": "",
       "image": "images/teach.jpg",
+      "imageSha256": "5164e29ddb2e838c79ab862199d913f12fb990ee69c45d468e184621fdd0ed2a",
       "install": "npx skills add mattpocock/skills --skill teach",
       "sha256": "9aaf696786348313963552e446415c67fdd8129276b61f02be6dcedb208cd381",
       "files": [
@@ -6013,6 +6056,7 @@
       "stars": 305864,
       "homepage": "",
       "image": "images/code-review.jpg",
+      "imageSha256": "6d255926a0a259f79d67f1314045912cafa80588c108419371758301efba8bd6",
       "install": "npx skills add mattpocock/skills --skill code-review",
       "sha256": "780be2eef8e387f5d0c07473485cdce4dd2e55c0587f1e96635eb7e929ed1123",
       "files": [
@@ -6055,6 +6099,7 @@
       "stars": 305864,
       "homepage": "",
       "image": "images/research.jpg",
+      "imageSha256": "6f2adf6a1f249ae4cde0e8597f46709093119ce17f7b07dd56382ee03f2c1652",
       "install": "npx skills add mattpocock/skills --skill research",
       "sha256": "b1976e3b4a7cdcee2f7ade52c0cf072bafdbac9cf3284568cab1aa258e584e69",
       "files": [
@@ -6097,6 +6142,7 @@
       "stars": 1603,
       "homepage": "",
       "image": "images/azure-compliance.jpg",
+      "imageSha256": "a0d701f75a02a3531ffbc661d85e012067fbde249d10839c7ea7583bb7090d4d",
       "install": "npx skills add microsoft/azure-skills --skill azure-compliance",
       "sha256": "1d661e50af3e98d608446be66d767e306c82c766744505243fc756723177aca9",
       "files": [
@@ -6209,6 +6255,7 @@
       "stars": 1603,
       "homepage": "",
       "image": "images/azure-compute.jpg",
+      "imageSha256": "146b07c8f78d8eafffd53aec71b6801bf6c2b66a78aabcf2e93410814da4fa25",
       "install": "npx skills add microsoft/azure-skills --skill azure-compute",
       "sha256": "5c803d3039229538bb07e23a483ffb73b8e6a8cdb82f0b36a240389f143e3592",
       "files": [
@@ -6446,6 +6493,7 @@
       "stars": 1603,
       "homepage": "",
       "image": "images/azure-cloud-migrate.jpg",
+      "imageSha256": "4765266cc86473e21225d4f191c476802156576c5b31da7549b8e25dad28840d",
       "install": "npx skills add microsoft/azure-skills --skill azure-cloud-migrate",
       "sha256": "e9ca8c01b5a29cef9c390654ccc4cc6b511d6426edd177d99b3391c1a750d73b",
       "files": [
@@ -6633,6 +6681,7 @@
       "stars": 2944,
       "homepage": "",
       "image": "images/supabase-postgres-best-practices.jpg",
+      "imageSha256": "97234c8b9a21e4252a7400b6132ff53cb68c7b7907cb999d82605b324fe5d97e",
       "install": "npx skills add supabase/agent-skills --skill supabase-postgres-best-practices",
       "sha256": "a714d433362542f2d52e8b7958d1691c49fa4f43c9645c9a647895fb3ca85f92",
       "files": [
@@ -6845,6 +6894,7 @@
       "stars": 33172,
       "homepage": "",
       "image": "images/vercel-composition-patterns.jpg",
+      "imageSha256": "2ee32e308e2c901ec35458fbb2f46e52727c569d5560f9c98307dbeb0fd1fdee",
       "install": "npx skills add vercel-labs/agent-skills --skill vercel-composition-patterns",
       "sha256": "646f870906914c3787efa7403ec4716dfddf78fc17a12ec1f0556caf2143ac66",
       "files": [
@@ -6947,6 +6997,7 @@
       "stars": 307556,
       "homepage": "",
       "image": "images/using-superpowers.jpg",
+      "imageSha256": "055f2e677ea8a975b14d953de8becdccbffeff3751df2e95350b73ee8233b339",
       "install": "npx skills add obra/superpowers --skill using-superpowers",
       "sha256": "bcdbc241f63b69c68e66b9168012dc703ef955ac381a955a72aa2c0f256495bc",
       "files": [
@@ -7019,6 +7070,7 @@
       "stars": 307556,
       "homepage": "",
       "image": "images/requesting-code-review.jpg",
+      "imageSha256": "5c6aa65821f9465634e196ef76bb4a809a7e9eb677c510992ca211a4842670ef",
       "install": "npx skills add obra/superpowers --skill requesting-code-review",
       "sha256": "da21da5cdf7894945c3990bdea317b1be4e2cf553831d22027558ca45a6cc45b",
       "files": [
@@ -7061,6 +7113,7 @@
       "stars": 307556,
       "homepage": "",
       "image": "images/test-driven-development.jpg",
+      "imageSha256": "4decf4d13b870f33c96d8fb846b636305ba0a18d75664cd14328c42a16bd0b27",
       "install": "npx skills add obra/superpowers --skill test-driven-development",
       "sha256": "8e8772822d25e4dfc9295cf4526c6251a10458c7417ac50c4b42e5d9fc91e0b0",
       "files": [
@@ -7103,6 +7156,7 @@
       "stars": 33172,
       "homepage": "",
       "image": "images/vercel-react-native-skills.jpg",
+      "imageSha256": "4b1272766b808ead7d7921a9f5099661f35dff52862d1500796f6952d5ed1980",
       "install": "npx skills add vercel-labs/agent-skills --skill vercel-react-native-skills",
       "sha256": "7a13afc40d6cf74e431d845f5c19a3047caf4fdfe2d1fed1dbd0c77ed2db7b0b",
       "files": [
@@ -7345,6 +7399,7 @@
       "stars": 307556,
       "homepage": "",
       "image": "images/verification-before-completion.jpg",
+      "imageSha256": "48c366af6b215c0d8bd5316469e4de93938acaadb8a432ab84f0e17048c8dd18",
       "install": "npx skills add obra/superpowers --skill verification-before-completion",
       "sha256": "d8a53168f152b6163bd3447f7d4c20b6b4cddf6bd907f9aa5856b514c032db0e",
       "files": [
@@ -7382,6 +7437,7 @@
       "stars": 307556,
       "homepage": "",
       "image": "images/subagent-driven-development.jpg",
+      "imageSha256": "de23e5bbf9a8fb674fa0a4274697e88b841ef7d45c2c585487856a02dc5f6151",
       "install": "npx skills add obra/superpowers --skill subagent-driven-development",
       "sha256": "249b79397489aaf48e90da699e777cd1f88073a85160c45594107242b7e5a5a0",
       "files": [
@@ -7484,6 +7540,7 @@
       "stars": 307556,
       "homepage": "",
       "image": "images/writing-skills.jpg",
+      "imageSha256": "2cf113d2be26c67f76ff1b9e689619baba4372ee4b1082773f23951d658db70a",
       "install": "npx skills add obra/superpowers --skill writing-skills",
       "sha256": "9ca4cdbef07abe834a36aeed5434f0afed6d3679dab61041e0ba9cf9a99ea425",
       "files": [
@@ -7566,6 +7623,7 @@
       "stars": 33172,
       "homepage": "",
       "image": "images/deploy-to-vercel.jpg",
+      "imageSha256": "47363f5a02ef628492163d1f0d9f370c77bc682f80b8b9a70f13a46570a62dfa",
       "install": "npx skills add vercel-labs/agent-skills --skill deploy-to-vercel",
       "sha256": "9b883827e904cd6c93a98457f1ea5aaae1dfdb30ae704bddf5e9e70c9d10de36",
       "files": [
@@ -7603,6 +7661,7 @@
       "stars": 33172,
       "homepage": "",
       "image": "images/vercel-react-view-transitions.jpg",
+      "imageSha256": "174cd0ca69d1b0ea64b421cdac76b5bfbbc35ef2ddf5314faddc67c700a1e3d2",
       "install": "npx skills add vercel-labs/agent-skills --skill vercel-react-view-transitions",
       "sha256": "a664f7da07d8cc78dbbbd1f075ab3a0381a43f46fdaa63712c89242f2e4be5be",
       "files": [
@@ -7680,6 +7739,7 @@
       "stars": 184549,
       "homepage": "",
       "image": "images/canvas-design.jpg",
+      "imageSha256": "cd13d1ee6c352cc5c25f6cba793d18c38f3245793c4b5aa8d040329d5dc94534",
       "install": "npx skills add anthropics/skills --skill canvas-design",
       "sha256": "b958beb4e89a524215b7a5b5f2aa3e0d8b49ba516b74b5fcd704b1d48addad67",
       "files": [
@@ -8127,6 +8187,7 @@
       "stars": 184549,
       "homepage": "",
       "image": "images/web-artifacts-builder.jpg",
+      "imageSha256": "fcf23a0f374c471c952137be60df9b98bc4bcc3af8575b5a14495332830cc0a1",
       "install": "npx skills add anthropics/skills --skill web-artifacts-builder",
       "sha256": "0f102ba19f13b4deb19f2248a5014952d2af1521129a5a0e4f3d805f74632b75",
       "files": [
@@ -8184,6 +8245,7 @@
       "stars": 184549,
       "homepage": "",
       "image": "images/brand-guidelines.jpg",
+      "imageSha256": "35612b87dd69130008b8b6fd8a1127c4784db6d28ef64af9463bd5a0775cbd45",
       "install": "npx skills add anthropics/skills --skill brand-guidelines",
       "sha256": "ddf22e788d6aa33e818ec59be85d4fba5aeda23075518dafc412bb90b7cc63ce",
       "files": [
@@ -8226,6 +8288,7 @@
       "stars": 33172,
       "homepage": "",
       "image": "images/writing-guidelines.jpg",
+      "imageSha256": "dfed1e05e07840cd49ed6348d4c394a0876c7844841d69878dfdd99e3b4ab1d4",
       "install": "npx skills add vercel-labs/agent-skills --skill writing-guidelines",
       "sha256": "25aa3a33a97bddbcb1847ce4a6169106ec25e5b19b15b99c66e75ab383866ef2",
       "files": [
@@ -8263,6 +8326,7 @@
       "stars": 184549,
       "homepage": "",
       "image": "images/theme-factory.jpg",
+      "imageSha256": "aba4cd79382efb66cba669ffba77f2af62c83d00ec3fc880f750ee69d8552637",
       "install": "npx skills add anthropics/skills --skill theme-factory",
       "sha256": "50bc5c8d91691c22c80aa3a77d437243398121a724531737530f4ed30cddf879",
       "files": [
@@ -8360,6 +8424,7 @@
       "stars": 184549,
       "homepage": "",
       "image": "images/internal-comms.jpg",
+      "imageSha256": "f10dc6a28ffa3c9c50a2cf8f617cb8a2b9ca968aff3a9cdcf0b5412c03a40556",
       "install": "npx skills add anthropics/skills --skill internal-comms",
       "sha256": "9ad903576ebda039209c784708f8a69135aef47ce3532438d0870a00ca30d00d",
       "files": [
@@ -8422,6 +8487,7 @@
       "stars": 184549,
       "homepage": "",
       "image": "images/slack-gif-creator.jpg",
+      "imageSha256": "ce5b3ab0e0ede9b79a2c86bdbd2e552774438faf844a0b3eb0fc4f7937861962",
       "install": "npx skills add anthropics/skills --skill slack-gif-creator",
       "sha256": "4d8f2d75bc0f0ff84efe56ee3abf91ac9ae14a892b48c32f0222df14c6eb96fb",
       "files": [
@@ -8489,6 +8555,7 @@
       "stars": 184549,
       "homepage": "",
       "image": "images/claude-api.jpg",
+      "imageSha256": "1b835033ced737adefd0637353134630beaa16460bc80e066283f1b4de29b9bd",
       "install": "npx skills add anthropics/skills --skill claude-api",
       "sha256": "fde28004c33b154afbffdb032db0ce41d4244fd3fdd12a779ae3f7a260413d61",
       "files": [
@@ -9001,6 +9068,7 @@
       "stars": 111494,
       "homepage": "",
       "image": "images/code-review-and-quality.jpg",
+      "imageSha256": "4549d3f0e1dbe048f87db47e06440c63229998d19d384aa02354ec354ebfb09b",
       "install": "npx skills add addyosmani/agent-skills --skill code-review-and-quality",
       "sha256": "e60dfee4a81d66a1d8b766516ba4cf7e0d53afbf7d9f82f0054c389e8a2c0d81",
       "files": [
@@ -9038,6 +9106,7 @@
       "stars": 111494,
       "homepage": "",
       "image": "images/security-and-hardening.jpg",
+      "imageSha256": "42f6ee9ce604830ce6b17d1de0adad580e0784428ada79579e4233ed04c84b3d",
       "install": "npx skills add addyosmani/agent-skills --skill security-and-hardening",
       "sha256": "b8cd1febebf5d3d29952fb7e3d886227a90c5137ca1e4d8fe78858121aebd940",
       "files": [
@@ -9080,6 +9149,7 @@
       "stars": 111494,
       "homepage": "",
       "image": "images/frontend-ui-engineering.jpg",
+      "imageSha256": "4a2795a09b02b24ce4ffb19b12d4398ff3c36eb63646db0836822756c92757bb",
       "install": "npx skills add addyosmani/agent-skills --skill frontend-ui-engineering",
       "sha256": "657534f12775d9a679bb15a07ed3b3f1fc6f49a0a5244e05fa0ac21ee30aecd9",
       "files": [
@@ -9117,6 +9187,7 @@
       "stars": 111494,
       "homepage": "",
       "image": "images/performance-optimization.jpg",
+      "imageSha256": "8a835cb4926b4b4f2bfb49ec67b037b07eb3511172143bbdd508fbcf6c49e235",
       "install": "npx skills add addyosmani/agent-skills --skill performance-optimization",
       "sha256": "341feba20dc59f22df9ca539f7a7a07e9bdc5252060fc250fb93f31542fc6c5b",
       "files": [
@@ -9159,6 +9230,7 @@
       "stars": 111494,
       "homepage": "",
       "image": "images/documentation-and-adrs.jpg",
+      "imageSha256": "0104d7ce3d078068b02fadc1fef538001cf594419e193c3772a17e75e0f2c888",
       "install": "npx skills add addyosmani/agent-skills --skill documentation-and-adrs",
       "sha256": "7e0166ce8935fa8a13c22b1c463d4f1a816c539077406eb4c03f9909b96b8545",
       "files": [
@@ -9196,6 +9268,7 @@
       "stars": 111494,
       "homepage": "",
       "image": "images/ci-cd-and-automation.jpg",
+      "imageSha256": "631be8e3a0eaeec343deec07f9968e8812fe3a873c97c38d130b38082ea934ff",
       "install": "npx skills add addyosmani/agent-skills --skill ci-cd-and-automation",
       "sha256": "706d42c02e056cfd0509172fa294ecbdec8509aac9dc25862310800892709d9d",
       "files": [
@@ -9233,6 +9306,7 @@
       "stars": 33679,
       "homepage": "",
       "image": "images/data-visualization.jpg",
+      "imageSha256": "96956c94b04320eaddec4fccdac35d672de3b8fb15d425fd5fbe54cce50c54c5",
       "install": "npx skills add anthropics/knowledge-work-plugins --skill data-visualization",
       "sha256": "882ab3711a9794b23681725501dcb700c1962aa7778fb0f8effcd1dfd6528b66",
       "files": [
@@ -9270,6 +9344,7 @@
       "stars": 33679,
       "homepage": "",
       "image": "images/incident-response.jpg",
+      "imageSha256": "c5ed433b99e2ad6b12557ba17d7a6f497a8c62f56cd9543bc6811308bac480f7",
       "install": "npx skills add anthropics/knowledge-work-plugins --skill incident-response",
       "sha256": "96fb38ab29648fa8c5e1e201a3769866ecdf6dbb11620c9596bcb0b4438f9273",
       "files": [
@@ -9307,6 +9382,7 @@
       "stars": 33679,
       "homepage": "",
       "image": "images/statistical-analysis.jpg",
+      "imageSha256": "def07255dbbd7c29173104fe85e9cc0265aa31aeed0ec46b2e99409e858abc7d",
       "install": "npx skills add anthropics/knowledge-work-plugins --skill statistical-analysis",
       "sha256": "277f41b3b27a069ae93d9b1636260e815fa17407c176e911f4a8b1d2e501eae2",
       "files": [
@@ -9344,6 +9420,7 @@
       "stars": 33679,
       "homepage": "",
       "image": "images/sql-queries.jpg",
+      "imageSha256": "b8ca2d5987f9205469ff91c184f4351c6347324e7cdae583bea55de3ea89abdd",
       "install": "npx skills add anthropics/knowledge-work-plugins --skill sql-queries",
       "sha256": "704804855efc4186d8567c6db527fe8f14ceaeafba93028829e6aba318495365",
       "files": [
@@ -9381,6 +9458,7 @@
       "stars": 33679,
       "homepage": "",
       "image": "images/accessibility-review.jpg",
+      "imageSha256": "e8abd9054e7bef6c2836f87cb173936d1398268e39a00fb42b849a59a217f425",
       "install": "npx skills add anthropics/knowledge-work-plugins --skill accessibility-review",
       "sha256": "9a05421d7e605129f75e16bae4cee8b23bec9d441b06fdeaa54cdd6cc42f59c7",
       "files": [

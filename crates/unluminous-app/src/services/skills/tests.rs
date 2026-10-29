@@ -30,6 +30,8 @@ impl Bench {
             ..Context::default()
         };
         skills.open(&context).unwrap();
+        // Opening starts the read on a thread (`task-2401`); a test reads the shelf straight away.
+        skills.wait_for_the_first_read();
         Bench { root, skills }
     }
 
@@ -250,7 +252,8 @@ fn a_newer_skill_on_the_site_is_an_update_that_is_fetched_checked_and_taken() {
 
     bench.run("check", &[]).unwrap();
     let mut waited = 0;
-    while bench.skills.remote.is_none() && waited < 200 {
+    // The catalogue's arrival starts a read on a thread, and the update is known once that read has landed.
+    while (bench.skills.remote.is_none() || bench.skills.reading.is_some()) && waited < 200 {
         bench.skills.catch_up();
         std::thread::sleep(std::time::Duration::from_millis(20));
         waited += 1;
@@ -273,4 +276,40 @@ fn a_newer_skill_on_the_site_is_an_update_that_is_fetched_checked_and_taken() {
     let copy = bench.home().join(".claude").join("skills").join("caveman").join("SKILL.md");
     bench.skills.refresh();
     assert!(read(&copy).contains("Newer words."), "the installed copy follows the update");
+}
+
+/// `task-2401`: opening reads the skills folders on a thread, so the pane is drawn at once and says it is looking,
+/// and a read that started before a change the person made is thrown away when it lands.
+#[test]
+fn opening_reads_on_a_thread_and_a_read_older_than_a_change_is_thrown_away() {
+    let root =
+        std::env::temp_dir().join(format!("unluminous-skills-thread-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    for folder in ["home", "project", "plugin"] {
+        std::fs::create_dir_all(root.join(folder)).unwrap();
+    }
+    let mut skills = Skills::new();
+    skills.places = Places::at(root.join("home"));
+    let context = Context {
+        project: Some(root.join("project")),
+        folder: Some(root.join("plugin")),
+        ..Context::default()
+    };
+    skills.open(&context).unwrap();
+    assert!(!skills.read, "opening returns before the folders are read");
+    assert!(skills.shelf.skills.is_empty());
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while !skills.read && std::time::Instant::now() < deadline {
+        skills.catch_up();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    assert!(skills.read && !skills.shelf.skills.is_empty(), "the read landed");
+
+    // A read on the thread, then a change: the read that started first must not undo what the change shows.
+    skills.read_in_background();
+    skills.command("install", &["caveman".into(), "claude".into(), "--global".into()]).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    skills.catch_up();
+    assert!(skills.skill("caveman").unwrap().is_installed(), "the install is still shown");
+    let _ = std::fs::remove_dir_all(&root);
 }

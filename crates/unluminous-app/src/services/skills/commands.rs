@@ -36,12 +36,14 @@ fn parse(arguments: &[String]) -> Parsed {
     parsed
 }
 
-/// Answer one verb.
+/// Answer one verb. A verb asked before the first read of the skills folders has landed waits for it, because
+/// every answer names skills.
 ///
 /// @param skills - the provider
 /// @param command - the verb
 /// @param arguments - the words after it
 pub fn run(skills: &mut Skills, command: &str, arguments: &[String]) -> Result<Answer, String> {
+    skills.wait_for_the_first_read();
     let parsed = parse(arguments);
     match command {
         "open-pane" => Ok(Answer::said("showing the Skills Manager")),
@@ -352,6 +354,8 @@ pub fn view_value(skills: &Skills) -> serde_json::Value {
             Modal::Delete { .. } => "delete",
         }),
         "updates": skills.shelf.skills.iter().filter(|skill| skill.update).count(),
+        "loading": !skills.read,
+        "picturesWaiting": skills.pictures.waiting(),
     })
 }
 

@@ -34,8 +34,44 @@ fn a_window(
     );
     let _ = std::fs::remove_dir_all(&home);
     did(&mut harness, "plugins run skills filter all");
-    steady(&mut harness);
+    pictures_in_place(&mut harness);
     (folder, home, harness)
+}
+
+/// Draw until every card picture asked for has been read on its thread and put on the card, so a screenshot shows
+/// the pictures rather than the stand ins they arrive in place of (`task-2401`).
+fn pictures_in_place(harness: &mut Harness<'static, UnluminousApp>) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    loop {
+        steady(harness);
+        let view = did(harness, "plugins view skills");
+        if view["loading"] == false && view["picturesWaiting"] == 0 {
+            steady(harness);
+            if did(harness, "plugins view skills")["picturesWaiting"] == 0 {
+                return;
+            }
+        }
+        assert!(std::time::Instant::now() < deadline, "the pictures never arrived");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
+/// `task-2401`: the pane is drawn the frame it is shown, with the spinner and the words saying it is looking,
+/// before the skills folders have been read, and the cards follow with their pictures.
+#[test]
+fn the_pane_is_drawn_at_once_and_its_pictures_follow() {
+    let folder = fixture("unluminous-skills-at-once", &[("readme.md", "# A project\n")]);
+    let mut harness = harness_in(&folder);
+    harness.set_size(egui::vec2(1600.0, 1000.0));
+    run(&mut harness, "plugins pane skills --show");
+    harness.step();
+    let view = did(&mut harness, "plugins view skills");
+    let looked =
+        view["loading"] == true || view["listed"].as_array().is_some_and(|ids| !ids.is_empty());
+    assert!(looked, "the pane answered before the read: {view}");
+    pictures_in_place(&mut harness);
+    harness.get_by_label("Skill: Unluminous Task");
+    assert_eq!(did(&mut harness, "plugins view skills")["loading"], false);
 }
 
 #[test]

@@ -7845,6 +7845,19 @@ skip with a printed line without it. The pictures are `notebook_top`, `notebook_
 `unluminous_cli::plugins::SKILLS`. `tests/skills.rs` is the window tests, and `skills_pane` and `skills_page` the
 pictures.
 
+**Nothing in the pane waits for the disk or the network** (`task-2401`). Reading every skills folder and hashing every
+installed copy took 116 ms on this machine, and it ran on the window thread when the pane opened and again every
+`LOOK_AGAIN`. It runs on a thread now (`Skills::read_in_background`), with a generation number so a read that started
+before a change the person made is thrown away; only a change the person asked for reads at once (`refresh`). Until
+the first read lands the pane shows a spinner, and a verb waits for it (`wait_for_the_first_read`). The card pictures
+are read, fetched and decoded on a thread too (`services::skills::pictures`), drawn as the stand in until they
+arrive, and put on the graphics card two a frame. The catalogue lists each picture's `imageSha256`, which says whether
+the copy in the binary or in `images/` is the one listed and checks one fetched from the site.
+
+**A graphics error is written to `crash.log` and the window carries on** (`crash_log::survive_graphics_errors`).
+wgpu's own answer is to panic, and a window closed with `wgpu error: Out of Memory` when a frame's command buffer could
+not be finished while both cards were nearly full.
+
 ## A Word document is pages in a tab of the Word plugin, and Word itself is the oracle (`task-2341`)
 
 `tasks/task-2341-word-prd.md` and `tasks/task-2341-word-tdd.md` are the design. A `.docx`, `.dotx` or `.docm`

@@ -14,6 +14,9 @@
 //!
 //! It changes nothing else. The message still goes to standard error for anybody running Unluminous from a
 //! terminal, and the panic still does what it did before.
+//!
+//! The one thing it does stop is a graphics error ending the window: [`survive_graphics_errors`] writes it here and
+//! the window carries on, which is `task-2401`.
 
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -44,6 +47,50 @@ pub fn install(folder: PathBuf) {
         }
         previous(panic);
     }));
+}
+
+/// How many graphics errors one window writes down before it stops writing them. An error that comes back on
+/// every frame would otherwise fill the log in seconds and push out the reports worth reading.
+pub const GRAPHICS_ERRORS_WRITTEN: usize = 20;
+
+/// Write a graphics error down and carry on drawing, rather than end the process.
+///
+/// wgpu's own answer to an error nothing asked about is to panic, and `task-2401` measured what that costs: a
+/// window with the Skills pane open closed with `wgpu error: Out of Memory`, raised when a frame's command buffer
+/// could not be finished, at a moment when both graphics cards were nearly full with the llama server and ComfyUI.
+/// A frame that cannot be finished is a frame that is not drawn; the next one usually can be, so the window loses
+/// one picture instead of every unsaved change in it.
+///
+/// @param device - the window's graphics device
+/// @param folder - the folder `crash.log` is in, the one given to [`install`]
+pub fn survive_graphics_errors(device: &eframe::wgpu::Device, folder: PathBuf) {
+    let written = std::sync::atomic::AtomicUsize::new(0);
+    device.on_uncaptured_error(std::sync::Arc::new(move |error: eframe::wgpu::Error| {
+        let count = written.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if count >= GRAPHICS_ERRORS_WRITTEN {
+            return;
+        }
+        let report = graphics_report(&error.to_string(), count + 1 == GRAPHICS_ERRORS_WRITTEN);
+        eprintln!("{report}");
+        let _ = append(&folder, &report);
+    }));
+}
+
+/// What one graphics error is written as: the panic's shape, so the log reads the same, with a line saying the
+/// window went on.
+fn graphics_report(error: &str, last: bool) -> String {
+    let mut out = String::new();
+    out.push_str("---\n");
+    out.push_str(&format!("Unluminous {}\n", env!("CARGO_PKG_VERSION")));
+    out.push_str(&format!("at   {}\n", now()));
+    out.push_str("graphics error, written down and drawing carried on\n");
+    out.push_str(&format!("said {}\n", error.trim_end()));
+    if last {
+        out.push_str(&format!(
+            "No more graphics errors are written down by this window after {GRAPHICS_ERRORS_WRITTEN}.\n"
+        ));
+    }
+    out
 }
 
 /// What one panic is written as.
@@ -172,6 +219,18 @@ mod tests {
 
         let _ = std::panic::take_hook();
         std::fs::remove_dir_all(&folder).ok();
+    }
+
+    /// `task-2401`: a graphics error is written in the panic's shape, says the window carried on, and the last one
+    /// a window writes says no more will follow.
+    #[test]
+    fn a_graphics_error_is_written_down_as_one_the_window_survived() {
+        let report = graphics_report("Out of Memory\n", false);
+        assert!(report.starts_with("---\nUnluminous "), "{report}");
+        assert!(report.contains("drawing carried on"), "{report}");
+        assert!(report.contains("said Out of Memory\n"), "{report}");
+        assert!(!report.contains("No more graphics errors"), "{report}");
+        assert!(graphics_report("Out of Memory", true).contains("No more graphics errors"));
     }
 
     #[test]

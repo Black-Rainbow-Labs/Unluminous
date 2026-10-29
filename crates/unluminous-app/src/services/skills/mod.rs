@@ -14,6 +14,7 @@ pub mod frontmatter;
 pub mod harness;
 pub mod model;
 pub mod ops;
+pub mod pictures;
 
 #[cfg(test)]
 mod tests;
@@ -136,6 +137,64 @@ pub struct Skills {
     waiting: Vec<(String, After)>,
     /// A catalogue address a unit test gives, in place of `UNLUMINOUS_SKILLS_CATALOGUE`.
     pub catalogue_here: Option<String>,
+    /// The card pictures, read and decoded on a thread.
+    pub pictures: pictures::Loader,
+    /// The read of the skills folders going on on a thread, if one is.
+    reading: Option<Reading>,
+    /// Counts every read, so a read that finishes after a newer one started, or after a change the person made,
+    /// is thrown away rather than put over the newer answer.
+    generation: u64,
+    /// Whether [`Self::shelf`] has been read at least once. Until it has, the pane shows that it is looking.
+    pub read: bool,
+    /// How many skills the catalogue that just arrived lists, said once the read it started has finished.
+    announce: Option<usize>,
+}
+
+/// A read of the skills folders on a thread.
+struct Reading {
+    generation: u64,
+    answer: std::sync::mpsc::Receiver<Shelf>,
+}
+
+/// Owned copies of what [`model::Sources`] borrows, so a read can go to a thread.
+struct Owned {
+    places: Places,
+    project: Option<PathBuf>,
+    library: Option<PathBuf>,
+    bundled: Catalogue,
+    remote: Option<Catalogue>,
+    extra: Vec<PathBuf>,
+}
+
+impl Owned {
+    fn sources(&self) -> model::Sources<'_> {
+        model::Sources {
+            places: &self.places,
+            project: self.project.as_deref(),
+            library: self.library.as_deref(),
+            bundled: &self.bundled,
+            remote: self.remote.as_ref(),
+            extra: &self.extra,
+        }
+    }
+}
+
+/// Read every skill, and copy an edited library skill into the places it is installed, then read again if that
+/// wrote anything.
+///
+/// `task-2401` measured this at 116 ms on a machine whose agents' skills folders are full, because every installed
+/// copy is read and hashed. It runs on a thread ([`Skills::read_in_background`]) except after a change the person
+/// asked for, which has to answer with the skills as they are now.
+fn read_the_shelf(sources: &model::Sources<'_>) -> Shelf {
+    let shelf = Shelf::read(sources);
+    let mut wrote = 0;
+    for skill in &shelf.skills {
+        wrote += ops::keep_in_step(skill).unwrap_or(0);
+    }
+    match wrote {
+        0 => shelf,
+        _ => Shelf::read(sources),
+    }
 }
 
 impl std::fmt::Debug for Skills {
@@ -179,6 +238,11 @@ impl Skills {
             fetcher: fetch::Fetcher::default(),
             waiting: Vec::new(),
             catalogue_here: None,
+            pictures: pictures::Loader::default(),
+            reading: None,
+            generation: 0,
+            read: false,
+            announce: None,
         }
     }
 
@@ -198,31 +262,137 @@ impl Skills {
         }
     }
 
-    /// Read every skill from the disk again, and copy an edited library skill into the places it is installed.
+    /// Read every skill from the disk again, and copy an edited library skill into the places it is installed, now.
+    ///
+    /// For after a change the person asked for, whose answer has to name the skills as they are now. A read
+    /// already going on a thread is thrown away when it finishes, because it started before the change.
     pub fn refresh(&mut self) {
-        self.shelf = Shelf::read(&model::Sources {
-            places: &self.places,
-            project: self.project.as_deref(),
-            library: self.folder.as_deref(),
-            bundled: &self.bundled,
-            remote: self.remote.as_ref(),
-            extra: &self.config.folders,
-        });
-        let mut wrote = 0;
-        for skill in &self.shelf.skills {
-            wrote += ops::keep_in_step(skill).unwrap_or(0);
+        self.generation += 1;
+        self.reading = None;
+        self.shelf = read_the_shelf(&self.owned().sources());
+        self.landed();
+    }
+
+    /// Start reading every skill on a thread. The shelf the pane shows stays as it is until the read finishes.
+    pub fn read_in_background(&mut self) {
+        self.generation += 1;
+        let generation = self.generation;
+        let owned = self.owned();
+        let wake = self.fetcher.wake.clone();
+        let (send, answer) = std::sync::mpsc::channel();
+        let started = std::thread::Builder::new()
+            .name("unluminous-skills-read".into())
+            .spawn(move || {
+                let shelf = read_the_shelf(&owned.sources());
+                if send.send(shelf).is_ok() {
+                    if let Some(wake) = wake {
+                        wake();
+                    }
+                }
+            })
+            .is_ok();
+        match started {
+            true => self.reading = Some(Reading { generation, answer }),
+            false => self.refresh(),
         }
-        if wrote > 0 {
-            self.shelf = Shelf::read(&model::Sources {
-                places: &self.places,
-                project: self.project.as_deref(),
-                library: self.folder.as_deref(),
-                bundled: &self.bundled,
-                remote: self.remote.as_ref(),
-                extra: &self.config.folders,
+    }
+
+    /// Take a read the thread finished. True when the shelf changed.
+    fn take_the_read(&mut self) -> bool {
+        let Some(reading) = &self.reading else { return false };
+        let shelf = match reading.answer.try_recv() {
+            Ok(shelf) => shelf,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return false,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.reading = None;
+                return false;
+            }
+        };
+        let current = reading.generation == self.generation;
+        self.reading = None;
+        if current {
+            self.shelf = shelf;
+            self.landed();
+        }
+        current
+    }
+
+    /// Wait for the first read, for a command that names the skills before the pane has finished looking.
+    pub fn wait_for_the_first_read(&mut self) {
+        if self.read {
+            return;
+        }
+        let waited = self
+            .reading
+            .as_ref()
+            .filter(|reading| reading.generation == self.generation)
+            .and_then(|reading| reading.answer.recv_timeout(Duration::from_secs(60)).ok());
+        self.reading = None;
+        match waited {
+            Some(shelf) => {
+                self.shelf = shelf;
+                self.landed();
+            }
+            None => self.refresh(),
+        }
+    }
+
+    /// A read has been put on the shelf.
+    fn landed(&mut self) {
+        self.looked = Some(Instant::now());
+        self.read = true;
+        if let Some(listed) = self.announce.take() {
+            let new = self.shelf.skills.iter().filter(|skill| skill.update).count();
+            self.status = Some(match new {
+                0 => {
+                    format!("unluminous.com lists {listed} skills; everything here is up to date.")
+                }
+                1 => "One skill has an update.".into(),
+                many => format!("{many} skills have updates."),
             });
         }
-        self.looked = Some(Instant::now());
+    }
+
+    /// What a read is told, owned so it can go to a thread.
+    fn owned(&self) -> Owned {
+        Owned {
+            places: self.places.clone(),
+            project: self.project.clone(),
+            library: self.folder.clone(),
+            bundled: self.bundled.clone(),
+            remote: self.remote.clone(),
+            extra: self.config.folders.clone(),
+        }
+    }
+
+    /// Where a skill's picture may be found, or `None` for a skill with no picture, which is drawn with the stand
+    /// in. The key names the picture as well as the skill, so a picture the site changed is asked for again.
+    pub fn picture_wanted(&self, skill: &Skill) -> Option<pictures::Wanted> {
+        let listed = self.remote.as_ref().and_then(|remote| remote.entry(&skill.id));
+        let image = listed
+            .map(|entry| entry.image.as_str())
+            .filter(|image| !image.is_empty())
+            .unwrap_or(skill.entry.image.as_str());
+        if image.is_empty() {
+            return None;
+        }
+        let sha256 = listed
+            .map(|entry| entry.image_sha256.clone())
+            .filter(|sha| !sha.is_empty())
+            .unwrap_or_else(|| skill.entry.image_sha256.clone());
+        let address = self.catalogue_address().map(|catalogue| {
+            format!("{}/{}", fetch::base_of(&catalogue, self.remote.as_ref()), image)
+        });
+        Some(pictures::Wanted {
+            key: format!("{}#{}", skill.id, sha256),
+            shipped: catalogue::bundled_file(&skill.entry.image),
+            kept: self
+                .folder
+                .as_ref()
+                .map(|folder| folder.join("images").join(format!("{}.jpg", skill.id))),
+            address,
+            sha256,
+        })
     }
 
     pub fn skill(&self, id: &str) -> Result<&Skill, String> {
@@ -424,18 +594,12 @@ impl Skills {
         for result in done {
             match result {
                 fetch::Done::Catalogue(Ok(catalogue)) => {
-                    let updates = catalogue.skills.len();
+                    self.announce = Some(catalogue.skills.len());
                     self.remote = Some(catalogue);
                     self.busy = None;
-                    self.refresh();
-                    let new = self.shelf.skills.iter().filter(|skill| skill.update).count();
-                    self.status = Some(match new {
-                        0 => format!(
-                            "unluminous.com lists {updates} skills; everything here is up to date."
-                        ),
-                        1 => "One skill has an update.".into(),
-                        many => format!("{many} skills have updates."),
-                    });
+                    // On a thread, like every read the person did not ask for; the status says what is new
+                    // once it has finished.
+                    self.read_in_background();
                 }
                 fetch::Done::Catalogue(Err(why)) => {
                     self.busy = None;
@@ -486,19 +650,11 @@ impl Skills {
         self.status = Some(lines.join(" "));
     }
 
-    /// The person's picture for a skill: from the binary, or fetched from the site into the plugin's folder.
-    pub fn picture_bytes(&self, skill: &Skill) -> Option<Vec<u8>> {
-        if let Some(bytes) = catalogue::bundled_file(&skill.entry.image) {
-            return Some(bytes.to_vec());
-        }
-        let folder = self.folder.as_ref()?;
-        std::fs::read(folder.join("images").join(format!("{}.jpg", skill.id))).ok()
-    }
-
-    /// Look at the disk again when it is time.
+    /// Look at the disk again when it is time, on a thread.
     fn look_again_when_due(&mut self) {
-        if self.looked.is_none_or(|at| at.elapsed() >= LOOK_AGAIN) {
-            self.refresh();
+        let due = self.looked.is_some_and(|at| at.elapsed() >= LOOK_AGAIN);
+        if due && self.reading.is_none() {
+            self.read_in_background();
         }
     }
 
@@ -548,6 +704,7 @@ impl UiProvider for Skills {
         self.project = context.project.clone();
         self.folder = context.folder.clone();
         self.fetcher.wake = context.wake.clone();
+        self.pictures.wake = context.wake.clone();
         // A window with no settings folder is a test's, and must not read or write the person's own agents'
         // folders: it is given a home of its own under the temporary folder, which `harnesses` names.
         if context.folder.is_none() && std::env::var_os("UNLUMINOUS_HOME").is_none() {
@@ -564,7 +721,8 @@ impl UiProvider for Skills {
         }
         self.scope = self.config.scope;
         self.open = true;
-        self.refresh();
+        // On a thread: opening the pane draws it at once, and it says it is looking until the read lands.
+        self.read_in_background();
         Ok(())
     }
 
@@ -610,8 +768,9 @@ impl UiProvider for Skills {
 
     fn catch_up(&mut self) -> bool {
         let fetched = self.take_what_was_fetched();
+        let read = self.take_the_read();
         self.look_again_when_due();
-        fetched
+        fetched || read
     }
 
     fn asking(&mut self) -> Vec<Request> {
@@ -622,7 +781,7 @@ impl UiProvider for Skills {
         if let Some(project) = project {
             if self.project.as_deref() != Some(project) {
                 self.project = Some(project.to_path_buf());
-                self.refresh();
+                self.read_in_background();
             }
         }
     }

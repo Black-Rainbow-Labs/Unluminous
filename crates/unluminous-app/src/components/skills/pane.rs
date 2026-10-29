@@ -104,12 +104,22 @@ fn the_header(skills: &Skills, rux: &mut Rux<'_>, rect: Rect, scale: f32, acts: 
         Vec2::splat(38.0 * scale),
     );
     let left = disc.right() + 12.0 * scale;
-    let room = (check.left() - left - 12.0 * scale).max(0.0);
+    let mut room = (check.left() - left - 12.0 * scale).max(0.0);
+    // Something is being read or fetched: a turning ring beside the Check button, and the status line says what.
+    if skills.busy.is_some() || !skills.read {
+        let spinner = Rect::from_center_size(
+            Pos2::new(check.left() - 22.0 * scale, rect.center().y),
+            Vec2::splat(22.0 * scale),
+        );
+        rux::components::Spinner::new().diameter(22.0 * scale).bare().show(rux, spinner);
+        room = (spinner.left() - left - 8.0 * scale).max(0.0);
+    }
     kit::heading(rux, Pos2::new(left, rect.center().y - 9.0 * scale), "Skills", 18.0, room);
     let updates = skills.shelf.skills.iter().filter(|skill| skill.update).count();
     let installed = skills.shelf.skills.iter().filter(|skill| skill.is_installed()).count();
     let line = match (&skills.busy, &skills.status) {
         (Some(busy), _) => format!("{busy}\u{2026}"),
+        (None, _) if !skills.read => LOOKING.to_owned(),
         _ => format!(
             "{} skills \u{00B7} {} installed{}",
             skills.shelf.skills.len(),
@@ -172,6 +182,10 @@ fn switch_width(rux: &Rux<'_>, choices: &[String]) -> f32 {
 /// The groups of cards, scrolled.
 fn the_list(skills: &Skills, ui: &mut egui::Ui, list: Rect, scale: f32) -> Vec<Act> {
     let mut acts = Vec::new();
+    if !skills.read {
+        the_first_look(ui, list, scale);
+        return acts;
+    }
     let listed: Vec<&Skill> = skills.listed();
     if listed.is_empty() {
         kit::layer(ui, scale, "skills-pane-empty", list, |rux| {
@@ -242,6 +256,29 @@ fn the_list(skills: &Skills, ui: &mut egui::Ui, list: Rect, scale: f32) -> Vec<A
         },
     );
     acts
+}
+
+/// What the pane says while the skills folders are being read for the first time.
+const LOOKING: &str = "Looking for the skills on this machine\u{2026}";
+
+/// What the list shows until the first read of the skills folders lands: a spinner and a line saying what it is
+/// waiting for. The read is on a thread, so the pane is drawn the frame it is shown - `task-2401`.
+fn the_first_look(ui: &mut egui::Ui, list: Rect, scale: f32) {
+    kit::layer(ui, scale, "skills-pane-looking", list, |rux| {
+        let spinner = Rect::from_center_size(
+            Pos2::new(list.center().x, list.top() + 80.0 * scale),
+            Vec2::splat(56.0 * scale),
+        );
+        rux::components::Spinner::new().diameter(56.0 * scale).show(rux, spinner);
+        let width = rux.measure(rux.zs(Style::sans(12.5)), LOOKING).x;
+        kit::quiet(
+            rux,
+            Pos2::new(list.center().x - width / 2.0, spinner.bottom() + 20.0 * scale),
+            LOOKING,
+            12.5,
+            list.width(),
+        );
+    });
 }
 
 /// The skills under their headings, in the order the headings are drawn.

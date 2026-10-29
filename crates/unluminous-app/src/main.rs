@@ -406,6 +406,12 @@ fn main() -> eframe::Result {
         Box::new(move |cc| {
             unluminous_app::services::frame_trace::mark("eframe-window");
             if let Some(render_state) = cc.wgpu_render_state.as_ref() {
+                // A graphics error, such as a card that has run out of memory, costs a frame and not the
+                // window - `task-2401`.
+                unluminous_app::services::crash_log::survive_graphics_errors(
+                    &render_state.device,
+                    unluminous_app::services::store::folder_for_this_person(),
+                );
                 unluminous_app::services::scene_blur::install(render_state, &cc.egui_ctx);
             }
             let mut app = UnluminousApp::new(folder);

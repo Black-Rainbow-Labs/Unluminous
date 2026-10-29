@@ -39,6 +39,10 @@ pub struct Entry {
     pub sources: Vec<String>,
     /// The picture, as a path inside the skills folder: `images/<id>.jpg`.
     pub image: String,
+    /// Written by the site: the SHA-256 of the picture's bytes, so a picture kept on this machine is known to be
+    /// the one the site has now, and one fetched is checked before it is kept. Empty in a catalogue from before
+    /// `task-2401`.
+    pub image_sha256: String,
     /// Made by Unluminous, which puts it first.
     pub unluminous: bool,
     /// The upstream project's own install line, such as `npx skills add obra/superpowers`, when it has one.
@@ -125,6 +129,7 @@ impl Entry {
             popularity: text(value, "popularity"),
             sources: texts(value, "sources"),
             image: text(value, "image"),
+            image_sha256: text(value, "imageSha256"),
             unluminous: value.get("unluminous").and_then(|field| field.as_bool()).unwrap_or(false),
             install: text(value, "install"),
             stars: value.get("stars").and_then(|field| field.as_u64()).unwrap_or(0),
@@ -290,6 +295,13 @@ mod tests {
                 "{} has its picture {}",
                 entry.id,
                 entry.image
+            );
+            // The shipped picture is the one the site lists, so a fresh install draws it without fetching.
+            assert_eq!(
+                super::super::pictures::sha256_of(bundled_file(&entry.image).unwrap_or_default()),
+                entry.image_sha256,
+                "{}'s picture is the one the catalogue lists",
+                entry.id
             );
             assert!(
                 !entry.name.is_empty() && !entry.summary.is_empty(),
