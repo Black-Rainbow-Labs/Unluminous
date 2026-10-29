@@ -6,7 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.21.0 — 2026-10-29
+## 1.21.1 — 2026-10-29
+
+- Skills found on the machine and the person's own are cards like the catalogue's, with the stand in picture where a skill has none, and a skill's page shows the stand in as its banner (`task-2396`)
+
+## 1.21.0 — 2026-10-28
 
 - The Skills Manager, agent skills for every coding agent (`task-2396`)
 - The Skills Manager keeps the palette and the write rules, counts as a fifth pane, and its stand in glow has no steps (`task-2396`)
