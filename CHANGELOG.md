@@ -6,6 +6,10 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.21.2 — 2026-10-29
+
+- The Skills pane opens at once and a graphics error no longer closes the window (`task-2401`)
+
 ## 1.21.1 — 2026-10-29
 
 - Skills found on the machine and the person's own are cards like the catalogue's, with the stand in picture where a skill has none, and a skill's page shows the stand in as its banner (`task-2396`)
