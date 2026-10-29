@@ -319,11 +319,19 @@ mod tests {
     fn every_skill_a_skill_calls_is_in_the_catalogue_and_its_name_is_in_the_skill_md() {
         let catalogue = bundled();
         let grill_me = catalogue.entry("grill-me").expect("grill-me ships");
-        assert_eq!(grill_me.requires, ["grilling"], "Grill Me is one line without the skill it calls");
+        assert_eq!(
+            grill_me.requires,
+            ["grilling"],
+            "Grill Me is one line without the skill it calls"
+        );
         for entry in &catalogue.skills {
             let text = String::from_utf8_lossy(&bundled_files(&entry.id)["SKILL.md"]).into_owned();
             for needed in &entry.requires {
-                assert!(catalogue.entry(needed).is_some(), "{} calls {needed}, which ships", entry.id);
+                assert!(
+                    catalogue.entry(needed).is_some(),
+                    "{} calls {needed}, which ships",
+                    entry.id
+                );
                 assert!(text.contains(needed.as_str()), "{}'s SKILL.md names {needed}", entry.id);
             }
         }

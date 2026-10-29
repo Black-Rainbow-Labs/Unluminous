@@ -2706,8 +2706,12 @@ fn every_row_of_the_explorers_new_menu_shows_the_picture_of_what_it_makes() {
     steady(&mut harness);
     harness.get_by_label("New").click();
     steady(&mut harness);
-    let entries =
-        unluminous_app::app::actions::explorer_menu(&folder.join("readme.md"), false, false, Aim::AtARow);
+    let entries = unluminous_app::app::actions::explorer_menu(
+        &folder.join("readme.md"),
+        false,
+        false,
+        Aim::AtARow,
+    );
     let Some(Entry::Submenu { entries: new, .. }) = entries.first() else { panic!("New is first") };
     let ctx = harness.ctx.clone();
     let marks = harness.state_mut().marks_for_new_files(&ctx, &entries);
@@ -2731,10 +2735,16 @@ fn every_row_of_the_explorers_new_menu_shows_the_picture_of_what_it_makes() {
         "Page Document (Word compatible)",
         "Spreadsheet (Excel compatible)",
     ] {
-        assert!(matches!(mark_of(name), Some(RowMark::Picture(_))), "{name} shows its plugin's picture");
+        assert!(
+            matches!(mark_of(name), Some(RowMark::Picture(_))),
+            "{name} shows its plugin's picture"
+        );
     }
     for name in ["Text File", "Markdown File"] {
-        assert!(matches!(mark_of(name), Some(RowMark::File { prose: true, .. })), "{name} is a page of writing");
+        assert!(
+            matches!(mark_of(name), Some(RowMark::File { prose: true, .. })),
+            "{name} is a page of writing"
+        );
     }
     assert!(matches!(mark_of("File"), Some(RowMark::File { prose: false, .. })));
     assert!(matches!(mark_of("Folder"), Some(RowMark::Folder)));

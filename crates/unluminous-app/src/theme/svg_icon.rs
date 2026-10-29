@@ -62,7 +62,9 @@ pub static BLOCKS: SvgMark = SvgMark {
     view: 24.0,
     stroke: 1.8,
     parts: &[
-        Part::Path("M2 6a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v7h7a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"),
+        Part::Path(
+            "M2 6a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v7h7a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z",
+        ),
         Part::Path("M2 13H10V21"),
         Part::Rect { x: 13.0, y: 2.0, w: 8.0, h: 8.0, rx: 1.0 },
     ],

@@ -125,7 +125,10 @@ fn a_skill_is_installed_with_the_skills_it_calls_and_its_edit_opens_them_beside_
         files,
         [library.join("grilling").join("SKILL.md"), library.join("grill-me").join("SKILL.md")]
     );
-    assert!(read(&files[0]).contains("Interview the user relentlessly"), "Grilling is the interview");
+    assert!(
+        read(&files[0]).contains("Interview the user relentlessly"),
+        "Grilling is the interview"
+    );
 }
 
 #[test]

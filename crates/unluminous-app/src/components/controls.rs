@@ -1412,7 +1412,8 @@ impl RowMark {
         let fade = |colour: Color32| if enabled { colour } else { colour.gamma_multiply(0.4) };
         match self {
             RowMark::Picture(texture) => {
-                let rect = Rect::from_center_size(centre, Vec2::splat(crate::services::icons::SIZE));
+                let rect =
+                    Rect::from_center_size(centre, Vec2::splat(crate::services::icons::SIZE));
                 painter.image(
                     texture.id(),
                     rect,
@@ -1421,7 +1422,9 @@ impl RowMark {
                 );
             }
             RowMark::Folder => icon::list_folder(painter, centre, fade(color::folder())),
-            RowMark::File { prose, color } => icon::file_mark(painter, centre, *prose, fade(*color), 1.0),
+            RowMark::File { prose, color } => {
+                icon::file_mark(painter, centre, *prose, fade(*color), 1.0)
+            }
         }
     }
 }

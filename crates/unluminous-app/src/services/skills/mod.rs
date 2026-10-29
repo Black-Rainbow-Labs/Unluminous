@@ -458,8 +458,10 @@ impl Skills {
         let mut lines = vec![report.said()];
         lines.extend(self.install_what_it_calls(&skill, harnesses, scope));
         self.refresh();
-        Ok(lines.join("
-"))
+        Ok(lines.join(
+            "
+",
+        ))
     }
 
     /// Install for `harnesses` every skill `skill` calls with the Skill tool, and every skill those call
@@ -481,7 +483,10 @@ impl Skills {
             }
             done.push(id.clone());
             let Some(called) = self.shelf.get(&id).cloned() else {
-                lines.push(format!("{} calls {id}, which Unluminous does not have.", skill.entry.name));
+                lines.push(format!(
+                    "{} calls {id}, which Unluminous does not have.",
+                    skill.entry.name
+                ));
                 continue;
             };
             waiting.extend(called.entry.requires.iter().cloned());
