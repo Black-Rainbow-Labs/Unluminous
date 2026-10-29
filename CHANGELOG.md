@@ -6,6 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.20.2 — 2026-10-29
+
+- One menu frame everywhere, workbook flyouts open beside their row, plugin entries only while they apply, Word is Page, pane headers line up with an x to close, and more types under New (`task-2397`)
+- The every action walk makes a Page document and a workbook from the explorer's New menu (`task-2397`)
+- Accept the pictures for the taller headers and the shared menu card; the chat selection tests start below the chat's own buttons (`task-2397`)
+
 ## 1.20.1 — 2026-10-28
 
 - The conversation ends above the approval card, a long path shows its end, and a ticket's menu comment carries what the menu is about (`task-2392`)
