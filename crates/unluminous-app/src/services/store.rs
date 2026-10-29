@@ -1158,6 +1158,10 @@ theme.comment = #6272A4
                 "a scripted agent and an older conversation file, written into a temporary folder",
             ),
             (
+                "services/skills/tests.rs",
+                "skill folders the Skills Manager tests write into a temporary folder",
+            ),
+            (
                 "services/spreadsheet/tests.rs",
                 "a CSV fixture the provider tests write into a temporary folder",
             ),

@@ -283,15 +283,18 @@ pub fn new_skill(
     if !frontmatter::is_a_good_name(&id) {
         return Err("A skill's name is letters, digits and dashes, such as release-notes.".into());
     }
-    if taken.iter().any(|known| *known == id) {
+    if taken.contains(&id) {
         return Err(format!("There is already a skill called {id}."));
     }
     let folder = here.library_for(&id)?;
     std::fs::create_dir_all(&folder)
         .map_err(|problem| format!("could not make {}: {problem}", folder.display()))?;
     let file = folder.join("SKILL.md");
-    std::fs::write(&file, frontmatter::starter(&id, description))
-        .map_err(|problem| format!("could not write {}: {problem}", file.display()))?;
+    crate::services::store::write_a_source_file(
+        &file,
+        frontmatter::starter(&id, description).as_bytes(),
+    )
+    .map_err(|problem| format!("could not write {}: {problem}", file.display()))?;
     Record { source: Source::Mine.name().into(), origin: String::new() }.write(&folder)?;
     Ok(file)
 }
@@ -299,7 +302,7 @@ pub fn new_skill(
 /// Replace a skill's `SKILL.md` with `text`, writing what shipped into the library first.
 pub fn write_text(here: &Here<'_>, skill: &Skill, text: &str) -> Result<PathBuf, String> {
     let file = file_to_edit(here, skill)?;
-    std::fs::write(&file, text)
+    crate::services::store::write_a_source_file(&file, text.as_bytes())
         .map_err(|problem| format!("could not write {}: {problem}", file.display()))?;
     Ok(file)
 }

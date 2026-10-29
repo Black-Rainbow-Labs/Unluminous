@@ -249,7 +249,7 @@ pub fn write_folder(folder: &std::path::Path, files: &Files) -> Result<(), Strin
             std::fs::create_dir_all(parent)
                 .map_err(|problem| format!("could not make {}: {problem}", parent.display()))?;
         }
-        std::fs::write(&target, bytes)
+        crate::services::store::write_a_source_file(&target, bytes)
             .map_err(|problem| format!("could not write {}: {problem}", target.display()))?;
     }
     Ok(())

@@ -132,9 +132,10 @@ impl Record {
     pub fn write(&self, folder: &Path) -> Result<(), String> {
         let value = serde_json::json!({ "source": self.source, "origin": self.origin });
         let text = serde_json::to_string_pretty(&value).unwrap_or_default();
-        std::fs::write(folder.join(catalogue::RECORD), text).map_err(|problem| {
-            format!("could not write the skill's record in {}: {problem}", folder.display())
-        })
+        crate::services::store::write_atomically(&folder.join(catalogue::RECORD), text.as_bytes())
+            .map_err(|problem| {
+                format!("could not write the skill's record in {}: {problem}", folder.display())
+            })
     }
 }
 

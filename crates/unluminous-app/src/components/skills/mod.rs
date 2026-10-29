@@ -195,7 +195,7 @@ pub fn paint_cover(
         }
     };
     painter.add(
-        egui::epaint::RectShape::filled(rect, corners, egui::Color32::WHITE)
+        egui::epaint::RectShape::filled(rect, corners, egui::Color32::WHITE) // any ground: a picture's own colours
             .with_texture(texture.id(), uv),
     );
 }
@@ -212,24 +212,36 @@ pub fn paint_placeholder(
         id.bytes().fold(7u32, |sum, byte| sum.wrapping_mul(31).wrapping_add(u32::from(byte)));
     let hue = (seed % 360) as f32 / 360.0;
     let glow: egui::Color32 = egui::ecolor::Hsva::new(hue, 0.65, 0.85, 1.0).into();
-    painter.rect_filled(rect, corners, egui::Color32::from_rgb(10, 13, 20));
+    painter.rect_filled(rect, corners, egui::Color32::BLACK); // any ground: it stands in for a dark picture
     let clipped = painter.with_clip_rect(rect.intersect(painter.clip_rect()));
     let centre = egui::pos2(rect.left() + rect.width() * 0.62, rect.top() + rect.height() * 0.45);
     let reach = rect.width().max(rect.height()) * 0.55;
-    for step in 0..14 {
-        let share = 1.0 - step as f32 / 14.0;
-        clipped.circle_filled(
-            centre,
-            reach * share,
-            glow.gamma_multiply(0.035 + 0.02 * (1.0 - share)),
-        );
+    // A radial glow as one mesh whose colours are blended between three rings, so it has no visible steps.
+    let rings = [(0.0, 0.42), (0.4, 0.16), (1.0, 0.0)];
+    let around = 72;
+    let mut mesh = egui::Mesh::default();
+    for (radius, strength) in rings {
+        for index in 0..around {
+            let angle = index as f32 / around as f32 * std::f32::consts::TAU;
+            let at = centre + egui::vec2(angle.cos(), angle.sin()) * reach * radius;
+            mesh.colored_vertex(at, glow.gamma_multiply(strength));
+        }
     }
+    for ring in 0..rings.len() as u32 - 1 {
+        for index in 0..around as u32 {
+            let next = (index + 1) % around as u32;
+            let (inner, outer) = (ring * around as u32, (ring + 1) * around as u32);
+            mesh.add_triangle(inner + index, outer + index, outer + next);
+            mesh.add_triangle(inner + index, outer + next, inner + next);
+        }
+    }
+    clipped.add(mesh);
     let side = rect.height().min(rect.width()) * 0.34;
     crate::theme::svg_icon::paint(
         &clipped,
         centre,
         side,
         &crate::theme::svg_icon::BLOCKS,
-        egui::Color32::from_white_alpha(170),
+        egui::Color32::from_white_alpha(170), // any ground: the mark on the dark stand in
     );
 }

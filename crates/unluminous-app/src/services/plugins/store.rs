@@ -601,7 +601,9 @@ mod tests {
         // what `task-1697`'s docking bought and what makes this one manifest line rather than a rewrite.
         // The Designer is the fourth, `task-2254`: its pane lists the designs and the design itself is a tab the
         // window draws, which is not a contributed tab because a design is a file and not one fixed surface.
-        assert_eq!(surfaces.panes.len(), 4, "every plugin that draws asks for a pane");
+        // The Skills Manager is the fifth, `task-2396`.
+        assert_eq!(surfaces.panes.len(), 5, "every plugin that draws asks for a pane");
+        assert!(surfaces.pane("skills/skills").is_some());
         assert!(surfaces.pane("designer/designs").is_some());
         assert!(surfaces.pane("agent-chat/chat").is_some());
         assert!(surfaces.pane("database/explorer").is_some());
@@ -612,8 +614,8 @@ mod tests {
         assert!(surfaces.tab("database/workspace").is_none());
         // The Spreadsheet plugin (`task-2338`) adds a menu and a page and no pane: a workbook is a tab.
         // The Word plugin (`task-2341`) is the same: a menu and a page, and a document is a tab.
-        assert_eq!(surfaces.menus.len(), 6);
-        assert_eq!(surfaces.pages.len(), 6);
+        assert_eq!(surfaces.menus.len(), 7);
+        assert_eq!(surfaces.pages.len(), 7);
         // Switching one off withdraws every contribution of that plugin at once, which is the rule
         // `Plugins::renders` already keeps for a Mermaid diagram: the window asks before it draws.
         plugins.set_enabled(None, "agent-tasks", false);
@@ -622,6 +624,7 @@ mod tests {
         plugins.set_enabled(None, "designer", false);
         plugins.set_enabled(None, "spreadsheet", false);
         plugins.set_enabled(None, "word", false);
+        plugins.set_enabled(None, "skills", false);
         assert!(plugins.surfaces().is_empty(), "a plugin that is off contributes nothing");
         plugins.set_enabled(None, "agent-tasks", true);
         plugins.set_enabled(None, "agent-chat", true);

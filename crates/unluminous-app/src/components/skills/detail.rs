@@ -20,9 +20,12 @@ const MARGIN: f32 = 16.0;
 const ROW: f32 = 40.0;
 const BUTTONS: f32 = 40.0;
 
+/// Which SKILL.md was laid out: the skill, its hash, the width and the type size.
+type TextKey = (String, String, u32, u32);
+
 thread_local! {
     /// The `SKILL.md` laid out last, by skill, hash and width, so a frame that changed nothing lays out nothing.
-    static TEXT: RefCell<Option<((String, String, u32, u32), Rendered)>> = const { RefCell::new(None) };
+    static TEXT: RefCell<Option<(TextKey, Rendered)>> = const { RefCell::new(None) };
 }
 
 /// Draw the page of the skill `id` and report what was pressed.
@@ -194,7 +197,7 @@ fn laid_out(skill: &Skill, text: &str, look: &Look<'_>, width: f32) -> f32 {
 fn description_height(ui: &egui::Ui, skill: &Skill, width: f32, scale: f32) -> f32 {
     let words = description_of(skill);
     let font = egui::FontId::proportional(12.5 * scale);
-    let galley = ui.painter().layout(words, font, egui::Color32::WHITE, width);
+    let galley = ui.painter().layout(words, font, egui::Color32::WHITE, width); // any ground: measured, never painted
     galley.size().y * 1.25
 }
 

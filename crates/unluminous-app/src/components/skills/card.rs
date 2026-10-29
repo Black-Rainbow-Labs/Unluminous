@@ -72,7 +72,11 @@ pub fn show(skills: &Skills, ui: &mut egui::Ui, rect: Rect, skill: &Skill, scale
             None => super::paint_placeholder(rux.painter(), top, &skill.id, corners),
         }
         if response.hovered() {
-            rux.painter().rect_filled(rect, radius, egui::Color32::from_white_alpha(8));
+            rux.painter().rect_filled(
+                rect,
+                radius,
+                crate::theme::color::hover_wash().gamma_multiply(8.0 / 255.0),
+            );
         }
         the_corner_label(rux, top, skill, scale);
         let inner = match wide {
@@ -155,7 +159,7 @@ fn the_corner_label(rux: &mut rux::Rux<'_>, top: Rect, skill: &Skill, scale: f32
         (_, _, Source::Catalogue) => skill.entry.category.clone(),
     };
     let style = rux.zs(Style::mono(10.0));
-    let colour = egui::Color32::from_rgb(233, 236, 244);
+    let colour = egui::Color32::WHITE; // any ground: the words sit on the dark pill drawn over a picture
     let galley = rux.text(style, &words.to_uppercase(), colour);
     let pill = Rect::from_min_size(
         Pos2::new(top.left() + 12.0 * scale, top.top() + 12.0 * scale),
@@ -163,7 +167,7 @@ fn the_corner_label(rux: &mut rux::Rux<'_>, top: Rect, skill: &Skill, scale: f32
     );
     let ground = match skill.update {
         true => rux.theme().chat.sky.gamma_multiply(0.85),
-        false => egui::Color32::from_black_alpha(150),
+        false => egui::Color32::from_black_alpha(150), // any ground: a pill over a picture, whatever the theme
     };
     rux.painter().rect_filled(pill, pill.height() / 2.0, ground);
     rux::text::draw_centred(rux.painter(), pill, galley, colour);
