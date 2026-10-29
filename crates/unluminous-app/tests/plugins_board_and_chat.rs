@@ -2442,6 +2442,9 @@ fn the_history_lists_each_conversation_on_two_lines() {
         .duration_since(std::time::UNIX_EPOCH)
         .expect("a clock after 1970")
         .as_secs();
+    // Thirty seconds past each boundary: the window draws ages from the clock it was built with, which can be a
+    // second before `now` here, and on a boundary that second turned 2m, 3h and 2d into 1m, 2h and 1d.
+    let now = now - 30;
     with_the_chat(&mut harness, move |chat| {
         let open = chat.chat().id.clone();
         chat.show_this_history(vec![
