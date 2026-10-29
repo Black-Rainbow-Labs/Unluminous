@@ -8,16 +8,21 @@
 use egui::{Pos2, Rect, Vec2};
 
 use super::Act;
+use crate::components::designer::kit as draw;
 use crate::components::modal;
 use crate::components::realm::dialog;
 use crate::components::settings_kit::{self as kit, Column};
 use crate::services::plugin_ui::{Look, Request};
 use crate::services::skills::harness::{self, Scope, HARNESSES};
-use crate::services::skills::{Modal, Skills};
+use crate::services::skills::{frontmatter, Modal, Skills};
 
 const NEW_ID: &str = "unluminous-skills-new";
 const DELETE_ID: &str = "unluminous-skills-delete";
 const WIDTH: f32 = 480.0;
+/// The New Skill dialog's sentence, the label over the name, and the line under it.
+const INTRO: f32 = 58.0;
+const LABEL: f32 = 24.0;
+const NOTE: f32 = 26.0;
 
 /// The Skills page in the Settings window.
 pub fn settings_page(skills: &mut Skills, ui: &mut egui::Ui, _look: &Look<'_>) -> Vec<Request> {
@@ -157,12 +162,17 @@ fn new_skill(
     skills: &mut Skills,
     ctx: &egui::Context,
     mut name: String,
-    mut description: String,
+    description: String,
 ) -> Vec<Act> {
     let mut acts = Vec::new();
+    let taken: Vec<String> = skills.shelf.skills.iter().map(|skill| skill.id.clone()).collect();
     let height = dialog::PAD_Y * 2.0
         + dialog::CLOSE
-        + (dialog::GAP + dialog::SEARCH) * 2.0
+        + dialog::GAP
+        + INTRO
+        + LABEL
+        + dialog::SEARCH
+        + NOTE
         + dialog::GAP
         + dialog::BUTTON;
     let (_, escaped) = modal::show_unframed(ctx, NEW_ID, WIDTH, height, |ui, area| {
@@ -172,33 +182,58 @@ fn new_skill(
             if dialog::heading(rux, inner, "New Skill") {
                 acts.push(Act::CloseModal);
             }
-            let first = Rect::from_min_size(
-                Pos2::new(inner.left(), inner.top() + dialog::CLOSE + dialog::GAP),
+            let mut y = inner.top() + dialog::CLOSE + dialog::GAP;
+            draw::paragraph(
+                rux,
+                Pos2::new(inner.left(), y),
+                inner.width(),
+                "A skill is a SKILL.md that an agent reads when its description matches what you ask. Name it here; it opens in the Markdown editor beside its preview, with a starter to fill in.",
+                12.0,
+            );
+            y += INTRO;
+            draw::quiet(rux, Pos2::new(inner.left() + 2.0, y + LABEL / 2.0), "Name", 11.5, 120.0);
+            y += LABEL;
+            let well = Rect::from_min_size(
+                Pos2::new(inner.left(), y),
                 Vec2::new(inner.width(), dialog::SEARCH),
             );
-            let second = first.translate(Vec2::new(0.0, dialog::SEARCH + dialog::GAP));
-            let response =
-                dialog::search(rux, first, "Skill name", "Name, such as release-notes", &mut name);
-            if !response.has_focus() && rux.ui.memory(|memory| memory.focused().is_none()) {
-                response.request_focus();
-            }
-            dialog::search(
+            draw::carved_field(
                 rux,
-                second,
-                "When to use it",
-                "When an agent should use it",
-                &mut description,
+                well,
+                dialog::SEARCH / 2.0,
+                &mut name,
+                "release-notes",
+                "Skill name",
+                "skills-new-name",
+                false,
+                13.0,
             );
-            let ready = !name.trim().is_empty();
-            match dialog::footer(rux, inner, &[("Cancel", false)], ("Create", ready)) {
+            let id = frontmatter::tidy_name(&name);
+            let (note, ready) = match () {
+                _ if name.trim().is_empty() => {
+                    ("Lowercase letters, digits and dashes.".to_owned(), false)
+                }
+                _ if taken.contains(&id) => {
+                    (format!("There is already a skill called {id}."), false)
+                }
+                _ => (format!("It will be called {id}, in the library of your own skills."), true),
+            };
+            draw::quiet(
+                rux,
+                Pos2::new(inner.left() + 2.0, well.bottom() + NOTE / 2.0),
+                &note,
+                11.0,
+                inner.width(),
+            );
+            match dialog::footer(rux, inner, &[("Cancel", false)], ("Create and Edit", ready)) {
                 Some(0) => acts.push(Act::CloseModal),
                 Some(_) if ready => acts.push(Act::CreateSkill(name.clone(), description.clone())),
                 _ => {}
             }
+            if ready && modal::Confirm::Enter.pressed(rux.ui) {
+                acts.push(Act::CreateSkill(name.clone(), description.clone()));
+            }
         });
-        if modal::Confirm::Enter.pressed(ui) && !name.trim().is_empty() {
-            acts.push(Act::CreateSkill(name.clone(), description.clone()));
-        }
     });
     if escaped {
         acts.push(Act::CloseModal);

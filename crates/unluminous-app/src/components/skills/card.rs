@@ -7,7 +7,7 @@ use rux::{Fill, Style};
 
 use super::Act;
 use crate::components::designer::kit;
-use crate::services::skills::harness::{Scope, HARNESSES};
+use crate::services::skills::harness::Scope;
 use crate::services::skills::model::{Skill, Source};
 use crate::services::skills::Skills;
 
@@ -104,7 +104,7 @@ pub fn show(skills: &Skills, ui: &mut egui::Ui, rect: Rect, skill: &Skill, scale
         let by = match skill.source {
             Source::Found => "Found on this machine".to_owned(),
             _ if skill.entry.author.is_empty() => skill.entry.category.clone(),
-            _ if skill.entry.stars > 0 => format!(
+            _ if skill.entry.stars > 0 && skill.source == Source::Catalogue => format!(
                 "{} \u{00B7} {} stars on GitHub",
                 skill.entry.author,
                 crate::services::skills::catalogue::stars_said(skill.entry.stars)
@@ -114,7 +114,16 @@ pub fn show(skills: &Skills, ui: &mut egui::Ui, rect: Rect, skill: &Skill, scale
         kit::quiet(rux, Pos2::new(inner.left(), inner.top() + 27.0 * scale), &by, 11.0, room);
         summary(rux, inner, &skill.entry.summary, scale);
         let foot = inner.bottom() - 15.0 * scale;
-        the_discs(skills, rux, Pos2::new(inner.left(), foot), skill, scope, scale);
+        if installed {
+            let words = format!("Installed \u{00B7} {}", scope.label());
+            kit::quiet(
+                rux,
+                Pos2::new(inner.left(), foot),
+                &words,
+                11.0,
+                inner.width() - 50.0 * scale,
+            );
+        }
         let button = Rect::from_center_size(
             Pos2::new(inner.right() - 15.0 * scale, foot),
             Vec2::splat(30.0 * scale),
@@ -137,6 +146,102 @@ pub fn show(skills: &Skills, ui: &mut egui::Ui, rect: Rect, skill: &Skill, scale
                 (true, _) => Act::Update(skill.id.clone()),
                 (false, true) => Act::Remove(skill.id.clone(), None, scope),
                 (false, false) => Act::Install(skill.id.clone(), None, scope),
+            });
+        }
+    });
+    if acts.is_empty() && response.clicked() {
+        acts.push(Act::Open(skill.id.clone()));
+    }
+    acts
+}
+
+/// How tall a row is, for a skill with no picture.
+pub const ROW: f32 = 64.0;
+
+/// One skill of the person's own, or one found on the machine, as a row: the blocks mark in a carved disc, the
+/// name and what it does, how many agents read it, and the same round button a card has. Pressing the row opens
+/// the skill's page.
+pub fn row(skills: &Skills, ui: &mut egui::Ui, rect: Rect, skill: &Skill, scale: f32) -> Vec<Act> {
+    let mut acts = Vec::new();
+    let response = ui.interact(rect, ui.id().with(("skill-row", &skill.id)), Sense::click());
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    let name = skill.entry.name.clone();
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Skill: {name}"))
+    });
+    let scope = skills.scope_now();
+    let installed = installed_for_the_chosen(skills, skill, scope);
+    super::roomy_layer(ui, scale, ("skill-row-surface", &skill.id), rect, |rux| {
+        let chat = rux.theme().chat;
+        let ink = rux.theme().ink;
+        let radius = 18.0 * scale;
+        rux.chrome.surface(rect, radius, Fill::gradient(chat.card, rect), chat.raised_sm());
+        if response.hovered() {
+            rux.painter().rect_filled(
+                rect,
+                radius,
+                crate::theme::color::hover_wash().gamma_multiply(8.0 / 255.0),
+            );
+        }
+        let disc = Rect::from_center_size(
+            Pos2::new(rect.left() + 32.0 * scale, rect.center().y),
+            Vec2::splat(36.0 * scale),
+        );
+        rux::components::chip_disc(rux, disc);
+        crate::theme::svg_icon::paint(
+            rux.painter(),
+            disc.center(),
+            17.0 * scale,
+            &crate::theme::svg_icon::BLOCKS,
+            chat.sky,
+        );
+        let button = Rect::from_center_size(
+            Pos2::new(rect.right() - 28.0 * scale, rect.center().y),
+            Vec2::splat(30.0 * scale),
+        );
+        let left = disc.right() + 14.0 * scale;
+        let room = button.left() - left - 14.0 * scale;
+        let title = rux.zs(Style::sans(13.0).semibold());
+        let galley = rux.elided(title, &skill.entry.name, ink.i900, room);
+        rux::text::draw_left_capitals(
+            rux.painter(),
+            Pos2::new(left, rect.center().y - 9.0 * scale),
+            galley,
+            title,
+            ink.i900,
+        );
+        let readers = [Scope::Project, Scope::Global]
+            .iter()
+            .map(|scope| {
+                crate::services::skills::model::seen_by_ids(
+                    skill,
+                    &skills.places,
+                    *scope,
+                    skills.project.as_deref(),
+                )
+                .len()
+            })
+            .max()
+            .unwrap_or(0);
+        let mut line = skill.entry.summary.clone();
+        if readers > 0 {
+            line = format!("{readers} agents read it \u{00B7} {line}");
+        }
+        kit::quiet(rux, Pos2::new(left, rect.center().y + 10.0 * scale), &line, 11.0, room);
+        let (icon, label) = match installed {
+            true => (Icon::Tick, format!("Remove {} from {}", skill.entry.name, scope.label())),
+            false => (Icon::Plus, format!("Install {} for {}", skill.entry.name, scope.label())),
+        };
+        let pressed = rux::components::ChipButton::new(icon, 30.0, &label)
+            .mark(14.0, Some(1.8))
+            .show(rux, button)
+            .clicked();
+        if pressed {
+            acts.push(match installed {
+                true => Act::Remove(skill.id.clone(), None, scope),
+                false => Act::Install(skill.id.clone(), None, scope),
             });
         }
     });
@@ -190,41 +295,10 @@ fn summary(rux: &mut rux::Rux<'_>, inner: Rect, words: &str, scale: f32) {
     );
     job.wrap = egui::text::TextWrapping {
         max_width: inner.width().max(1.0),
-        max_rows: 2,
+        max_rows: 3,
         break_anywhere: false,
         overflow_character: Some('\u{2026}'),
     };
     let galley = rux.painter().layout_job(job);
     rux.painter().galley(Pos2::new(inner.left(), inner.top() + 42.0 * scale), galley, ink);
-}
-
-/// A small disc for each agent an install is for, lit where it reads the skill in `scope`.
-fn the_discs(
-    skills: &Skills,
-    rux: &mut rux::Rux<'_>,
-    left: Pos2,
-    skill: &Skill,
-    scope: Scope,
-    scale: f32,
-) {
-    let chosen = skills.config.chosen_harnesses(&skills.places);
-    let shown: Vec<_> =
-        HARNESSES.iter().filter(|harness| chosen.contains(harness)).take(6).collect();
-    let chat = rux.theme().chat;
-    let ink = rux.theme().ink;
-    let diameter = 22.0 * scale;
-    for (index, harness) in shown.iter().enumerate() {
-        let centre =
-            Pos2::new(left.x + diameter / 2.0 + index as f32 * (diameter + 4.0 * scale), left.y);
-        let disc = Rect::from_center_size(centre, Vec2::splat(diameter));
-        let seen = skill.seen_by(&skills.places, harness, scope, skills.project.as_deref());
-        let (ground, words) = match seen {
-            true => (chat.sky, crate::theme::color::on_accent()),
-            false => (chat.well, ink.i400),
-        };
-        rux.painter().circle_filled(disc.center(), diameter / 2.0, ground);
-        let style = rux.zs(Style::sans(9.0).semibold());
-        let galley = rux.text(style, harness.initials, words);
-        rux::text::draw_centred(rux.painter(), disc, galley, words);
-    }
 }

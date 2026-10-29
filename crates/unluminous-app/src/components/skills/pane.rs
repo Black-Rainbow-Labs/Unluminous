@@ -221,6 +221,22 @@ fn the_list(skills: &Skills, ui: &mut egui::Ui, list: Rect, scale: f32) -> Vec<A
                     );
                 });
                 y += HEADING * scale;
+                // A skill of the person's own, or one found on the machine, has no picture: it is a row rather
+                // than a card, so the pictures the catalogue has are what the grid is made of.
+                if matches!(source, Source::Mine | Source::Found) {
+                    for skill in members {
+                        let rect = Rect::from_min_size(
+                            Pos2::new(left, y),
+                            Vec2::new(width, card::ROW * scale),
+                        );
+                        if ui.is_rect_visible(rect.expand(kit::REACH * scale)) {
+                            acts.extend(card::row(skills, ui, rect, skill, scale));
+                        }
+                        y += (card::ROW + 8.0) * scale;
+                    }
+                    y += GAP * scale;
+                    continue;
+                }
                 for (index, skill) in members.iter().enumerate() {
                     let (row, column) = (index / columns, index % columns);
                     let rect = Rect::from_min_size(
@@ -247,7 +263,7 @@ fn the_list(skills: &Skills, ui: &mut egui::Ui, list: Rect, scale: f32) -> Vec<A
 /// The skills under their headings, in the order the headings are drawn.
 fn grouped<'a>(listed: &[&'a Skill]) -> Vec<(Source, Vec<&'a Skill>)> {
     let mut groups: Vec<(Source, Vec<&'a Skill>)> = Vec::new();
-    for source in [Source::Unluminous, Source::Mine, Source::Found, Source::Catalogue] {
+    for source in [Source::Unluminous, Source::Catalogue, Source::Mine, Source::Found] {
         let members: Vec<&Skill> =
             listed.iter().copied().filter(|skill| skill.source == source).collect();
         if !members.is_empty() {

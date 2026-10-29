@@ -134,3 +134,11 @@ fn skills_page() {
     steady(&mut harness);
     harness.snapshot(shot("skills_page").as_str());
 }
+
+#[test]
+fn skills_new_dialog() {
+    let (_folder, _home, mut harness) = a_window("unluminous-skills-shot-new");
+    harness.get_by_label("New Skill").click();
+    steady(&mut harness);
+    harness.snapshot(shot("skills_new_dialog").as_str());
+}

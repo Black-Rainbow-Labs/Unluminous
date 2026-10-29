@@ -308,7 +308,7 @@ impl Skills {
             return self.fetch_the_files(&skill, After::Edit);
         }
         let file = ops::file_to_edit(&self.here(), &skill)?;
-        self.outbox.push(Request::OpenFile(file.clone()));
+        self.open_beside_its_preview(&file);
         self.refresh();
         Ok(format!("Opened {}. Saving it updates every place {id} is installed.", file.display()))
     }
@@ -322,11 +322,24 @@ impl Skills {
         self.refresh();
         let taken: Vec<String> = self.shelf.skills.iter().map(|skill| skill.id.clone()).collect();
         let file = ops::new_skill(&self.here(), name, description, &taken)?;
-        self.outbox.push(Request::OpenFile(file.clone()));
+        self.open_beside_its_preview(&file);
         self.refresh();
         let id = frontmatter::tidy_name(name);
         self.viewing = Some(id.clone());
         Ok((id, file))
+    }
+
+    /// Open a `SKILL.md` in a tab of the editing area, shown side by side with its Markdown preview, which is the
+    /// editor made for writing one. The view is the window's `view-side` menu entry, asked for down `run_cli`.
+    fn open_beside_its_preview(&mut self, file: &Path) {
+        self.outbox.push(Request::OpenFile(file.to_path_buf()));
+        let mut arguments = serde_json::Map::new();
+        arguments.insert("name".into(), serde_json::Value::String("view-side".into()));
+        self.outbox.push(Request::RunCommand {
+            id: "skills-view-side".into(),
+            command: "action.run".into(),
+            arguments,
+        });
     }
 
     /// Take the site's newer files for a skill.

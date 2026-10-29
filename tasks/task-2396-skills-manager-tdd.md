@@ -15,7 +15,9 @@ Three parts, each with one owner.
    folder in the Agent Skills format: a `SKILL.md` with YAML frontmatter (`name`, `description`) and any
    scripts, references or assets beside it. `skills/catalogue.json` says what the site and the plugin need to
    know about each one that the files do not: the display name, the author, the licence, the source repository,
-   the category, the tags, the popularity evidence and the picture. Every file under `skills/` is compiled into
+   the category, the tags, the GitHub stars, the popularity evidence and the picture. The list is the 75 most used
+   skills of the last three months (by skills.sh installs and GitHub stars) and the three Unluminous makes, and
+   every summary says what the skill does and why that helps. Every file under `skills/` is compiled into
    the binary by `build.rs`, so a fresh install shows all of them with no network.
 2. **The site publishes the same folder.** `sites/unluminous/scripts/sync-skills.mjs` in
    black-rainbow-labs-sites copies `skills/` from the Unluminous checkout into `public/skills/`, works out a
@@ -147,9 +149,12 @@ The Skills Manager pane docks on the right, 760 points wide. From the top:
    round button: `+` installs into the chosen scope for every harness that is on, a tick says it is installed
    there, an arrow says there is an update. `Unluminous` skills are under their own heading first, then `Mine`,
    then `Found on this machine`, then the catalogue by popularity.
-5. **A card opens the skill's page in the pane**: a back chip, the picture as a banner, the name and author, the
-   buttons (`Edit SKILL.md`, `Reveal`, `Reset` or `Delete`, `Update`), an install table with one row per harness
-   and a switch for `Project` and one for `Global`, and the `SKILL.md` drawn as Markdown under it.
+5. **A card opens the skill's page in the pane**: a back chip, the picture as a banner, the name, author and stars,
+   the description, `View / Edit` (the `SKILL.md` in a tab), `Update` and `Reset` when they apply, and two round
+   icon buttons, Reveal and the trash (which removes the skill from every agent, or deletes one of the person's own,
+   and is dimmed while the skill is installed nowhere). Under them, the agents found on this machine, one
+   `Project` or `Global` switch for the list, and one `Install` or `Remove` button an agent. The `SKILL.md` is not
+   printed on the page; Jason asked for it to be reached through `View / Edit`.
 
 `New Skill` asks for a name and a one line description, writes `library/<name>/SKILL.md` from a starter, and opens
 it in a tab. `Edit SKILL.md` opens the library copy in a tab (writing it into the library first for a bundled

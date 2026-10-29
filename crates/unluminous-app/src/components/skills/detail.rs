@@ -30,7 +30,13 @@ pub fn show(skills: &Skills, id: &str, ui: &mut egui::Ui, look: &Look<'_>) -> Ve
     let mut acts = Vec::new();
     let inner = area.shrink(MARGIN * scale);
     let width = inner.width() - 10.0 * scale;
-    let banner_height = (width * 0.34).min(230.0 * scale);
+    // A skill with no picture, the person's own or one found on the machine, has no banner at all rather than a
+    // stand in.
+    let picture = super::picture(skills, ui.ctx(), &skill.id);
+    let banner_height = match picture {
+        Some(_) => (width * 0.34).min(230.0 * scale),
+        None => 0.0,
+    };
     let description_height = description_height(ui, skill, width, scale);
     let rows = agents_here(skills).len() as f32;
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner));
@@ -59,7 +65,6 @@ pub fn show(skills: &Skills, id: &str, ui: &mut egui::Ui, look: &Look<'_>) -> Ve
                 Pos2::new(top.x, buttons.bottom() + 22.0 * scale),
                 Vec2::new(width, (rows * ROW + HEAD + 8.0) * scale),
             );
-            let picture = super::picture(skills, ui.ctx(), &skill.id);
             kit::layer(
                 ui,
                 scale,
@@ -71,25 +76,19 @@ pub fn show(skills: &Skills, id: &str, ui: &mut egui::Ui, look: &Look<'_>) -> Ve
                         acts.push(Act::Back);
                     }
                     let radius = 20.0 * scale;
-                    rux.chrome.surface(
-                        banner,
-                        radius,
-                        rux.theme().chat.well,
-                        rux.theme().chat.carved_sm(),
-                    );
-                    match &picture {
-                        Some(texture) => super::paint_cover(
+                    if let Some(texture) = &picture {
+                        rux.chrome.surface(
+                            banner,
+                            radius,
+                            rux.theme().chat.well,
+                            rux.theme().chat.carved_sm(),
+                        );
+                        super::paint_cover(
                             rux.painter(),
                             banner,
                             texture,
                             CornerRadius::same(radius as u8),
-                        ),
-                        None => super::paint_placeholder(
-                            rux.painter(),
-                            banner,
-                            &skill.id,
-                            CornerRadius::same(radius as u8),
-                        ),
+                        );
                     }
                     the_words(rux, words, skill, scale);
                     acts.extend(the_buttons(rux, buttons, skill, scale));
@@ -136,7 +135,7 @@ fn the_words(rux: &mut rux::Rux<'_>, rect: Rect, skill: &Skill, scale: f32) {
     if !skill.entry.license.is_empty() {
         by.push(skill.entry.license.clone());
     }
-    if skill.entry.stars > 0 {
+    if skill.entry.stars > 0 && skill.source == Source::Catalogue {
         by.push(format!("{} GitHub stars", group_digits(skill.entry.stars)));
     }
     if !skill.entry.popularity.is_empty() && skill.source == Source::Catalogue {
