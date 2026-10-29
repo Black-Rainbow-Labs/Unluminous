@@ -66,7 +66,8 @@ pub fn parse(text: &str) -> Frontmatter {
         }
         let Some((key, value)) = line.split_once(':') else { continue };
         let value = value.trim();
-        let block = matches!(value, ">" | "|" | ">-" | "|-" | ">+" | "|+");
+        // A block (`>`, `|` and their kin), or a plain value written on the indented lines under an empty key.
+        let block = matches!(value, "" | ">" | "|" | ">-" | "|-" | ">+" | "|+");
         let value = match block {
             true => {
                 let mut gathered = Vec::new();
@@ -214,6 +215,21 @@ mod tests {
         assert_eq!(front.description(), Some("Talk like a caveman. Use few words."));
         assert_eq!(front.get("license"), Some("MIT"));
         assert_eq!(body(text), "# Body\n");
+    }
+
+    #[test]
+    fn a_value_on_the_indented_lines_under_an_empty_key_is_read() {
+        let text = "---
+name: x
+description:
+  React patterns that scale.
+  Use when refactoring.
+license: MIT
+---
+";
+        let front = parse(text);
+        assert_eq!(front.description(), Some("React patterns that scale. Use when refactoring."));
+        assert_eq!(front.get("license"), Some("MIT"));
     }
 
     #[test]
