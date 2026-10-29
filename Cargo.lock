@@ -7002,7 +7002,7 @@ checksum = "39ec24b3121d976906ece63c9daad25b85969647682eee313cb5779fdd69e14e"
 
 [[package]]
 name = "unluminous-app"
-version = "1.21.2"
+version = "1.21.3"
 dependencies = [
  "ab_glyph",
  "arboard",
@@ -7067,7 +7067,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-chat"
-version = "1.21.2"
+version = "1.21.3"
 dependencies = [
  "serde_json",
  "sha2",
@@ -7076,7 +7076,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-cli"
-version = "1.21.2"
+version = "1.21.3"
 dependencies = [
  "atrius-index",
  "blake3",
@@ -7087,7 +7087,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-core"
-version = "1.21.2"
+version = "1.21.3"
 dependencies = [
  "unicode-segmentation",
  "unicode-width",
@@ -7095,14 +7095,14 @@ dependencies = [
 
 [[package]]
 name = "unluminous-dap"
-version = "1.21.2"
+version = "1.21.3"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "unluminous-db"
-version = "1.21.2"
+version = "1.21.3"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.3.4",
@@ -7116,7 +7116,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-git"
-version = "1.21.2"
+version = "1.21.3"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
@@ -7124,14 +7124,14 @@ dependencies = [
 
 [[package]]
 name = "unluminous-jupyter"
-version = "1.21.2"
+version = "1.21.3"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "unluminous-lsp"
-version = "1.21.2"
+version = "1.21.3"
 dependencies = [
  "serde_json",
  "unluminous-core",
@@ -7140,7 +7140,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-sheet"
-version = "1.21.2"
+version = "1.21.3"
 dependencies = [
  "base64 0.22.1",
  "crc32fast",
@@ -7154,7 +7154,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-terminal"
-version = "1.21.2"
+version = "1.21.3"
 dependencies = [
  "alacritty_terminal",
  "libc",
@@ -7165,7 +7165,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-voice"
-version = "1.21.2"
+version = "1.21.3"
 dependencies = [
  "block2 0.6.2",
  "cpal",
@@ -7182,7 +7182,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-word"
-version = "1.21.2"
+version = "1.21.3"
 dependencies = [
  "ab_glyph",
  "aes",

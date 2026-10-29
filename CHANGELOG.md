@@ -6,6 +6,14 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.21.3 — 2026-10-29
+
+- Work in progress, paused for a reboot (`task-2402`)
+- Window tests for the New menu's pictures and a skill's Calls row; show reports the skills a skill calls (`task-2402`)
+- Rustfmt (`task-2402`)
+- Accept the pictures with the redrawn Skills mark, the Page icon and the New menu's pictures (`task-2402`)
+- The chat history test sets its ages clear of a minute boundary, so a second between its clock and the window's cannot change them (`task-2402`)
+
 ## 1.21.2 — 2026-10-29
 
 - The Skills pane opens at once and a graphics error no longer closes the window (`task-2401`)
