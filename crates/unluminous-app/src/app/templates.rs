@@ -41,7 +41,7 @@ impl UnluminousApp {
     /// The picture in front of each row of the explorer's `New` menu that makes a file or a folder: the picture the
     /// explorer draws beside a file of that kind, or its sheet of paper for a kind no plugin draws (`task-2402`).
     /// Worked out from a name the new file would have, so a row and the file it makes always agree.
-    pub(crate) fn marks_for_new_files(
+    pub fn marks_for_new_files(
         &mut self,
         ctx: &egui::Context,
         entries: &[Entry],

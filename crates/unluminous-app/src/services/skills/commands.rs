@@ -141,6 +141,8 @@ fn show(skills: &mut Skills, parsed: &Parsed) -> Result<Answer, String> {
     value["repository"] = json!(skill.entry.repository);
     value["popularity"] = json!(skill.entry.popularity);
     value["tags"] = json!(skill.entry.tags);
+    // The skills it calls with the Skill tool, which an install puts beside it (`task-2402`).
+    value["calls"] = json!(skill.entry.requires);
     value["files"] = json!(ops::files_of(skill)
         .map(|files| files.keys().cloned().collect::<Vec<String>>())
         .unwrap_or_default());

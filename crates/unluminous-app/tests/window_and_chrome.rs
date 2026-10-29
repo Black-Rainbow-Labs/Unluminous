@@ -2695,6 +2695,54 @@ fn the_explorers_own_menu_holds_what_can_be_done_to_a_file() {
 }
 
 #[test]
+fn every_row_of_the_explorers_new_menu_shows_the_picture_of_what_it_makes() {
+    // `task-2402`: each row of `New` carries the picture the explorer draws beside a file of that kind.
+    use unluminous_app::app::actions::{Action, Aim, Entry};
+    use unluminous_app::components::controls::RowMark;
+    let folder = sample_folder();
+    let mut harness = harness_in(&folder);
+    let at = egui::pos2(120.0, 260.0);
+    harness.state_mut().explorer_menu = Some((at, folder.join("readme.md"), false, Aim::AtARow));
+    steady(&mut harness);
+    harness.get_by_label("New").click();
+    steady(&mut harness);
+    let entries =
+        unluminous_app::app::actions::explorer_menu(&folder.join("readme.md"), false, false, Aim::AtARow);
+    let Some(Entry::Submenu { entries: new, .. }) = entries.first() else { panic!("New is first") };
+    let ctx = harness.ctx.clone();
+    let marks = harness.state_mut().marks_for_new_files(&ctx, &entries);
+    let mark_of = |name: &str| {
+        let action = new.iter().find_map(|entry| match entry {
+            Entry::Item { name: found, action, .. } if found == name => Some(action.clone()),
+            _ => None,
+        });
+        let action: Action = action.unwrap_or_else(|| panic!("{name} is in New"));
+        marks.iter().find(|(marked, _)| *marked == action).map(|(_, mark)| mark.clone())
+    };
+    for name in [
+        "Rust File",
+        "JavaScript File",
+        "HTML File",
+        "CSS File",
+        "TypeScript File",
+        "JSON File",
+        "Python File",
+        "Jupyter Notebook",
+        "Page Document (Word compatible)",
+        "Spreadsheet (Excel compatible)",
+    ] {
+        assert!(matches!(mark_of(name), Some(RowMark::Picture(_))), "{name} shows its plugin's picture");
+    }
+    for name in ["Text File", "Markdown File"] {
+        assert!(matches!(mark_of(name), Some(RowMark::File { prose: true, .. })), "{name} is a page of writing");
+    }
+    assert!(matches!(mark_of("File"), Some(RowMark::File { prose: false, .. })));
+    assert!(matches!(mark_of("Folder"), Some(RowMark::Folder)));
+    harness.get_by_label("Page Document (Word compatible)");
+    harness.snapshot(shot("explorer_new_menu"));
+}
+
+#[test]
 fn making_a_file_from_the_explorers_menu_opens_it() {
     let folder = fixtures_root().join("unluminous-screenshot-new-file");
     std::fs::remove_dir_all(&folder).ok();

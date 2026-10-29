@@ -185,6 +185,35 @@ fn a_skill_found_on_the_machine_is_a_card_with_the_stand_in_picture() {
     harness.snapshot(shot("skills_found").as_str());
 }
 
+/// `task-2402`: Grill Me's whole SKILL.md is "Call the Skill tool with grilling". Its page has a Calls row whose
+/// chip opens Grilling's page, installing it installs Grilling too, and View / Edit opens Grilling's SKILL.md in a
+/// tab beside it.
+#[test]
+fn a_skill_that_calls_another_names_it_installs_it_and_opens_it_beside_itself() {
+    let (_folder, home, mut harness) = a_window("unluminous-skills-calls");
+    assert_eq!(did(&mut harness, "plugins run skills show grill-me")["calls"], serde_json::json!(["grilling"]));
+    did(&mut harness, "plugins run skills view grill-me");
+    steady(&mut harness);
+    harness.snapshot(shot("skills_page_calls").as_str());
+    harness.get_by_label("Install for: Global").click();
+    steady(&mut harness);
+    harness.get_by_label("Install for Claude Code").click();
+    steady(&mut harness);
+    let skills = home.join(".claude").join("skills");
+    assert!(skills.join("grill-me").join("SKILL.md").exists(), "Grill Me is installed");
+    assert!(skills.join("grilling").join("SKILL.md").exists(), "and so is the skill it calls");
+    harness.get_by_label("View / Edit").click();
+    steady(&mut harness);
+    let names: Vec<String> = (0..harness.state().files.len())
+        .filter_map(|index| harness.state().files.get(index)?.path().map(|path| path.display().to_string()))
+        .collect();
+    assert!(names.iter().any(|name| name.contains("grilling")), "Grilling's SKILL.md is open: {names:?}");
+    assert!(harness.state().files.active().path().is_some_and(|path| path.to_string_lossy().contains("grill-me")));
+    harness.get_by_label("Grilling").click();
+    steady(&mut harness);
+    assert_eq!(did(&mut harness, "plugins view skills")["viewing"], "grilling");
+}
+
 #[test]
 fn skills_pane() {
     let (_folder, _home, mut harness) = a_window("unluminous-skills-shot-pane");
