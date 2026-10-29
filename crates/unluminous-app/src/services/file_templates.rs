@@ -91,7 +91,7 @@ pub fn slug(name: &str) -> String {
     slug.trim_end_matches('-').to_owned()
 }
 
-/// The five common types, in the order the menu lists them.
+/// The common types, in the order the menu lists them.
 pub fn built_in() -> Vec<Template> {
     let template = |name: &str, extension: &str, body: &str| Template {
         name: name.to_owned(),
@@ -110,6 +110,14 @@ pub fn built_in() -> Vec<Template> {
             "<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <title>${NAME}</title>\n</head>\n<body>\n\n</body>\n</html>\n",
         ),
         template("CSS File", "css", ""),
+        // `task-2397` asked for more of the types a project is written in.
+        template("TypeScript File", "ts", ""),
+        template("Markdown File", "md", "# ${NAME}
+"),
+        template("JSON File", "json", "{
+}
+"),
+        template("Python File", "py", ""),
     ]
 }
 
@@ -920,7 +928,7 @@ mod tests {
         let project = scratch("manager");
         let settings = scratch("manager-settings");
         let mut list = drafts(&project, Some(&settings));
-        assert_eq!(list.len(), 5, "only the built in ones to start with");
+        assert_eq!(list.len(), built_in().len(), "only the built in ones to start with");
         // A new template in the project, with a file name pattern.
         let mut card = Draft::new("Card", Scope::Project, false);
         card.template.extension = "tsx".to_owned();
@@ -1054,6 +1062,10 @@ mod tests {
                 "JavaScript File",
                 "HTML File",
                 "CSS File",
+                "TypeScript File",
+                "Markdown File",
+                "JSON File",
+                "Python File",
                 "Alpha",
                 "Widget"
             ]

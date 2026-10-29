@@ -444,12 +444,7 @@ pub fn field_menu(ui: &egui::Ui, field: Rect, id: egui::Id) {
         .kind(egui::PopupKind::Menu)
         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
         .layout(egui::Layout::top_down_justified(egui::Align::Min))
-        .frame(
-            egui::Frame::popup(ui.style())
-                .fill(color::menu())
-                .stroke(Stroke::new(1.0, color::control_border()))
-                .inner_margin(6),
-        )
+        .frame(menu_frame_in(ui.style()))
         .width(FIELD_MENU_WIDTH);
     let mut close = false;
     if let Some(response) = popup.show(|ui| {
@@ -512,12 +507,7 @@ pub fn read_only_menu(
         .kind(egui::PopupKind::Menu)
         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
         .layout(egui::Layout::top_down_justified(egui::Align::Min))
-        .frame(
-            egui::Frame::popup(ui.style())
-                .fill(color::menu())
-                .stroke(Stroke::new(1.0, color::control_border()))
-                .inner_margin(6),
-        )
+        .frame(menu_frame_in(ui.style()))
         .width(FIELD_MENU_WIDTH);
     let mut close = false;
     if let Some(response) = popup.show(|ui| {
@@ -1072,11 +1062,7 @@ fn dropdown_with<T>(
     let popup_id = egui::Popup::default_response_id(&response);
     let chosen = egui::Popup::from_toggle_button_response(&response)
         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-        .frame(
-            egui::Frame::popup(ui.style())
-                .fill(color::control())
-                .stroke(Stroke::new(1.0, color::control_border())),
-        )
+        .frame(menu_frame_in(ui.style()))
         .width(list_width)
         .show(|ui| {
             set_in_the_list_size(ui);
@@ -1429,10 +1415,16 @@ pub fn menu_rows(ui: &mut egui::Ui, entries: &[Entry], indent: f32) -> Option<Ac
 /// The frame a menu drops down in: a raised card eighteen points round with `padding: 8px` and a long soft
 /// shadow under it, which is the Editing code design's dropdown (`task-2241`).
 pub fn menu_frame(ui: &egui::Ui) -> egui::Frame {
+    menu_frame_in(ui.style())
+}
+
+/// [`menu_frame`] for a caller that has a style rather than a `Ui`. Every menu, list and right click menu in
+/// the window is framed by it, so their fill, corners and shadow cannot drift apart (`task-2397`).
+pub fn menu_frame_in(style: &egui::Style) -> egui::Frame {
     let chat = crate::theme::rux_theme().chat;
     // Under glass `theme::glass` puts the bent picture under the fill once the frame is drawn
     // (`task-2281`). There is no outline in either theme.
-    egui::Frame::popup(ui.style())
+    egui::Frame::popup(style)
         .fill(chat.card.from)
         .stroke(Stroke::NONE)
         .corner_radius(CornerRadius::same(18))

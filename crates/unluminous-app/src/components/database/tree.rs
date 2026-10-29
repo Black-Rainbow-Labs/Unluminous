@@ -616,12 +616,7 @@ pub fn menu(explorer: &mut DatabaseExplorer, ui: &mut egui::Ui, look: &Look<'_>)
     .kind(egui::PopupKind::Menu)
     .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
     .layout(egui::Layout::top_down_justified(egui::Align::Min))
-    .frame(
-        egui::Frame::popup(ui.style())
-            .fill(color::menu())
-            .stroke(egui::Stroke::new(1.0, color::control_border()))
-            .inner_margin(6),
-    )
+    .frame(crate::components::controls::menu_frame_in(ui.style()))
     .width(220.0);
     if let Some(shown) = popup.show(|ui| {
         let mut chosen: Option<Act> = None;

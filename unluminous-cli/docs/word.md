@@ -1,4 +1,4 @@
-# The Word plugin's commands
+# The Page plugin's commands (`plugins run word`)
 
 These commands are run as `unluminous-cli plugins run word <verb> [arguments]`, and through the `unluminous_word` MCP tool. They act on the current document, which is the one last drawn or the one chosen with `use`. Paragraphs are numbered from 1 in document order, table cells included, as `read` lists them. Every command answers a sentence and, where there is data, the same answer as JSON.
 

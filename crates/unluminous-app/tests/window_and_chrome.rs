@@ -4229,6 +4229,8 @@ const EVERY_VARIANT: &[&str] = &[
     "NewNotebook",
     "NewRustNotebook",
     "NewNotebookIn",
+    "NewPageIn",
+    "NewWorkbookIn",
     "ConvertToNotebook",
     "ConvertToPython",
     "OpenFolder",
@@ -4421,6 +4423,8 @@ fn variant_name(action: &Action) -> &'static str {
         Action::NewNotebook => "NewNotebook",
         Action::NewRustNotebook => "NewRustNotebook",
         Action::NewNotebookIn(_) => "NewNotebookIn",
+        Action::NewPageIn(_) => "NewPageIn",
+        Action::NewWorkbookIn(_) => "NewWorkbookIn",
         Action::ConvertToNotebook(_) => "ConvertToNotebook",
         Action::ConvertToPython(_) => "ConvertToPython",
         Action::Debug(_) => "Debug",
@@ -5317,6 +5321,8 @@ fn every_step() -> Vec<Step> {
     steps.push(Step::new(Action::NewNotebook));
     steps.push(Step::new(Action::NewRustNotebook));
     steps.push(Step::new(Action::NewNotebookIn(folder.join("docs"))));
+    steps.push(Step::new(Action::NewPageIn(folder.join("docs"))));
+    steps.push(Step::new(Action::NewWorkbookIn(folder.join("docs"))));
     steps.push(Step::new(Action::ConvertToNotebook(folder.join("tool.py"))));
     steps.push(Step::new(Action::ConvertToPython(folder.join("book.ipynb"))));
     // The notebook's own actions that change the cells or what is drawn without a kernel, on the
@@ -7111,7 +7117,11 @@ fn the_templates_manager_lists_edits_and_writes_templates() {
     harness.state_mut().run_action(Action::ManageTemplates, &ctx);
     steady(&mut harness);
     let dialog = harness.state().template_manager.clone().expect("the manager is open");
-    assert_eq!(dialog.showing().len(), 5, "the built in templates are yours to change");
+    assert_eq!(
+        dialog.showing().len(),
+        unluminous_app::services::file_templates::built_in().len(),
+        "the built in templates are yours to change"
+    );
     assert!(harness.state_mut().template_manager.as_mut().unwrap().choose("Card"));
     steady(&mut harness);
     harness.get_by_label("Insert ${NAME}").click();

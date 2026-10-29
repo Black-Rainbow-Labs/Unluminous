@@ -451,16 +451,15 @@ impl UnluminousApp {
                         + crate::theme::glass::header_drop(),
                 ),
             );
-            // `badge` rather than the whole `view` (`task-1984` A7): for Agent-Tasks that was every
-            // card on the board as JSON, built twice a second at idle for one short string.
-            let count = self.plugin_ui.badge_of(&plugin);
+            // No count beside the name (`task-2397`): it sat off the line of the name and said nothing the
+            // pane under it does not.
             let outcome = {
                 let mut header_ui = ui.new_child(egui::UiBuilder::new().max_rect(header));
                 crate::components::agent_tasks::pane_header(
                     &mut header_ui,
                     header,
                     &label,
-                    count.as_deref(),
+                    None,
                     panel,
                     self.settings.window_opacity(),
                 )

@@ -137,7 +137,7 @@ impl Config {
             .filter(|name| self.autocorrect.get(name) == Some(false))
             .collect();
         let text = format!(
-            "# The Word plugin's settings. The author is the name on comments and tracked changes.\nauthor = {}\nzoom = {}\nmarks = {}\nspelling = {}\nautocorrect.off = {}\npaper = {}\nautosave = {}\nautorecover = {}\nfield_shading = {}\n",
+            "# The Page plugin's settings. The author is the name on comments and tracked changes.\nauthor = {}\nzoom = {}\nmarks = {}\nspelling = {}\nautocorrect.off = {}\npaper = {}\nautosave = {}\nautorecover = {}\nfield_shading = {}\n",
             self.author,
             self.zoom,
             self.marks,
@@ -874,20 +874,20 @@ impl Doc {
                 commands::export_with(self, kind, Some(path), commands::PdfHow { tagged: true, outline: true, pdfa: false })?;
                 Ok(path.to_path_buf())
             }
-            other => Err(format!(".{other} is not a format a Word document is saved as: use .docx, .dotx, .docm, .dotm, .rtf, .odt, .pdf, .html, .md or .txt")),
+            other => Err(format!(".{other} is not a format a Page document is saved as: use .docx, .dotx, .docm, .dotm, .rtf, .odt, .pdf, .html, .md or .txt")),
         }
     }
 }
 
 /// The kinds of file a Word document is saved as, for the Save As dialog, each with its extensions.
 pub const SAVE_KINDS: &[(&str, &[&str])] = &[
-    ("Word document", &["docx"]),
-    ("Word template", &["dotx"]),
-    ("Word macro-enabled document", &["docm"]),
-    ("Word macro-enabled template", &["dotm"]),
+    ("Microsoft Word document", &["docx"]),
+    ("Microsoft Word template", &["dotx"]),
+    ("Microsoft Word macro-enabled document", &["docm"]),
+    ("Microsoft Word macro-enabled template", &["dotm"]),
     ("PDF", &["pdf"]),
-    ("Rich Text Format (needs Word)", &["rtf"]),
-    ("OpenDocument Text (needs Word)", &["odt"]),
+    ("Rich Text Format (needs Microsoft Word)", &["rtf"]),
+    ("OpenDocument Text (needs Microsoft Word)", &["odt"]),
     ("Web page", &["html"]),
     ("Markdown", &["md"]),
     ("Plain text", &["txt"]),
@@ -927,7 +927,7 @@ impl Word {
         }
         if !self.waiting.iter().any(|(k, _)| k == key) {
             let path = PathBuf::from(
-                key.strip_prefix("word:").ok_or_else(|| format!("{key} is not a Word tab"))?,
+                key.strip_prefix("word:").ok_or_else(|| format!("{key} is not a Page tab"))?,
             );
             self.load(key, &path)?;
         }
@@ -947,7 +947,7 @@ impl Word {
             Ok(result) => result,
             Err(std::sync::mpsc::TryRecvError::Empty) => return,
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                Err("Word stopped before it finished".into())
+                Err("Microsoft Word stopped before it finished".into())
             }
         };
         self.waiting.remove(index);
@@ -956,7 +956,7 @@ impl Word {
             Ok(document) => {
                 self.push_doc(key, document, None, Some(path));
                 self.outbox.push(Request::Message(format!(
-                    "Word converted {}. Save asks for a .docx name.",
+                    "Microsoft Word converted {}. Save asks for a .docx name.",
                     files::name_of(
                         self.docs
                             .last()
@@ -1143,7 +1143,7 @@ impl Word {
     pub fn current_doc(&mut self) -> Result<&mut Doc, String> {
         let key =
             self.current.clone().or_else(|| self.docs.last().map(|d| d.key.clone())).ok_or(
-                "no Word document is open: open a .docx file, or run `plugins run word new`",
+                "no Page document is open: open a .docx file, or run `plugins run word new`",
             )?;
         self.doc(&key)
     }
@@ -1280,7 +1280,7 @@ impl UiProvider for Word {
                 .and_then(|p| p.parent().map(Path::to_path_buf))
                 .or_else(|| self.project.clone());
             let mut dialog = rfd::FileDialog::new()
-                .set_title("Save Word Document")
+                .set_title("Save Page Document")
                 .set_directory(start.unwrap_or_default());
             if let Some(name) = converted.as_ref().and_then(|p| p.file_stem()) {
                 dialog = dialog.set_file_name(format!("{}.docx", name.to_string_lossy()));

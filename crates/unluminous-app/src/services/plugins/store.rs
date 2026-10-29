@@ -22,6 +22,9 @@ pub const FOLDER: &str = "plugins";
 const MANIFEST: &str = "plugin.conf";
 /// The picture a plugin puts in front of its files.
 const ICON: &str = "icon.png";
+/// Beside a bundled plugin's manifest that `install` wrote out: the manifest exactly as it was written, so a
+/// later start can tell a copy nobody has edited from one somebody corrected by hand.
+const AS_WRITTEN: &str = "plugin.conf.as-written";
 
 /// Everything installed, and which of them are switched on.
 #[derive(Debug, Clone, Default)]
@@ -33,6 +36,36 @@ pub struct Plugins {
     /// says what that is worth. Every function that changes `installed` calls [`Plugins::settle`],
     /// and all of them are in this file.
     grammars: Grammars,
+}
+
+/// Whether the plugin in `folder` is a bundled plugin's manifest as Unluminous wrote it, unedited, and the
+/// manifest this build ships is different. Such a copy is out of date rather than a correction.
+///
+/// A copy `install` wrote has its manifest as written beside it, and is stale when it still matches that.
+/// A copy written before that file existed is stale when it names the same vendor and version as the bundled
+/// one, which is how every one found on a real machine read; a hand correction to one of those keeps its
+/// place by raising `plugin.version`.
+fn a_stale_copy_of_a_bundled_plugin(folder: &std::path::Path) -> bool {
+    let plain = |text: &str| text.replace('\r', "");
+    let Ok(disk) = std::fs::read_to_string(folder.join(MANIFEST)) else { return false };
+    let disk = plain(&disk);
+    let values = Values::parse(&disk);
+    let Some(id) = values.text("plugin.id").map(str::trim) else { return false };
+    let Some((_, shipped, _)) = bundled::ALL.iter().find(|(known, _, _)| *known == id) else {
+        return false;
+    };
+    if disk == plain(shipped) {
+        return false;
+    }
+    match std::fs::read_to_string(folder.join(AS_WRITTEN)) {
+        Ok(written) => plain(&written) == disk,
+        Err(_) => {
+            let shipped = Values::parse(shipped);
+            let same =
+                |key: &str| values.text(key).map(str::trim) == shipped.text(key).map(str::trim);
+            same("plugin.vendor") && same("plugin.version")
+        }
+    }
 }
 
 impl Plugins {
@@ -74,6 +107,14 @@ impl Plugins {
                     // A manifest that is there and will not parse is still a refusal with its reason,
                     // which is the half this must not take away.
                     if !path.join(MANIFEST).exists() {
+                        continue;
+                    }
+                    // **A copy nobody edited does not hide a newer bundled one** (`task-2397`). `install`
+                    // writes the bundled manifest out, and that copy then shadowed every later build's:
+                    // the menus of Agent-Chat, Agent-Tasks and the Database plugin stayed as they were ten
+                    // days earlier on the machine that found it. A copy that is still exactly what
+                    // Unluminous wrote is passed over, and the bundled one already read is used.
+                    if a_stale_copy_of_a_bundled_plugin(&path) {
                         continue;
                     }
                     match read_folder(&path) {
@@ -408,6 +449,7 @@ impl Plugins {
         // left half written is a plugin that is refused at the next start, and a plugin folder is
         // read at every one.
         crate::services::store::write_atomically(&folder.join(MANIFEST), manifest.as_bytes())?;
+        crate::services::store::write_atomically(&folder.join(AS_WRITTEN), manifest.as_bytes())?;
         if let Some(icon) = icon {
             crate::services::store::write_atomically(&folder.join(ICON), icon)?;
         }
@@ -808,6 +850,36 @@ mod tests {
             bundled::ALL.len(),
             "shadowing replaces rather than adding a second one"
         );
+    }
+
+    #[test]
+    fn a_copy_nobody_edited_does_not_hide_a_newer_bundled_one() {
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-plugins-stale-{}", std::process::id()));
+        std::fs::remove_dir_all(&folder).ok();
+        let store = Store::at(&folder);
+        let (mut plugins, _) = Plugins::load(None);
+        plugins.install(&store, "agent-chat").expect("install");
+        let written = Plugins::folder(&store, "agent-chat");
+        let shipped = std::fs::read_to_string(written.join(MANIFEST)).unwrap();
+        // An older build's manifest, as `install` wrote it then.
+        let older = shipped.replace("menu.name    = Agent-Chat", "menu.name    = Old Chat");
+        std::fs::write(written.join(MANIFEST), &older).unwrap();
+        std::fs::write(written.join(AS_WRITTEN), &older).unwrap();
+        let (loaded, problems) = Plugins::load(Some(&store));
+        assert!(problems.is_empty(), "{problems:?}");
+        assert!(loaded.get("agent-chat").unwrap().bundled, "the unedited copy is passed over");
+
+        // The same copy with no record of what was written, as every copy written before the record was.
+        std::fs::remove_file(written.join(AS_WRITTEN)).unwrap();
+        let (loaded, _) = Plugins::load(Some(&store));
+        assert!(loaded.get("agent-chat").unwrap().bundled, "and so is one with no record");
+
+        // Corrected by hand, it keeps its place.
+        std::fs::write(written.join(AS_WRITTEN), &shipped).unwrap();
+        let (loaded, _) = Plugins::load(Some(&store));
+        assert!(!loaded.get("agent-chat").unwrap().bundled, "a hand edit shadows the bundled one");
+        std::fs::remove_dir_all(&folder).ok();
     }
 
     #[test]

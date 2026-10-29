@@ -5824,7 +5824,8 @@ fn a_point_in_the_chat_block(
     key: &str,
 ) -> Option<egui::Pos2> {
     let pane = harness.state().plugin_pane_area_for("agent-chat/chat").expect("the chat pane");
-    let mut y = pane.top() + 90.0;
+    // Below the pane's header and the chat's own row of round buttons, which a click would press.
+    let mut y = pane.top() + unluminous_app::components::agent_tasks::PANE_HEADER + 70.0;
     while y < pane.bottom() - 90.0 {
         let at = egui::pos2(pane.left() + 40.0, y);
         click_at(harness, at);

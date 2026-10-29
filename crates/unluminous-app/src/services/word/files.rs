@@ -35,7 +35,7 @@ impl Waiting {
                 }
             }
             Waiting::Converting { path, .. } => {
-                format!("Word is converting {} into a document.", name_of(path))
+                format!("Microsoft Word is converting {} into a document.", name_of(path))
             }
             Waiting::Failed { problem, .. } => problem.clone(),
         }
@@ -61,7 +61,8 @@ pub fn start_converting(path: &Path) -> Waiting {
                 .map_or(0, |d| d.as_nanos())
         ));
         let result = unluminous_word::convert::convert(&source, &target, "docx").and_then(|()| {
-            std::fs::read(&target).map_err(|e| format!("Word's conversion could not be read: {e}"))
+            std::fs::read(&target)
+                .map_err(|e| format!("Microsoft Word's conversion could not be read: {e}"))
         });
         let _ = std::fs::remove_file(&target);
         let _ = send.send(result);

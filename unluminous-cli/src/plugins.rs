@@ -53,7 +53,7 @@ pub const PLUGINS: &[Plugin] = &[
     },
     Plugin {
         id: "word",
-        note: "Microsoft Word documents (.docx): read a document as paragraphs with their styles, type and replace text, format it, build lists, tables and a table of contents, add comments and footnotes, track and accept changes, set the page, and save or export it. Commands act on the document showing, or the one chosen with `use`. A paragraph is numbered from 1 in document order, table cells included, as `read` lists them.",
+        note: "Page documents, compatible with Microsoft Word (.docx): read a document as paragraphs with their styles, type and replace text, format it, build lists, tables and a table of contents, add comments and footnotes, track and accept changes, set the page, and save or export it. Commands act on the document showing, or the one chosen with `use`. A paragraph is numbered from 1 in document order, table cells included, as `read` lists them.",
         commands: WORD,
     },
 ];
@@ -263,12 +263,12 @@ pub const SKILLS: &[(&str, &str)] = &[
 ];
 
 pub const WORD: &[(&str, &str)] = &[
-    ("new", "A new document: new [path.docx] [--template <file.dotx>]. With no template it starts from Word's own Normal.dotm when this machine has one."),
-    ("open", "Open a document in a tab: open [--as-document] <path>. A .doc, .rtf, .odt, .wps or .pdf is converted by Word when it is installed; --as-document opens a .txt, .md or .html as a document."),
+    ("new", "A new document: new [path.docx] [--template <file.dotx>]. With no template it starts from Microsoft Word's own Normal.dotm when this machine has one."),
+    ("open", "Open a document in a tab: open [--as-document] <path>. A .doc, .rtf, .odt, .wps or .pdf is converted by Microsoft Word when it is installed; --as-document opens a .txt, .md or .html as a document."),
     ("docs", "The open documents."),
     ("use", "Act on another open document: use <key or path>."),
-    ("save", "Save: save [path] (a path is Save As). A .rtf or .odt is written by Word; a .txt, .html, .md or .pdf is a copy and the document keeps its own file."),
-    ("open-as-document", "Open as Document, which the Word menu asks for: a file dialog, or open-as-document <path> to name the file."),
+    ("save", "Save: save [path] (a path is Save As). A .rtf or .odt is written by Microsoft Word; a .txt, .html, .md or .pdf is a copy and the document keeps its own file."),
+    ("open-as-document", "Open as Document, which the Page menu asks for: a file dialog, or open-as-document <path> to name the file."),
     ("password", "Open an encrypted document waiting in its tab: password <password>."),
     ("unlock", "Change a document opened read only because it has a password to modify: unlock <password>."),
     ("protect", "protect [password <p>|none] [modify <p>|none] [restrict readOnly|comments|trackedChanges|forms <p>] [stop <p>]: encryption, Password to Modify and Restrict Editing. With nothing after it, what protects the document."),
@@ -289,7 +289,7 @@ pub const WORD: &[(&str, &str)] = &[
     ("type", "Type at the selection: type <text> (\\n splits a paragraph)."),
     ("insert", "insert paragraph|page-break|line-break|section-break|table <rows> <cols>|picture <path> [width]|textbox [width height]|shape <rect|roundRect|ellipse|line|straightConnector1|rightArrow|leftArrow|upArrow|downArrow|triangle|diamond> [width height]|caption <label> <text>|footnote <text>|toc|field <code>|link <url>|bookmark <name>|date."),
     ("delete", "Delete the selection or a character: delete [forward] [word]."),
-    ("find", "Matches as paragraph and offset: find <text> [--case] [--word] [--wildcards] [--all-stories] [--format=bold,italic,color:RRGGBB,style:<id>,align:center]; ^p ^t ^# ^$ ^? work as in Word."),
+    ("find", "Matches as paragraph and offset: find <text> [--case] [--word] [--wildcards] [--all-stories] [--format=bold,italic,color:RRGGBB,style:<id>,align:center]; ^p ^t ^# ^$ ^? work as in Microsoft Word."),
     ("replace", "replace <find> -- <with> [--all] [--case] [--word] [--wildcards] (then \\1 groups) [--all-stories] [--format=...] [--with-format=...]."),
     ("goto", "Go To: goto page|section|line|bookmark|footnote|endnote|comment|heading|table|picture <n or name>."),
     ("format", "format bold|italic|underline|strike|caps|superscript [on|off], font <name>, size <pt>, color <RRGGBB>, highlight <name>, clear."),

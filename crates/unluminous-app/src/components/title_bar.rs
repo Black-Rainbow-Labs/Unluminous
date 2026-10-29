@@ -329,18 +329,21 @@ fn windows_buttons(
             .with_hint(*label);
         let painter = ui.painter();
         let close = *label == "Close";
+        // The wash stops above the groove under the bar, which is the bar's bottom three points; drawn the
+        // button's whole height it covered the groove and hung below the line (`task-2397`).
+        let washed = Rect::from_min_max(rect.min, Pos2::new(rect.max.x, rect.max.y - 3.0));
         let tint = match (response.hovered(), close) {
             (true, true) => {
                 // The window's own top right corner is round, so the red is too.
                 painter.rect_filled(
-                    *rect,
+                    washed,
                     CornerRadius { ne: size::WINDOW_CORNER, ..CornerRadius::ZERO },
                     color::close(),
                 );
                 color::on_accent()
             }
             (true, false) => {
-                painter.rect_filled(*rect, 0.0, color::hover_wash().gamma_multiply(0.08));
+                painter.rect_filled(washed, 0.0, color::hover_wash().gamma_multiply(0.08));
                 ink.i900
             }
             _ => ink.i500,

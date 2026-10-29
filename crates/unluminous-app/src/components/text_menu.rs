@@ -88,12 +88,7 @@ pub fn show(
     .kind(egui::PopupKind::Menu)
     .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
     .layout(egui::Layout::top_down_justified(egui::Align::Min))
-    .frame(
-        egui::Frame::popup(ui.style())
-            .fill(color::menu())
-            .stroke(Stroke::new(1.0, color::control_border()))
-            .inner_margin(6),
-    )
+    .frame(crate::components::controls::menu_frame_in(ui.style()))
     .width(WIDTH);
 
     if let Some(response) = popup.show(|ui| {

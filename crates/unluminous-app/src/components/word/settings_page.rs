@@ -17,10 +17,10 @@ fn cards(word: &mut Word, ui: &mut egui::Ui, column: &mut Column) -> Vec<Request
     let mut requests = Vec::new();
     let mut changed = false;
     let help = Some(
-        "Microsoft Word documents open in tabs of their own, drawn as pages. These settings are kept in this \
+        "Page documents, compatible with Microsoft Word, open in tabs of their own, drawn as pages. These settings are kept in this \
          machine's settings folder.",
     );
-    kit::card(ui, column, "Word", help, |card| {
+    kit::card(ui, column, "Page", help, |card| {
         let field = word.author_field.get_or_insert_with(|| word.config.author.clone());
         card.row(
             "Author",

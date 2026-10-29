@@ -875,12 +875,7 @@ fn message_menu(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>) -> Ve
     .kind(egui::PopupKind::Menu)
     .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
     .layout(egui::Layout::top_down_justified(egui::Align::Min))
-    .frame(
-        egui::Frame::popup(ui.style())
-            .fill(crate::theme::color::menu())
-            .stroke(Stroke::new(1.0, crate::theme::color::control_border()))
-            .inner_margin(6),
-    )
+    .frame(crate::components::controls::menu_frame_in(ui.style()))
     .width(MENU_WIDTH);
     if let Some(response) = popup.show(|ui| {
         if controls::menu_row(ui, "Copy", "", selected.is_some(), false, 0.0) {

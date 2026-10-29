@@ -161,6 +161,10 @@ pub enum MenuItem {
 pub struct MenuContribution {
     pub name: String,
     pub items: Vec<MenuItem>,
+    /// `menu.needs_tab`: the commands that act on one of the plugin's own tabs, such as a workbook's
+    /// `recalc`. They are left out of the menu unless a tab the plugin draws is the one showing
+    /// (`task-2397`).
+    pub needs_its_tab: Vec<String>,
 }
 
 /// A page in the Settings window a plugin contributes.

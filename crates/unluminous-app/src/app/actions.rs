@@ -241,6 +241,12 @@ pub enum Action {
     NewRustNotebook,
     /// The explorer's `New -> Jupyter Notebook`: the same, in the folder that was clicked.
     NewNotebookIn(PathBuf),
+    /// The explorer's `New -> Page Document`: an empty `.docx` in the folder that was clicked, opened by the
+    /// Page plugin.
+    NewPageIn(PathBuf),
+    /// The explorer's `New -> Spreadsheet`: an empty `.xlsx` in the folder that was clicked, opened by the
+    /// Spreadsheet plugin.
+    NewWorkbookIn(PathBuf),
     /// Write a `.py` file's `# %%` cells into a notebook beside it, and open it.
     ConvertToNotebook(PathBuf),
     /// Write a notebook's cells into a `.py` file beside it, and open it.
@@ -1549,6 +1555,38 @@ fn plugin_entries(plugin: &str, items: &[crate::services::plugins::MenuItem]) ->
         .collect()
 }
 
+/// A plugin's menu with the commands in `leave_out` taken away, and the separators and submenus that leaves
+/// with nothing between them taken away too. It is how a command that acts on one of the plugin's own tabs,
+/// such as a workbook's `Recalculate`, is not offered while no such tab is showing (`task-2397`).
+pub fn without_commands(
+    items: &[crate::services::plugins::MenuItem],
+    leave_out: &[String],
+) -> Vec<crate::services::plugins::MenuItem> {
+    use crate::services::plugins::MenuItem;
+    let mut kept: Vec<MenuItem> = Vec::new();
+    for item in items {
+        match item {
+            MenuItem::Command { command, .. } if leave_out.contains(command) => {}
+            MenuItem::Submenu { label, items } => {
+                let inner = without_commands(items, leave_out);
+                if inner.iter().any(|item| !matches!(item, MenuItem::Separator)) {
+                    kept.push(MenuItem::Submenu { label: label.clone(), items: inner });
+                }
+            }
+            MenuItem::Separator => {
+                if kept.last().is_some_and(|last| !matches!(last, MenuItem::Separator)) {
+                    kept.push(MenuItem::Separator);
+                }
+            }
+            other => kept.push(other.clone()),
+        }
+    }
+    while matches!(kept.last(), Some(MenuItem::Separator)) {
+        kept.pop();
+    }
+    kept
+}
+
 /// One plugin's menu as the window holds it: what the manifest said, and which plugin said it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PluginMenu {
@@ -2849,12 +2887,22 @@ pub fn panel_menu(state: &MenuState, panel: crate::app::dock::Panel) -> Vec<Entr
     let side = state.dock.side_of(panel);
     entries.push(Entry::Separator);
     entries.push(
-        Entry::item(&format!("Fill Whole {}", side.label()), Action::FillSide(side))
-            .checked(state.dock.fills(side)),
+        Entry::item(&fill_side_label(side), Action::FillSide(side)).checked(state.dock.fills(side)),
     );
     entries.push(Entry::Separator);
     entries.push(Entry::item("Reset Panel Layout", Action::ResetPanelLayout));
     entries
+}
+
+/// What the row that makes a side fill says. `Fill Whole Left` told nobody what it did (`task-2397`): a left or
+/// right side that fills runs the window's whole height and the top and bottom panels stop at its edge, and a
+/// top or bottom side that fills runs the window's whole width.
+pub fn fill_side_label(side: crate::app::dock::Side) -> String {
+    use crate::app::dock::Side;
+    match side {
+        Side::Left | Side::Right => format!("{} Panels Use the Full Window Height", side.label()),
+        Side::Top | Side::Bottom => format!("{} Panels Use the Full Window Width", side.label()),
+    }
 }
 
 /// Whether the explorer's menu was opened over a row or over the empty space below the rows.
@@ -2911,6 +2959,9 @@ pub fn explorer_menu(
         )
     }));
     new.push(Entry::item("Jupyter Notebook", Action::NewNotebookIn(folder.clone())));
+    // A document and a workbook, which the Page and Spreadsheet plugins open in tabs of their own (`task-2397`).
+    new.push(Entry::item("Page Document (Word compatible)", Action::NewPageIn(folder.clone())));
+    new.push(Entry::item("Spreadsheet (Excel compatible)", Action::NewWorkbookIn(folder.clone())));
     new.push(Entry::Separator);
     new.push(Entry::Submenu {
         name: "Templates".to_owned(),
@@ -3663,7 +3714,13 @@ mod tests {
                 "JavaScript File",
                 "HTML File",
                 "CSS File",
+                "TypeScript File",
+                "Markdown File",
+                "JSON File",
+                "Python File",
                 "Jupyter Notebook",
+                "Page Document (Word compatible)",
+                "Spreadsheet (Excel compatible)",
                 "Templates >"
             ]
         );
@@ -4525,6 +4582,23 @@ mod plugins_menu_tests {
 
     fn with(plugins: Vec<PluginMenu>) -> Vec<Menu> {
         menus(&MenuState { plugin_menus: plugins, ..Default::default() })
+    }
+
+    #[test]
+    fn a_command_that_needs_its_tab_is_left_out_with_the_separators_it_leaves_behind() {
+        let command = |name: &str| MenuItem::Command { command: name.into(), label: name.into() };
+        let items = vec![
+            command("panel"),
+            MenuItem::Separator,
+            command("recalc"),
+            MenuItem::Separator,
+            command("new"),
+            MenuItem::Submenu { label: "Export".into(), items: vec![command("pdf")] },
+        ];
+        let needs = ["panel".to_owned(), "recalc".to_owned(), "pdf".to_owned()];
+        assert_eq!(without_commands(&items, &needs), vec![command("new")]);
+        let all = needs.iter().cloned().chain(["new".to_owned()]).collect::<Vec<_>>();
+        assert!(without_commands(&items, &all).is_empty(), "a menu left with nothing is empty");
     }
 
     fn named(menus: &[Menu], name: &str) -> Option<Menu> {
