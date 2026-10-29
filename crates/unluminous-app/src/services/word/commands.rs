@@ -774,7 +774,7 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
                 Some("revert") => {
                     let id = style_id(session, &rest(arguments, 1));
                     session.revert_style(&id)?;
-                    return Ok(Answer::said(format!("{id} is Word's own again")));
+                    return Ok(Answer::said(format!("{id} is the default again")));
                 }
                 _ => {}
             }
@@ -1483,7 +1483,7 @@ fn format(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
             let name = value.clone();
             if name != "none" && props::highlight_colour(&name).is_none() {
                 return Err(format!(
-                    "{name} is not one of Word's highlight colours: {}",
+                    "{name} is not one of the highlight colours: {}",
                     props::HIGHLIGHTS.iter().map(|h| h.0).collect::<Vec<_>>().join(", ")
                 ));
             }

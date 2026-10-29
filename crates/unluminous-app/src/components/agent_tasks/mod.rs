@@ -47,9 +47,10 @@ fn header_height(look: &Look<'_>) -> f32 {
 
 /// How tall a contributed pane's own header is: the strip that names it, closes it and drags it.
 ///
-/// 28 points, which is what a list row is and what the explorer's footer is, so a panel's header is the
-/// same height wherever it is.
-pub const PANE_HEADER: f32 = 28.0;
+/// The file tabs' height, which the terminal's header and the explorer's heading share, so the headers
+/// along the top of panes side by side line up (`task-2397`; it was 28 and sat four points short of the
+/// file tabs beside it).
+pub const PANE_HEADER: f32 = crate::components::file_tabs::HEIGHT;
 
 /// What a pane's header reported this frame.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
@@ -93,13 +94,14 @@ pub fn pane_header(
         crate::theme::color::divider(),
     );
     let mut pen = inside.min.x + 10.0;
-    pen += text(
+    // Placed by its capitals on the strip's middle, the way the file tabs and the terminal's header are, so
+    // names in headers side by side sit on one line.
+    let top = crate::theme::crisp::top_centring_capitals(
         &painter,
-        Pos2::new(pen, inside.center().y - 7.0),
-        label,
-        12.5,
-        crate::theme::color::text_control(),
+        &egui::FontId::proportional(12.5),
+        inside.center().y,
     );
+    pen += text(&painter, Pos2::new(pen, top), label, 12.5, crate::theme::color::text_control());
     if let Some(count) = count {
         text(
             &painter,

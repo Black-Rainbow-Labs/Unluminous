@@ -369,7 +369,7 @@ pub fn modify_style(
                 Err(problem) => requests.push(Request::Message(problem)),
             }
         }
-        if kit::button(ui, "Revert to Word's own").clicked() {
+        if kit::button(ui, "Revert to the default").clicked() {
             if let Err(problem) = doc.session.revert_style(&id) {
                 requests.push(Request::Message(problem));
             }

@@ -247,11 +247,14 @@ pub fn filter_field(area: Rect, view: &View, heading: f32) -> Rect {
     )
 }
 
+/// How tall the heading strip is: the file tabs' height, which every pane header shares.
+const HEADING: f32 = crate::components::file_tabs::HEIGHT;
+
 /// How far down the panel the filter box starts, which is how tall the heading above it is. A node has
 /// none of the panel's furniture — `task-1904` — so its filter box is near its own top.
 pub fn heading_height(view: &View) -> f32 {
     match view.host {
-        Host::Panel => view.at(36.0),
+        Host::Panel => view.at(HEADING + 8.0),
         Host::Node => view.at(6.0),
     }
 }
@@ -284,8 +287,8 @@ pub fn show(
     // rectangle no pointer is ever inside.
     let heading_hit = match view.host {
         Host::Panel => Rect::from_min_max(
-            Pos2::new(area.left(), area.top() + view.at(8.0)),
-            Pos2::new(area.right() - view.at(34.0), area.top() + view.at(36.0)),
+            Pos2::new(area.left(), area.top()),
+            Pos2::new(area.right() - view.at(34.0), area.top() + view.at(HEADING)),
         ),
         Host::Node => Rect::NOTHING,
     };
@@ -296,12 +299,20 @@ pub fn show(
         // last widget that asked for it. See `components::dock`.
         outcome.grab = crate::components::dock::handle(
             ui,
-            Rect::from_min_max(area.min, Pos2::new(area.right(), area.top() + view.at(36.0))),
+            Rect::from_min_max(area.min, Pos2::new(area.right(), area.top() + view.at(HEADING))),
             crate::app::dock::Panel::Explorer,
         );
 
         // The heading: the folder's name in small letter spaced capitals, then the button that hides the panel.
-        let heading_y = area.top() + view.at(22.0);
+        // Centred in a strip as tall as the file tabs and every other pane's header, so the headings
+        // along the top of the window line up and the name and the cross sit in the middle of theirs
+        // (`task-2397`: they were four points low). A line under it, as under every other header.
+        let heading_y = area.top() + view.at(HEADING / 2.0);
+        painter.hline(
+            area.x_range(),
+            area.top() + view.at(HEADING) - 0.5,
+            egui::Stroke::new(1.0, color::divider()),
+        );
         let name = tree
             .root()
             .file_name()
@@ -329,8 +340,10 @@ pub fn show(
                 color::text_dim(),
             );
         }
+        // Placed by its capitals, which are all it has, so the name is centred on the strip's middle.
+        let top = crate::theme::crisp::top_centring_capitals(&painter, &font, heading_y);
         painter.crisp_galley(
-            Pos2::new(area.left() + view.at(16.0), heading_y - galley.size().y / 2.0),
+            Pos2::new(area.left() + view.at(16.0), top),
             galley,
             color::text_dim(),
         );
@@ -381,7 +394,7 @@ pub fn show(
             if response.hovered() {
                 painter.rect_filled(hit, CornerRadius::same(4), color::control());
             }
-            icon::collapse_at(&painter, centre, color::text_dim(), view.zoom);
+            icon::cross_at(&painter, centre, color::text_dim(), view.zoom);
             response.widget_info(|| {
                 egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name)
             });

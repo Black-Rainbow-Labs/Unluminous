@@ -253,7 +253,7 @@ fn show_header(
 
     let mut right = area.right() - 22.0;
     let hide = Rect::from_center_size(Pos2::new(right, area.center().y), Vec2::splat(22.0));
-    if controls::icon_button(ui, hide, "Hide the debug tile", icon::collapse) {
+    if controls::icon_button(ui, hide, "Hide the debug tile", icon::cross) {
         outcome.hide = true;
     }
     right -= 26.0;

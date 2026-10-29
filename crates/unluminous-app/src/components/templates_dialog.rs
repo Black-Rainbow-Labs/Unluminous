@@ -537,14 +537,17 @@ mod tests {
     #[test]
     fn the_tabs_show_the_persons_templates_with_the_built_in_ones_and_the_projects_apart() {
         let mut dialog = a_manager();
-        assert_eq!(dialog.showing().len(), 5);
+        assert_eq!(dialog.showing().len(), file_templates::built_in().len());
         assert_eq!(dialog.chosen, Some(0));
         dialog.show_the_tab(Scope::Project, false);
-        assert_eq!(dialog.showing(), vec![5]);
+        assert_eq!(dialog.showing(), vec![file_templates::built_in().len()]);
         dialog.show_the_tab(Scope::User, true);
         assert!(dialog.showing().is_empty() && dialog.chosen.is_none());
         assert!(dialog.choose("card"));
-        assert_eq!((dialog.scope, dialog.chosen), (Scope::Project, Some(5)));
+        assert_eq!(
+            (dialog.scope, dialog.chosen),
+            (Scope::Project, Some(file_templates::built_in().len()))
+        );
     }
 
     #[test]

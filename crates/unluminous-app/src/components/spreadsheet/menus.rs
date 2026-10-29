@@ -236,7 +236,7 @@ fn popup_level(
         if let Some(Item::Sub { items: inner, label }) = items.get(index) {
             let shown = egui::Area::new(id.with(("flyout", depth, label.as_str())))
                 .order(egui::Order::Foreground)
-                .fixed_pos(row.right_top() + Vec2::new(4.0, -8.0))
+                .fixed_pos(flyout_at(row, ui.ctx().content_rect()))
                 .show(ui.ctx(), |ui| {
                     controls::menu_frame(ui)
                         .show(ui, |ui| {
@@ -253,6 +253,22 @@ fn popup_level(
         }
     }
     picked
+}
+
+/// How wide a flyout is drawn: its rows and the menu frame's margin either side.
+const FLYOUT_WIDTH: f32 = 250.0 + 16.0;
+
+/// Where a flyout opened from `row` goes: beside the row on its right, or on its left when the right would
+/// run off the window. egui keeps an area on the screen by sliding it back over the menu that opened it,
+/// which put the list over the row it belonged to (`task-2397`).
+fn flyout_at(row: Rect, screen: Rect) -> Pos2 {
+    let right = row.right() + 4.0;
+    let x = if right + FLYOUT_WIDTH <= screen.right() {
+        right
+    } else {
+        row.left() + 4.0 - FLYOUT_WIDTH
+    };
+    Pos2::new(x.max(screen.left()), row.top() - 8.0)
 }
 
 /// The rows a command search found, each with the path to it. Answers what was pressed.

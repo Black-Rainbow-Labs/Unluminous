@@ -336,7 +336,25 @@ fn menu(values: &Values) -> Result<Option<MenuContribution>, String> {
     let Some(name) = word(values, "menu.name") else {
         return Ok(None);
     };
-    Ok(Some(MenuContribution { name, items: menu_items(values, "menu")? }))
+    let items = menu_items(values, "menu")?;
+    let needs_its_tab = list(values, "menu.needs_tab");
+    for command in &needs_its_tab {
+        if !names_a_command(&items, command) {
+            return Err(format!(
+                "menu.needs_tab names `{command}`, which is not a command in the menu"
+            ));
+        }
+    }
+    Ok(Some(MenuContribution { name, items, needs_its_tab }))
+}
+
+/// Whether a command is anywhere in a menu, submenus included.
+fn names_a_command(items: &[MenuItem], wanted: &str) -> bool {
+    items.iter().any(|item| match item {
+        MenuItem::Command { command, .. } => command == wanted,
+        MenuItem::Submenu { items, .. } => names_a_command(items, wanted),
+        MenuItem::Separator => false,
+    })
 }
 
 /// The entries under one `menu.` or `menu.submenu.<id>.` prefix, and the submenus under it.

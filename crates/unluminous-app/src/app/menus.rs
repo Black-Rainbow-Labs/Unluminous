@@ -76,10 +76,24 @@ impl UnluminousApp {
                 .surfaces()
                 .menus
                 .iter()
-                .map(|surface| actions::PluginMenu {
-                    plugin: surface.plugin.clone(),
-                    name: surface.what.name.clone(),
-                    items: surface.what.items.clone(),
+                .filter_map(|surface| {
+                    // A command that acts on the plugin's own tab is offered only while one is showing.
+                    let its_tab_is_showing = self
+                        .files
+                        .active()
+                        .plugin
+                        .as_ref()
+                        .is_some_and(|tab| tab.plugin == surface.plugin);
+                    let items = if its_tab_is_showing {
+                        surface.what.items.clone()
+                    } else {
+                        actions::without_commands(&surface.what.items, &surface.what.needs_its_tab)
+                    };
+                    (!items.is_empty()).then(|| actions::PluginMenu {
+                        plugin: surface.plugin.clone(),
+                        name: surface.what.name.clone(),
+                        items,
+                    })
                 })
                 .collect(),
             // A Word or workbook tab keeps its own undo and selection, which the empty document behind it
@@ -304,6 +318,21 @@ impl UnluminousApp {
             Action::NewNotebookIn(folder) => {
                 let path = crate::app::notebook_files::free_name(&folder, "Untitled", "ipynb");
                 if let Err(problem) = self.make_a_new_notebook(Some(&path)) {
+                    self.message = Some(problem);
+                }
+            }
+            Action::NewPageIn(folder) => {
+                let path = crate::app::notebook_files::free_name(&folder, "Untitled", "docx");
+                let made = self.run_plugin_command("word", "new", &[path.display().to_string()]);
+                if let Err(problem) = made {
+                    self.message = Some(problem);
+                }
+            }
+            Action::NewWorkbookIn(folder) => {
+                let path = crate::app::notebook_files::free_name(&folder, "Untitled", "xlsx");
+                let made =
+                    self.run_plugin_command("spreadsheet", "new", &[path.display().to_string()]);
+                if let Err(problem) = made {
                     self.message = Some(problem);
                 }
             }

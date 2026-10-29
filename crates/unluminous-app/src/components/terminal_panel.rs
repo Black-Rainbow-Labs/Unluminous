@@ -161,7 +161,7 @@ fn show_header(
 
     let hide =
         Rect::from_center_size(Pos2::new(area.right() - 22.0, area.center().y), Vec2::splat(22.0));
-    if controls::icon_button(ui, hide, "Hide the terminal", icon::collapse) {
+    if controls::icon_button(ui, hide, "Hide the terminal", icon::cross) {
         outcome.hide = true;
     }
 }

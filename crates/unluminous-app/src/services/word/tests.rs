@@ -644,7 +644,7 @@ fn the_status_bar_says_the_page_and_the_words_and_each_runs_a_command() {
     let (mut word, key) = word_with("blank.docx");
     run(&mut word, "type One two three");
     let status = word.tab_status(&key).expect("a Word tab has a status");
-    assert_eq!(status.kind, "Word document");
+    assert_eq!(status.kind, "Page document");
     let texts: Vec<&str> = status.items.iter().map(|i| i.text.as_str()).collect();
     assert_eq!(texts, ["Page 1 of 1", "3 words"]);
     run(&mut word, "track on");

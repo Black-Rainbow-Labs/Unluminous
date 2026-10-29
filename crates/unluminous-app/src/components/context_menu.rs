@@ -8,11 +8,10 @@
 //! it — a screenshot test cannot press the right mouse button, and a menu that can only be reached
 //! by pressing the right mouse button cannot be looked at.
 
-use egui::{Pos2, Stroke};
+use egui::Pos2;
 
 use crate::app::actions::{Action, Entry};
 use crate::components::controls;
-use crate::theme::color;
 
 /// How wide a context menu is. Narrower than the bar's menus, which have to fit
 /// `Open Folder in New Window` next to `Cmd+Option+O`; the longest pair here is
@@ -44,12 +43,9 @@ pub fn show(ui: &mut egui::Ui, name: &str, at: Pos2, entries: &[Entry]) -> Conte
     .kind(egui::PopupKind::Menu)
     .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
     .layout(egui::Layout::top_down_justified(egui::Align::Min))
-    .frame(
-        egui::Frame::popup(ui.style())
-            .fill(color::menu())
-            .stroke(Stroke::new(1.0, color::control_border()))
-            .inner_margin(6),
-    )
+    // The same raised card every other menu drops down in (`task-2397`): a frame of its own here drew a
+    // flatter, outlined menu with small corners beside the bar's.
+    .frame(controls::menu_frame(ui))
     .width(WIDTH);
 
     if let Some(response) = popup.show(|ui| controls::menu_rows(ui, entries, 0.0)) {

@@ -51,7 +51,7 @@ pub fn of(doc: &Doc) -> TabStatus {
             press: action("spelling"),
         });
     }
-    TabStatus { kind: "Word document".to_owned(), items }
+    TabStatus { kind: "Page document".to_owned(), items }
 }
 
 /// `noun`, or its plural when `count` is not one.

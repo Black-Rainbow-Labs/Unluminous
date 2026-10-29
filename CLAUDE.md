@@ -2724,6 +2724,36 @@ its own custom layout (same behavior as if they were open in different windows).
   Tab`, `Next Project Tab` and `Previous Project Tab` (`Ctrl`/`Cmd`+`Alt`+`PageDown`/`PageUp`) are the agent's half.
   `tests/project_tabs.rs` is the tests.
 
+## What `task-2397` changed, and the rules it left
+
+- **Every menu is framed by `controls::menu_frame`** (`menu_frame_in` where there is a style and no `Ui`): the
+  bar's menus, every right click menu, the dropdowns and the flyouts. A frame of its own drew a flatter,
+  outlined menu with small corners beside the bar's.
+- **A flyout opens beside its row, on the left when the right would run off the window**
+  (`spreadsheet::menus::flyout_at`). egui keeps an area on the screen by sliding it back over the menu that
+  opened it, which put the workbook menu's lists over their own rows.
+- **`menu.needs_tab` names a plugin's menu commands that act on one of its own tabs.** They are left out of
+  the `Plugins` menu while no such tab is showing (`actions::without_commands`), and a plugin left with
+  nothing has no row there. The command line still reaches them.
+- **The Word plugin is called Page wherever a person reads it**: its menu, its Settings page, its tab's
+  status and its messages. Microsoft Word is named in full where the file format or the program that converts
+  a file is meant. The plugin's id, its verbs and its MCP tool are still `word`.
+- **Every pane header is the file tabs' height** (`file_tabs::HEIGHT`, which `agent_tasks::PANE_HEADER` and the
+  explorer's heading take), its words placed by their capitals, with a line under it and a cross that hides it.
+  A header carries no count.
+- **The window buttons' hover stops above the groove** under the title bar.
+- **The explorer's `New` menu** has TypeScript, Markdown, JSON and Python templates, `Page Document (Word
+  compatible)` and `Spreadsheet (Excel compatible)` (`Action::NewPageIn`, `NewWorkbookIn`, which run the
+  plugins' own `new`).
+- **A bundled plugin's copy on disk that nobody edited does not hide a newer bundled one**
+  (`store::a_stale_copy_of_a_bundled_plugin`). The marketplace's `Install` writes the manifest out with
+  `plugin.conf.as-written` beside it, and a copy still equal to that is passed over once the shipped manifest
+  differs. A copy from before that record is passed over when its vendor and version are the bundled one's,
+  so a hand correction keeps its place by raising `plugin.version`. Four such copies, ten days old, kept this
+  machine's Agent-Chat, Agent-Tasks and Database menus as they were.
+- **Agent-Chat's menu has no motion entry**, and the tools entry says what it switches: whether the model may
+  use Unluminous's own commands.
+
 ## What `task-2392` changed, and the rules it left
 
 - **An endpoint has a mode, in the agent's own words** (`Provider::mode`, `ai.provider.<n>.mode`), chosen from
@@ -4281,7 +4311,7 @@ Three ways in, and all three go through `UnluminousApp::fill_a_side`:
   on that side and the side fills. Let go anywhere else in the band and nothing about the corners changes,
   so an ordinary move never fills a side by accident. `dock::aim` asks the targets first and falls back to
   `dock::target`.
-- **The panel's own menu**, `Fill Whole <Side>`, a toggle about the side that panel is on.
+- **The panel's own menu**, `Left Panels Use the Full Window Height` (`Full Window Width` for the top and the bottom), a toggle about the side that panel is on. It was `Fill Whole <Side>`, which told nobody what it did (`task-2397`); the band's target says `Full height <side>` or `Full width <side>`.
 - **`unluminous-cli panel fill <side> [on|off]`** and `panel dock --fill`. `panel list` answers `fills` and
   `corners`.
 

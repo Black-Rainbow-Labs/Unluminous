@@ -176,7 +176,10 @@ fn fill_target(painter: &egui::Painter, zone: &Zone, aimed: bool) {
 
 /// What the `Fill whole side` target on `side` says: `Fill whole left`, `Fill whole bottom`.
 pub fn fill_label(side: Side) -> String {
-    format!("Fill whole {}", side.name())
+    match side {
+        Side::Left | Side::Right => format!("Full height {}", side.name()),
+        Side::Top | Side::Bottom => format!("Full width {}", side.name()),
+    }
 }
 
 /// The strong rectangle a panel would land in, with a plate in the middle saying what is about to happen:

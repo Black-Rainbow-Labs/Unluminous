@@ -504,12 +504,7 @@ pub fn show_the_link_menu(ctx: &egui::Context) -> Option<LinkChoice> {
     .kind(egui::PopupKind::Menu)
     .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
     .layout(egui::Layout::top_down_justified(egui::Align::Min))
-    .frame(
-        egui::Frame::popup(&style)
-            .fill(crate::theme::color::menu())
-            .stroke(egui::Stroke::new(1.0, crate::theme::color::control_border()))
-            .inner_margin(6),
-    )
+    .frame(crate::components::controls::menu_frame_in(&style))
     .width(LINK_MENU_WIDTH);
     let target = menu.target.clone();
     if let Some(response) = popup.show(|ui| {

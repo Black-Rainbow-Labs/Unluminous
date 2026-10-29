@@ -326,12 +326,11 @@ impl UnluminousApp {
         );
         let outcome = {
             let mut header_ui = ui.new_child(egui::UiBuilder::new().max_rect(header));
-            let count = self.realm.realm.nodes.len();
             crate::components::agent_tasks::pane_header(
                 &mut header_ui,
                 header,
                 "Realm",
-                Some(&count.to_string()),
+                None,
                 dock::Panel::Realm,
                 self.settings.window_opacity(),
             )
