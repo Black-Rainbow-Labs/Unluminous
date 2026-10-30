@@ -133,7 +133,11 @@ fn window_buttons(area: Rect, placement: MenuPlacement) -> [(Rect, &'static str)
 /// They finish in front of the run widget, which is at the right hand end of the bar. A width of
 /// nothing gives an empty rectangle there, which is what a file with no tools gets.
 pub fn tools_rect(area: Rect, placement: MenuPlacement, width: f32, run_width: f32) -> Rect {
-    tools_rect_with(area, placement, RightEnd { tools: width, run: run_width, pinned: 0.0 })
+    tools_rect_with(
+        area,
+        placement,
+        RightEnd { tools: width, run: run_width, pinned: 0.0, left: None },
+    )
 }
 
 /// How wide each of the three things at the right hand end of the bar is: the text tools, the run widget, and
@@ -143,6 +147,36 @@ pub struct RightEnd {
     pub tools: f32,
     pub run: f32,
     pub pinned: f32,
+    /// Where the leftmost of them starts, when the window laid them out in an order of its own with
+    /// [`lay_out_right_end`]. `task-2405`.
+    pub left: Option<f32>,
+}
+
+/// Between two of the shortcuts at the right hand end of the bar.
+pub const ITEM_GAP: f32 = 8.0;
+
+/// Rectangles for things `widths` wide, left to right, ending against the window buttons with [`ITEM_GAP`]
+/// between each two. The window lays the top bar's shortcuts out with this in the order `title_bar.order` gives
+/// (`task-2405`).
+/// @param area - the title bar
+/// @param placement - where the menus and the window buttons are
+/// @param widths - how wide each thing is, left to right
+pub fn lay_out_right_end(area: Rect, placement: MenuPlacement, widths: &[f32]) -> Vec<Rect> {
+    let mut right = right_end(area, placement);
+    let mut rects: Vec<Rect> = widths
+        .iter()
+        .rev()
+        .map(|width| {
+            let rect = Rect::from_min_max(
+                Pos2::new(right - width, area.top()),
+                Pos2::new(right, area.bottom()),
+            );
+            right -= width + ITEM_GAP;
+            rect
+        })
+        .collect();
+    rects.reverse();
+    rects
 }
 
 /// Between the pinned shortcuts and the run widget in front of them.
@@ -183,7 +217,7 @@ pub fn tools_rect_with(area: Rect, placement: MenuPlacement, end: RightEnd) -> R
 /// The right hand end of the bar, clear of the window buttons, so the bar reads project, tools, run,
 /// buttons. The play and the bug are then in the same place whatever file is open — `task-1693`.
 pub fn run_rect(area: Rect, placement: MenuPlacement, run_width: f32) -> Rect {
-    run_rect_with(area, placement, RightEnd { tools: 0.0, run: run_width, pinned: 0.0 })
+    run_rect_with(area, placement, RightEnd { tools: 0.0, run: run_width, pinned: 0.0, left: None })
 }
 
 /// The run widget's rectangle, in front of the pinned shortcuts when there are any.
@@ -254,7 +288,9 @@ pub fn show(
     let tools = tools_rect_with(area, placement, end);
     let run = run_rect_with(area, placement, end);
     let pinned = pinned_rect(area, placement, end.pinned);
-    let claimed = if tools_width > 0.0 {
+    let claimed = if end.left.is_some() {
+        end.left
+    } else if tools_width > 0.0 {
         Some(tools.left())
     } else if run_width > 0.0 {
         Some(run.left())
@@ -582,7 +618,7 @@ mod tests {
     #[test]
     fn pinned_shortcuts_sit_against_the_buttons_with_the_run_widget_in_front_of_them() {
         let area = bar();
-        let end = RightEnd { tools: 124.0, run: 120.0, pinned: 70.0 };
+        let end = RightEnd { tools: 124.0, run: 120.0, pinned: 70.0, left: None };
         let pinned = pinned_rect(area, MenuPlacement::InWindow, 70.0);
         let run = run_rect_with(area, MenuPlacement::InWindow, end);
         let tools = tools_rect_with(area, MenuPlacement::InWindow, end);

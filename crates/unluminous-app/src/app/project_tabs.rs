@@ -65,6 +65,9 @@ pub struct ProjectTabs {
 pub enum Ask {
     /// Open this folder in a new tab and show it, or show the tab already on it.
     Open(PathBuf),
+    /// Open this folder in a new tab and show it, even when a tab already has it: a second view of one project.
+    /// `task-2405`.
+    OpenAgain(PathBuf),
     /// Show this tab.
     Show(usize),
     /// Close this tab.
@@ -209,8 +212,10 @@ impl UnluminousApp {
         };
         let rows = self.rows_for_the_project_dropdown();
         let outcome = strip::show_the_dropdown(ui.ctx(), anchor, &mut state, &rows);
+        // A project already open is opened again in a tab of its own, so one project can be seen in two
+        // arrangements side by side; its existing tab is a click away on the strip (`task-2405`).
         if let Some(folder) = outcome.open {
-            self.ask_the_window(Ask::Open(folder));
+            self.ask_the_window(Ask::OpenAgain(folder));
         }
         if outcome.choose_a_folder {
             self.choose_a_folder_for_a_project_tab();
@@ -466,6 +471,15 @@ impl ProjectWindow {
             self.show(index);
             return index;
         }
+        self.open_another(&folder, ctx)
+    }
+
+    /// Open `folder` in a new tab and show it, whether or not a tab already has it. Answers the tab's index.
+    ///
+    /// Two tabs on one project each keep their own arrangement while they are open; what the project remembers
+    /// in `.unluminous` is written by whichever of them wrote last. `task-2405`.
+    pub fn open_another(&mut self, folder: &Path, ctx: &egui::Context) -> usize {
+        let folder = unluminous_terminal::paths::plain(folder);
         let key = self.next_key;
         self.next_key += 1;
         // Written first, so the new tab reads the settings the showing tab has rather than older ones.
@@ -533,7 +547,8 @@ impl ProjectWindow {
             let next = if index + 1 < self.tabs.len() { index + 1 } else { index - 1 };
             self.show(next);
         }
-        let showing_folder = self.tabs[self.showing].app.tree.root().to_path_buf();
+        // By its key, because two tabs can be on one folder (`task-2405`).
+        let showing_key = self.tabs[self.showing].key;
         let mut tab = self.tabs.remove(index);
         {
             let _named = control::running_for(tab.app.address_for_children(), tab.key);
@@ -550,8 +565,7 @@ impl ProjectWindow {
             }
         }
         drop(tab);
-        self.showing =
-            self.tabs.iter().position(|tab| tab.app.tree.root() == showing_folder).unwrap_or(0);
+        self.showing = self.tabs.iter().position(|tab| tab.key == showing_key).unwrap_or(0);
         self.tell_every_tab();
         if let Some(ctx) = &self.context {
             ctx.request_repaint();
@@ -576,6 +590,16 @@ impl ProjectWindow {
                         continue;
                     }
                     self.open(&folder, ctx);
+                }
+                Ask::OpenAgain(folder) => {
+                    if !folder.is_dir() {
+                        self.app_mut().message = Some(format!(
+                            "{} is not a folder, so it cannot be a project tab.",
+                            folder.display()
+                        ));
+                        continue;
+                    }
+                    self.open_another(&folder, ctx);
                 }
                 Ask::Show(index) => self.show(index),
                 Ask::Close(index) => {

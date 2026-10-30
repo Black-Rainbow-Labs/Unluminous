@@ -528,7 +528,8 @@ unluminous-cli window pin <name> [--bar <rail|top>]
 
 Pin a shortcut to the side bar or the top bar, which is what clicking its card in the gallery does. A pane pinned to the top bar is a round chip there, and a tool pinned to the side bar is a button with a flyout. Written to the `rail.pinned`, `rail.unpinned`, `title_bar.pinned` and `title_bar.unpinned` settings. `window shortcuts` lists the names.
 
-- `name` (required) — The shortcut's name, such as `Project`, `Database pane` or `Run Configurations`. Case does not matter. Everything after it on the line belongs to it.
+- `name` — The shortcut's name, such as `Project`, `Database pane` or `Run Configurations`. Case does not matter. Everything after it on the line belongs to it.
+
 - `--bar <rail|top>` — Which bar. The side bar, `rail`, when it is left out. Put it before the name, which takes the rest of the line.
 
 ```sh
@@ -544,7 +545,8 @@ unluminous-cli window unpin <name> [--bar <rail|top>]
 
 Take a shortcut off the side bar or the top bar, which is what `Unpin from Side Bar` on its right click menu does. The buttons after it close up. `window pin` puts it back.
 
-- `name` (required) — The shortcut's name. Case does not matter. Everything after it on the line belongs to it.
+- `name` — The shortcut's name. Case does not matter. Everything after it on the line belongs to it.
+
 - `--bar <rail|top>` — Which bar. The side bar, `rail`, when it is left out. Put it before the name, which takes the rest of the line.
 
 ```sh
@@ -560,7 +562,8 @@ unluminous-cli window move <name> [--bar <rail|top>]
 
 Move a shortcut from one bar to the other: pinned to the bar named and taken off the other one, which is what `Move to Top Bar` and `Move to Side Bar` on its right click menu do.
 
-- `name` (required) — The shortcut's name. Case does not matter. Everything after it on the line belongs to it.
+- `name` — The shortcut's name. Case does not matter. Everything after it on the line belongs to it.
+
 - `--bar <rail|top>` — The bar it goes to. Required. Put it before the name, which takes the rest of the line.
 
 ```sh
@@ -5141,12 +5144,14 @@ unluminous-cli project tabs --json
 ### project tab-open
 
 ```
-unluminous-cli project tab-open <folder>
+unluminous-cli project tab-open <folder> [--again]
 ```
 
-Open a folder as a new project tab of this window and show it, or show the tab that already has it. The tab is the whole window for that project, as a second window would be.
+Open a folder as a new project tab of this window and show it, or show the tab that already has it. The tab is the whole window for that project, as a second window would be. `--again` opens a second tab on a folder that is already open, which is what choosing an open project from the tabs' + list does.
 
 - `folder` — The project folder to open.
+
+- `--again` — Open another tab on the folder even when a tab already has it.
 
 ```sh
 unluminous-cli project tab-open C:\jason\dev\inillucent

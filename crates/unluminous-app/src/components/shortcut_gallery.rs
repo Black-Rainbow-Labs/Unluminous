@@ -46,6 +46,8 @@ const INSET: f32 = 6.0;
 /// A chip on the top bar for a pinned shortcut: the text options chip's size, with 6 points between two.
 pub const CHIP: f32 = crate::components::text_tools::BUTTON;
 const CHIP_GAP: f32 = 6.0;
+/// How far inside a chip the well is carved while its pane is showing.
+const ON_INSET: f32 = 3.0;
 
 /// One card the gallery draws.
 #[derive(Clone)]
@@ -360,9 +362,13 @@ pub fn chips(ui: &mut egui::Ui, area: Rect, chips: &[Chip]) -> ChipsOutcome {
                 .with_hint(&chip.name);
             let chat = rux.theme().chat;
             let ink = rux.theme().ink;
-            match chip.on {
-                true => rux.chrome.surface(rect, CHIP / 2.0, chat.well, chat.carved_sm()),
-                false => rux::components::chip_disc(rux, rect),
+            // Raised to its full size either way, so a chip whose pane is showing has the outline the run
+            // widget's play button beside it has; showing is a well carved into it. Carved to the edge, it
+            // lost the raised rim and read smaller than the play button (`task-2405`).
+            rux::components::chip_disc(rux, rect);
+            if chip.on {
+                let well = rect.shrink(ON_INSET);
+                rux.chrome.surface(well, well.width() / 2.0, chat.well, chat.carved_sm());
             }
             let tint = match (response.hovered(), chip.on) {
                 (true, _) => chat.sky,

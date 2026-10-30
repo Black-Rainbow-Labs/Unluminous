@@ -192,8 +192,9 @@ pub struct Contributions {
     /// `ui.extensions`: the file types this plugin's provider opens instead of a text tab, lower case and
     /// without the dot. `task-2202`. The plugin's icon is what the explorer and the tabs draw for them.
     pub extensions: Vec<String>,
-    /// `explorer.shows`: folders whose names start with a dot that the explorer lists while this plugin is
-    /// switched on. `task-2202`: `.realm-files`. Every other dot folder stays hidden.
+    /// `explorer.shows`: folders whose names start with a dot that the plugin keeps its files in, such as
+    /// `.realm-files`. `task-2202` listed only these in the explorer; since `task-2405` the explorer lists every
+    /// dot folder but `.git` and `.unluminous`, and the key is still read so the manifests that name it load.
     pub explorer_shows: Vec<String>,
 }
 

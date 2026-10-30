@@ -213,6 +213,20 @@ pub enum ViewMode {
 impl ViewMode {
     pub const ALL: [ViewMode; 3] = [ViewMode::Raw, ViewMode::SideBySide, ViewMode::Preview];
 
+    /// The word `editor.view` and `editor view` use: `raw`, `side` or `preview`.
+    pub fn word(self) -> &'static str {
+        match self {
+            ViewMode::Raw => "raw",
+            ViewMode::SideBySide => "side",
+            ViewMode::Preview => "preview",
+        }
+    }
+
+    /// The mode a word names, or `None` for anything else, the empty `editor.view` included.
+    pub fn from_word(word: &str) -> Option<ViewMode> {
+        ViewMode::ALL.into_iter().find(|mode| mode.word() == word.trim())
+    }
+
     /// The name a test asks for the button by, and what assistive technology reads out.
     ///
     /// Markdown's wording, which is what it has always been and what every existing test asks for.
@@ -809,12 +823,12 @@ type ExplorerDecorations = (
 struct FramePlaces {
     /// The whole window, rounded corners and all.
     full: Rect,
-    /// The title bar across the top, and the three things drawn over its right hand end.
+    /// The title bar across the top. What is drawn over its right hand end is `top_items`.
     title_rect: Rect,
-    tools_rect: Rect,
-    run_rect: Rect,
     /// How wide the group of shortcuts pinned to the top bar is. `task-2404`.
     pinned_width: f32,
+    /// Every shortcut on the top bar, in the order it is drawn, each with its own rectangle. `task-2405`.
+    top_items: Vec<shortcuts::TopItem>,
     tools_width: f32,
     run_width: f32,
     /// What the run widget draws itself from. Worked out before the rectangles, because how much
@@ -1623,9 +1637,7 @@ impl UnluminousApp {
         // own. See `services::frame_trace`.
         let plugins = Plugins::load(None).0;
         crate::services::frame_trace::mark("plugins");
-        let mut tree = FileTree::new(&folder);
-        // The dot folders a plugin shows, `.realm-files` among them. `task-2202`.
-        tree.set_shows(plugins.explorer_shows());
+        let tree = FileTree::new(&folder);
         crate::services::frame_trace::mark("file-tree");
         Self {
             layouts_built: 0,
@@ -2465,8 +2477,19 @@ impl UnluminousApp {
         self.files.active().view_mode
     }
 
+    /// Show the open file `mode`'s way. For a file with a preview the mode is also remembered as `editor.view`,
+    /// which the next such file opens in (`task-2405`).
     pub fn set_view_mode(&mut self, mode: ViewMode) {
         self.files.active_mut().view_mode = mode;
+        if self.preview_applies_here() && self.settings.markdown_view != mode.word() {
+            self.settings.markdown_view = mode.word().to_owned();
+            self.unsaved_settings = true;
+        }
+    }
+
+    /// The view mode a file with a preview opens in: the one last chosen, or its source.
+    pub fn remembered_view_mode(&self) -> ViewMode {
+        ViewMode::from_word(&self.settings.markdown_view).unwrap_or(ViewMode::Raw)
     }
 
     /// The layout as it was last painted, which the tests assert against.

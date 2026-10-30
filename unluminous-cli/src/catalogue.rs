@@ -4262,9 +4262,9 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "project",
         verb: "tab-open",
-        summary: "Open a folder as a new project tab of this window and show it, or show the tab that already has it. The tab is the whole window for that project, as a second window would be.",
+        summary: "Open a folder as a new project tab of this window and show it, or show the tab that already has it. The tab is the whole window for that project, as a second window would be. `--again` opens a second tab on a folder that is already open, which is what choosing an open project from the tabs' + list does.",
         arguments: &[argument("folder", true, "The project folder to open.")],
-        flags: NO_FLAGS,
+        flags: &[switch("again", "Open another tab on the folder even when a tab already has it.")],
         examples: &["unluminous-cli project tab-open C:\\jason\\dev\\inillucent"],
         local: false,
     },

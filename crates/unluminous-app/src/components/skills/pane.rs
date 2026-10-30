@@ -18,7 +18,6 @@ const GAP: f32 = 12.0;
 const HEADER: f32 = 48.0;
 const SEARCH: f32 = 40.0;
 const SCOPE: f32 = 34.0;
-const NOTE: f32 = 22.0;
 /// The narrowest a card is drawn before the grid has one column fewer.
 const CARD_MIN: f32 = 230.0;
 /// The room a group's heading takes.
@@ -42,37 +41,13 @@ pub fn show(skills: &mut Skills, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Act>
         Pos2::new(inner.left(), search.bottom() + GAP * scale),
         Vec2::new(inner.width(), SCOPE * scale),
     );
-    let note = Rect::from_min_size(
-        Pos2::new(inner.left(), controls.bottom() + 4.0 * scale),
-        Vec2::new(inner.width(), NOTE * scale),
-    );
-    let list = Rect::from_min_max(Pos2::new(inner.left(), note.bottom() + 6.0 * scale), inner.max);
+    let list =
+        Rect::from_min_max(Pos2::new(inner.left(), controls.bottom() + GAP * scale), inner.max);
     let mut query = skills.search.clone();
     kit::layer(ui, scale, "skills-pane-header", inner, |rux| {
         the_header(skills, rux, header, scale, &mut acts);
-        rux::components::TextInput::search(&mut query)
-            .hint("Search skills")
-            .label("Search skills")
-            .id_salt("skills-search")
-            .show(rux, search);
+        kit::search_field(rux, search, &mut query, "Search skills", "skills-search");
         the_controls(skills, rux, controls, scale, &mut acts);
-        let names: Vec<&str> = skills
-            .config
-            .chosen_harnesses(&skills.places)
-            .iter()
-            .map(|harness| harness.name)
-            .collect();
-        let words = format!(
-            "Installs into {}. Settings chooses the agents; a skill's page installs for any one.",
-            names.join(", ")
-        );
-        kit::quiet(
-            rux,
-            Pos2::new(note.left() + 4.0 * scale, note.center().y),
-            &words,
-            11.0,
-            note.width() - 8.0 * scale,
-        );
     });
     skills.search = query;
     acts.extend(the_list(skills, ui, list, scale));

@@ -257,8 +257,13 @@ impl UnluminousApp {
                     return refused;
                 }
                 let tabs = self.project_tabs();
-                let already = tabs.tabs.iter().position(|tab| tab.folder == folder);
-                self.ask_the_window(crate::app::project_tabs::Ask::Open(folder.clone()));
+                let again = request.switch("again");
+                let already =
+                    tabs.tabs.iter().position(|tab| tab.folder == folder).filter(|_| !again);
+                self.ask_the_window(match again {
+                    true => crate::app::project_tabs::Ask::OpenAgain(folder.clone()),
+                    false => crate::app::project_tabs::Ask::Open(folder.clone()),
+                });
                 let said = match already {
                     Some(index) => format!(
                         "{} is already open in tab {index}, so it is shown",

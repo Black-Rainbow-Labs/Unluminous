@@ -452,12 +452,11 @@ impl UnluminousApp {
                 true => run_widget::width(&run_state),
                 false => 0.0,
             };
-        // The panes pinned to the top bar, against the window buttons (`task-2404`).
+        // The panes pinned to the top bar (`task-2404`), and every shortcut there laid out in the order
+        // `title_bar.order` gives, each in a rectangle of its own (`task-2405`).
         let pinned_width =
             crate::components::shortcut_gallery::chips_width(self.top_bar_chips().len());
-        let end = title_bar::RightEnd { tools: tools_width, run: run_width, pinned: pinned_width };
-        let tools_rect = title_bar::tools_rect_with(title_rect, self.menu_placement, end);
-        let run_rect = title_bar::run_rect_with(title_rect, self.menu_placement, end);
+        let top_items = self.lay_out_the_top_bar(title_rect, shown, run_width);
         let status_rect = Rect::from_min_size(
             Pos2::new(full.left(), full.bottom() - size::STATUS_BAR),
             Vec2::new(full.width(), size::STATUS_BAR),
@@ -512,11 +511,10 @@ impl UnluminousApp {
         FramePlaces {
             full,
             title_rect,
-            tools_rect,
-            run_rect,
             tools_width,
             run_width,
             pinned_width,
+            top_items,
             run_state,
             status_rect,
             rail_rect,
@@ -542,13 +540,12 @@ impl UnluminousApp {
         action: &mut Option<Action>,
     ) {
         let title_rect = places.title_rect;
-        let (tools_rect, run_rect) = (places.tools_rect, places.run_rect);
         let (tools_width, run_width) = (places.tools_width, places.run_width);
-        let end =
-            title_bar::RightEnd { tools: tools_width, run: run_width, pinned: places.pinned_width };
-        let shown = text_tools::Shown {
-            text_options: self.tool_on_the_top_bar(crate::services::shortcuts::Tool::TextOptions),
-            view_modes: self.tool_on_the_top_bar(crate::services::shortcuts::Tool::ViewModes),
+        let end = title_bar::RightEnd {
+            tools: tools_width,
+            run: run_width,
+            pinned: places.pinned_width,
+            left: places.top_items.first().map(|item| item.rect.left()),
         };
         let run_state = &places.run_state;
 
@@ -629,168 +626,116 @@ impl UnluminousApp {
             }
         }
 
-        // Everything on the top bar can be carried to the rail (`task-2404`). The handles are added before the
-        // controls they sit under, so a press that does not move still presses the control on top.
-        let items = self.top_bar_items(places, shown);
-        self.carry_from_the_top_bar(ui, &items, places.rail_rect);
+        // Everything on the top bar can be carried to the rail or along the bar (`task-2404`, `task-2405`). The
+        // handles are added before the controls they sit under, so a press that does not move still presses the
+        // control on top.
+        let items = places.top_items.clone();
+        self.carry_from_the_top_bar(ui, &items, places.rail_rect, title_rect);
 
-        // The text tools, drawn over the right hand end of the title bar. After the bar rather than
-        // before it, because the bar takes drags over the room between the menus and the buttons to move
-        // the window, and a control added earlier would sit underneath that and never be pressed.
-        if tools_width > 0.0 {
-            let tools_outcome = {
-                let mut tools_ui = ui.new_child(egui::UiBuilder::new().max_rect(tools_rect));
-                text_tools::show(
-                    &mut tools_ui,
-                    tools_rect,
+        // The shortcuts drawn over the right hand end of the title bar, each in its own rectangle. After the bar
+        // rather than before it, because the bar takes drags over the room between the menus and the buttons to
+        // move the window, and a control added earlier would sit underneath that and never be pressed.
+        for item in &items {
+            self.show_a_top_bar_item(ui, item, run_state, action);
+        }
+        self.read_a_right_click_on_the_top_bar_tools(ui, &items);
+    }
+
+    /// Draw one of the top bar's shortcuts in its own rectangle and carry out what it reported. `task-2405`: each
+    /// tool is drawn on its own, which is what lets them be put in any order.
+    fn show_a_top_bar_item(
+        &mut self,
+        ui: &mut egui::Ui,
+        item: &super::shortcuts::TopItem,
+        run_state: &run_widget::WidgetState,
+        action: &mut Option<Action>,
+    ) {
+        use super::shortcuts::TopPart;
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(item.rect));
+        match item.part {
+            TopPart::TextOptions | TopPart::ViewModes => {
+                let text_options = item.part == TopPart::TextOptions;
+                let shown = text_tools::Shown { text_options, view_modes: !text_options };
+                let outcome = text_tools::show(
+                    &mut child,
+                    item.rect,
                     self.document(),
                     &self.bold_family,
                     self.view_mode(),
                     shown,
-                )
-            };
-            for command in tools_outcome.commands {
-                self.document_mut().apply(command);
+                );
+                for command in outcome.commands {
+                    self.document_mut().apply(command);
+                }
+                if let Some(mode) = outcome.view_mode {
+                    self.set_view_mode(mode);
+                }
             }
-            if let Some(mode) = tools_outcome.view_mode {
-                self.set_view_mode(mode);
+            TopPart::Run => {
+                if let Some(chosen) = run_widget::show(&mut child, item.rect, run_state) {
+                    *action = Some(chosen);
+                }
+            }
+            TopPart::Chip(index) => {
+                let chips = self.top_bar_chips();
+                let Some((chip, chosen)) = chips.get(index).cloned() else { return };
+                let outcome = crate::components::shortcut_gallery::chips(
+                    &mut child,
+                    item.rect,
+                    std::slice::from_ref(&chip),
+                );
+                if outcome.pressed.is_some() {
+                    *action = Some(chosen);
+                }
+                if let Some((at, _)) = outcome.menu {
+                    self.shortcut_gallery = None;
+                    self.shortcut_menu = Some(super::shortcuts::ShortcutMenu {
+                        at,
+                        name: chip.name.clone(),
+                        bar: crate::services::shortcuts::Bar::Top,
+                        panel: None,
+                    });
+                }
             }
         }
-
-        // The run widget, drawn over the title bar after the bar for the reason the text tools are:
-        // the bar takes drags over the room between the menus and the buttons to move the window,
-        // and a control added earlier would sit underneath that and never be pressed.
-        if run_width > 0.0 {
-            let chosen = {
-                let mut run_ui = ui.new_child(egui::UiBuilder::new().max_rect(run_rect));
-                run_widget::show(&mut run_ui, run_rect, run_state)
-            };
-            if let Some(chosen) = chosen {
-                *action = Some(chosen);
-            }
-        }
-
-        self.show_the_pinned_chips(ui, title_rect, places.pinned_width, action);
-        self.read_a_right_click_on_the_top_bar_tools(
-            ui,
-            tools_rect,
-            run_rect,
-            tools_width,
-            run_width,
-        );
     }
 
-    /// Each shortcut on the top bar by name, and where it is: the pinned chips, the text options chip, the view
-    /// modes and the run widget. `task-2404`.
-    fn top_bar_items(&self, places: &FramePlaces, shown: text_tools::Shown) -> Vec<(String, Rect)> {
-        use crate::services::shortcuts::Tool;
-        let mut items = Vec::new();
-        if places.tools_width > 0.0 {
-            let (chip, modes) = text_tools::parts(places.tools_rect, self.document().path(), shown);
-            items.extend(chip.map(|rect| (Tool::TextOptions.name().to_owned(), rect)));
-            items.extend(modes.map(|rect| (Tool::ViewModes.name().to_owned(), rect)));
-        }
-        if places.run_width > 0.0 {
-            items.push((Tool::RunConfigurations.name().to_owned(), places.run_rect));
-        }
-        let area =
-            title_bar::pinned_rect(places.title_rect, self.menu_placement, places.pinned_width);
-        for (index, (chip, _)) in self.top_bar_chips().iter().enumerate() {
-            items.push((
-                chip.name.clone(),
-                crate::components::shortcut_gallery::chip_rect(area, index),
-            ));
-        }
-        items
-    }
-
-    /// The part of the top bar a shortcut carried from the rail lands in: from the leftmost of the text tools, the
-    /// run widget and the pinned chips to the window buttons, a chip wide when the bar holds none of them.
+    /// The part of the top bar a shortcut carried from the rail lands in: from the leftmost shortcut there to the
+    /// window buttons, a chip wide when the bar holds none.
     fn top_bar_landing(&self, places: &FramePlaces) -> Rect {
-        let end = title_bar::RightEnd {
-            tools: places.tools_width,
-            run: places.run_width,
-            pinned: places.pinned_width,
-        };
         let title = places.title_rect;
         let right = title_bar::pinned_rect(title, self.menu_placement, 0.0).right();
-        let tools = (places.tools_width > 0.0)
-            .then(|| title_bar::tools_rect_with(title, self.menu_placement, end).left());
-        let run = (places.run_width > 0.0)
-            .then(|| title_bar::run_rect_with(title, self.menu_placement, end).left());
-        let chips = right - places.pinned_width.max(crate::components::shortcut_gallery::CHIP);
-        let left = [tools, run].into_iter().flatten().fold(chips, f32::min);
+        let chip = right - crate::components::shortcut_gallery::CHIP;
+        let left = places.top_items.first().map_or(chip, |item| item.rect.left().min(chip));
         Rect::from_min_max(
             Pos2::new(left - 6.0, title.top() + 5.0),
             Pos2::new(right + 6.0, title.bottom() - 7.0),
         )
     }
 
-    /// The panes pinned to the top bar, as chips against the window buttons. `task-2404`.
-    fn show_the_pinned_chips(
-        &mut self,
-        ui: &mut egui::Ui,
-        title_rect: Rect,
-        width: f32,
-        action: &mut Option<Action>,
-    ) {
-        if width <= 0.0 {
-            return;
-        }
-        let chips = self.top_bar_chips();
-        let area = title_bar::pinned_rect(title_rect, self.menu_placement, width);
-        let drawn: Vec<_> = chips.iter().map(|(chip, _)| chip.clone()).collect();
-        let outcome = {
-            let mut chips_ui = ui.new_child(egui::UiBuilder::new().max_rect(area));
-            crate::components::shortcut_gallery::chips(&mut chips_ui, area, &drawn)
-        };
-        if let Some(index) = outcome.pressed {
-            *action = chips.get(index).map(|(_, chosen)| chosen.clone());
-        }
-        if let Some((at, index)) = outcome.menu {
-            if let Some((chip, _)) = chips.get(index) {
-                self.shortcut_gallery = None;
-                self.shortcut_menu = Some(super::shortcuts::ShortcutMenu {
-                    at,
-                    name: chip.name.clone(),
-                    bar: crate::services::shortcuts::Bar::Top,
-                    panel: None,
-                });
-            }
-        }
-    }
-
     /// A right click on the text options chip, the view modes or the run widget opens that tool's shortcut menu.
     ///
     /// Read from the frame's input rather than from the controls' own responses, because the chip and the run
     /// widget's name are flyout buttons whose responses `controls` keeps, and nothing else in these rectangles
-    /// answers a right click. `task-2404`.
+    /// answers a right click. A pinned pane's chip answers its own. `task-2404`.
     fn read_a_right_click_on_the_top_bar_tools(
         &mut self,
         ui: &egui::Ui,
-        tools_rect: Rect,
-        run_rect: Rect,
-        tools_width: f32,
-        run_width: f32,
+        items: &[super::shortcuts::TopItem],
     ) {
-        use crate::services::shortcuts::Tool;
+        use super::shortcuts::TopPart;
         let Some(at) = ui.ctx().input(|input| {
             input.pointer.secondary_clicked().then(|| input.pointer.interact_pos()).flatten()
         }) else {
             return;
         };
-        let (text_options, _) = self.tools_that_apply();
-        let text_options = text_options && self.tool_on_the_top_bar(Tool::TextOptions);
-        let tool = if run_width > 0.0 && run_rect.contains(at) {
-            Some(Tool::RunConfigurations)
-        } else if tools_width > 0.0 && tools_rect.contains(at) {
-            match text_options && at.x < tools_rect.left() + text_tools::BUTTON {
-                true => Some(Tool::TextOptions),
-                false => Some(Tool::ViewModes),
-            }
-        } else {
-            None
-        };
+        let tool =
+            items.iter().find(|item| item.rect.contains(at)).and_then(|item| match item.part {
+                TopPart::TextOptions => Some(crate::services::shortcuts::Tool::TextOptions),
+                TopPart::ViewModes => Some(crate::services::shortcuts::Tool::ViewModes),
+                TopPart::Run => Some(crate::services::shortcuts::Tool::RunConfigurations),
+                TopPart::Chip(_) => None,
+            });
         if let Some(tool) = tool {
             self.shortcut_gallery = None;
             self.shortcut_menu = Some(super::shortcuts::ShortcutMenu {
@@ -872,6 +817,7 @@ impl UnluminousApp {
             rail.carrying,
             rail.dropped_outside,
             (places.title_rect, landing),
+            &places.top_items,
         );
     }
 

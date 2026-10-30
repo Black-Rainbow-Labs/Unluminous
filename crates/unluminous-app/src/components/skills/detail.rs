@@ -120,12 +120,15 @@ pub fn show(skills: &Skills, id: &str, ui: &mut egui::Ui, look: &Look<'_>) -> Ve
     acts
 }
 
-/// How tall the description comes out at `width`.
+/// How tall the description comes out at `width`, measured in the face, size and leading [`kit::paragraph`] draws
+/// it in. It was measured in egui's own face at a leading of 1.25 and drawn at 1.45, so a long description ran
+/// under the buttons below it (`task-2405`).
 fn description_height(ui: &egui::Ui, skill: &Skill, width: f32, scale: f32) -> f32 {
-    let words = description_of(skill);
-    let font = egui::FontId::proportional(12.5 * scale);
-    let galley = ui.painter().layout(words, font, egui::Color32::WHITE, width); // any ground: measured, never painted
-    galley.size().y * 1.25
+    let style = Style::sans(12.5 * scale).leading(1.45);
+    let ink = egui::Color32::WHITE; // any ground: measured, never painted
+    let galley =
+        rux::text::wrapped(ui.painter(), style, &description_of(skill), ink, width.max(40.0));
+    galley.size().y
 }
 
 fn description_of(skill: &Skill) -> String {
@@ -144,19 +147,18 @@ fn the_words(rux: &mut rux::Rux<'_>, rect: Rect, skill: &Skill, scale: f32) {
         22.0,
         rect.width(),
     );
+    // Who made it, where it came from and how many stars, and nothing else: the licence, the `Most used` heading
+    // and the catalogue's popularity note, which carries a date, ran the line off the end of the page and said
+    // nothing a person choosing a skill needs (`task-2405`).
     let mut by = vec![];
     if !skill.entry.author.is_empty() {
         by.push(format!("by {}", skill.entry.author));
     }
-    by.push(skill.source.heading().to_owned());
-    if !skill.entry.license.is_empty() {
-        by.push(skill.entry.license.clone());
+    if skill.source != Source::Catalogue {
+        by.push(skill.source.heading().to_owned());
     }
     if skill.entry.stars > 0 && skill.source == Source::Catalogue {
         by.push(format!("{} GitHub stars", group_digits(skill.entry.stars)));
-    }
-    if !skill.entry.popularity.is_empty() && skill.source == Source::Catalogue {
-        by.push(skill.entry.popularity.clone());
     }
     kit::quiet(
         rux,
@@ -359,7 +361,13 @@ fn the_agents(
     kit::card_surface(rux, rect, 20.0 * scale);
     let style = rux.zs(Style::mono(11.0));
     let ink = rux.theme().ink;
-    let galley = rux.text(style, "AGENTS ON THIS MACHINE", ink.i500);
+    let switch = Rect::from_min_size(
+        Pos2::new(rect.right() - 16.0 * scale - 190.0 * scale, rect.top() + 10.0 * scale),
+        Vec2::new(190.0 * scale, 32.0 * scale),
+    );
+    // Cut short before the switch, which it ran under in a narrow pane (`task-2405`).
+    let room = (switch.left() - rect.left() - 28.0 * scale).max(0.0);
+    let galley = rux.elided(style, "AGENTS ON THIS MACHINE", ink.i500, room);
     rux::text::draw_left_capitals(
         rux.painter(),
         Pos2::new(rect.left() + 16.0 * scale, rect.top() + 26.0 * scale),
@@ -368,10 +376,6 @@ fn the_agents(
         ink.i500,
     );
     let scope = skills.scope_now();
-    let switch = Rect::from_min_size(
-        Pos2::new(rect.right() - 16.0 * scale - 190.0 * scale, rect.top() + 10.0 * scale),
-        Vec2::new(190.0 * scale, 32.0 * scale),
-    );
     let choices = vec![Scope::Project.label().to_owned(), Scope::Global.label().to_owned()];
     let chosen = if scope == Scope::Project { 0 } else { 1 };
     if let Some(picked) = kit::pill_switch(rux, switch, &choices, Some(chosen), "Install for", true)

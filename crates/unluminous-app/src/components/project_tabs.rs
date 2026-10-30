@@ -317,7 +317,7 @@ pub struct DropdownState {
 /// What the dropdown reported.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct DropdownOutcome {
-    /// Open this project in a tab, or show the tab it is already open in.
+    /// Open this project in a new tab, a second one when it is already open.
     pub open: Option<PathBuf>,
     /// The folder chip was pressed: ask the platform's folder picker for a folder.
     pub choose_a_folder: bool,

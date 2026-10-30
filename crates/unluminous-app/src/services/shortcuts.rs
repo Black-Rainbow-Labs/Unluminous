@@ -219,6 +219,45 @@ pub fn reset(settings: &mut Settings, bar: Bar) -> bool {
     changed
 }
 
+/// The top bar's shortcuts in the order they are drawn, left to right. `task-2405`.
+///
+/// `drawn` is what is on the bar in the order it has with nothing set: the text tools, the run widget, then the
+/// pinned panes. The names `order` (the `title_bar.order` setting) gives come first, in its order; a shortcut it
+/// does not name goes straight after the one before it in `drawn`, so a pane pinned later lands where it would
+/// have, and a name nothing on the bar has is passed over.
+/// @param order - the `title_bar.order` setting
+/// @param drawn - the names on the bar, in the order they have with nothing set
+pub fn arranged(order: &str, drawn: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for name in names(order) {
+        let found = drawn.iter().find(|one| one.eq_ignore_ascii_case(&name));
+        if let Some(found) = found.filter(|found| !out.contains(found)) {
+            out.push(found.clone());
+        }
+    }
+    for (index, name) in drawn.iter().enumerate() {
+        if out.contains(name) {
+            continue;
+        }
+        let after =
+            drawn[..index].iter().rev().find_map(|before| out.iter().position(|one| one == before));
+        out.insert(after.map_or(0, |at| at + 1), name.clone());
+    }
+    out
+}
+
+/// The `title_bar.order` setting once `name` is put down at `place` among `drawn`, the names on the bar from left
+/// to right. `place` counts the names other than `name` that stay to its left. `task-2405`.
+/// @param drawn - the names on the bar from left to right, `name` among them or not
+/// @param name - the shortcut put down
+/// @param place - how many of the others are to its left
+pub fn put_down(drawn: &[String], name: &str, place: usize) -> String {
+    let mut others: Vec<String> =
+        drawn.iter().filter(|one| !one.eq_ignore_ascii_case(name)).cloned().collect();
+    others.insert(place.min(others.len()), name.to_owned());
+    others.join(", ")
+}
+
 /// A shortcut's name as an action name writes it: lower case, with a hyphen for each space.
 pub fn slug(name: &str) -> String {
     name.trim().to_ascii_lowercase().split_whitespace().collect::<Vec<_>>().join("-")
@@ -298,6 +337,41 @@ mod tests {
         assert!(is_pinned(&settings, "Project", Bar::Rail, Bar::Rail));
         assert!(is_pinned(&settings, "Project", Bar::Rail, Bar::Top), "the top bar kept its pin");
         assert!(!reset(&mut settings, Bar::Rail), "a second reset changes nothing");
+    }
+
+    /// `task-2405`: the Database pane put between View Modes and Run Configurations stays there, and a pane pinned
+    /// later goes where it would with nothing set.
+    #[test]
+    fn the_top_bar_keeps_the_order_it_was_dragged_into() {
+        let drawn: Vec<String> =
+            ["Text Options", "View Modes", "Run Configurations", "Database pane"]
+                .map(str::to_owned)
+                .to_vec();
+        assert_eq!(arranged("", &drawn), drawn, "nothing set is the shipped order");
+        let order = put_down(&drawn, "Database pane", 2);
+        assert_eq!(order, "Text Options, View Modes, Database pane, Run Configurations");
+        assert_eq!(
+            arranged(&order, &drawn),
+            ["Text Options", "View Modes", "Database pane", "Run Configurations"]
+        );
+        let mut more = drawn.clone();
+        more.push("Realm".to_owned());
+        assert_eq!(
+            arranged(&order, &more),
+            ["Text Options", "View Modes", "Database pane", "Realm", "Run Configurations"],
+            "a shortcut the order does not name goes after the one before it with nothing set"
+        );
+        let without: Vec<String> =
+            drawn.iter().filter(|one| *one != "View Modes").cloned().collect();
+        assert_eq!(
+            arranged(&order, &without),
+            ["Text Options", "Database pane", "Run Configurations"],
+            "a name not on the bar now is passed over"
+        );
+        assert_eq!(
+            put_down(&drawn, "Text Options", 99),
+            "View Modes, Run Configurations, Database pane, Text Options"
+        );
     }
 
     #[test]

@@ -1160,10 +1160,8 @@ impl UnluminousApp {
     /// is the property `Plugins::renders` already gives a Mermaid diagram.
     pub fn refresh_the_plugins(&mut self) {
         self.plugin_ui.refresh(&self.plugins);
-        // The explorer's dot folders and the Realm panel both follow the plugins that are switched on.
-        // `task-2202`: the Realm plugin is the switch for the panel, the way Agent-Tasks is for its pane.
-        let shows = self.dot_folders_the_explorer_shows();
-        self.tree.set_shows(shows);
+        // The Realm panel follows the plugins that are switched on. `task-2202`: the Realm plugin is the
+        // switch for the panel, the way Agent-Tasks is for its pane.
         if !self.realm_is_on() && self.realm.visible {
             self.show_a_panel(crate::app::dock::Panel::Realm, false);
         }

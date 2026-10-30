@@ -2500,6 +2500,25 @@ mod tests {
         assert_eq!(empty.y, 50.0, "the second line starts at 40 and the extra 20 is shared");
     }
 
+    /// `task-2405`: an empty file zoomed to 32 points drew its caret at the default 16, and the caret grew to the
+    /// zoomed size only once a letter was typed.
+    #[test]
+    fn a_caret_in_an_empty_document_is_the_size_the_editor_was_zoomed_to() {
+        let mut empty = Document::from_text("");
+        empty.set_base_style(StyleChange::size(32.0));
+        let mut typed = Document::from_text("a");
+        typed.set_base_style(StyleChange::size(32.0));
+        let lay = |document: &Document| {
+            layout(document.text(), document.chars(), document.paragraphs(), &ScaledMetrics, 500.0)
+        };
+        assert_eq!(lay(&empty).caret_at(0).height, lay(&typed).caret_at(0).height);
+        assert_eq!(
+            lay(&empty).caret_at(0).height,
+            40.0,
+            "32 point: an ascent of 32 and a descent of 8"
+        );
+    }
+
     #[test]
     fn a_selection_within_one_line_is_one_rectangle() {
         let (rope, spans, paragraphs) = fixture("abcdef");

@@ -13,6 +13,24 @@ use crate::components::shortcut_gallery::{self, Flyout, GalleryCard};
 use crate::components::{context_menu, run_widget, text_tools};
 use crate::services::shortcuts::{self, Bar, Kind, Shortcut, Tool};
 
+/// Which of the top bar's controls a shortcut there is.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum TopPart {
+    TextOptions,
+    ViewModes,
+    Run,
+    /// A pane pinned to the top bar, by its place in [`UnluminousApp::top_bar_chips`].
+    Chip(usize),
+}
+
+/// One shortcut on the top bar: its name, where it is drawn, and which control it is. `task-2405`.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct TopItem {
+    pub name: String,
+    pub rect: Rect,
+    pub part: TopPart,
+}
+
 /// A shortcut's right click menu: where it was opened, the shortcut, the bar, and the panel it is about.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShortcutMenu {
@@ -188,17 +206,20 @@ impl UnluminousApp {
     /// @param carrying - the button being carried this frame, if it has left the rail
     /// @param dropped - the button let go off the rail this frame, and where
     /// @param top - the title bar, and the part of it a shortcut lands in
+    /// @param items - the top bar's shortcuts as they are drawn, among which it is put down where it was let go
     pub(crate) fn carry_from_the_rail(
         &mut self,
         ui: &egui::Ui,
         carrying: Option<String>,
         dropped: Option<(String, Pos2)>,
         top: (Rect, Rect),
+        items: &[TopItem],
     ) {
         let (title, landing) = top;
         if let (Some(name), Some(at)) = (carrying, ui.ctx().pointer_latest_pos()) {
             if title.contains(at) {
                 shortcut_gallery::drop_target(ui.ctx(), landing);
+                top_bar_insertion_mark(ui.ctx(), items, &name, at.x);
             }
             if let Some(mark) = self.mark_of(&name) {
                 shortcut_gallery::drag_ghost(ui.ctx(), mark, at);
@@ -207,25 +228,33 @@ impl UnluminousApp {
         if let Some((name, at)) = dropped {
             if title.contains(at) {
                 self.report_a_move(&name, Bar::Top);
+                let all = self.shortcuts();
+                let named =
+                    shortcuts::find(&all, &name).map_or(name.clone(), |one| one.name.clone());
+                self.put_down_on_the_top_bar(items, &named, at.x);
             }
         }
     }
 
-    /// The top bar's shortcuts carried to the rail: a drag handle over each of them, under its own button so a
-    /// press still presses it. While one is carried it is drawn under the pointer, and over the rail the line that
-    /// says where it would land is drawn. Let go on the rail, it moves there, to that place. `task-2404`.
+    /// The top bar's shortcuts carried along the top bar or to the rail: a drag handle over each of them, under its
+    /// own button so a press still presses it. While one is carried it is drawn under the pointer, and the line that
+    /// says where it would land is drawn on the bar or on the rail. Let go on the rail, it moves there; let go on the
+    /// top bar, it takes that place among the others, which `title_bar.order` remembers (`task-2404`, `task-2405`).
     /// @param ui - the window
-    /// @param items - each shortcut on the top bar, by name, and its rectangle
+    /// @param items - the top bar's shortcuts as they are drawn
     /// @param rail - the rail
+    /// @param title - the title bar
     pub(crate) fn carry_from_the_top_bar(
         &mut self,
         ui: &egui::Ui,
-        items: &[(String, Rect)],
+        items: &[TopItem],
         rail: Rect,
+        title: Rect,
     ) {
-        for (name, rect) in items {
+        for item in items {
+            let name = &item.name;
             let handle = ui.interact(
-                *rect,
+                item.rect,
                 egui::Id::new(("carry-from-the-top-bar", name)),
                 egui::Sense::drag(),
             );
@@ -241,6 +270,9 @@ impl UnluminousApp {
                     ));
                     activity_bar::insertion_mark(&painter, rail, slot.mark);
                 }
+                if title.contains(at) {
+                    top_bar_insertion_mark(ui.ctx(), items, name, at.x);
+                }
                 if let Some(mark) = self.mark_of(name) {
                     shortcut_gallery::drag_ghost(ui.ctx(), mark, at);
                 }
@@ -251,6 +283,8 @@ impl UnluminousApp {
                 self.report_a_move(name, Bar::Rail);
                 self.settings.rail_order = activity_bar::order_text(&slot.top, &slot.bottom);
                 self.unsaved_settings = true;
+            } else if handle.drag_stopped() && title.contains(at) {
+                self.put_down_on_the_top_bar(items, name, at.x);
             }
         }
     }
@@ -288,6 +322,71 @@ impl UnluminousApp {
                     shortcuts::is_pinned(&self.settings, tool.name(), Bar::Top, Bar::Rail)
                 })
                 .collect(),
+        }
+    }
+
+    /// The top bar's shortcuts, each with where it is drawn, in the order `title_bar.order` gives. Worked out once
+    /// a frame, before anything is drawn, so the bar, the drag handles and a drop all read one answer. Each tool is
+    /// drawn in a rectangle of its own, which is what lets a pane be put between View Modes and the run widget
+    /// (`task-2405`).
+    /// @param title - the title bar
+    /// @param shown - which of the text tools are pinned to the top bar
+    /// @param run_width - how wide the run widget is, nothing when it is not on the top bar
+    pub(crate) fn lay_out_the_top_bar(
+        &self,
+        title: Rect,
+        shown: text_tools::Shown,
+        run_width: f32,
+    ) -> Vec<TopItem> {
+        let path = self.document().path();
+        let document = self.files.active().is_a_document();
+        let alone = |text_options: bool| text_tools::Shown {
+            text_options: text_options && shown.text_options,
+            view_modes: !text_options && shown.view_modes,
+        };
+        let mut parts: Vec<(String, f32, TopPart)> = Vec::new();
+        for (tool, part, text_options) in [
+            (Tool::TextOptions, TopPart::TextOptions, true),
+            (Tool::ViewModes, TopPart::ViewModes, false),
+        ] {
+            let width = text_tools::width_shown(path, alone(text_options));
+            if document && width > 0.0 {
+                parts.push((tool.name().to_owned(), width, part));
+            }
+        }
+        if run_width > 0.0 {
+            parts.push((Tool::RunConfigurations.name().to_owned(), run_width, TopPart::Run));
+        }
+        for (index, (chip, _)) in self.top_bar_chips().iter().enumerate() {
+            parts.push((chip.name.clone(), shortcut_gallery::CHIP, TopPart::Chip(index)));
+        }
+        let drawn: Vec<String> = parts.iter().map(|(name, _, _)| name.clone()).collect();
+        let order = shortcuts::arranged(&self.settings.title_bar_order, &drawn);
+        parts.sort_by_key(|(name, _, _)| order.iter().position(|one| one == name));
+        let widths: Vec<f32> = parts.iter().map(|(_, width, _)| *width).collect();
+        let rects =
+            crate::components::title_bar::lay_out_right_end(title, self.menu_placement, &widths);
+        parts
+            .into_iter()
+            .zip(rects)
+            .map(|((name, _, part), rect)| TopItem { name, rect, part })
+            .collect()
+    }
+
+    /// Where a shortcut let go at `x` lands among the top bar's `items`: how many of the others stay to its left,
+    /// counted by their middles, as a tab dropped on the strip is.
+    pub(crate) fn top_bar_place(items: &[TopItem], name: &str, x: f32) -> usize {
+        items.iter().filter(|item| item.name != name && item.rect.center().x < x).count()
+    }
+
+    /// Put `name` down on the top bar at `x`, which writes `title_bar.order`. `task-2405`.
+    pub(crate) fn put_down_on_the_top_bar(&mut self, items: &[TopItem], name: &str, x: f32) {
+        let drawn: Vec<String> = items.iter().map(|item| item.name.clone()).collect();
+        let place = Self::top_bar_place(items, name, x);
+        let order = shortcuts::put_down(&drawn, name, place);
+        if order != self.settings.title_bar_order {
+            self.settings.title_bar_order = order;
+            self.unsaved_settings = true;
         }
     }
 
@@ -590,4 +689,27 @@ impl UnluminousApp {
             }
         }
     }
+}
+
+/// The upright line between two of the top bar's shortcuts that says where the one carried would land.
+fn top_bar_insertion_mark(ctx: &egui::Context, items: &[TopItem], carried: &str, x: f32) {
+    let others: Vec<&TopItem> = items.iter().filter(|item| item.name != carried).collect();
+    let place = UnluminousApp::top_bar_place(items, carried, x);
+    let Some(edge) = others
+        .get(place)
+        .map(|item| item.rect.left() - 4.0)
+        .or_else(|| others.last().map(|item| item.rect.right() + 4.0))
+    else {
+        return;
+    };
+    let reference = items.first().map(|item| item.rect).unwrap_or(Rect::NOTHING);
+    let painter = ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Foreground,
+        egui::Id::new("top-bar-landing"),
+    ));
+    let (top, bottom) = (reference.center().y - 14.0, reference.center().y + 14.0);
+    painter.line_segment(
+        [Pos2::new(edge, top), Pos2::new(edge, bottom)],
+        egui::Stroke::new(2.0, crate::theme::color::accent()),
+    );
 }

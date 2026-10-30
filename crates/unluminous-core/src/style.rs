@@ -299,6 +299,17 @@ impl StyleSpans {
         self.merge_neighbours();
     }
 
+    /// Apply `change` to the one span of an empty list, which is the formatting an empty document's one line is
+    /// laid out in. [`Self::set`] changes no span of no length, so an empty file kept the default size whatever
+    /// size the editor was zoomed to, and its caret came out smaller than the first letter typed (`task-2405`).
+    pub fn restyle_when_empty(&mut self, change: &StyleChange) {
+        if let [only] = self.spans.as_mut_slice() {
+            if only.len == 0 {
+                change.apply_to(&mut only.style);
+            }
+        }
+    }
+
     /// The formatting to use for text typed at a caret, or for a selection about to be replaced.
     pub fn style_for_insertion(&self, offset: usize) -> CharStyle {
         self.style_at(offset).clone()

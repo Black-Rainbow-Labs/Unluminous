@@ -774,8 +774,9 @@ impl Document {
             return;
         }
         let end = self.text.len_bytes();
-        if end > 0 {
-            self.chars.set(0..end, &change);
+        match end > 0 {
+            true => self.chars.set(0..end, &change),
+            false => self.chars.restyle_when_empty(&change),
         }
         // Also the formatting for text typed next, so that an empty document and a document with text in
         // it behave the same way.

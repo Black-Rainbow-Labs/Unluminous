@@ -2724,6 +2724,28 @@ its own custom layout (same behavior as if they were open in different windows).
   Tab`, `Next Project Tab` and `Previous Project Tab` (`Ctrl`/`Cmd`+`Alt`+`PageDown`/`PageUp`) are the agent's half.
   `tests/project_tabs.rs` is the tests.
 
+## What `task-2405` changed, and the rules it left
+
+- **The explorer lists every dot folder but `.git` and `.unluminous`** (`file_tree::HIDDEN`). A skill installed for the
+  project is in `.claude/skills`, and with dot folders hidden it could not be seen. The search walk still leaves out
+  what `.gitignore` and `.git/info/exclude` name. `explorer.shows` is still read so manifests that name it load, and
+  decides nothing now.
+- **The top bar's shortcuts are laid out from one list** (`UnluminousApp::lay_out_the_top_bar`, a `TopItem` each), in
+  the order `title_bar.order` gives (`services::shortcuts::arranged`). Text Options, View Modes, the run widget and each
+  pinned pane are drawn in rectangles of their own, so any of them can be dragged to any place along the bar, and a
+  rail button carried there lands where it is let go. A pane chip that is on stays raised and carves its well inside.
+- **A search well in a `rux` pane is `designer::kit::search_field`**, never `rux::components::TextInput::search`, which
+  sets its words, placeholder, padding and mark at the design's size whatever the pane's zoom.
+- **The skills fetch follows a redirect on the same host** (`skills::fetch::get_with`): unluminous.com answers a
+  `.html` file with `307`. It fetches six files at a time, and a failed fetch is said as a notice.
+  `every_skill_the_site_serves_in_part_comes_back_whole` is the live check, run with `--ignored`.
+- **`editor.view` is the view mode last chosen for a file with a preview**, and the next such file opens in it.
+  View / Edit on a skill no longer forces side by side.
+- **An empty document's one span takes the base style** (`StyleSpans::restyle_when_empty`), so its caret is the
+  zoomed size.
+- **Choosing an open project from the project tabs' `+` list opens a second tab on it** (`Ask::OpenAgain`,
+  `project tab-open --again`). A closed tab's neighbour is found by key, since two tabs can share a folder.
+
 ## What `task-2404` changed, and the rules it left
 
 `tasks/task-2404-pinned-shortcuts-tdd.md` is the design.

@@ -306,19 +306,6 @@ impl Plugins {
             .and_then(|plugin| plugin.contributions.provider.as_deref())
     }
 
-    /// The dot folders the explorer lists, which is every `explorer.shows` of a switched on plugin.
-    pub fn explorer_shows(&self) -> Vec<String> {
-        let mut shown: Vec<String> = self
-            .installed
-            .iter()
-            .filter(|plugin| plugin.enabled)
-            .flat_map(|plugin| plugin.contributions.explorer_shows.iter().cloned())
-            .collect();
-        shown.sort();
-        shown.dedup();
-        shown
-    }
-
     /// Whether the plugin called `id` is installed and switched on.
     pub fn is_on(&self, id: &str) -> bool {
         self.installed.iter().any(|plugin| plugin.id == id && plugin.enabled)

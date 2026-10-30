@@ -223,20 +223,79 @@ pub fn carved_field(
     multiline: bool,
     size: f32,
 ) -> bool {
-    let theme = rux.theme();
-    let chat = theme.chat;
+    let chat = rux.theme().chat;
     rux.chrome.surface(rect, radius, chat.well, chat.carved());
-    let style = rux.zs(Style::sans(size));
     let across = rux.z(radius.min(22.0));
+    let body = Rect::from_min_max(
+        Pos2::new(rect.left() + across, rect.top()),
+        Pos2::new(rect.right() - across, rect.bottom()),
+    );
+    let field = FieldText { well: rect, body, size, multiline };
+    field_text(rux, field, text, hint, name, ("designer-field", salt))
+}
+
+/// A search well: a carved pill with the magnifier at its left and the words after it, every size the design's
+/// times the pane's zoom. Answers whether the words changed.
+///
+/// `rux::components::TextInput::search` set its words, its placeholder, its padding and its magnifier at the
+/// design's size whatever the zoom, and its placeholder sat at the top of the well; this is the Skills and
+/// Designer panes' search instead (`task-2405`).
+/// @param rect - the well
+/// @param text - the words
+/// @param hint - what the empty well says, which is also its name
+/// @param salt - what keeps this box's id apart from every other
+pub fn search_field(
+    rux: &mut Rux<'_>,
+    rect: Rect,
+    text: &mut String,
+    hint: &str,
+    salt: impl Hash + std::fmt::Debug,
+) -> bool {
+    let theme = rux.theme();
+    rux.chrome.surface(rect, rect.height() / 2.0, theme.chat.well, theme.chat.carved_sm());
+    let mark = rux.z(13.0);
+    let centre = Pos2::new(rect.left() + rux.z(18.0) + mark / 2.0, rect.center().y);
+    rux.mark(Mark::new(Icon::Search, mark), centre, theme.ink.i500);
+    let body = Rect::from_min_max(
+        Pos2::new(centre.x + mark / 2.0 + rux.z(10.0), rect.top()),
+        Pos2::new(rect.right() - rux.z(18.0), rect.bottom()),
+    );
+    let field = FieldText { well: rect, body, size: 13.0, multiline: false };
+    field_text(rux, field, text, hint, hint, ("search-field", salt))
+}
+
+/// Where a field's words go: the well that takes a press, the strip across it the words are laid out in, their
+/// size in the design's points, and whether Enter makes a new line.
+#[derive(Clone, Copy)]
+struct FieldText {
+    well: Rect,
+    body: Rect,
+    size: f32,
+    multiline: bool,
+}
+
+/// The text box inside a well, its one line centred on the well's middle and set at the pane's zoom, and its
+/// placeholder in the same font. Answers whether the words changed.
+fn field_text(
+    rux: &mut Rux<'_>,
+    field: FieldText,
+    text: &mut String,
+    hint: &str,
+    name: &str,
+    salt: impl Hash + std::fmt::Debug,
+) -> bool {
+    let theme = rux.theme();
+    let FieldText { well: rect, size, multiline, .. } = field;
+    let style = rux.zs(Style::sans(size));
     let down = match multiline {
         true => rux.z(12.0),
         false => ((rect.height() - rux.measure(style, "Ag").y) / 2.0).max(0.0),
     };
     let body = Rect::from_min_max(
-        Pos2::new(rect.left() + across, rect.top() + down),
-        Pos2::new(rect.right() - across, rect.bottom() - down),
+        Pos2::new(field.body.left(), rect.top() + down),
+        Pos2::new(field.body.right(), rect.bottom() - down),
     );
-    let id = rux.ui.id().with(("designer-field", salt));
+    let id = rux.ui.id().with(salt);
     // The whole well takes a press, a double click in its empty part included (`task-2392`).
     crate::components::controls::claim_the_field(rux.ui, rect, id, &format!("{name} field"));
     let edit = match multiline {

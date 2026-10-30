@@ -255,6 +255,85 @@ pub fn paint_cover(
     );
 }
 
+/// A radial glow round `centre` that fills `rect` with its corners rounded, as one mesh: rays from the centre to
+/// points along the rounded outline, each cut into steps coloured by their distance from the centre, so the glow
+/// has no visible rings and nothing of it is drawn past a rounded corner.
+///
+/// It used to be rings round the centre clipped to the rectangle, and a clip is square: past each rounded top
+/// corner of a card a square of glow showed, which read as the card's shadow cut off (`task-2405`).
+fn glow_mesh(
+    rect: egui::Rect,
+    corners: egui::CornerRadius,
+    centre: egui::Pos2,
+    reach: f32,
+    glow: egui::Color32,
+) -> egui::Mesh {
+    // How strong the glow is at a distance from the centre, as a share of `reach`.
+    let strength = |distance: f32| {
+        let at = (distance / reach.max(1.0)).clamp(0.0, 1.0);
+        match at < 0.4 {
+            true => 0.42 + (0.16 - 0.42) * at / 0.4,
+            false => 0.16 * (1.0 - (at - 0.4) / 0.6),
+        }
+    };
+    let outline = rounded_outline(rect, corners);
+    const STEPS: u32 = 16;
+    let mut mesh = egui::Mesh::default();
+    for edge in &outline {
+        for step in 0..=STEPS {
+            let at = centre + (*edge - centre) * (step as f32 / STEPS as f32);
+            mesh.colored_vertex(at, glow.gamma_multiply(strength(at.distance(centre))));
+        }
+    }
+    let rays = outline.len() as u32;
+    for ray in 0..rays {
+        let next = (ray + 1) % rays;
+        for step in 0..STEPS {
+            let (here, there) = (ray * (STEPS + 1) + step, next * (STEPS + 1) + step);
+            mesh.add_triangle(here, here + 1, there + 1);
+            mesh.add_triangle(here, there + 1, there);
+        }
+    }
+    mesh
+}
+
+/// Points round `rect` with its corners rounded by `corners`, clockwise from the top left, close enough together
+/// that the rays of [`glow_mesh`] between them are not seen.
+fn rounded_outline(rect: egui::Rect, corners: egui::CornerRadius) -> Vec<egui::Pos2> {
+    use std::f32::consts::{FRAC_PI_2, PI};
+    let half = rect.width().min(rect.height()) / 2.0;
+    let radius = |value: u8| f32::from(value).min(half);
+    // Each corner: its centre, its radius, and the angle its arc starts at, going clockwise on the screen.
+    let arcs = [
+        (rect.left_top(), radius(corners.nw), egui::vec2(1.0, 1.0), PI),
+        (rect.right_top(), radius(corners.ne), egui::vec2(-1.0, 1.0), -FRAC_PI_2),
+        (rect.right_bottom(), radius(corners.se), egui::vec2(-1.0, -1.0), 0.0),
+        (rect.left_bottom(), radius(corners.sw), egui::vec2(1.0, -1.0), FRAC_PI_2),
+    ];
+    let mut points = Vec::new();
+    for (corner, radius, inward, start) in arcs {
+        let middle = corner + inward * radius;
+        let steps = match radius > 0.5 {
+            true => 8,
+            false => 0,
+        };
+        for step in 0..=steps {
+            let angle = start + FRAC_PI_2 * step as f32 / steps.max(1) as f32;
+            points.push(middle + egui::vec2(angle.cos(), angle.sin()) * radius);
+        }
+    }
+    // The straight edges are long; split each into pieces a few points apart.
+    let mut fine = Vec::new();
+    for (index, point) in points.iter().enumerate() {
+        let next = points[(index + 1) % points.len()];
+        let pieces = (point.distance(next) / 12.0).ceil().max(1.0) as usize;
+        for piece in 0..pieces {
+            fine.push(*point + (next - *point) * (piece as f32 / pieces as f32));
+        }
+    }
+    fine
+}
+
 /// A stand in for a skill with no picture: a dark ground with a soft glow in a colour worked out from its name, and
 /// the blocks mark over it.
 pub fn paint_placeholder(
@@ -271,26 +350,7 @@ pub fn paint_placeholder(
     let clipped = painter.with_clip_rect(rect.intersect(painter.clip_rect()));
     let centre = egui::pos2(rect.left() + rect.width() * 0.62, rect.top() + rect.height() * 0.45);
     let reach = rect.width().max(rect.height()) * 0.55;
-    // A radial glow as one mesh whose colours are blended between three rings, so it has no visible steps.
-    let rings = [(0.0, 0.42), (0.4, 0.16), (1.0, 0.0)];
-    let around = 72;
-    let mut mesh = egui::Mesh::default();
-    for (radius, strength) in rings {
-        for index in 0..around {
-            let angle = index as f32 / around as f32 * std::f32::consts::TAU;
-            let at = centre + egui::vec2(angle.cos(), angle.sin()) * reach * radius;
-            mesh.colored_vertex(at, glow.gamma_multiply(strength));
-        }
-    }
-    for ring in 0..rings.len() as u32 - 1 {
-        for index in 0..around as u32 {
-            let next = (index + 1) % around as u32;
-            let (inner, outer) = (ring * around as u32, (ring + 1) * around as u32);
-            mesh.add_triangle(inner + index, outer + index, outer + next);
-            mesh.add_triangle(inner + index, outer + next, inner + next);
-        }
-    }
-    clipped.add(mesh);
+    clipped.add(glow_mesh(rect, corners, centre, reach, glow));
     let side = rect.height().min(rect.width()) * 0.34;
     crate::theme::svg_icon::paint(
         &clipped,

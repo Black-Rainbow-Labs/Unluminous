@@ -30,7 +30,7 @@ use egui::{Key, Modifiers, Rect};
 
 use crate::app::{Focus, UnluminousApp};
 use crate::services::browser::{BrowserLocation, BrowserPlacement, BrowserTab};
-use crate::services::designer::config::{slashed, Configuration};
+use crate::services::designer::config::slashed;
 use crate::services::designer::page::{self, Mode};
 use crate::services::designer::{Designer, PageCall, Want};
 use crate::services::plugin_ui::Look;
@@ -402,7 +402,7 @@ impl UnluminousApp {
     }
 
     /// Do what the provider asked of the window outside a draw: open a design as text, load a page again, and
-    /// tell the explorer where the designs are when the folder changed.
+    /// read the explorer again when the designs folder changed, since Settings may have made a new one.
     pub(crate) fn act_on_the_designer_wants(&mut self) {
         self.let_go_of_closed_designs();
         if !self.designer_is_on() || !self.plugin_ui.is_open("designer") {
@@ -423,8 +423,7 @@ impl UnluminousApp {
             }
         }
         if changed {
-            let shows = self.dot_folders_the_explorer_shows();
-            self.tree.set_shows(shows);
+            self.tree.reload();
         }
     }
 
@@ -436,35 +435,6 @@ impl UnluminousApp {
         if let Err(problem) = self.browser.reload(id) {
             self.message = Some(problem);
         }
-    }
-
-    /// The dot folders the explorer lists: every switched on plugin's `explorer.shows`, and the Designer's
-    /// folder when Settings put it somewhere else and its first part starts with a dot.
-    pub(crate) fn dot_folders_the_explorer_shows(&mut self) -> Vec<String> {
-        let mut shown = self.plugins.explorer_shows();
-        if !self.designer_is_on() {
-            return shown;
-        }
-        // What the provider holds when it is open, because that is what the person has set; and what is in the
-        // plugin's own file when it is not, which is what it will hold when it is.
-        let configured = match self.plugin_ui.is_open("designer") {
-            true => self.designer().ok().map(|designer| designer.config.folder.clone()),
-            false => self
-                .plugin_ui
-                .context_for("designer")
-                .folder
-                .map(|folder| Configuration::read(&folder).0.folder),
-        };
-        let first = configured.and_then(|folder| {
-            folder.components().next().map(|part| part.as_os_str().to_string_lossy().into_owned())
-        });
-        if let Some(first) = first.filter(|first| first.starts_with('.')) {
-            if !shown.contains(&first) {
-                shown.push(first);
-                shown.sort();
-            }
-        }
-        shown
     }
 
     /// The keys the Designer pane has while it holds the keyboard on a design and no text box does.

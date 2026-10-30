@@ -1214,6 +1214,15 @@ settings! {
         title_bar_pinned = String::new() => "title_bar.pinned", "shortcut names whose home is the rail, pinned to the top bar, separated by commas";
         /// The top bar's own tools that were taken off it: `Text Options`, `View Modes`, `Run Configurations`. `task-2404`.
         title_bar_unpinned = String::new() => "title_bar.unpinned", "the top bar's own tool names that were unpinned from it, separated by commas";
+        /// The order of the shortcuts on the top bar, by name from left to right, separated by commas, such as
+        /// `Text Options, Database pane, View Modes, Run Configurations`. `task-2405`: dragging a shortcut along the
+        /// top bar writes it, as dragging one along the rail writes `rail.order`. A shortcut it does not name goes
+        /// where it would be with nothing set; empty is the order Unluminous ships with.
+        title_bar_order = String::new() => "title_bar.order", "the top bar's shortcut names from left to right, separated by commas, or empty for the default order";
+        /// The view mode last chosen for a file with a preview, `raw`, `side` or `preview`, which the next such file
+        /// opens in. Empty until one is chosen, and then a Markdown file opens as its source. `task-2405`: *"My view
+        /// mode preference should be remembered and applied between files."*
+        markdown_view = String::new() => "editor.view", "raw, side or preview: how the next Markdown or Mermaid file opens, or empty for its source";
     }
 
     text_raw {
@@ -2058,6 +2067,8 @@ mod tests {
             "rail.unpinned",
             "title_bar.pinned",
             "title_bar.unpinned",
+            "title_bar.order",
+            "editor.view",
         ];
         expected.sort_unstable();
         let mut actual: Vec<&str> = Settings::NAMES.to_vec();
@@ -2190,6 +2201,8 @@ mod tests {
             rail_unpinned: "Editing Area, Realm".to_owned(),
             title_bar_pinned: "Terminal tile".to_owned(),
             title_bar_unpinned: "View Modes".to_owned(),
+            title_bar_order: "Database pane, Run Configurations".to_owned(),
+            markdown_view: "preview".to_owned(),
             voice_wake_sensitivity: 0.75,
             voice_model_idle: 300.0,
             voice_send_pause: 3.5,

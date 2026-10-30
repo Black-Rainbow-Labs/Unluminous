@@ -546,12 +546,12 @@ impl Skills {
                 continue;
             }
             if let Ok(file) = ops::file_to_edit(&self.here(), &other) {
-                self.open_beside_its_preview(&file);
+                self.open_in_a_tab(&file);
                 called.push(other.entry.name.clone());
             }
         }
         let file = ops::file_to_edit(&self.here(), &skill)?;
-        self.open_beside_its_preview(&file);
+        self.open_in_a_tab(&file);
         self.refresh();
         let mut said =
             format!("Opened {}. Saving it updates every place {id} is installed.", file.display());
@@ -575,24 +575,18 @@ impl Skills {
         self.refresh();
         let taken: Vec<String> = self.shelf.skills.iter().map(|skill| skill.id.clone()).collect();
         let file = ops::new_skill(&self.here(), name, description, &taken)?;
-        self.open_beside_its_preview(&file);
+        self.open_in_a_tab(&file);
         self.refresh();
         let id = frontmatter::tidy_name(name);
         self.viewing = Some(id.clone());
         Ok((id, file))
     }
 
-    /// Open a `SKILL.md` in a tab of the editing area, shown side by side with its Markdown preview, which is the
-    /// editor made for writing one. The view is the window's `view-side` menu entry, asked for down `run_cli`.
-    fn open_beside_its_preview(&mut self, file: &Path) {
+    /// Open a `SKILL.md` in a tab of the editing area, in the view mode last chosen for a Markdown file. It was
+    /// always side by side, which undid a person's choice of the preview on every skill they opened next
+    /// (`task-2405`); the window opens a Markdown file in `editor.view` itself.
+    fn open_in_a_tab(&mut self, file: &Path) {
         self.outbox.push(Request::OpenFile(file.to_path_buf()));
-        let mut arguments = serde_json::Map::new();
-        arguments.insert("name".into(), serde_json::Value::String("view-side".into()));
-        self.outbox.push(Request::RunCommand {
-            id: "skills-view-side".into(),
-            command: "action.run".into(),
-            arguments,
-        });
     }
 
     /// Take the site's newer files for a skill.
@@ -707,7 +701,9 @@ impl Skills {
         let files = match files {
             Ok(files) => files,
             Err(why) => {
-                self.status = Some(format!("Could not fetch {id}: {why}"));
+                // Said as a notice: the pane's own line goes back to the counts once nothing is being fetched,
+                // so a failure set only there was never seen (`task-2405`).
+                self.say(format!("Could not fetch {id}: {why}"));
                 return;
             }
         };

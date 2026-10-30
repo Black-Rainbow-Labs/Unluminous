@@ -1010,6 +1010,8 @@ impl UnluminousApp {
             "rail.unpinned" => self.settings.rail_unpinned.clone(),
             "title_bar.pinned" => self.settings.title_bar_pinned.clone(),
             "title_bar.unpinned" => self.settings.title_bar_unpinned.clone(),
+            "title_bar.order" => self.settings.title_bar_order.clone(),
+            "editor.view" => self.settings.markdown_view.clone(),
             "editor.exclude" => self.settings.exclude.clone(),
             "debug.value_tooltip" => self.settings.value_tooltip.name().to_owned(),
             "plugins.chrome" => self.settings.plugin_chrome.to_string(),
@@ -1184,6 +1186,14 @@ impl UnluminousApp {
             }
             "title_bar.unpinned" => {
                 settings.title_bar_unpinned = crate::services::shortcuts::tidy(value)
+            }
+            "title_bar.order" => settings.title_bar_order = crate::services::shortcuts::tidy(value),
+            "editor.view" => {
+                let value = value.trim().to_ascii_lowercase();
+                if !matches!(value.as_str(), "" | "raw" | "side" | "preview") {
+                    return Err(format!("editor.view is raw, side or preview, not {value}"));
+                }
+                settings.markdown_view = value
             }
             // Not checked against the machine, for `terminal.shell`'s reason: a path may name
             // something installed a moment from now, and when it is wrong the status bar says so in
@@ -1885,6 +1895,14 @@ const SETTINGS: &[SettingKey] = &[
         help: "The top bar's own tools that were unpinned from it: `Text Options`, `View Modes`, `Run Configurations`. `window unpin <name> --bar top` writes it.",
     },
     SettingKey {
+        name: "title_bar.order",
+        help: "The order of the shortcuts on the top bar by name, left to right, separated by commas, such as `Text Options, Database pane, View Modes, Run Configurations`. Dragging a shortcut along the top bar writes it. A shortcut it does not name goes where it would be with nothing set. Empty is the default order.",
+    },
+    SettingKey {
+        name: "editor.view",
+        help: "How the next Markdown or Mermaid file opens: `raw`, `side` or `preview`. Choosing a view mode for such a file writes it, so the mode chosen last is the one the next file opens in. Empty opens the source.",
+    },
+    SettingKey {
         name: "editor.exclude",
         help: "Patterns Go to File, Find in Files, completion, Go to Definition and Find References leave out, beside the project's own .gitignore, which is read already. The explorer goes on showing everything.",
     },
@@ -2011,6 +2029,8 @@ fn fresh_value(name: &str, fresh: &crate::settings::Settings) -> String {
         "rail.unpinned" => fresh.rail_unpinned.clone(),
         "title_bar.pinned" => fresh.title_bar_pinned.clone(),
         "title_bar.unpinned" => fresh.title_bar_unpinned.clone(),
+        "title_bar.order" => fresh.title_bar_order.clone(),
+        "editor.view" => fresh.markdown_view.clone(),
         "editor.exclude" => fresh.exclude.clone(),
         "debug.value_tooltip" => fresh.value_tooltip.name().to_owned(),
         "plugins.chrome" => fresh.plugin_chrome.to_string(),

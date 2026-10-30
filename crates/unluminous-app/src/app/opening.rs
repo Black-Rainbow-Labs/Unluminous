@@ -39,7 +39,6 @@ impl UnluminousApp {
         // A fresh tree knows nothing of the settings, and the folder it has just read may be a
         // different repository with a different `.gitignore`.
         self.tree.set_exclude(&self.settings.exclude);
-        self.tree.set_shows(self.plugins.explorer_shows());
         self.filter.clear();
         self.explorer_visible = true;
         self.terminal.tabs.settings.working_directory = Some(folder.to_path_buf());
@@ -308,10 +307,13 @@ impl UnluminousApp {
                 // something else has changed it since.
                 self.files.active_mut().note_what_is_on_disk();
                 self.message = None;
-                // A file that is not Markdown has nothing to preview, so the raw source is shown.
-                if !file_kind::is_markdown(Some(path)) {
-                    self.files.active_mut().view_mode = ViewMode::Raw;
-                }
+                // A file that is not Markdown has nothing to preview, so the raw source is shown. A file with a
+                // preview opens in the mode last chosen for one (`task-2405`).
+                let mode = match file_kind::preview_applies(Some(path)) {
+                    true => self.remembered_view_mode(),
+                    false => ViewMode::Raw,
+                };
+                self.files.active_mut().view_mode = mode;
                 // The new document counts its revisions from the beginning, so what was laid out for
                 // the last one has to be thrown away rather than compared against.
                 self.forget_layout();

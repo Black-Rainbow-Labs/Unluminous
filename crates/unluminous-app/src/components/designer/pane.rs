@@ -65,11 +65,7 @@ pub fn show(designer: &mut Designer, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<
         );
         kit::layer(ui, scale, "designer-pane-header", inner, |rux| {
             the_header(rux, header, scale, &mut acts);
-            rux::components::TextInput::search(&mut filter)
-                .hint("Search designs")
-                .label("Search designs")
-                .id_salt("designer-search")
-                .show(rux, search);
+            kit::search_field(rux, search, &mut filter, "Search designs", "designer-search");
             the_counts(designer, rux, counts, &mut with_notes, scale);
             the_foot(designer, rux, foot, scale, &mut acts);
         });
