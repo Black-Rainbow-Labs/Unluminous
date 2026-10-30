@@ -206,6 +206,7 @@ impl UnluminousApp {
             action.name()
         });
         match action {
+            Action::Shortcut(what) => self.run_a_shortcut_action(what, Some(ctx)),
             Action::PluginPane { .. } | Action::PluginTab { .. } | Action::PluginCommand { .. } => {
                 self.a_plugin_entry(action)
             }

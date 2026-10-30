@@ -121,6 +121,7 @@ impl Action {
             Action::Dock { panel, side } => format!("dock-{}-{}", panel.name(), side.name()),
             Action::FillSide(side) => format!("fill-{}", side.name()),
             Action::ResetPanelLayout => "reset-panel-layout".to_owned(),
+            Action::Shortcut(shortcut) => shortcut.name(),
             // The canvas's own actions, `task-1904`. One name a variant, spelled the way every other
             // name here is, so `unluminous-cli action run realm-add-terminal` works the day the entry
             // is written.
@@ -253,6 +254,12 @@ impl Action {
                 }
             }
             return None;
+        }
+        // The shortcuts on the rail and the top bar, `task-2404`. Their names carry a colon, as a plugin's do.
+        if name.contains("shortcut") {
+            if let Some(shortcut) = crate::app::actions::ShortcutAction::from_name(name) {
+                return Some(Action::Shortcut(shortcut));
+            }
         }
         // `fill-<side>`, the panel menu's `Fill Whole <Side>`.
         if let Some(rest) = name.strip_prefix("fill-") {
@@ -577,6 +584,13 @@ mod tests {
         // can ask for can be asked for from the command line.
         for panel in crate::app::dock::Panel::ALL {
             walk(&actions::panel_menu(&state, panel), &mut out);
+        }
+        // And a shortcut's menu on both bars, both ways round, whose rows `action run` reaches as
+        // `pin-shortcut:<bar>:<name>` and the rest. `task-2404`.
+        for bar in crate::services::shortcuts::Bar::ALL {
+            for on_the_other_bar in [false, true] {
+                walk(&actions::shortcut_menu("Database pane", bar, on_the_other_bar), &mut out);
+            }
         }
         // And a shape's own menu, whose `Colour...` and `Text` rows are reached from `action run` too.
         // `task-2284`.

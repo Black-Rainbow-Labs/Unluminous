@@ -434,18 +434,30 @@ impl UnluminousApp {
         // absent-control rule: a control that can never apply to what is showing is not drawn, and a
         // board and a web page each have no font, no bold and no preview. `task-2009`, and
         // `UnluminousApp::formatting_applies_here` is where the pair of questions lives.
+        // Each of the two can be unpinned from the top bar (`task-2404`), and leaves no gap when it is.
+        let shown = text_tools::Shown {
+            text_options: self.tool_on_the_top_bar(crate::services::shortcuts::Tool::TextOptions),
+            view_modes: self.tool_on_the_top_bar(crate::services::shortcuts::Tool::ViewModes),
+        };
         let tools_width = match self.files.active().is_a_document() {
-            true => text_tools::width(self.document().path()),
+            true => text_tools::width_shown(self.document().path(), shown),
             false => 0.0,
         };
         // The run widget takes the right hand end and the text tools sit in front of it, so the play
         // and the bug are in the same place whatever file is open — `task-1693`. How much room each
         // wants is worked out first, because the tools have to know where the run widget starts.
         let run_state = self.run_widget_state();
-        let run_width = run_widget::width(&run_state);
-        let tools_rect =
-            title_bar::tools_rect(title_rect, self.menu_placement, tools_width, run_width);
-        let run_rect = title_bar::run_rect(title_rect, self.menu_placement, run_width);
+        let run_width =
+            match self.tool_on_the_top_bar(crate::services::shortcuts::Tool::RunConfigurations) {
+                true => run_widget::width(&run_state),
+                false => 0.0,
+            };
+        // The panes pinned to the top bar, against the window buttons (`task-2404`).
+        let pinned_width =
+            crate::components::shortcut_gallery::chips_width(self.top_bar_chips().len());
+        let end = title_bar::RightEnd { tools: tools_width, run: run_width, pinned: pinned_width };
+        let tools_rect = title_bar::tools_rect_with(title_rect, self.menu_placement, end);
+        let run_rect = title_bar::run_rect_with(title_rect, self.menu_placement, end);
         let status_rect = Rect::from_min_size(
             Pos2::new(full.left(), full.bottom() - size::STATUS_BAR),
             Vec2::new(full.width(), size::STATUS_BAR),
@@ -504,6 +516,7 @@ impl UnluminousApp {
             run_rect,
             tools_width,
             run_width,
+            pinned_width,
             run_state,
             status_rect,
             rail_rect,
@@ -531,6 +544,12 @@ impl UnluminousApp {
         let title_rect = places.title_rect;
         let (tools_rect, run_rect) = (places.tools_rect, places.run_rect);
         let (tools_width, run_width) = (places.tools_width, places.run_width);
+        let end =
+            title_bar::RightEnd { tools: tools_width, run: run_width, pinned: places.pinned_width };
+        let shown = text_tools::Shown {
+            text_options: self.tool_on_the_top_bar(crate::services::shortcuts::Tool::TextOptions),
+            view_modes: self.tool_on_the_top_bar(crate::services::shortcuts::Tool::ViewModes),
+        };
         let run_state = &places.run_state;
 
         // The project tabs, a pill a project in this window with the one showing raised, where the project's
@@ -547,9 +566,13 @@ impl UnluminousApp {
             self.settings.window_opacity(),
             self.menu_placement,
             menus,
-            tools_width,
-            run_width,
+            end,
         );
+        // A right click on the room that moves the window opens the top bar's gallery (`task-2404`).
+        if let Some(at) = outcome.gallery {
+            self.shortcut_menu = None;
+            self.shortcut_gallery = Some((at, crate::services::shortcuts::Bar::Top));
+        }
         if outcome.tabs.plus_rect != Rect::NOTHING {
             self.project_plus_rect = Some(outcome.tabs.plus_rect);
         }
@@ -618,6 +641,7 @@ impl UnluminousApp {
                     self.document(),
                     &self.bold_family,
                     self.view_mode(),
+                    shown,
                 )
             };
             for command in tools_outcome.commands {
@@ -640,6 +664,91 @@ impl UnluminousApp {
                 *action = Some(chosen);
             }
         }
+
+        self.show_the_pinned_chips(ui, title_rect, places.pinned_width, action);
+        self.read_a_right_click_on_the_top_bar_tools(
+            ui,
+            tools_rect,
+            run_rect,
+            tools_width,
+            run_width,
+        );
+    }
+
+    /// The panes pinned to the top bar, as chips against the window buttons. `task-2404`.
+    fn show_the_pinned_chips(
+        &mut self,
+        ui: &mut egui::Ui,
+        title_rect: Rect,
+        width: f32,
+        action: &mut Option<Action>,
+    ) {
+        if width <= 0.0 {
+            return;
+        }
+        let chips = self.top_bar_chips();
+        let area = title_bar::pinned_rect(title_rect, self.menu_placement, width);
+        let drawn: Vec<_> = chips.iter().map(|(chip, _)| chip.clone()).collect();
+        let outcome = {
+            let mut chips_ui = ui.new_child(egui::UiBuilder::new().max_rect(area));
+            crate::components::shortcut_gallery::chips(&mut chips_ui, area, &drawn)
+        };
+        if let Some(index) = outcome.pressed {
+            *action = chips.get(index).map(|(_, chosen)| chosen.clone());
+        }
+        if let Some((at, index)) = outcome.menu {
+            if let Some((chip, _)) = chips.get(index) {
+                self.shortcut_gallery = None;
+                self.shortcut_menu = Some(super::shortcuts::ShortcutMenu {
+                    at,
+                    name: chip.name.clone(),
+                    bar: crate::services::shortcuts::Bar::Top,
+                    panel: None,
+                });
+            }
+        }
+    }
+
+    /// A right click on the text options chip, the view modes or the run widget opens that tool's shortcut menu.
+    ///
+    /// Read from the frame's input rather than from the controls' own responses, because the chip and the run
+    /// widget's name are flyout buttons whose responses `controls` keeps, and nothing else in these rectangles
+    /// answers a right click. `task-2404`.
+    fn read_a_right_click_on_the_top_bar_tools(
+        &mut self,
+        ui: &egui::Ui,
+        tools_rect: Rect,
+        run_rect: Rect,
+        tools_width: f32,
+        run_width: f32,
+    ) {
+        use crate::services::shortcuts::Tool;
+        let Some(at) = ui.ctx().input(|input| {
+            input.pointer.secondary_clicked().then(|| input.pointer.interact_pos()).flatten()
+        }) else {
+            return;
+        };
+        let (text_options, _) = self.tools_that_apply();
+        let text_options = text_options && self.tool_on_the_top_bar(Tool::TextOptions);
+        let tool = if run_width > 0.0 && run_rect.contains(at) {
+            Some(Tool::RunConfigurations)
+        } else if tools_width > 0.0 && tools_rect.contains(at) {
+            match text_options && at.x < tools_rect.left() + text_tools::BUTTON {
+                true => Some(Tool::TextOptions),
+                false => Some(Tool::ViewModes),
+            }
+        } else {
+            None
+        };
+        if let Some(tool) = tool {
+            self.shortcut_gallery = None;
+            self.shortcut_menu = Some(super::shortcuts::ShortcutMenu {
+                at,
+                name: tool.name().to_owned(),
+                bar: crate::services::shortcuts::Bar::Top,
+                panel: None,
+            });
+        }
     }
 
     /// The rail of pane buttons down the far left, and the buttons the plugins contributed to it.
@@ -650,104 +759,107 @@ impl UnluminousApp {
         action: &mut Option<Action>,
     ) {
         let rail_rect = places.rail_rect;
-        // The rail of pane buttons down the far left.
-        {
-            let state = activity_bar::RailState {
-                explorer_visible: self.explorer_visible,
-                editor_visible: self.editor_visible,
-                git_open: self.git.as_ref().is_some_and(|git| git.panel.open),
-                in_repository: self.repository_controls_apply(),
-                terminal_visible: self.terminal.visible,
-                realm_visible: self.realm.visible,
-                realm_available: self.realm_is_on(),
-                run_visible: self.run.visible,
-                debug_visible: self.debug_panel.visible,
-            };
-            let opacity = self.settings.window_opacity();
-            // One button per pane the plugins that are switched on contributed, in the group each
-            // manifest named. Built here rather than inside the rail, because what is contributed is the
-            // window's knowledge and the rail draws what it is given.
-            let plugin_buttons: Vec<activity_bar::PluginButton> = (0..self.plugin_ui.pane_count())
-                .filter(|slot| self.plugin_ui.applies(*slot))
-                .filter_map(|slot| {
-                    let pane = self.plugin_ui.pane(slot)?;
-                    Some(activity_bar::PluginButton {
-                        // **`<label> pane`, because a plugin names its menu after itself.** Every plugin
-                        // that draws puts its own name in the menu bar, so a rail button called
-                        // `Agent-Tasks` is the second control of that name in the window and a test asking
-                        // for one finds two — which is what `no_two_controls_in_the_rail_share_a_name`
-                        // catches. `Terminal tile`, `Run tile` and `Version Control` are the same rule
-                        // already applied to Unluminous's own three, for the same reason.
-                        label: format!("{} pane", pane.label),
-                        icon: pane.icon.clone(),
-                        on: self.plugin_ui.is_visible(slot),
-                        bottom: pane.group == crate::services::plugins::RailGroup::Bottom,
-                        key: self.plugin_ui.pane_key(slot)?,
-                        slot,
-                        opens: activity_bar::Opens::Pane,
-                    })
-                })
-                .collect();
-            // And one per tab a plugin contributed, after the panes, so the board's button lands under
-            // the chat pane's — which is where `task-28` asks for it. A tab had no button at all before
-            // and could only be reached from the `Plugins` menu.
-            let tab_buttons: Vec<activity_bar::PluginButton> = self
-                .plugin_ui
-                .surfaces()
-                .tabs
-                .iter()
-                .map(|surface| {
-                    let key = surface.key(&surface.what.id);
-                    activity_bar::PluginButton {
-                        // **The tab's own label, and the manifest is what makes it distinct.**
-                        // `<label> tab` was chosen when this button was added, to avoid two controls
-                        // called `Agent-Tasks` — the plugin's menu and this. `task-1848` reports the
-                        // result as unreadable: `Database` and `Database tab` are a distinction nobody
-                        // can act on. So the tab says what it *is* — `tab.label = Query Console` — and
-                        // the collision goes away because the two names are genuinely different things.
-                        // `no_two_controls_in_the_rail_share_a_name` is what keeps that true.
-                        label: surface.what.label.clone(),
-                        icon: surface.what.icon.clone(),
-                        // Lit when that tab is the one showing, which is what the pill means for every
-                        // other button in the rail.
-                        on: self.files.active().plugin.as_ref().is_some_and(|open| open.key == key),
-                        bottom: false,
-                        key,
-                        slot: 0,
-                        opens: activity_bar::Opens::Tab,
-                    }
-                })
-                .collect();
-            let plugin_buttons: Vec<activity_bar::PluginButton> =
-                plugin_buttons.into_iter().chain(tab_buttons).collect();
-            let rail = {
-                let mut rail_ui = ui.new_child(egui::UiBuilder::new().max_rect(rail_rect));
-                activity_bar::show_with(
-                    &mut rail_ui,
-                    rail_rect,
-                    state,
-                    opacity,
-                    &plugin_buttons,
-                    &self.settings.rail_order,
-                )
-            };
-            // A button carried to another place on the rail, which is remembered between runs as
-            // `rail.order` (`task-2340`).
-            if let Some(order) = rail.order {
-                if order != self.settings.rail_order {
-                    self.settings.rail_order = order;
-                    self.unsaved_settings = true;
-                }
-            }
-            if let Some(chosen) = rail.chosen {
-                *action = Some(chosen);
-            }
-            // A right click on a rail button is the panel's own menu, which is the one way to move a
-            // panel that has been put away — `task-1697`.
-            if let Some((at, panel)) = rail.menu {
-                self.panel_menu = Some((at, panel));
+        let state = self.rail_state();
+        let opacity = self.settings.window_opacity();
+        let plugin_buttons = self.plugin_rail_buttons();
+        let rail = {
+            let input = self.rail_input(&plugin_buttons);
+            let mut rail_ui = ui.new_child(egui::UiBuilder::new().max_rect(rail_rect));
+            activity_bar::show_with(&mut rail_ui, rail_rect, state, opacity, &input)
+        };
+        // A button carried to another place on the rail, which is remembered between runs as
+        // `rail.order` (`task-2340`).
+        if let Some(order) = rail.order {
+            if order != self.settings.rail_order {
+                self.settings.rail_order = order;
+                self.unsaved_settings = true;
             }
         }
+        if let Some(chosen) = rail.chosen {
+            *action = Some(chosen);
+        }
+        // A right click on a rail button is its shortcut menu (`task-2404`), which for a panel starts with the
+        // panel's own menu, the one way to move a panel that has been put away (`task-1697`).
+        if let Some((at, name, panel)) = rail.menu {
+            self.shortcut_gallery = None;
+            self.shortcut_menu = Some(super::shortcuts::ShortcutMenu {
+                at,
+                name,
+                bar: crate::services::shortcuts::Bar::Rail,
+                panel,
+            });
+        }
+        // A right click on the empty part of the rail opens the gallery of shortcuts.
+        if let Some(at) = rail.gallery {
+            self.shortcut_menu = None;
+            self.shortcut_gallery = Some((at, crate::services::shortcuts::Bar::Rail));
+        }
+        // A tool's flyout beside its button.
+        self.show_the_rail_flyout(ui, &rail.tools, action);
+    }
+
+    /// The buttons the plugins that are switched on contributed to the rail: one per pane, in the group each
+    /// manifest named, then one per tab. Built here rather than inside the rail, because what is contributed is
+    /// the window's knowledge and the rail draws what it is given. The gallery and the top bar's chips read the
+    /// same list (`task-2404`).
+    pub(crate) fn plugin_rail_buttons(&self) -> Vec<activity_bar::PluginButton> {
+        // One button per pane the plugins that are switched on contributed, in the group each
+        // manifest named. Built here rather than inside the rail, because what is contributed is the
+        // window's knowledge and the rail draws what it is given.
+        let plugin_buttons: Vec<activity_bar::PluginButton> = (0..self.plugin_ui.pane_count())
+            .filter(|slot| self.plugin_ui.applies(*slot))
+            .filter_map(|slot| {
+                let pane = self.plugin_ui.pane(slot)?;
+                Some(activity_bar::PluginButton {
+                    // **`<label> pane`, because a plugin names its menu after itself.** Every plugin
+                    // that draws puts its own name in the menu bar, so a rail button called
+                    // `Agent-Tasks` is the second control of that name in the window and a test asking
+                    // for one finds two — which is what `no_two_controls_in_the_rail_share_a_name`
+                    // catches. `Terminal tile`, `Run tile` and `Version Control` are the same rule
+                    // already applied to Unluminous's own three, for the same reason.
+                    label: format!("{} pane", pane.label),
+                    icon: pane.icon.clone(),
+                    on: self.plugin_ui.is_visible(slot),
+                    bottom: pane.group == crate::services::plugins::RailGroup::Bottom,
+                    key: self.plugin_ui.pane_key(slot)?,
+                    slot,
+                    opens: activity_bar::Opens::Pane,
+                })
+            })
+            .collect();
+        // And one per tab a plugin contributed, after the panes, so the board's button lands under
+        // the chat pane's — which is where `task-28` asks for it. A tab had no button at all before
+        // and could only be reached from the `Plugins` menu.
+        let tab_buttons: Vec<activity_bar::PluginButton> = self
+            .plugin_ui
+            .surfaces()
+            .tabs
+            .iter()
+            .map(|surface| {
+                let key = surface.key(&surface.what.id);
+                activity_bar::PluginButton {
+                    // **The tab's own label, and the manifest is what makes it distinct.**
+                    // `<label> tab` was chosen when this button was added, to avoid two controls
+                    // called `Agent-Tasks` — the plugin's menu and this. `task-1848` reports the
+                    // result as unreadable: `Database` and `Database tab` are a distinction nobody
+                    // can act on. So the tab says what it *is* — `tab.label = Query Console` — and
+                    // the collision goes away because the two names are genuinely different things.
+                    // `no_two_controls_in_the_rail_share_a_name` is what keeps that true.
+                    label: surface.what.label.clone(),
+                    icon: surface.what.icon.clone(),
+                    // Lit when that tab is the one showing, which is what the pill means for every
+                    // other button in the rail.
+                    on: self.files.active().plugin.as_ref().is_some_and(|open| open.key == key),
+                    bottom: false,
+                    key,
+                    slot: 0,
+                    opens: activity_bar::Opens::Tab,
+                }
+            })
+            .collect();
+        let plugin_buttons: Vec<activity_bar::PluginButton> =
+            plugin_buttons.into_iter().chain(tab_buttons).collect();
+        plugin_buttons
     }
 
     /// The key chords belonging to the menus.
@@ -1535,6 +1647,8 @@ impl UnluminousApp {
                 self.panel_menu = None;
             }
         }
+        // A shortcut's own menu and the gallery of them, over everything else. `task-2404`.
+        self.show_the_shortcut_popups(ui, action);
     }
 
     /// What every program has said since the last frame, the terminal tab's own menu, and the report
@@ -2576,7 +2690,7 @@ impl UnluminousApp {
     ///
     /// Worked out here rather than in the widget for the reason every component in Unluminous decides
     /// nothing: the widget draws what it is handed and reports what was pressed.
-    fn run_widget_state(&self) -> run_widget::WidgetState {
+    pub(crate) fn run_widget_state(&self) -> run_widget::WidgetState {
         let rows = self.run_rows();
         let running = self
             .run_selected

@@ -91,6 +91,8 @@ pub struct TitleBarOutcome {
     /// The branch widget that used to sit here is gone: the status bar names the branch, and `task-2322` asks
     /// for the room to go to the tabs.
     pub tabs: crate::components::project_tabs::StripOutcome,
+    /// The empty part of the bar was right clicked, which opens the gallery of shortcuts. `task-2404`.
+    pub gallery: Option<Pos2>,
     /// True on the frame the bar asked the operating system to move the window, so the window can
     /// check a moment later that `winit` was not left stuck. See `services::windows_resize`.
     pub dragged: bool,
@@ -131,11 +133,47 @@ fn window_buttons(area: Rect, placement: MenuPlacement) -> [(Rect, &'static str)
 /// They finish in front of the run widget, which is at the right hand end of the bar. A width of
 /// nothing gives an empty rectangle there, which is what a file with no tools gets.
 pub fn tools_rect(area: Rect, placement: MenuPlacement, width: f32, run_width: f32) -> Rect {
+    tools_rect_with(area, placement, RightEnd { tools: width, run: run_width, pinned: 0.0 })
+}
+
+/// How wide each of the three things at the right hand end of the bar is: the text tools, the run widget, and
+/// the shortcuts pinned to the top bar, which sit nearest the window buttons. `task-2404`.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct RightEnd {
+    pub tools: f32,
+    pub run: f32,
+    pub pinned: f32,
+}
+
+/// Between the pinned shortcuts and the run widget in front of them.
+const PINNED_GAP: f32 = 10.0;
+
+/// The rectangle the shortcuts pinned to the top bar are drawn into, `width` points wide, against the window
+/// buttons. **Nearest the buttons**, because it is the one group whose width never changes with the tab or with
+/// a run starting, so nothing in front of it moves it. `task-2404`.
+pub fn pinned_rect(area: Rect, placement: MenuPlacement, width: f32) -> Rect {
+    let right = right_end(area, placement);
+    Rect::from_min_max(Pos2::new(right - width, area.top()), Pos2::new(right, area.bottom()))
+}
+
+/// Where the right hand end of the bar's own controls stops: before the window buttons on Windows, and before
+/// the edge on macOS.
+fn right_end(area: Rect, placement: MenuPlacement) -> f32 {
+    match placement {
+        MenuPlacement::InWindow => area.right() - WINDOWS_BUTTON * 3.0 - BUTTON_MARGIN,
+        MenuPlacement::Native => area.right() - BUTTON_MARGIN - 8.0,
+    }
+}
+
+/// The text tools' rectangle when the pinned shortcuts take room at the right hand end as well.
+pub fn tools_rect_with(area: Rect, placement: MenuPlacement, end: RightEnd) -> Rect {
+    let width = end.tools;
+    let run_width = end.run;
     // In front of the run widget, which takes the right hand end. `task-1693`: the tools are as wide
     // as the open file needs — nothing at all for a `.rs` file, five buttons for a `.md` one — so
     // measuring the run widget back from *them* slid it along the bar every time the tab changed.
     // Whichever of the two moves has to be the one whose width moves, and that is the tools.
-    let run = run_rect(area, placement, run_width);
+    let run = run_rect_with(area, placement, end);
     let right = if run_width > 0.0 { run.left() - 6.0 } else { run.right() };
     Rect::from_min_max(Pos2::new(right - width, area.top()), Pos2::new(right, area.bottom()))
 }
@@ -145,10 +183,14 @@ pub fn tools_rect(area: Rect, placement: MenuPlacement, width: f32, run_width: f
 /// The right hand end of the bar, clear of the window buttons, so the bar reads project, tools, run,
 /// buttons. The play and the bug are then in the same place whatever file is open — `task-1693`.
 pub fn run_rect(area: Rect, placement: MenuPlacement, run_width: f32) -> Rect {
-    let right = match placement {
-        MenuPlacement::InWindow => area.right() - WINDOWS_BUTTON * 3.0 - BUTTON_MARGIN,
-        MenuPlacement::Native => area.right() - BUTTON_MARGIN - 8.0,
-    };
+    run_rect_with(area, placement, RightEnd { tools: 0.0, run: run_width, pinned: 0.0 })
+}
+
+/// The run widget's rectangle, in front of the pinned shortcuts when there are any.
+pub fn run_rect_with(area: Rect, placement: MenuPlacement, end: RightEnd) -> Rect {
+    let run_width = end.run;
+    let pinned = pinned_rect(area, placement, end.pinned);
+    let right = if end.pinned > 0.0 { pinned.left() - PINNED_GAP } else { pinned.right() };
     Rect::from_min_max(Pos2::new(right - run_width, area.top()), Pos2::new(right, area.bottom()))
 }
 
@@ -166,9 +208,9 @@ pub fn show(
     opacity: f32,
     placement: MenuPlacement,
     menus: &[Menu],
-    tools_width: f32,
-    run_width: f32,
+    end: RightEnd,
 ) -> TitleBarOutcome {
+    let (tools_width, run_width) = (end.tools, end.run);
     let mut outcome = TitleBarOutcome::default();
     let painter = ui.painter_at(area);
     // The top two corners are rounded to match the window; the bottom two are square because the tabs
@@ -209,12 +251,15 @@ pub fn show(
     };
 
     // Whichever of the run widget and the tools is furthest left is where the chip has to stop.
-    let tools = tools_rect(area, placement, tools_width, run_width);
-    let run = run_rect(area, placement, run_width);
+    let tools = tools_rect_with(area, placement, end);
+    let run = run_rect_with(area, placement, end);
+    let pinned = pinned_rect(area, placement, end.pinned);
     let claimed = if tools_width > 0.0 {
         Some(tools.left())
     } else if run_width > 0.0 {
         Some(run.left())
+    } else if end.pinned > 0.0 {
+        Some(pinned.left())
     } else {
         None
     };
@@ -253,6 +298,11 @@ pub fn show(
         }
         if drag.double_clicked() {
             outcome.toggle_maximise = true;
+        }
+        // A right click on the room that moves the window opens the gallery of shortcuts for the top bar.
+        // `task-2404`.
+        if drag.secondary_clicked() {
+            outcome.gallery = drag.interact_pointer_pos().or_else(|| drag.hover_pos());
         }
         // **A modal takes every press under it, the title bar's included**, so with Settings open the
         // window could not be moved at all (`task-2247`). The press is read from the frame's input
@@ -525,6 +575,21 @@ mod tests {
         let with_tools = run_rect(area, MenuPlacement::InWindow, 120.0);
         let longer = run_rect(area, MenuPlacement::InWindow, 200.0);
         assert_eq!(longer.right(), with_tools.right());
+    }
+
+    /// `task-2404`: the shortcuts pinned to the top bar sit against the window buttons, and the run widget and the
+    /// tools move in front of them rather than under them.
+    #[test]
+    fn pinned_shortcuts_sit_against_the_buttons_with_the_run_widget_in_front_of_them() {
+        let area = bar();
+        let end = RightEnd { tools: 124.0, run: 120.0, pinned: 70.0 };
+        let pinned = pinned_rect(area, MenuPlacement::InWindow, 70.0);
+        let run = run_rect_with(area, MenuPlacement::InWindow, end);
+        let tools = tools_rect_with(area, MenuPlacement::InWindow, end);
+        assert_eq!(pinned.right(), run_rect(area, MenuPlacement::InWindow, 0.0).right());
+        assert!(run.right() < pinned.left(), "the run widget finishes before the pinned group");
+        assert!(tools.right() < run.left());
+        assert_eq!(run.width(), 120.0);
     }
 
     #[test]

@@ -210,6 +210,9 @@ impl UnluminousApp {
             }
             "size" => self.cli_window_size(request, ctx),
             "position" => self.cli_window_position(request, ctx),
+            "shortcuts" => self.cli_window_shortcuts(request),
+            "pin" => self.cli_window_pin(request, true),
+            "unpin" => self.cli_window_pin(request, false),
             "message" => {
                 if request.has("text") {
                     self.message = request.text("text");
@@ -228,6 +231,80 @@ impl UnluminousApp {
                 }
             }
             _ => unknown(request),
+        }
+    }
+
+    /// `window shortcuts`: every shortcut, its kind and home, and the bars it is on. `task-2404`.
+    fn cli_window_shortcuts(&mut self, request: &Request) -> Outcome {
+        use crate::services::shortcuts::{Bar, Kind};
+        let only = match request.text("bar") {
+            Some(words) => match Bar::from_name(&words) {
+                Some(bar) => Some(bar),
+                None => return no(request, code::USAGE, "The bar is `rail` or `top`."),
+            },
+            None => None,
+        };
+        let mut lines = Vec::new();
+        let mut rows = Vec::new();
+        for one in self.shortcuts() {
+            let rail = self.shortcut_is_pinned(&one.name, Bar::Rail);
+            let top = self.shortcut_is_pinned(&one.name, Bar::Top);
+            if only.is_some_and(|bar| !self.shortcut_is_pinned(&one.name, bar)) {
+                continue;
+            }
+            let kind = match one.kind {
+                Kind::Panel => "panel",
+                Kind::Tool(_) => "tool",
+            };
+            let on: Vec<&str> = [(rail, "side bar"), (top, "top bar")]
+                .iter()
+                .filter(|(on, _)| *on)
+                .map(|(_, b)| *b)
+                .collect();
+            let on = if on.is_empty() { "not pinned".to_owned() } else { on.join(" and ") };
+            lines.push(format!("{} ({kind}): {on}", one.name));
+            rows.push(json!({ "name": one.name, "kind": kind, "home": one.home.name(), "rail": rail, "top": top }));
+        }
+        ok(request, lines.join("\n"), json!({ "shortcuts": rows }))
+    }
+
+    /// `window pin` and `window unpin`, through `pin_the_shortcut`, which is where the menus and the gallery go.
+    fn cli_window_pin(&mut self, request: &Request, pinned: bool) -> Outcome {
+        use crate::services::shortcuts::Bar;
+        let Some(name) = request.text("name") else {
+            return no(request, code::USAGE, "Name the shortcut. `window shortcuts` lists them.");
+        };
+        let bar = match request.text("bar") {
+            Some(words) => match Bar::from_name(&words) {
+                Some(bar) => bar,
+                None => return no(request, code::USAGE, "The bar is `rail` or `top`."),
+            },
+            None => Bar::Rail,
+        };
+        match self.pin_the_shortcut(&name, bar, pinned) {
+            Ok(changed) => {
+                let verb = if pinned { "Pinned" } else { "Unpinned" };
+                let place = if pinned { "to" } else { "from" };
+                let words = match changed {
+                    true => format!(
+                        "{verb} {} {place} the {}.",
+                        name.trim(),
+                        bar.label().to_lowercase()
+                    ),
+                    false => format!(
+                        "{} was already {} the {}.",
+                        name.trim(),
+                        if pinned { "on" } else { "off" },
+                        bar.label().to_lowercase()
+                    ),
+                };
+                ok(
+                    request,
+                    words,
+                    json!({ "name": name.trim(), "bar": bar.name(), "pinned": pinned, "changed": changed }),
+                )
+            }
+            Err(refused) => no(request, code::NOT_FOUND, refused),
         }
     }
 

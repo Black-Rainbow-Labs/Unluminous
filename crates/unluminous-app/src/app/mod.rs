@@ -80,6 +80,7 @@ mod running;
 mod saving;
 mod settings_changes;
 pub mod setup;
+pub mod shortcuts;
 pub mod symbols;
 pub mod telemetry;
 mod terminals;
@@ -812,6 +813,8 @@ struct FramePlaces {
     title_rect: Rect,
     tools_rect: Rect,
     run_rect: Rect,
+    /// How wide the group of shortcuts pinned to the top bar is. `task-2404`.
+    pinned_width: f32,
     tools_width: f32,
     run_width: f32,
     /// What the run widget draws itself from. Worked out before the rectangles, because how much
@@ -1514,6 +1517,13 @@ pub struct UnluminousApp {
     /// Held here for the same reason the other four context menus are: a screenshot test cannot
     /// press the right mouse button, so it sets this and the menu is drawn.
     pub panel_menu: Option<(Pos2, dock::Panel)>,
+    /// A shortcut's right click menu on the rail or the top bar: where, the shortcut, the bar, and the panel it is
+    /// about when it is one, whose own rows come first. `task-2404`. Public for the reason `panel_menu` is.
+    pub shortcut_menu: Option<shortcuts::ShortcutMenu>,
+    /// The gallery of shortcuts, while it is open: where it was asked for, and for which bar. `task-2404`.
+    pub shortcut_gallery: Option<(Pos2, crate::services::shortcuts::Bar)>,
+    /// A tool's flyout beside its button on the rail, while it is open. `task-2404`.
+    pub rail_flyout: Option<crate::components::shortcut_gallery::Flyout>,
     /// Where each pane's strip of tabs drew itself and its tabs, in pane order. Frame local, and
     /// rebuilt by the pane loop, which is the only thing that can know it.
     tab_strips: Vec<file_tabs::Strip>,
@@ -1803,6 +1813,9 @@ impl UnluminousApp {
             panes_area: Rect::ZERO,
             panel_rects: dock::Regions { panels: [Rect::ZERO; dock::SLOTS], editor: Rect::ZERO },
             panel_menu: None,
+            shortcut_menu: None,
+            shortcut_gallery: None,
+            rail_flyout: None,
             last_highlight: theme::color::HIGHLIGHT_YELLOW,
             marks: FileMarks::new(),
             control: None,

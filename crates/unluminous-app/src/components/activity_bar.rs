@@ -42,6 +42,7 @@ use egui::{CornerRadius, Pos2, Rect, Sense, Vec2};
 
 use crate::app::actions::{Action, GitAction};
 use crate::components::controls::WithHint as _;
+use crate::services::shortcuts::{Bar, Kind, Tool};
 use crate::theme::{color, icon, size, svg_icon};
 
 /// How big one button in the rail is, and how far apart two of them are: round buttons 34 points across
@@ -67,7 +68,7 @@ const DEBUG_MARK: IconDrawer = IconDrawer::Svg(&svg_icon::DEBUG_CONTINUE, 17.0);
 /// The icon a rail button draws: one of the design's line marks, or a drawing of Unluminous's own for a plugin
 /// that names a mark the design has no line version of.
 #[derive(Clone, Copy)]
-enum IconDrawer {
+pub enum IconDrawer {
     Line(rux::Icon),
     Drawn(fn(&egui::Painter, Pos2, egui::Color32)),
     /// A mark taken from another icon set as SVG path data, and the points it is drawn across. `task-2280`.
@@ -95,6 +96,44 @@ pub struct RailState {
     pub run_visible: bool,
     /// True when the debug tile is the one showing along the bottom.
     pub debug_visible: bool,
+    /// Whether the Text Options tool can apply to the tab that is showing. Its rail button is dimmed when it
+    /// cannot, rather than absent, so the buttons under it do not move when the tab changes. `task-2404`.
+    pub text_options_apply: bool,
+    /// The same for the View Modes tool.
+    pub view_modes_apply: bool,
+    /// The tool whose flyout is open, which draws its button carved in.
+    pub open_tool: Option<Tool>,
+}
+
+/// What the rail is asked to draw beside its own state: the buttons the plugins contributed, the order, and the
+/// pins. `task-2404`.
+#[derive(Debug, Clone, Default)]
+pub struct RailInput<'a> {
+    pub plugins: &'a [PluginButton],
+    /// The `rail.order` setting.
+    pub order: &'a str,
+    /// The names of the buttons unpinned from the rail, which are not drawn.
+    pub hidden: Vec<String>,
+    /// The tools pinned to the rail, in [`Tool::ALL`]'s order.
+    pub tools: Vec<Tool>,
+}
+
+/// A tool's button on the rail, as it was drawn this frame, so the window can open its flyout beside it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ToolButton {
+    pub tool: Tool,
+    pub rect: Rect,
+    pub hovered: bool,
+    pub clicked: bool,
+}
+
+/// One shortcut as the gallery draws it: its name, its mark, what kind it is and its home bar. `task-2404`.
+#[derive(Clone, Copy)]
+pub struct Card<'a> {
+    pub name: &'a str,
+    pub mark: IconDrawer,
+    pub kind: Kind,
+    pub home: Bar,
 }
 
 /// A button the rail draws for a pane a plugin contributed.
@@ -145,9 +184,14 @@ pub enum Opens {
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct RailOutcome {
     pub chosen: Option<Action>,
-    /// A button was right clicked: where the pointer was, and which panel it is about. The git
-    /// button opens no menu, because the commit panel is a modal rather than a docked panel.
-    pub menu: Option<(Pos2, crate::app::dock::Panel)>,
+    /// A button was right clicked: where the pointer was, the button's name, and the panel it is about when
+    /// it is one. Every button has a menu since `task-2404`, because every one can be unpinned; a panel's
+    /// menu also holds its `Move to` rows.
+    pub menu: Option<(Pos2, String, Option<crate::app::dock::Panel>)>,
+    /// The empty part of the rail was right clicked, which opens the gallery of shortcuts. `task-2404`.
+    pub gallery: Option<Pos2>,
+    /// The tools' buttons as they were drawn, so the window can open a flyout beside one.
+    pub tools: Vec<ToolButton>,
     /// A button was carried to another place and let go: the `rail.order` setting that says the rail as it
     /// now is (`task-2340`).
     pub order: Option<String>,
@@ -155,18 +199,17 @@ pub struct RailOutcome {
 
 /// Draw the rail into `area`, and report what was pressed.
 pub fn show(ui: &mut egui::Ui, area: Rect, state: RailState, opacity: f32) -> RailOutcome {
-    show_with(ui, area, state, opacity, &[], "")
+    show_with(ui, area, state, opacity, &RailInput::default())
 }
 
-/// The same, with the buttons the plugins that are switched on contributed, in the order the `rail.order`
-/// setting asks for.
+/// The same, with the buttons the plugins that are switched on contributed, the tools pinned to it, and without
+/// the buttons unpinned from it, in the order the `rail.order` setting asks for.
 pub fn show_with(
     ui: &mut egui::Ui,
     area: Rect,
     state: RailState,
     opacity: f32,
-    plugins: &[PluginButton],
-    order: &str,
+    input: &RailInput<'_>,
 ) -> RailOutcome {
     let painter = ui.painter_at(area);
     painter.rect_filled(
@@ -184,9 +227,19 @@ pub fn show_with(
             Pos2::new(area.right() - 2.0, area.bottom()),
         );
     }
-    crate::components::chrome_kit::layer(ui, "rail", area, 0.0, |rux| {
-        buttons(rux, area, state, plugins, order)
-    })
+    // **The empty part of the rail opens the gallery** (`task-2404`). Added before the buttons, so a button
+    // added after it takes the press when the pointer is on one.
+    let empty = ui.interact(area, ui.id().with("rail-empty"), Sense::click());
+    empty.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Side Bar"));
+    let gallery = match empty.secondary_clicked() {
+        true => empty.interact_pointer_pos().or_else(|| empty.hover_pos()),
+        false => None,
+    };
+    let mut outcome = crate::components::chrome_kit::layer(ui, "rail", area, 0.0, |rux| {
+        buttons(rux, area, state, input)
+    });
+    outcome.gallery = gallery;
+    outcome
 }
 
 /// One button on the rail, whichever group it is in and whoever contributed it: its name, its icon,
@@ -197,8 +250,11 @@ struct Entry {
     draw: IconDrawer,
     on: bool,
     enabled: bool,
-    action: Action,
+    /// What a press does. `None` for a tool, whose press opens its flyout instead.
+    action: Option<Action>,
     panel: Option<crate::app::dock::Panel>,
+    /// The tool it is, for a tool pinned to the rail. `task-2404`.
+    tool: Option<Tool>,
 }
 
 /// Every button in the rail, drawn into one `rux` layer.
@@ -206,15 +262,14 @@ fn buttons(
     rux: &mut rux::Rux<'_>,
     area: Rect,
     state: RailState,
-    plugins: &[PluginButton],
-    order: &str,
+    input: &RailInput<'_>,
 ) -> RailOutcome {
     let mut outcome = RailOutcome::default();
     // Centred on the rail left of its groove (`task-2282`). The outer six points belong to
     // `components::resize_edges`, so the part of a button under them is drawn and not pressed: see
     // `UNDER_THE_GRIP`.
     let centre_x = area.left() + CENTRE;
-    let (top, bottom) = arranged_entries(state, plugins, order);
+    let (top, bottom) = arranged_entries(state, input);
     let names = |group: &[Entry]| group.iter().map(|one| one.name.clone()).collect::<Vec<_>>();
     let (top_names, bottom_names) = (names(&top), names(&bottom));
 
@@ -269,12 +324,24 @@ fn press(
     outcome: &mut RailOutcome,
     dropped: &mut Option<(String, f32)>,
 ) {
-    let pressed = rail_button(rux, centre, &entry.name, entry.draw, entry.on, entry.enabled);
+    // A tool whose flyout is open has no tooltip: the flyout's heading already names it, and the tooltip would
+    // be drawn over the flyout.
+    let hint = !(entry.tool.is_some() && entry.on);
+    let pressed =
+        rail_button(rux, centre, &entry.name, entry.draw, (entry.on, entry.enabled, hint));
     if pressed.clicked {
-        outcome.chosen = Some(entry.action.clone());
+        outcome.chosen = entry.action.clone();
     }
-    if let (Some(at), Some(panel)) = (pressed.menu, entry.panel) {
-        outcome.menu = Some((at, panel));
+    if let Some(tool) = entry.tool {
+        outcome.tools.push(ToolButton {
+            tool,
+            rect: Rect::from_center_size(centre, Vec2::splat(BUTTON)),
+            hovered: pressed.hovered,
+            clicked: pressed.clicked_at_all,
+        });
+    }
+    if let Some(at) = pressed.menu {
+        outcome.menu = Some((at, entry.name.clone(), entry.panel));
     }
     if let Some(at) = pressed.dropped {
         *dropped = Some((entry.name.clone(), at.y));
@@ -286,39 +353,17 @@ fn press(
 /// The default order is the one the rail always had. The top group is the panes at the side, then what
 /// plugins contributed to it. The bottom group is the three tiles along the bottom of the window with the
 /// terminal in the corner, and the plugins' buttons above them.
-fn arranged_entries(
-    state: RailState,
-    plugins: &[PluginButton],
-    order: &str,
-) -> (Vec<Entry>, Vec<Entry>) {
-    let (mut top, bottom) = built_in_entries(state);
-    let mut plugin_bottom = Vec::new();
-    for button in plugins {
-        let entry = Entry {
-            name: button.label.clone(),
-            draw: rail_mark(&button.icon),
-            on: button.on,
-            enabled: true,
-            action: match button.opens {
-                Opens::Pane => Action::PluginPane { pane: button.key.clone() },
-                Opens::Tab => Action::PluginTab { tab: button.key.clone() },
-            },
-            // A tab has no side to be moved to, so no menu. See [`Opens`].
-            panel: match button.opens {
-                Opens::Pane => Some(crate::app::dock::Panel::Plugin(button.slot as u8)),
-                Opens::Tab => None,
-            },
-        };
-        match button.bottom {
-            true => plugin_bottom.push(entry),
-            false => top.push(entry),
-        }
-    }
-    // A plugin's bottom button was counted up from the corner after Unluminous's own, so the first one is the
-    // nearest the tiles.
-    plugin_bottom.reverse();
-    plugin_bottom.extend(bottom);
-    let bottom = plugin_bottom;
+fn arranged_entries(state: RailState, input: &RailInput<'_>) -> (Vec<Entry>, Vec<Entry>) {
+    let (mut top, mut bottom) = every_entry(state, input.plugins);
+    // A tool pinned to the rail joins the top group after the panes, and takes part in the order like any other
+    // button (`task-2404`).
+    top.extend(input.tools.iter().map(|tool| tool_entry(*tool, state)));
+    // An unpinned button is left out before the order is applied, so the buttons below it close up.
+    let shown =
+        |entry: &Entry| !input.hidden.iter().any(|name| name.eq_ignore_ascii_case(&entry.name));
+    top.retain(shown);
+    bottom.retain(shown);
+    let order = input.order;
     let names = |group: &[Entry]| group.iter().map(|one| one.name.clone()).collect::<Vec<_>>();
     let (top_names, bottom_names) = arranged(&names(&top), &names(&bottom), order);
     let mut every: Vec<Entry> = top.into_iter().chain(bottom).collect();
@@ -336,6 +381,104 @@ fn arranged_entries(
     (top, bottom)
 }
 
+/// Every pane button in its default group, Unluminous's own and the plugins', before any order or pin is applied.
+fn every_entry(state: RailState, plugins: &[PluginButton]) -> (Vec<Entry>, Vec<Entry>) {
+    let (mut top, bottom) = built_in_entries(state);
+    let mut plugin_bottom = Vec::new();
+    for button in plugins {
+        let entry = Entry {
+            name: button.label.clone(),
+            draw: rail_mark(&button.icon),
+            on: button.on,
+            enabled: true,
+            action: Some(match button.opens {
+                Opens::Pane => Action::PluginPane { pane: button.key.clone() },
+                Opens::Tab => Action::PluginTab { tab: button.key.clone() },
+            }),
+            // A tab has no side to be moved to, so no `Move to` rows. See [`Opens`].
+            panel: match button.opens {
+                Opens::Pane => Some(crate::app::dock::Panel::Plugin(button.slot as u8)),
+                Opens::Tab => None,
+            },
+            tool: None,
+        };
+        match button.bottom {
+            true => plugin_bottom.push(entry),
+            false => top.push(entry),
+        }
+    }
+    // A plugin's bottom button was counted up from the corner after Unluminous's own, so the first one is the
+    // nearest the tiles.
+    plugin_bottom.reverse();
+    plugin_bottom.extend(bottom);
+    (top, plugin_bottom)
+}
+
+/// The mark a tool is drawn with, on the rail, in the gallery and on its flyout's heading.
+pub fn tool_mark(tool: Tool) -> IconDrawer {
+    match tool {
+        Tool::TextOptions => IconDrawer::Line(rux::Icon::Letters),
+        Tool::ViewModes => IconDrawer::Line(rux::Icon::Halves),
+        Tool::RunConfigurations => IconDrawer::Line(rux::Icon::Start),
+    }
+}
+
+/// A tool's button on the rail. Dimmed while it cannot apply to the tab that is showing, so it never moves.
+fn tool_entry(tool: Tool, state: RailState) -> Entry {
+    let enabled = match tool {
+        Tool::TextOptions => state.text_options_apply,
+        Tool::ViewModes => state.view_modes_apply,
+        Tool::RunConfigurations => true,
+    };
+    Entry {
+        name: tool.name().to_owned(),
+        draw: tool_mark(tool),
+        on: state.open_tool == Some(tool),
+        enabled,
+        action: None,
+        panel: None,
+        tool: Some(tool),
+    }
+}
+
+/// Every shortcut there is, as the gallery lists it: the panes and tabs in the rail's default order, then the
+/// three tools. Nothing here asks whether one is pinned; the gallery asks that of each card. `task-2404`.
+/// @param state - the rail's state, which says whether the Realm is on
+/// @param plugins - the buttons the plugins that are switched on contributed
+/// @param each - called with every card in turn
+pub fn cards(state: RailState, plugins: &[PluginButton], mut each: impl FnMut(Card<'_>)) {
+    let (top, bottom) = every_entry(state, plugins);
+    for entry in top.iter().chain(bottom.iter()) {
+        each(Card { name: &entry.name, mark: entry.draw, kind: Kind::Panel, home: Bar::Rail });
+    }
+    for tool in Tool::ALL {
+        each(Card {
+            name: tool.name(),
+            mark: tool_mark(tool),
+            kind: Kind::Tool(tool),
+            home: Bar::Top,
+        });
+    }
+}
+
+/// A shortcut's mark drawn at `centre` across `size` points, which the gallery's cards and the top bar's chips
+/// use. A drawing of Unluminous's own is drawn at its own size.
+pub fn paint_mark(
+    rux: &mut rux::Rux<'_>,
+    mark: IconDrawer,
+    centre: Pos2,
+    size: f32,
+    tint: egui::Color32,
+) {
+    match mark {
+        IconDrawer::Line(line) => rux.mark(rux::Mark::new(line, size), centre, tint),
+        IconDrawer::Drawn(paint) => icon::crisp(rux.ui.painter(), centre, tint, 1.2, paint),
+        IconDrawer::Svg(svg, own) => {
+            svg_icon::paint(rux.ui.painter(), centre, own * size / MARK, svg, tint)
+        }
+    }
+}
+
 /// Unluminous's own buttons in their default groups, top to bottom in each.
 fn built_in_entries(state: RailState) -> (Vec<Entry>, Vec<Entry>) {
     let entry = |name: &str,
@@ -348,8 +491,9 @@ fn built_in_entries(state: RailState) -> (Vec<Entry>, Vec<Entry>) {
         draw,
         on,
         enabled,
-        action,
+        action: Some(action),
         panel,
+        tool: None,
     };
     let mut top = vec![
         entry(
@@ -592,6 +736,10 @@ fn rail_mark(name: &str) -> IconDrawer {
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 struct Pressed {
     clicked: bool,
+    /// A press on the button whether or not it is enabled, which opens a tool's flyout and keeps it open.
+    clicked_at_all: bool,
+    /// The pointer is on the button.
+    hovered: bool,
     /// Where the pointer was when it was right clicked, which opens the panel's own menu.
     menu: Option<Pos2>,
     /// Where the pointer was when the button was let go after being carried. `task-2340`.
@@ -608,17 +756,21 @@ fn rail_button(
     centre: Pos2,
     name: &str,
     draw: IconDrawer,
-    on: bool,
-    enabled: bool,
+    (on, enabled, hint): (bool, bool, bool),
 ) -> Pressed {
     let hit = Rect::from_center_size(centre, Vec2::splat(BUTTON));
     let pressable = Rect::from_min_max(Pos2::new(hit.left() + UNDER_THE_GRIP, hit.top()), hit.max);
     // **Every button can be carried**, a dimmed one too, because where it sits is not about whether it can be
     // pressed now (`task-2340`). egui does not count a press that moved as a click, so carrying one never
     // presses it.
-    let sense = if enabled { Sense::click_and_drag() } else { Sense::drag() };
-    let response =
-        rux.ui.interact(pressable, rux.ui.id().with(("activity", name)), sense).with_hint(name);
+    // A dimmed button is still pressed and right clicked (`task-2404`): a tool's flyout says why it cannot
+    // apply, and any button can be unpinned. A press on a dimmed pane button does nothing, see `press`.
+    let sense = Sense::click_and_drag();
+    let response = rux.ui.interact(pressable, rux.ui.id().with(("activity", name)), sense);
+    let response = match hint {
+        true => response.with_hint(name),
+        false => response,
+    };
     let chat = crate::components::chrome_kit::chat();
     let ink = rux.theme().ink;
     if on {
@@ -641,7 +793,9 @@ fn rail_button(
     response
         .widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, enabled, on, name));
     Pressed {
-        clicked: response.clicked(),
+        clicked: enabled && response.clicked(),
+        clicked_at_all: response.clicked(),
+        hovered: response.hovered(),
         menu: match response.secondary_clicked() {
             true => response.interact_pointer_pos().or_else(|| response.hover_pos()),
             false => None,

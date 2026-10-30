@@ -222,6 +222,8 @@ pub enum Action {
     FillSide(crate::app::dock::Side),
     /// Put every panel back where a new Unluminous has it.
     ResetPanelLayout,
+    /// Pin a shortcut to the rail or the top bar, take it off, or open the gallery of them. `task-2404`.
+    Shortcut(ShortcutAction),
     /// Something about the Realm — `task-1904`.
     ///
     /// One variant carrying a second enum rather than a dozen variants here, because every one of them
@@ -2577,6 +2579,12 @@ fn view_menu(state: &MenuState) -> Menu {
             // or its own right click menu, or `unluminous-cli panel dock`; putting them all back is the
             // thing somebody looks for in a menu, because by then they have lost one.
             Entry::item("Reset Panel Layout", Action::ResetPanelLayout),
+            // The gallery of every shortcut, which a right click on the empty part of the rail opens too. Here so it
+            // can be found without knowing about the right click, and so it is an action an agent can run. `task-2404`.
+            Entry::item(
+                "Customize Shortcuts...",
+                Action::Shortcut(ShortcutAction::Gallery(crate::services::shortcuts::Bar::Rail)),
+            ),
             Entry::item("New Terminal Tab", Action::NewTerminalTab),
             Entry::item("Close Terminal Tab", Action::CloseTerminalTab)
                 .enabled(state.terminal_tabs > 0),
@@ -2856,6 +2864,83 @@ pub fn realm_view_menu(state: &MenuState) -> Vec<Entry> {
             .enabled(state.realm_views > 0),
         Entry::Separator,
         Entry::item("New Realm", Action::Realm(RealmAction::NewRealm)),
+    ]
+}
+
+/// Something about the shortcuts on the rail and the top bar. `task-2404`.
+///
+/// `UnluminousApp::pin_the_shortcut` is where a pin changes, whether the right click menu, a gallery card or
+/// `window pin` asked for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ShortcutAction {
+    /// Put the shortcut named `name` on `bar`.
+    Pin { name: String, bar: crate::services::shortcuts::Bar },
+    /// Take the shortcut named `name` off `bar`.
+    Unpin { name: String, bar: crate::services::shortcuts::Bar },
+    /// Open the gallery of every shortcut for a bar, beside that bar.
+    Gallery(crate::services::shortcuts::Bar),
+    /// Put a bar back the way Unluminous ships it.
+    Reset(crate::services::shortcuts::Bar),
+}
+
+impl ShortcutAction {
+    /// The name the command line calls it: `pin-shortcut:<bar>:<name>`, `unpin-shortcut:<bar>:<name>`,
+    /// `customize-shortcuts:<bar>` and `reset-shortcuts:<bar>`.
+    pub fn name(&self) -> String {
+        match self {
+            ShortcutAction::Pin { name, bar } => format!("pin-shortcut:{}:{name}", bar.name()),
+            ShortcutAction::Unpin { name, bar } => format!("unpin-shortcut:{}:{name}", bar.name()),
+            ShortcutAction::Gallery(bar) => format!("customize-shortcuts:{}", bar.name()),
+            ShortcutAction::Reset(bar) => format!("reset-shortcuts:{}", bar.name()),
+        }
+    }
+
+    /// Read one back from [`ShortcutAction::name`]. A bare `customize-shortcuts` is the rail's gallery.
+    pub fn from_name(name: &str) -> Option<ShortcutAction> {
+        use crate::services::shortcuts::Bar;
+        if name == "customize-shortcuts" {
+            return Some(ShortcutAction::Gallery(Bar::Rail));
+        }
+        let (verb, rest) = name.split_once(':')?;
+        let (bar, shortcut) = match rest.split_once(':') {
+            Some((bar, shortcut)) => (Bar::from_name(bar)?, Some(shortcut.to_owned())),
+            None => (Bar::from_name(rest)?, None),
+        };
+        match (verb, shortcut) {
+            ("pin-shortcut", Some(name)) => Some(ShortcutAction::Pin { name, bar }),
+            ("unpin-shortcut", Some(name)) => Some(ShortcutAction::Unpin { name, bar }),
+            ("customize-shortcuts", None) => Some(ShortcutAction::Gallery(bar)),
+            ("reset-shortcuts", None) => Some(ShortcutAction::Reset(bar)),
+            _ => None,
+        }
+    }
+}
+
+/// The rows a right click on a shortcut adds to its menu: unpin it from the bar it was opened on, show it on the
+/// other bar too, and open the gallery. `task-2404`.
+///
+/// @param name - the shortcut's name
+/// @param bar - the bar the menu was opened on
+/// @param on_the_other_bar - whether it is pinned to the other bar now, which ticks that row
+pub fn shortcut_menu(
+    name: &str,
+    bar: crate::services::shortcuts::Bar,
+    on_the_other_bar: bool,
+) -> Vec<Entry> {
+    let other = bar.other();
+    let toggle_other = match on_the_other_bar {
+        true => ShortcutAction::Unpin { name: name.to_owned(), bar: other },
+        false => ShortcutAction::Pin { name: name.to_owned(), bar: other },
+    };
+    vec![
+        Entry::item(
+            &format!("Unpin from {}", bar.label()),
+            Action::Shortcut(ShortcutAction::Unpin { name: name.to_owned(), bar }),
+        ),
+        Entry::item(&format!("Show in {}", other.label()), Action::Shortcut(toggle_other))
+            .checked(on_the_other_bar),
+        Entry::Separator,
+        Entry::item("Customize Shortcuts...", Action::Shortcut(ShortcutAction::Gallery(bar))),
     ]
 }
 

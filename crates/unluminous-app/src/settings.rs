@@ -1203,6 +1203,17 @@ settings! {
         /// bottom, so a plugin switched on later still gets a button; a name nothing has is passed over.
         /// Empty is the order Unluminous ships with.
         rail_order = String::new() => "rail.order", "the rail's button names, top group, then |, then bottom group, or empty for the default order";
+        /// The shortcuts whose home is the top bar that were pinned to the rail, by name, separated by commas,
+        /// such as `Run Configurations, Text Options`. `task-2404`. Each of the four `*.pinned` and
+        /// `*.unpinned` settings records a difference from the default, so a plugin switched on later still
+        /// gets its button and a window nobody customised writes nothing. `services::shortcuts` reads them.
+        rail_pinned = String::new() => "rail.pinned", "shortcut names whose home is the top bar, pinned to the rail, separated by commas";
+        /// The rail's own buttons that were taken off it, by name. `task-2404`.
+        rail_unpinned = String::new() => "rail.unpinned", "the rail's own button names that were unpinned from it, separated by commas";
+        /// The rail's buttons that were pinned to the top bar as well, by name. `task-2404`.
+        title_bar_pinned = String::new() => "title_bar.pinned", "shortcut names whose home is the rail, pinned to the top bar, separated by commas";
+        /// The top bar's own tools that were taken off it: `Text Options`, `View Modes`, `Run Configurations`. `task-2404`.
+        title_bar_unpinned = String::new() => "title_bar.unpinned", "the top bar's own tool names that were unpinned from it, separated by commas";
     }
 
     text_raw {
@@ -2043,6 +2054,10 @@ mod tests {
             "voice.button",
             "voice.engine",
             "rail.order",
+            "rail.pinned",
+            "rail.unpinned",
+            "title_bar.pinned",
+            "title_bar.unpinned",
         ];
         expected.sort_unstable();
         let mut actual: Vec<&str> = Settings::NAMES.to_vec();
@@ -2171,6 +2186,10 @@ mod tests {
             voice_language: "fr".to_owned(),
             voice_microphone: "Headset Microphone (USB Audio)".to_owned(),
             rail_order: "Realm, Project | Terminal tile".to_owned(),
+            rail_pinned: "Run Configurations".to_owned(),
+            rail_unpinned: "Editing Area, Realm".to_owned(),
+            title_bar_pinned: "Terminal tile".to_owned(),
+            title_bar_unpinned: "View Modes".to_owned(),
             voice_wake_sensitivity: 0.75,
             voice_model_idle: 300.0,
             voice_send_pause: 3.5,

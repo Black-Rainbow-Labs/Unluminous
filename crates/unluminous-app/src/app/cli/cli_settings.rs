@@ -1006,6 +1006,10 @@ impl UnluminousApp {
             "update.channel" => self.settings.update_channel.name().to_owned(),
             "update.skip" => self.settings.update_skip.clone(),
             "rail.order" => self.settings.rail_order.clone(),
+            "rail.pinned" => self.settings.rail_pinned.clone(),
+            "rail.unpinned" => self.settings.rail_unpinned.clone(),
+            "title_bar.pinned" => self.settings.title_bar_pinned.clone(),
+            "title_bar.unpinned" => self.settings.title_bar_unpinned.clone(),
             "editor.exclude" => self.settings.exclude.clone(),
             "debug.value_tooltip" => self.settings.value_tooltip.name().to_owned(),
             "plugins.chrome" => self.settings.plugin_chrome.to_string(),
@@ -1171,6 +1175,16 @@ impl UnluminousApp {
             // Names are not checked against the rail: a plugin's button may be one switched on a moment
             // from now, and `activity_bar::arranged` passes over a name nothing has. `task-2340`.
             "rail.order" => settings.rail_order = value.trim().to_owned(),
+            // Names are not checked either, for the same reason: a shortcut may be a plugin's that is switched on a
+            // moment from now. `window pin` is the command that checks a name. `task-2404`.
+            "rail.pinned" => settings.rail_pinned = crate::services::shortcuts::tidy(value),
+            "rail.unpinned" => settings.rail_unpinned = crate::services::shortcuts::tidy(value),
+            "title_bar.pinned" => {
+                settings.title_bar_pinned = crate::services::shortcuts::tidy(value)
+            }
+            "title_bar.unpinned" => {
+                settings.title_bar_unpinned = crate::services::shortcuts::tidy(value)
+            }
             // Not checked against the machine, for `terminal.shell`'s reason: a path may name
             // something installed a moment from now, and when it is wrong the status bar says so in
             // the adapter's own words, which is a better message than one made up here.
@@ -1855,6 +1869,22 @@ const SETTINGS: &[SettingKey] = &[
         help: "The order of the rail's buttons by name, top group, then |, then the bottom group, such as `Project, Realm | Run tile, Terminal tile`. Dragging a button on the rail writes it. A button it does not name keeps its own group. Empty is the default order.",
     },
     SettingKey {
+        name: "rail.pinned",
+        help: "Shortcuts whose home is the top bar that are pinned to the rail, by name, separated by commas: `Text Options`, `View Modes`, `Run Configurations`. On the rail each is a button whose flyout holds the tool. `window pin` writes it.",
+    },
+    SettingKey {
+        name: "rail.unpinned",
+        help: "The rail's own buttons that were unpinned from it, by name, separated by commas, such as `Database pane, Realm`. A right click on a button and `Unpin from Side Bar` writes it, and so does `window unpin`.",
+    },
+    SettingKey {
+        name: "title_bar.pinned",
+        help: "The rail's buttons that are pinned to the top bar as well, by name, separated by commas. Each is a round chip at the right hand end of the top bar. `window pin <name> --bar top` writes it.",
+    },
+    SettingKey {
+        name: "title_bar.unpinned",
+        help: "The top bar's own tools that were unpinned from it: `Text Options`, `View Modes`, `Run Configurations`. `window unpin <name> --bar top` writes it.",
+    },
+    SettingKey {
         name: "editor.exclude",
         help: "Patterns Go to File, Find in Files, completion, Go to Definition and Find References leave out, beside the project's own .gitignore, which is read already. The explorer goes on showing everything.",
     },
@@ -1977,6 +2007,10 @@ fn fresh_value(name: &str, fresh: &crate::settings::Settings) -> String {
         "update.channel" => fresh.update_channel.name().to_owned(),
         "update.skip" => fresh.update_skip.clone(),
         "rail.order" => fresh.rail_order.clone(),
+        "rail.pinned" => fresh.rail_pinned.clone(),
+        "rail.unpinned" => fresh.rail_unpinned.clone(),
+        "title_bar.pinned" => fresh.title_bar_pinned.clone(),
+        "title_bar.unpinned" => fresh.title_bar_unpinned.clone(),
         "editor.exclude" => fresh.exclude.clone(),
         "debug.value_tooltip" => fresh.value_tooltip.name().to_owned(),
         "plugins.chrome" => fresh.plugin_chrome.to_string(),

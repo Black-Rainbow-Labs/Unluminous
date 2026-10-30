@@ -2724,6 +2724,29 @@ its own custom layout (same behavior as if they were open in different windows).
   Tab`, `Next Project Tab` and `Previous Project Tab` (`Ctrl`/`Cmd`+`Alt`+`PageDown`/`PageUp`) are the agent's half.
   `tests/project_tabs.rs` is the tests.
 
+## What `task-2404` changed, and the rules it left
+
+`tasks/task-2404-pinned-shortcuts-tdd.md` is the design.
+
+- **A shortcut is anything the rail or the top bar can hold**: every rail button by its existing name, and the
+  top bar's three tools, `Text Options`, `View Modes` and `Run Configurations` (`services::shortcuts::Tool`). Each
+  has a home bar. `rail.pinned`, `rail.unpinned`, `title_bar.pinned` and `title_bar.unpinned` record only the
+  differences from home, so a plugin switched on later still gets its button and a window nobody changed writes
+  nothing. `services::shortcuts` is the arithmetic and `UnluminousApp::pin_the_shortcut` is the one place a pin
+  changes; the right click menus, the gallery and `window pin` all call it.
+- **Every rail button has a right click menu now.** A panel's keeps its `Move to` rows and gains the shortcut rows
+  under them (`actions::shortcut_menu`). A right click on the empty rail or on the room that moves the window opens
+  `components::shortcut_gallery`, which is also `View -> Customize Shortcuts...`.
+- **A tool on the rail is a button whose flyout holds the top bar's own function**: `text_tools::text_options`,
+  `text_tools::view_modes` and `run_widget::show`. The flyout is an `egui::Area`, because it holds a dropdown and
+  egui keeps one popup open. It opens when the pointer rests on the button, closes 0.25 s after the pointer leaves
+  the button, the card and the corridor between them, and stays while a popup it opened is open. A press holds it.
+- **A tool's rail button is dimmed, not absent, when the tab cannot use it**, so the rail does not close up when the
+  tab changes. On the top bar the tool is still absent.
+- **The panes pinned to the top bar sit against the window buttons** (`title_bar::pinned_rect`, `RightEnd`), so the
+  group whose width never changes with the tab is the one nearest the edge. A chip is named `<name> in the top
+  bar`, because the rail's button of the same name may be drawn too.
+
 ## What `task-2397` changed, and the rules it left
 
 - **Every menu is framed by `controls::menu_frame`** (`menu_frame_in` where there is a style and no `Ui`): the

@@ -4259,12 +4259,14 @@ fn the_palette_offers_the_entries_wp4_added_and_names_their_chords() {
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
+use unluminous_app::app::actions::ShortcutAction;
 use unluminous_app::app::actions::{
     DebugAction, FoldAction, GitAction, HighlightColor, RealmAction, RunAction,
 };
 use unluminous_app::app::dock::{Panel, Side};
 use unluminous_app::app::notebook_actions::NotebookAction;
 use unluminous_app::services::realm::Kind;
+use unluminous_app::services::shortcuts::Bar;
 use unluminous_jupyter::nbformat::CellKind;
 
 /// Every variant of [`Action`], by the name [`variant_name`] answers with.
@@ -4350,6 +4352,7 @@ const EVERY_VARIANT: &[&str] = &[
     "Dock",
     "FillSide",
     "ResetPanelLayout",
+    "Shortcut",
     "Realm",
     "Run",
     "Debug",
@@ -4475,6 +4478,7 @@ fn variant_name(action: &Action) -> &'static str {
         Action::Dock { .. } => "Dock",
         Action::FillSide(_) => "FillSide",
         Action::ResetPanelLayout => "ResetPanelLayout",
+        Action::Shortcut(_) => "Shortcut",
         Action::Realm(_) => "Realm",
         Action::Run(_) => "Run",
         Action::Notebook(_) => "Notebook",
@@ -5055,6 +5059,8 @@ fn signature(harness: &mut Harness<'static, UnluminousApp>) -> String {
         // which mode a notebook is in, none of which changes the text.
         "notebook status --json",
         "editor text",
+        // Which shortcuts are on which bar, which no other answer says. `task-2404`.
+        "window shortcuts --json",
     ] {
         parts.push(format!("{line} -> {}", ask(harness, line)));
     }
@@ -5086,6 +5092,7 @@ fn signature(harness: &mut Harness<'static, UnluminousApp>) -> String {
     parts.push(format!("closing -> {}", state.closing));
     parts.push(format!("completion list -> {}", state.completion().is_some()));
     parts.push(format!("value tooltip -> {}", state.value_tooltip_is_open()));
+    parts.push(format!("shortcut gallery -> {:?}", state.shortcut_gallery.map(|(_, bar)| bar)));
     for pane in ["agent-tasks/board", "agent-chat/chat"] {
         parts.push(format!("{pane} -> {}", showing(harness, pane)));
     }
@@ -5275,6 +5282,21 @@ fn every_step() -> Vec<Step> {
         Step::new(Action::ToggleRunTile),
         Step::new(Action::ToggleDebugTile),
         Step::new(Action::ResetPanelLayout).after(&["panel dock terminal left"]),
+        // The shortcuts on the rail and the top bar, `task-2404`.
+        Step::new(Action::Shortcut(ShortcutAction::Unpin {
+            name: "Project".to_owned(),
+            bar: Bar::Rail,
+        })),
+        Step::new(Action::Shortcut(ShortcutAction::Pin {
+            name: "Run Configurations".to_owned(),
+            bar: Bar::Rail,
+        })),
+        Step::new(Action::Shortcut(ShortcutAction::Gallery(Bar::Rail))),
+        Step::new(Action::Shortcut(ShortcutAction::Gallery(Bar::Top))),
+        Step::new(Action::Shortcut(ShortcutAction::Reset(Bar::Rail)))
+            .after(&["window unpin Project"]),
+        Step::new(Action::Shortcut(ShortcutAction::Reset(Bar::Top)))
+            .after(&["window unpin --bar top View Modes"]),
         Step::new(Action::CloseTab),
         Step::new(Action::NextTab).after(&["tab open src/other.rs --permanent"]),
         Step::new(Action::PreviousTab).after(&["tab open src/other.rs --permanent"]),
@@ -7394,4 +7416,169 @@ fn a_double_click_anywhere_in_a_field_selects_the_word_nearest_it() {
     let past = egui::Pos2::new(field.right() - 4.0, field.bottom() - 1.0);
     assert_eq!(copied_after(&mut harness, past, 2), "bravo");
     assert_eq!(copied_after(&mut harness, past, 3), "alpha bravo");
+}
+
+// -------------------------------------------------------------------------------------- task-2404
+//
+// Pinning and unpinning the shortcuts on the rail and the top bar.
+
+/// Where nothing is on the rail: between its two groups, half way down.
+fn empty_rail(harness: &Harness<'static, UnluminousApp>) -> egui::Pos2 {
+    let top = harness.get_by_label("Version Control").rect();
+    let corner = harness.get_by_label("Terminal tile").rect();
+    egui::pos2(top.center().x, (top.bottom() + corner.top()) / 2.0)
+}
+
+/// `task-2404`: *"If I don't want db explorer, I can right click and unpin."* A right click on a rail button
+/// has `Unpin from Side Bar`, the button goes and the ones under it close up, and the gallery a right click on
+/// the empty rail opens puts it back.
+#[test]
+fn a_rail_button_is_unpinned_from_its_menu_and_pinned_again_from_the_gallery() {
+    let mut harness = harness("");
+    let version = harness.get_by_label("Version Control").rect().center();
+    let project = harness.get_by_label("Project").rect().center();
+    right_click_at(&mut harness, project);
+    harness.get_by_label("Unpin from Side Bar").click();
+    steady(&mut harness);
+    assert_eq!(harness.state().settings.rail_unpinned, "Project");
+    assert!(harness.query_by_label("Project").is_none(), "the button is gone");
+    let moved = harness.get_by_label("Version Control").rect().center();
+    assert!(moved.y < version.y, "the buttons under it closed up: {moved:?} {version:?}");
+
+    let empty = empty_rail(&harness);
+    right_click_at(&mut harness, empty);
+    harness.snapshot(shot("shortcut_gallery_rail"));
+    harness.get_by_label("Shortcut: Project").click();
+    steady(&mut harness);
+    assert_eq!(harness.state().settings.rail_unpinned, "", "pinned again");
+    assert!(harness.query_by_label("Project").is_some());
+    assert!(harness.state().shortcut_gallery.is_some(), "the gallery stays open for the next card");
+    harness.key_press(egui::Key::Escape);
+    steady(&mut harness);
+    assert!(harness.state().shortcut_gallery.is_none(), "Escape closes it");
+}
+
+/// A panel's menu keeps its `Move to` rows, with the shortcut rows under them.
+#[test]
+fn a_panel_buttons_menu_keeps_its_move_rows_and_adds_the_shortcut_rows() {
+    let mut harness = harness("");
+    let terminal = harness.get_by_label("Terminal tile").rect().center();
+    right_click_at(&mut harness, terminal);
+    assert!(harness.query_by_label("Move to Right").is_some());
+    assert!(harness.query_by_label("Unpin from Side Bar").is_some());
+    harness.get_by_label("Show in Top Bar").click();
+    steady(&mut harness);
+    assert_eq!(harness.state().settings.title_bar_pinned, "Terminal tile");
+    assert!(
+        harness.query_by_label("Terminal tile in the top bar").is_some(),
+        "a chip on the top bar"
+    );
+}
+
+/// *"The run configuration should fly out to the right, showing the dropdown and debug and play icons."*
+/// Moved off the top bar and onto the rail, its button opens a flyout holding the run widget when the pointer
+/// rests on it. The dropdown inside it opens without closing the flyout, which is why the flyout is an area and
+/// not a popup.
+#[test]
+fn run_configurations_on_the_rail_fly_out_with_the_run_widget() {
+    let mut harness = harness_in(&scratch_folder("2404-run-flyout"));
+    did(&mut harness, "run add Server node server.js");
+    did(&mut harness, "run select Server");
+    did(&mut harness, "window unpin --bar top Run Configurations");
+    did(&mut harness, "window pin Run Configurations");
+    steady(&mut harness);
+    assert!(
+        harness.query_by_label("Run the selected configuration").is_none(),
+        "gone from the top bar"
+    );
+    let button = harness.get_by_label("Run Configurations").rect();
+    harness.get_by_label("Run Configurations").hover();
+    steady(&mut harness);
+    let play = harness.get_by_label("Run the selected configuration").rect();
+    assert!(play.left() > button.right(), "the flyout is to the right of its button");
+    assert!(harness.query_by_label("Choose a run configuration").is_some(), "with the dropdown");
+    harness.snapshot(shot("shortcut_flyout_run"));
+    harness.get_by_label("Choose a run configuration").click();
+    steady(&mut harness);
+    assert!(harness.state().rail_flyout.is_some(), "opening the dropdown kept the flyout");
+    harness.get_by_label("Server").click();
+    steady(&mut harness);
+    assert_eq!(harness.state().settings.rail_pinned, "Run Configurations");
+}
+
+/// With nothing to run, the flyout says how to add a configuration rather than showing a lone play button.
+#[test]
+fn an_empty_run_configurations_flyout_says_how_to_add_one() {
+    let mut harness = harness_in(&scratch_folder("2404-run-empty"));
+    did(&mut harness, "window unpin --bar top Run Configurations");
+    did(&mut harness, "window pin Run Configurations");
+    steady(&mut harness);
+    harness.get_by_label("Run Configurations").click();
+    steady(&mut harness);
+    assert!(harness.query_by_label("No run configurations yet. Play adds one.").is_some());
+    harness.get_by_label("Add a run configuration").click();
+    steady(&mut harness);
+    assert!(harness.state().run_dialog.open, "the same action the top bar's play button is");
+}
+
+/// Text Options on the rail: its flyout holds the panel the top bar's `F` opens, so `Bold` there bolds.
+#[test]
+fn text_options_on_the_rail_fly_out_with_the_formatting_panel() {
+    let mut harness = harness("hello world");
+    did(&mut harness, "window pin Text Options");
+    steady(&mut harness);
+    harness.state_mut().document_mut().apply(Command::SelectAll);
+    harness.get_by_label("Text Options").click();
+    steady(&mut harness);
+    assert!(harness.state().rail_flyout.is_some_and(|open| open.held), "a press holds it open");
+    harness.snapshot(shot("shortcut_flyout_text_options"));
+    harness.get_by_label("Bold").click();
+    steady(&mut harness);
+    assert!(
+        harness.state().document().active_style().bold,
+        "Bold in the flyout bolds the selection"
+    );
+}
+
+/// A pane pinned to the top bar is a chip there, and pressing it is the rail button's action.
+#[test]
+fn a_pane_pinned_to_the_top_bar_is_a_chip_that_shows_and_hides_it() {
+    let mut harness = harness("");
+    let run_before = harness.get_by_label("Add a run configuration").rect();
+    did(&mut harness, "window pin --bar top Project");
+    steady(&mut harness);
+    let chip = harness.get_by_label("Project in the top bar").rect();
+    let run = harness.get_by_label("Add a run configuration").rect();
+    assert!(run.right() < chip.left(), "the run widget moved in front of the chip");
+    assert!(run.right() < run_before.right());
+    harness.snapshot(shot("shortcut_top_bar_chip"));
+    assert!(harness.state().explorer_visible);
+    harness.get_by_label("Project in the top bar").click();
+    steady(&mut harness);
+    assert!(!harness.state().explorer_visible, "the chip hides the explorer");
+}
+
+/// The command line reaches the same state the menus and the gallery do, and refuses a name that is not one.
+#[test]
+fn window_shortcuts_pin_and_unpin_from_the_command_line() {
+    let mut harness = harness("");
+    let listed = did(&mut harness, "window shortcuts");
+    let rows = listed["shortcuts"].as_array().expect("a list");
+    let find = |name: &str| rows.iter().find(|row| row["name"] == name).cloned().expect(name);
+    assert_eq!(find("Project")["rail"], true);
+    assert_eq!(find("Run Configurations")["top"], true);
+    assert_eq!(find("Run Configurations")["rail"], false);
+    did(&mut harness, "window unpin editing area");
+    assert_eq!(harness.state().settings.rail_unpinned, "Editing Area");
+    let on_the_rail = did(&mut harness, "window shortcuts --bar rail");
+    assert!(on_the_rail["shortcuts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|row| row["name"] != "Editing Area"));
+    assert_eq!(refused(&mut harness, "window pin Nothing Like This"), "not-found");
+    did(&mut harness, "action run reset-shortcuts:rail");
+    assert_eq!(harness.state().settings.rail_unpinned, "");
+    did(&mut harness, "action run customize-shortcuts:top");
+    assert!(harness.state().shortcut_gallery.is_some_and(|(_, bar)| bar.name() == "top"));
 }

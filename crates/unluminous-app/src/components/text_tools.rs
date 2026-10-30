@@ -114,11 +114,26 @@ pub fn applies(path: Option<&Path>) -> bool {
 /// The title bar leaves this much clear at its right hand end, in front of the window buttons, so
 /// nothing it draws ever runs underneath a tool.
 pub fn width(path: Option<&Path>) -> f32 {
-    if !applies(path) {
-        return 0.0;
-    }
+    width_shown(path, Shown::BOTH)
+}
+
+/// Which of the two tools are pinned to the top bar. Both are, until a person unpins one. `task-2404`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Shown {
+    pub text_options: bool,
+    pub view_modes: bool,
+}
+
+impl Shown {
+    pub const BOTH: Shown = Shown { text_options: true, view_modes: true };
+}
+
+/// How much room the tools pinned to the top bar need for this file.
+pub fn width_shown(path: Option<&Path>, shown: Shown) -> f32 {
     let modes_width = track_width();
-    match (file_kind::formatting_applies(path), file_kind::preview_applies(path)) {
+    let formatting = shown.text_options && file_kind::formatting_applies(path);
+    let preview = shown.view_modes && file_kind::preview_applies(path);
+    match (formatting, preview) {
         (true, true) => BUTTON + GROUP_GAP + modes_width,
         (true, false) => BUTTON,
         // A diagram: the view modes on their own, with no `F` in front of them.
@@ -128,7 +143,7 @@ pub fn width(path: Option<&Path>) -> f32 {
 }
 
 /// How wide the carved track holding the three view modes is.
-fn track_width() -> f32 {
+pub fn track_width() -> f32 {
     let modes = crate::app::ViewMode::ALL.len() as f32;
     modes * MODE.x + (modes - 1.0) * MODE_GAP + 2.0 * TRACK_PAD
 }
@@ -144,6 +159,7 @@ pub fn show(
     document: &Document,
     bold_family: &egui::FontFamily,
     view_mode: crate::app::ViewMode,
+    shown: Shown,
 ) -> ToolsOutcome {
     let mut outcome = ToolsOutcome::default();
     let middle = area.center().y;
@@ -152,7 +168,7 @@ pub fn show(
     // The `F` is drawn only for prose. A control that can never apply to this file is absent, which
     // is the rule the window already keeps.
     let mut pen = area.left();
-    if file_kind::formatting_applies(path) {
+    if shown.text_options && file_kind::formatting_applies(path) {
         let button =
             Rect::from_min_size(Pos2::new(pen, middle - BUTTON / 2.0), Vec2::splat(BUTTON));
         let paint =
@@ -169,35 +185,58 @@ pub fn show(
 
     // The three view modes sit beside the `F`, which is what `task-1658` asks for: one group of text
     // tools rather than one at each end of a bar.
-    if file_kind::preview_applies(path) {
-        let kind = file_kind::preview_kind(path);
-        // **One pill switch rather than three loose buttons**, `task-2219` and then `task-2241`. The three are
-        // one choice, so they sit in one carved track, and the chosen one is a chip raised out of it with its
-        // mark in the strong ink.
-        let track = Rect::from_min_size(
-            Pos2::new(pen, middle - (MODE.y + 2.0 * TRACK_PAD) / 2.0),
-            Vec2::new(track_width(), MODE.y + 2.0 * TRACK_PAD),
-        );
-        let picked = crate::components::chrome_kit::layer(ui, "view-modes", track, 8.0, |rux| {
-            let chat = rux.theme().chat;
-            rux.chrome.surface(track, track.height() / 2.0, chat.well, chat.carved_sm());
-            let mut picked = None;
-            let mut left = track.left() + TRACK_PAD;
-            for mode in crate::app::ViewMode::ALL {
-                let button = Rect::from_min_size(Pos2::new(left, middle - MODE.y / 2.0), MODE);
-                if view_mode_button(rux, button, mode, view_mode == mode, kind) {
-                    picked = Some(mode);
-                }
-                left += MODE.x + MODE_GAP;
-            }
-            picked
-        });
+    if shown.view_modes && file_kind::preview_applies(path) {
+        let picked = view_modes(ui, Pos2::new(pen, middle), path, view_mode);
         if picked.is_some() {
             outcome.view_mode = picked;
         }
     }
 
     outcome
+}
+
+/// Which of the tools can apply to a file: the Text Options panel, and the view modes. The rail asks this to
+/// dim a tool's button, and its flyout to say why it is empty. `task-2404`.
+pub fn which_apply(path: Option<&Path>) -> (bool, bool) {
+    (file_kind::formatting_applies(path), file_kind::preview_applies(path))
+}
+
+/// The carved track of the three view modes, its left end at `start`'s x and its middle at `start`'s y, and
+/// the mode chosen in it this frame. The top bar draws it, and so does the View Modes flyout on the rail.
+///
+/// **One pill switch rather than three loose buttons**, `task-2219` and then `task-2241`. The three are one
+/// choice, so they sit in one carved track, and the chosen one is a chip raised out of it with its mark in the
+/// strong ink.
+/// @param ui - where it is drawn
+/// @param start - the track's left end, at the height of its middle
+/// @param path - the file showing, which decides what the modes are called
+/// @param view_mode - the mode the tab is in
+pub fn view_modes(
+    ui: &mut egui::Ui,
+    start: Pos2,
+    path: Option<&Path>,
+    view_mode: crate::app::ViewMode,
+) -> Option<crate::app::ViewMode> {
+    let kind = file_kind::preview_kind(path);
+    let middle = start.y;
+    let track = Rect::from_min_size(
+        Pos2::new(start.x, middle - (MODE.y + 2.0 * TRACK_PAD) / 2.0),
+        Vec2::new(track_width(), MODE.y + 2.0 * TRACK_PAD),
+    );
+    crate::components::chrome_kit::layer(ui, "view-modes", track, 8.0, |rux| {
+        let chat = rux.theme().chat;
+        rux.chrome.surface(track, track.height() / 2.0, chat.well, chat.carved_sm());
+        let mut picked = None;
+        let mut left = track.left() + TRACK_PAD;
+        for mode in crate::app::ViewMode::ALL {
+            let button = Rect::from_min_size(Pos2::new(left, middle - MODE.y / 2.0), MODE);
+            if view_mode_button(rux, button, mode, view_mode == mode, kind) {
+                picked = Some(mode);
+            }
+            left += MODE.x + MODE_GAP;
+        }
+        picked
+    })
 }
 
 /// The text options button: a round chip raised out of the bar with the design's letters mark, carved in
@@ -224,7 +263,7 @@ fn options_chip(ui: &mut egui::Ui, button: Rect, open: bool, hovered: bool) {
 /// A rule separates what applies to the selected text from what applies to the paragraph it is in,
 /// because those are two different things and pressing one when you meant the other is the mistake
 /// the rule is there to stop.
-fn text_options(
+pub fn text_options(
     ui: &mut egui::Ui,
     document: &Document,
     bold_family: &egui::FontFamily,
@@ -332,7 +371,7 @@ fn text_options(
 /// `task-2287`: both were fixed numbers, worked out for a proportional face. In a monospaced interface face
 /// `Line spacing` ran into its buttons and `Double` ran past the panel's right edge. So the label column is
 /// the widest label and a gap, and the panel is as wide as the line spacing row needs, never less than it was.
-fn panel_layout(ui: &egui::Ui) -> (f32, f32) {
+pub fn panel_layout(ui: &egui::Ui) -> (f32, f32) {
     let painter = ui.painter();
     let label = PANEL_LABELS
         .iter()

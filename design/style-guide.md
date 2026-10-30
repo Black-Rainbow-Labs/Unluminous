@@ -383,6 +383,17 @@ draws at the end of the frame, once the wheel and the caret have had their say â
 the scroll position the frame opened with is a frame behind the writing, which on a fast scroll can
 be seen.
 
+**A gallery of cards.** `components::shortcut_gallery` (`task-2404`), opened by a right click on an empty part
+of the rail or the top bar. It is framed by `controls::menu_frame` like every other popup. Cards are 100 by 76
+points with a 14 point radius, four across with 8 between them, grouped under small section names in
+`TEXT_FAINT`. A card that is on is carved into the frame, the rail's own look for a pane that is showing, with its
+mark in the strong ink and a 7.5 point accent disc carrying a white tick at its top right; a card that is off is a
+raised chip with its mark in the quiet ink. The pointer turns the mark sky. The mark is 22 points and the name is
+12 points under it, centred and wrapped to two lines.
+
+**A flyout beside a rail button.** The same frame, 12 points to the right of the button and level with it, with
+the tool's mark in sky and its name as a heading. It is an `egui::Area`, so it may hold a dropdown.
+
 ## Type
 
 There is one type scale, and a new number is not invented.

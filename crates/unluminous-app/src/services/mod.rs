@@ -74,6 +74,7 @@ pub mod run_configurations;
 pub mod scene_blur;
 pub mod scheduling;
 pub mod shell_integration;
+pub mod shortcuts;
 #[cfg(feature = "diagnostic-spans")]
 pub mod span_trace;
 pub mod spreadsheet;

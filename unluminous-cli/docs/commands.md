@@ -505,6 +505,53 @@ unluminous-cli window message
 unluminous-cli window message Ready for the next step
 ```
 
+### window shortcuts
+
+```
+unluminous-cli window shortcuts [--bar <rail|top>]
+```
+
+Every shortcut the side bar (the rail down the left) and the top bar can hold: the pane and tab buttons, and the three top bar tools Text Options, View Modes and Run Configurations. Each says its kind, its home bar, and whether it is pinned to each bar now. A tool pinned to the side bar is a button whose flyout holds the tool's own controls. This is what a right click on an empty part of a bar shows as a gallery of cards.
+
+- `--bar <rail|top>` — Only the shortcuts pinned to this bar.
+
+```sh
+unluminous-cli window shortcuts --json
+unluminous-cli window shortcuts --bar top
+```
+
+### window pin
+
+```
+unluminous-cli window pin <name> [--bar <rail|top>]
+```
+
+Pin a shortcut to the side bar or the top bar, which is what clicking its card in the gallery does. A pane pinned to the top bar is a round chip there, and a tool pinned to the side bar is a button with a flyout. Written to the `rail.pinned`, `rail.unpinned`, `title_bar.pinned` and `title_bar.unpinned` settings. `window shortcuts` lists the names.
+
+- `name` (required) — The shortcut's name, such as `Project`, `Database pane` or `Run Configurations`. Case does not matter. Everything after it on the line belongs to it.
+- `--bar <rail|top>` — Which bar. The side bar, `rail`, when it is left out. Put it before the name, which takes the rest of the line.
+
+```sh
+unluminous-cli window pin Run Configurations
+unluminous-cli window pin --bar top Terminal tile
+```
+
+### window unpin
+
+```
+unluminous-cli window unpin <name> [--bar <rail|top>]
+```
+
+Take a shortcut off the side bar or the top bar, which is what `Unpin from Side Bar` on its right click menu does. The buttons after it close up. `window pin` puts it back.
+
+- `name` (required) — The shortcut's name. Case does not matter. Everything after it on the line belongs to it.
+- `--bar <rail|top>` — Which bar. The side bar, `rail`, when it is left out. Put it before the name, which takes the rest of the line.
+
+```sh
+unluminous-cli window unpin Database pane
+unluminous-cli window unpin --bar top View Modes
+```
+
 ## browser — rendered web pages in Unluminous tabs
 
 Rendered tabs use the operating system browser engine. Local HTML is served from a constrained project origin, so its CSS, scripts and images work without exposing the filesystem to page JavaScript. Every rendered tab and every browser node has a view of its own, so several pages render at once, each with its own address, title and history. These commands act on the tab that is showing in the editing area and say so when it is not a rendered one. A link clicked in a page opens a new tab beside it, or a new browser node beside a node, unless `browser.links` is `same-tab`.
