@@ -6,6 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.22.0 — 2026-10-30
+
+- Pin and unpin shortcuts on the side bar and the top bar (`task-2404`)
+- Shortcut action names are lower case and hyphenated, and the tick uses the on-accent ink (`task-2404`)
+- Drive window shortcuts, pin and unpin both ways, and list the four settings' help (`task-2404`)
+
 ## 1.21.3 — 2026-10-29
 
 - Work in progress, paused for a reboot (`task-2402`)
