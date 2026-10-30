@@ -7682,3 +7682,23 @@ fn view_modes_on_the_rail_fly_out_no_wider_than_the_track() {
     steady(&mut harness);
     assert_eq!(harness.state().view_mode(), ViewMode::Preview);
 }
+
+/// `task-2404`: a rail with more buttons than room never draws one over another. The last place that fits is
+/// `More shortcuts`, and its menu opens the buttons there was no room for.
+#[test]
+fn a_crowded_rail_offers_more_shortcuts_instead_of_drawing_over_itself() {
+    let mut harness = harness("");
+    did(&mut harness, "settings set appearance.ui.font.size 24");
+    steady(&mut harness);
+    assert!(harness.query_by_label("Database pane").is_none(), "no room for it on the rail");
+    let more = harness.get_by_label("More shortcuts").rect();
+    let debug = harness.get_by_label("Debug tile").rect();
+    assert!(more.bottom() < debug.top(), "above the bottom group, not over it");
+    harness.get_by_label("More shortcuts").click();
+    steady(&mut harness);
+    harness.snapshot(shot("rail_more_shortcuts"));
+    let before = showing(&harness, "database/explorer");
+    harness.get_by_label("Database pane").click();
+    steady(&mut harness);
+    assert_ne!(showing(&harness, "database/explorer"), before, "the menu row opens the pane");
+}

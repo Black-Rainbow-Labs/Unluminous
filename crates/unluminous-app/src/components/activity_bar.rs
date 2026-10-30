@@ -201,6 +201,9 @@ pub struct RailOutcome {
     /// A button was carried out of the rail and let go: its name and where. The window moves it to the top bar
     /// when that is where it was let go. `task-2404`.
     pub dropped_outside: Option<(String, Pos2)>,
+    /// `More shortcuts` was pressed: where, and the buttons the rail had no room for, by name with what each
+    /// does. A tool has no action, and the menu offers it the gallery instead. `task-2404`.
+    pub overflow: Option<(Pos2, Vec<(String, Option<Action>)>)>,
 }
 
 /// The names of the buttons the rail draws, top group and bottom group, top to bottom in each: what `landing`
@@ -299,7 +302,37 @@ fn buttons(
     let pointer = rux.ui.ctx().pointer_latest_pos();
     let mut in_the_air: Option<(&Entry, Pos2)> = None;
     let mut dropped: Option<(String, Pos2)> = None;
-    let centres = places(area, top.len(), bottom.len());
+    let mut centres = places(area, top.len(), bottom.len());
+    // **A crowded rail keeps every button reachable** (`task-2404`). When some of the top group has no room, the
+    // last one that fits gives its place to `More shortcuts`, which lists the rest in a menu.
+    let left_out = centres[..top.len()].iter().filter(|y| y.is_nan()).count();
+    let more = match left_out {
+        0 => None,
+        _ => centres[..top.len()].iter().rposition(|y| !y.is_nan()).map(|last| {
+            let y = centres[last];
+            centres[last] = f32::NAN;
+            Pos2::new(centre_x, y)
+        }),
+    };
+    if let Some(centre) = more {
+        let hidden: Vec<(String, Option<Action>)> = top
+            .iter()
+            .zip(centres.iter())
+            .filter(|(_, y)| y.is_nan())
+            .map(|(entry, _)| (entry.name.clone(), entry.action.clone()))
+            .collect();
+        let pressed = rail_button(
+            rux,
+            centre,
+            "More shortcuts",
+            IconDrawer::Line(rux::Icon::Dots),
+            (false, true, true),
+        );
+        if pressed.clicked {
+            outcome.overflow =
+                Some((Pos2::new(area.right() + 4.0, centre.y - BUTTON / 2.0), hidden));
+        }
+    }
     for (entry, y) in top.iter().chain(bottom.iter()).zip(centres) {
         let centre = Pos2::new(centre_x, y);
         // A button that would not fit is not drawn: the rail is as tall as the window and a button half off

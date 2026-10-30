@@ -1520,6 +1520,8 @@ pub struct UnluminousApp {
     /// A shortcut's right click menu on the rail or the top bar: where, the shortcut, the bar, and the panel it is
     /// about when it is one, whose own rows come first. `task-2404`. Public for the reason `panel_menu` is.
     pub shortcut_menu: Option<shortcuts::ShortcutMenu>,
+    /// The menu `More shortcuts` opens on a crowded rail: where, and its rows. `task-2404`.
+    pub rail_overflow: Option<(Pos2, Vec<actions::Entry>)>,
     /// The gallery of shortcuts, while it is open: where it was asked for, and for which bar. `task-2404`.
     pub shortcut_gallery: Option<(Pos2, crate::services::shortcuts::Bar)>,
     /// A tool's flyout beside its button on the rail, while it is open. `task-2404`.
@@ -1815,6 +1817,7 @@ impl UnluminousApp {
             panel_menu: None,
             shortcut_menu: None,
             shortcut_gallery: None,
+            rail_overflow: None,
             rail_flyout: None,
             last_highlight: theme::color::HIGHLIGHT_YELLOW,
             marks: FileMarks::new(),

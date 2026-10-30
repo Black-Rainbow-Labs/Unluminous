@@ -351,6 +351,16 @@ impl UnluminousApp {
         ui: &mut egui::Ui,
         action: &mut Option<Action>,
     ) {
+        // The buttons a crowded rail had no room for, from `More shortcuts`.
+        if let Some((at, entries)) = self.rail_overflow.clone() {
+            let outcome = context_menu::show(ui, "rail-overflow", at, &entries);
+            if let Some(chosen) = outcome.chosen {
+                *action = Some(chosen);
+            }
+            if outcome.close {
+                self.rail_overflow = None;
+            }
+        }
         if let Some(menu) = self.shortcut_menu.clone() {
             let mut entries = match menu.panel {
                 Some(panel) => {

@@ -840,6 +840,23 @@ impl UnluminousApp {
                 panel,
             });
         }
+        // `More shortcuts` on a crowded rail: a menu of the buttons there was no room for, and the gallery.
+        if let Some((at, hidden)) = rail.overflow {
+            let mut entries: Vec<actions::Entry> = hidden
+                .into_iter()
+                .filter_map(|(name, chosen)| {
+                    chosen.map(|chosen| actions::Entry::item(&name, chosen))
+                })
+                .collect();
+            entries.push(actions::Entry::Separator);
+            entries.push(actions::Entry::item(
+                "Customize Shortcuts...",
+                Action::Shortcut(actions::ShortcutAction::Gallery(
+                    crate::services::shortcuts::Bar::Rail,
+                )),
+            ));
+            self.rail_overflow = Some((at, entries));
+        }
         // A right click on the empty part of the rail opens the gallery of shortcuts.
         if let Some(at) = rail.gallery {
             self.shortcut_menu = None;
