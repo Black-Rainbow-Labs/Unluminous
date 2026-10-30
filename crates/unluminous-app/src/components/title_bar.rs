@@ -152,29 +152,29 @@ pub struct RightEnd {
     pub left: Option<f32>,
 }
 
-/// Between two of the shortcuts at the right hand end of the bar.
-pub const ITEM_GAP: f32 = 8.0;
-
-/// Rectangles for things `widths` wide, left to right, ending against the window buttons with [`ITEM_GAP`]
-/// between each two. The window lays the top bar's shortcuts out with this in the order `title_bar.order` gives
-/// (`task-2405`).
+/// Rectangles for things `widths` wide, left to right, ending against the window buttons, with `gaps[i]` between
+/// thing `i` and the one after it. The window lays the top bar's shortcuts out with this in the order
+/// `title_bar.order` gives (`task-2405`).
 /// @param area - the title bar
 /// @param placement - where the menus and the window buttons are
 /// @param widths - how wide each thing is, left to right
-pub fn lay_out_right_end(area: Rect, placement: MenuPlacement, widths: &[f32]) -> Vec<Rect> {
+/// @param gaps - the room after each thing but the last
+pub fn lay_out_right_end(
+    area: Rect,
+    placement: MenuPlacement,
+    widths: &[f32],
+    gaps: &[f32],
+) -> Vec<Rect> {
     let mut right = right_end(area, placement);
-    let mut rects: Vec<Rect> = widths
-        .iter()
-        .rev()
-        .map(|width| {
-            let rect = Rect::from_min_max(
-                Pos2::new(right - width, area.top()),
-                Pos2::new(right, area.bottom()),
-            );
-            right -= width + ITEM_GAP;
-            rect
-        })
-        .collect();
+    let mut rects: Vec<Rect> = Vec::with_capacity(widths.len());
+    for (index, width) in widths.iter().enumerate().rev() {
+        rects.push(Rect::from_min_max(
+            Pos2::new(right - width, area.top()),
+            Pos2::new(right, area.bottom()),
+        ));
+        right -= width
+            + index.checked_sub(1).and_then(|before| gaps.get(before)).copied().unwrap_or(0.0);
+    }
     rects.reverse();
     rects
 }

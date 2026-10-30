@@ -364,8 +364,14 @@ impl UnluminousApp {
         let order = shortcuts::arranged(&self.settings.title_bar_order, &drawn);
         parts.sort_by_key(|(name, _, _)| order.iter().position(|one| one == name));
         let widths: Vec<f32> = parts.iter().map(|(_, width, _)| *width).collect();
-        let rects =
-            crate::components::title_bar::lay_out_right_end(title, self.menu_placement, &widths);
+        let gaps: Vec<f32> =
+            parts.windows(2).map(|pair| top_bar_gap(pair[0].2, pair[1].2)).collect();
+        let rects = crate::components::title_bar::lay_out_right_end(
+            title,
+            self.menu_placement,
+            &widths,
+            &gaps,
+        );
         parts
             .into_iter()
             .zip(rects)
@@ -712,4 +718,17 @@ fn top_bar_insertion_mark(ctx: &egui::Context, items: &[TopItem], carried: &str,
         [Pos2::new(edge, top), Pos2::new(edge, bottom)],
         egui::Stroke::new(2.0, crate::theme::color::accent()),
     );
+}
+
+/// The room between two of the top bar's shortcuts: the spacing the bar has always had in its shipped order, 10
+/// points from the text options chip to the view modes and in front of a pinned pane, 6 in front of the run widget
+/// and between two pinned panes. A pair the shipped order never puts side by side takes 8.
+fn top_bar_gap(before: TopPart, after: TopPart) -> f32 {
+    match (before, after) {
+        (TopPart::Chip(_), TopPart::Chip(_)) => 6.0,
+        (_, TopPart::Run) => 6.0,
+        (TopPart::TextOptions, TopPart::ViewModes) => 10.0,
+        (_, TopPart::Chip(_)) => 10.0,
+        _ => 8.0,
+    }
 }
