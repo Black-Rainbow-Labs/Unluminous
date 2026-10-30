@@ -7674,7 +7674,10 @@ fn view_modes_on_the_rail_fly_out_no_wider_than_the_track() {
     let button = harness.get_by_label(preview).rect();
     let rail = harness.get_by_label("View Modes").rect();
     assert!(button.left() > rail.right(), "the modes are in the flyout beside the button");
-    assert!(button.right() - rail.right() < 190.0, "the flyout is no wider than it needs: {button:?}");
+    assert!(
+        button.right() - rail.right() < 190.0,
+        "the flyout is no wider than it needs: {button:?}"
+    );
     harness.get_by_label(preview).click();
     steady(&mut harness);
     assert_eq!(harness.state().view_mode(), ViewMode::Preview);
