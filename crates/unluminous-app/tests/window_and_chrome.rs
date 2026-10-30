@@ -7702,3 +7702,47 @@ fn a_crowded_rail_offers_more_shortcuts_instead_of_drawing_over_itself() {
     steady(&mut harness);
     assert_ne!(showing(&harness, "database/explorer"), before, "the menu row opens the pane");
 }
+
+// -------------------------------------------------------------------------------------- task-2405
+
+/// `task-2405`: *"I'm unable to drag the top row buttons in different order at the top. It should let me rearrange,
+/// just like the left. e.g. db explorer should be able to go in between view mode and run config."*
+#[test]
+fn a_shortcut_carried_along_the_top_bar_keeps_the_place_it_was_let_go() {
+    let mut harness = harness("# Heading");
+    did(&mut harness, "window pin --bar top Version Control");
+    steady(&mut harness);
+    let chip = harness.get_by_label("Version Control in the top bar").rect();
+    let run = harness.get_by_label("Add a run configuration").rect();
+    let preview = harness.get_by_label("Markdown preview").rect();
+    assert!(chip.left() > run.right(), "a pinned pane starts against the window buttons");
+    let to = egui::pos2((preview.right() + run.left()) / 2.0, run.center().y);
+    let open = harness.state().git.as_ref().is_some_and(|git| git.panel.open);
+    carry_and_hold(&mut harness, chip.center(), to);
+    let_go(&mut harness, to);
+    assert_eq!(
+        harness.state().settings.title_bar_order,
+        "Text Options, View Modes, Version Control, Run Configurations"
+    );
+    let chip = harness.get_by_label("Version Control in the top bar").rect();
+    let preview = harness.get_by_label("Markdown preview").rect();
+    let run = harness.get_by_label("Add a run configuration").rect();
+    assert!(
+        chip.left() > preview.right() && chip.right() < run.left(),
+        "between the view modes and the run widget: {chip:?}"
+    );
+    let after = harness.state().git.as_ref().is_some_and(|git| git.panel.open);
+    assert_eq!(after, open, "carrying it did not press it");
+}
+
+/// `task-2405`: *"My view mode preference should be remembered and applied between files."*
+#[test]
+fn the_view_mode_last_chosen_is_the_one_the_next_markdown_file_opens_in() {
+    let mut harness = harness("# Heading");
+    did(&mut harness, "tab open chapters/one.md");
+    did(&mut harness, "editor view preview");
+    assert_eq!(harness.state().settings.markdown_view, "preview");
+    did(&mut harness, "tab open chapters/two.md");
+    steady(&mut harness);
+    assert_eq!(harness.state().view_mode(), ViewMode::Preview);
+}
