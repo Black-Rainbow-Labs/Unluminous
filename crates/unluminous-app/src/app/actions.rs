@@ -2884,35 +2884,49 @@ pub enum ShortcutAction {
 }
 
 impl ShortcutAction {
-    /// The name the command line calls it: `pin-shortcut:<bar>:<name>`, `unpin-shortcut:<bar>:<name>`,
-    /// `customize-shortcuts:<bar>` and `reset-shortcuts:<bar>`.
+    /// The name the command line calls it, lower case and hyphenated like every action's:
+    /// `pin-shortcut-<bar>-<name>`, `unpin-shortcut-<bar>-<name>`, `customize-shortcuts-<bar>` and
+    /// `reset-shortcuts-<bar>`, with the shortcut's name written as `services::shortcuts::slug` writes it.
     pub fn name(&self) -> String {
+        use crate::services::shortcuts::slug;
         match self {
-            ShortcutAction::Pin { name, bar } => format!("pin-shortcut:{}:{name}", bar.name()),
-            ShortcutAction::Unpin { name, bar } => format!("unpin-shortcut:{}:{name}", bar.name()),
-            ShortcutAction::Gallery(bar) => format!("customize-shortcuts:{}", bar.name()),
-            ShortcutAction::Reset(bar) => format!("reset-shortcuts:{}", bar.name()),
+            ShortcutAction::Pin { name, bar } => {
+                format!("pin-shortcut-{}-{}", bar.name(), slug(name))
+            }
+            ShortcutAction::Unpin { name, bar } => {
+                format!("unpin-shortcut-{}-{}", bar.name(), slug(name))
+            }
+            ShortcutAction::Gallery(bar) => format!("customize-shortcuts-{}", bar.name()),
+            ShortcutAction::Reset(bar) => format!("reset-shortcuts-{}", bar.name()),
         }
     }
 
-    /// Read one back from [`ShortcutAction::name`]. A bare `customize-shortcuts` is the rail's gallery.
+    /// Read one back from [`ShortcutAction::name`]. A bare `customize-shortcuts` is the rail's gallery. The
+    /// shortcut comes back as its slug, which `services::shortcuts::find` matches against a name.
     pub fn from_name(name: &str) -> Option<ShortcutAction> {
         use crate::services::shortcuts::Bar;
         if name == "customize-shortcuts" {
             return Some(ShortcutAction::Gallery(Bar::Rail));
         }
-        let (verb, rest) = name.split_once(':')?;
-        let (bar, shortcut) = match rest.split_once(':') {
-            Some((bar, shortcut)) => (Bar::from_name(bar)?, Some(shortcut.to_owned())),
-            None => (Bar::from_name(rest)?, None),
+        let bar_and_rest = |rest: &str| -> Option<(Bar, String)> {
+            let (bar, shortcut) = rest.split_once('-').unwrap_or((rest, ""));
+            Some((Bar::from_name(bar)?, shortcut.to_owned()))
         };
-        match (verb, shortcut) {
-            ("pin-shortcut", Some(name)) => Some(ShortcutAction::Pin { name, bar }),
-            ("unpin-shortcut", Some(name)) => Some(ShortcutAction::Unpin { name, bar }),
-            ("customize-shortcuts", None) => Some(ShortcutAction::Gallery(bar)),
-            ("reset-shortcuts", None) => Some(ShortcutAction::Reset(bar)),
-            _ => None,
+        if let Some(rest) = name.strip_prefix("unpin-shortcut-") {
+            let (bar, name) = bar_and_rest(rest).filter(|(_, name)| !name.is_empty())?;
+            return Some(ShortcutAction::Unpin { name, bar });
         }
+        if let Some(rest) = name.strip_prefix("pin-shortcut-") {
+            let (bar, name) = bar_and_rest(rest).filter(|(_, name)| !name.is_empty())?;
+            return Some(ShortcutAction::Pin { name, bar });
+        }
+        if let Some(rest) = name.strip_prefix("customize-shortcuts-") {
+            return Bar::from_name(rest).map(ShortcutAction::Gallery);
+        }
+        if let Some(rest) = name.strip_prefix("reset-shortcuts-") {
+            return Bar::from_name(rest).map(ShortcutAction::Reset);
+        }
+        None
     }
 }
 
@@ -2927,6 +2941,8 @@ pub fn shortcut_menu(
     bar: crate::services::shortcuts::Bar,
     on_the_other_bar: bool,
 ) -> Vec<Entry> {
+    // The shortcut is carried as its slug, so the action's name reads back as the same action.
+    let name = &crate::services::shortcuts::slug(name);
     let other = bar.other();
     let toggle_other = match on_the_other_bar {
         true => ShortcutAction::Unpin { name: name.to_owned(), bar: other },

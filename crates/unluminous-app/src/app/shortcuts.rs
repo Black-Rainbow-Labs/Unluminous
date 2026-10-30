@@ -137,8 +137,12 @@ impl UnluminousApp {
         }
     }
 
-    /// Pin or unpin from a menu or the gallery, and say what happened in the status bar.
+    /// Pin or unpin from a menu or the gallery, and say what happened in the status bar, by the shortcut's own
+    /// name rather than the slug an action carries.
     fn report_a_pin(&mut self, name: &str, bar: Bar, pinned: bool) {
+        let all = self.shortcuts();
+        let name = shortcuts::find(&all, name).map_or(name, |one| one.name.as_str()).to_owned();
+        let name = name.as_str();
         self.message = Some(match self.pin_the_shortcut(name, bar, pinned) {
             Ok(_) if pinned => format!("Pinned {name} to the {}.", bar.label().to_lowercase()),
             Ok(_) => format!("Unpinned {name} from the {}.", bar.label().to_lowercase()),

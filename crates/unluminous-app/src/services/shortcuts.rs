@@ -219,9 +219,18 @@ pub fn reset(settings: &mut Settings, bar: Bar) -> bool {
     changed
 }
 
-/// The shortcut in `shortcuts` that `name` names, ignoring case and the space round it.
+/// A shortcut's name as an action name writes it: lower case, with a hyphen for each space.
+pub fn slug(name: &str) -> String {
+    name.trim().to_ascii_lowercase().split_whitespace().collect::<Vec<_>>().join("-")
+}
+
+/// The shortcut in `shortcuts` that `name` names, ignoring case and the space round it. A name written as its
+/// [`slug`], which is how an action name carries it, finds it too.
 pub fn find<'a>(shortcuts: &'a [Shortcut], name: &str) -> Option<&'a Shortcut> {
-    shortcuts.iter().find(|one| one.name.eq_ignore_ascii_case(name.trim()))
+    shortcuts
+        .iter()
+        .find(|one| one.name.eq_ignore_ascii_case(name.trim()))
+        .or_else(|| shortcuts.iter().find(|one| slug(&one.name) == slug(name)))
 }
 
 #[cfg(test)]

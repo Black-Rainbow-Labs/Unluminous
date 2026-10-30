@@ -7577,8 +7577,8 @@ fn window_shortcuts_pin_and_unpin_from_the_command_line() {
         .iter()
         .all(|row| row["name"] != "Editing Area"));
     assert_eq!(refused(&mut harness, "window pin Nothing Like This"), "not-found");
-    did(&mut harness, "action run reset-shortcuts:rail");
+    did(&mut harness, "action run reset-shortcuts-rail");
     assert_eq!(harness.state().settings.rail_unpinned, "");
-    did(&mut harness, "action run customize-shortcuts:top");
+    did(&mut harness, "action run customize-shortcuts-top");
     assert!(harness.state().shortcut_gallery.is_some_and(|(_, bar)| bar.name() == "top"));
 }

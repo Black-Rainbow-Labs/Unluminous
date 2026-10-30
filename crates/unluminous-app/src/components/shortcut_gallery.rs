@@ -267,7 +267,7 @@ fn words(painter: &egui::Painter, rect: Rect, name: &str, tint: Color32) {
 /// The small accent disc with a tick that says a card is pinned.
 fn tick(rux: &mut rux::Rux<'_>, centre: Pos2) {
     rux.ui.painter().circle_filled(centre, 7.5, color::accent());
-    rux.mark(rux::Mark::new(rux::Icon::Check, 10.0), centre, Color32::WHITE);
+    rux.mark(rux::Mark::new(rux::Icon::Check, 10.0), centre, color::on_accent());
 }
 
 /// One chip on the top bar for a pinned shortcut.

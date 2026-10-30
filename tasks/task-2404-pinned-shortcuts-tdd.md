@@ -182,10 +182,10 @@ right click, and that row is what makes it an action an agent can run.
 
 | Action | Name | Does |
 |---|---|---|
-| `Pin { name, bar }` | `pin-shortcut:<bar>:<name>` | puts the shortcut on the bar |
-| `Unpin { name, bar }` | `unpin-shortcut:<bar>:<name>` | takes it off |
-| `Gallery(bar)` | `customize-shortcuts:<bar>` | opens the gallery |
-| `Reset(bar)` | `reset-shortcuts:<bar>` | clears that bar's two settings |
+| `Pin { name, bar }` | `pin-shortcut-<bar>-<name>` | puts the shortcut on the bar |
+| `Unpin { name, bar }` | `unpin-shortcut-<bar>-<name>` | takes it off |
+| `Gallery(bar)` | `customize-shortcuts-<bar>` | opens the gallery |
+| `Reset(bar)` | `reset-shortcuts-<bar>` | clears that bar's two settings |
 
 `<bar>` is `rail` or `top`. `UnluminousApp::pin_the_shortcut` is the one place the settings change, and the
 menus, the gallery and the command line all call it.

@@ -255,7 +255,7 @@ impl Action {
             }
             return None;
         }
-        // The shortcuts on the rail and the top bar, `task-2404`. Their names carry a colon, as a plugin's do.
+        // The shortcuts on the rail and the top bar, `task-2404`. `pin-shortcut-rail-database-pane` and the rest.
         if name.contains("shortcut") {
             if let Some(shortcut) = crate::app::actions::ShortcutAction::from_name(name) {
                 return Some(Action::Shortcut(shortcut));
