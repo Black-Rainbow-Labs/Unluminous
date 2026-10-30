@@ -6,7 +6,15 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.22.2 — 2026-10-30
+## 1.23.0 — 2026-10-30
+
+- Dot folders in the explorer, a top bar in any order, zoomed search wells, skills that fetch whole, a remembered view mode, and a second tab on one project (`task-2405`)
+- Window tests for a top bar shortcut carried into place and the remembered view mode (`task-2405`)
+- A test of its own for the dot folders, and a type for a fetched file, for clippy (`task-2405`)
+- The top bar keeps the spacing it has always had between its shortcuts (`task-2405`)
+- Tests keep their settings under .unluminous, follow the dot folder rule, list the two new settings, and accept the redrawn Skills, Designer and chip pictures (`task-2405`)
+
+## 1.22.2 — 2026-10-29
 
 - A crowded rail closes up, and its two groups never draw over each other (`task-2404`)
 - A crowded rail ends its top group with More shortcuts, whose menu opens the buttons there was no room for (`task-2404`)
