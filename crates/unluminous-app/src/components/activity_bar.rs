@@ -174,6 +174,9 @@ pub enum Opens {
     Tab,
 }
 
+/// A button a crowded rail had no room for: its name, and what pressing it does. `None` for a tool.
+pub type Hidden = (String, Option<Action>);
+
 /// What the rail reported this frame.
 ///
 /// Two things rather than one since `task-1697`: a **left** click is still the action the button
@@ -203,7 +206,7 @@ pub struct RailOutcome {
     pub dropped_outside: Option<(String, Pos2)>,
     /// `More shortcuts` was pressed: where, and the buttons the rail had no room for, by name with what each
     /// does. A tool has no action, and the menu offers it the gallery instead. `task-2404`.
-    pub overflow: Option<(Pos2, Vec<(String, Option<Action>)>)>,
+    pub overflow: Option<(Pos2, Vec<Hidden>)>,
 }
 
 /// The names of the buttons the rail draws, top group and bottom group, top to bottom in each: what `landing`
@@ -315,7 +318,7 @@ fn buttons(
         }),
     };
     if let Some(centre) = more {
-        let hidden: Vec<(String, Option<Action>)> = top
+        let hidden: Vec<Hidden> = top
             .iter()
             .zip(centres.iter())
             .filter(|(_, y)| y.is_nan())
