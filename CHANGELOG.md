@@ -6,7 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.22.1 — 2026-10-30
+## 1.22.2 — 2026-10-30
+
+- A crowded rail closes up, and its two groups never draw over each other (`task-2404`)
+- A crowded rail ends its top group with More shortcuts, whose menu opens the buttons there was no room for (`task-2404`)
+- Name the type of a button the rail had no room for, for clippy (`task-2404`)
+
+## 1.22.1 — 2026-10-29
 
 - Gallery cards are raised toggles, Move to the other bar, and shortcuts are dragged between the bars (`task-2404`)
 - Rustfmt (`task-2404`)
