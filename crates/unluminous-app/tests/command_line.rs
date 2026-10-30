@@ -1105,6 +1105,11 @@ const SETTINGS_HELP: &[&str] = &[
     "Which releases this window follows. `stable`, the default, is the versions somebody promoted after using them as a nightly. `nightly` is every release, which is every finished ticket, so a fix arrives a day sooner and so does a bug. The daily check, Check for Updates and `update check` ask this channel; `Unluminous -> Check for Updates` lists both and installs any version on either.",
     "The one version Don't Ask Again declined, which the daily check does not offer. A later version is offered again. Empty offers every version.",
     "The order of the rail's buttons by name, top group, then |, then the bottom group, such as `Project, Realm | Run tile, Terminal tile`. Dragging a button on the rail writes it. A button it does not name keeps its own group. Empty is the default order.",
+    // `task-2404`: the shortcuts pinned to and unpinned from the rail and the top bar.
+    "Shortcuts whose home is the top bar that are pinned to the rail, by name, separated by commas: `Text Options`, `View Modes`, `Run Configurations`. On the rail each is a button whose flyout holds the tool. `window pin` writes it.",
+    "The rail's own buttons that were unpinned from it, by name, separated by commas, such as `Database pane, Realm`. A right click on a button and `Unpin from Side Bar` writes it, and so does `window unpin`.",
+    "The rail's buttons that are pinned to the top bar as well, by name, separated by commas. Each is a round chip at the right hand end of the top bar. `window pin <name> --bar top` writes it.",
+    "The top bar's own tools that were unpinned from it: `Text Options`, `View Modes`, `Run Configurations`. `window unpin <name> --bar top` writes it.",
     "Whether resting the pointer on a name while the program is stopped shows its value. Show Value on the Debug menu works either way.",
     "Whether a plugin that asked for it draws depth: the soft shadows, gradients and pressed edges behind its own pane. Off, it draws flat.",
     "Whether this Unluminous serves MCP over HTTP. An agent that launches the server itself needs neither this nor a port.",
@@ -2060,6 +2065,13 @@ fn drive_the_window_and_the_tabs(coverage: &mut Coverage) {
     c.works(&mut harness, "window size --width 1100 --height 720");
     c.works(&mut harness, "window position --x 40 --y 40");
     c.works(&mut harness, "window message Ready for the next step");
+    // The shortcuts on the rail and the top bar, `task-2404`.
+    c.works(&mut harness, "window shortcuts --json");
+    c.refuses(&mut harness, "window shortcuts --bar bottom");
+    c.works(&mut harness, "window unpin Version Control");
+    c.refuses(&mut harness, "window unpin No Such Shortcut");
+    c.works(&mut harness, "window pin Version Control");
+    c.refuses(&mut harness, "window pin --bar middle Project");
 
     // Before anything has been closed, so there is genuinely nothing to reopen.
     c.refuses(&mut harness, "tab reopen");
