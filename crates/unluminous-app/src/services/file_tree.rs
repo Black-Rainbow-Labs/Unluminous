@@ -827,8 +827,7 @@ mod tests {
         std::fs::remove_dir_all(&root).ok();
         std::fs::create_dir_all(root.join("notes/deeper")).expect("make the nested folders");
         std::fs::create_dir_all(root.join("archive")).expect("make the archive folder");
-        std::fs::create_dir_all(root.join(".git")).expect("make a .git folder");
-        std::fs::create_dir_all(root.join(".claude/skills")).expect("make a dot folder");
+        std::fs::create_dir_all(root.join(".unluminous")).expect("make the project's own folder");
         std::fs::write(root.join("readme.md"), "# readme").expect("write readme.md");
         std::fs::write(root.join("notes.txt"), "notes").expect("write notes.txt");
         std::fs::write(root.join("program.rs"), "fn main() {}").expect("write program.rs");
@@ -867,7 +866,6 @@ mod tests {
         assert_eq!(
             names,
             vec![
-                ".claude",
                 "archive",
                 "notes",
                 "bundle.zip",
@@ -877,7 +875,30 @@ mod tests {
                 "readme.md"
             ]
         );
-        assert!(!names.contains(&".git"), "git's own folder is not listed");
+        assert!(!names.contains(&".unluminous"), "what this machine remembers is not listed");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// `task-2405`: a skill installed for the project is in `.claude/skills`, and every dot folder was hidden, so it
+    /// could not be seen. Every dot entry is listed now but `.git` and `.unluminous`.
+    #[test]
+    fn a_dot_folder_is_listed_and_git_and_unluminous_are_not() {
+        let root =
+            std::env::temp_dir().join(format!("unluminous-tree-dots-{}", std::process::id()));
+        std::fs::remove_dir_all(&root).ok();
+        for folder in [".claude/skills/grill-me", ".git", ".unluminous", ".github"] {
+            std::fs::create_dir_all(root.join(folder)).expect("make the folders");
+        }
+        std::fs::write(root.join(".env"), "A=1").expect("write .env");
+        std::fs::write(root.join(".claude/skills/grill-me/SKILL.md"), "# Grill me")
+            .expect("write SKILL.md");
+        let tree = FileTree::new(&root);
+        let names: Vec<&str> = tree.rows().iter().map(|row| row.entry.name.as_str()).collect();
+        assert_eq!(names, vec![".claude", ".github", ".env"]);
+        assert!(
+            tree.all_files().iter().any(|path| path.ends_with("grill-me/SKILL.md")),
+            "an installed skill is searched too"
+        );
         std::fs::remove_dir_all(&root).ok();
     }
 

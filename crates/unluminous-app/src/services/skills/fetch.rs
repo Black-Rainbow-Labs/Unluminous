@@ -78,6 +78,9 @@ fn hand_back(done: &Mutex<Vec<Done>>, result: Done, wake: Option<&(dyn Fn() + Se
 /// a skill of that size took most of a minute while the pane said only that it was fetching. `task-2405`.
 const AT_ONCE: usize = 6;
 
+/// One file of a skill as it came back: its path and its bytes, or why not.
+type Fetched = Result<(String, Vec<u8>), String>;
+
 /// Every file of a skill, each checked against its hash, [`AT_ONCE`] at a time through one client.
 fn files_of(base: &str, entry: &Entry) -> Result<Files, String> {
     if entry.files.is_empty() {
@@ -85,7 +88,7 @@ fn files_of(base: &str, entry: &Entry) -> Result<Files, String> {
     }
     let agent = agent();
     let next = AtomicUsize::new(0);
-    let fetched: Mutex<Vec<Result<(String, Vec<u8>), String>>> = Mutex::new(Vec::new());
+    let fetched: Mutex<Vec<Fetched>> = Mutex::new(Vec::new());
     std::thread::scope(|scope| {
         for _ in 0..AT_ONCE.min(entry.files.len()) {
             scope.spawn(|| loop {
