@@ -541,8 +541,6 @@ pub fn switch(
     value: &mut bool,
     label_rect: Rect,
 ) -> bool {
-    let theme = rux.theme();
-    let chat = theme.chat;
     let id = rux.ui.id().with(("settings-switch", name));
     let response = rux.ui.interact(track.union(label_rect), id, Sense::click());
     if response.hovered() {
@@ -553,8 +551,23 @@ pub fn switch(
         *value = !*value;
         changed = true;
     }
+    paint_switch(rux, track, *value);
+    let on = *value;
+    let named = name.to_owned();
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, on, named.clone())
+    });
+    changed
+}
+
+/// A switch's track and knob, on or off, with no interaction of its own. [`switch`] draws it, and so does a
+/// control that is a switch as a whole, such as a card in the shortcut gallery (`task-2404`), so the two cannot
+/// drift apart.
+pub fn paint_switch(rux: &mut Rux<'_>, track: Rect, value: bool) {
+    let theme = rux.theme();
+    let chat = theme.chat;
     let radius = track.height() / 2.0;
-    match *value {
+    match value {
         true => rux.chrome.surface(
             track,
             radius,
@@ -573,7 +586,7 @@ pub fn switch(
     let diameter = (track.height() - inset * 2.0).max(1.0);
     let knob = Rect::from_center_size(
         Pos2::new(
-            match *value {
+            match value {
                 true => track.right() - inset - diameter / 2.0,
                 false => track.left() + inset + diameter / 2.0,
             },
@@ -581,7 +594,7 @@ pub fn switch(
         ),
         Vec2::splat(diameter),
     );
-    let knob_fill = match *value {
+    let knob_fill = match value {
         true => Fill::Solid(theme.ink.i900),
         false => Fill::gradient(chat.chip, knob),
     };
@@ -591,12 +604,6 @@ pub fn switch(
         knob_fill,
         Elevation::of([Shadow::outer(unit, unit, 3.0 * unit, chat.dark)]),
     );
-    let on = *value;
-    let named = name.to_owned();
-    response.widget_info(|| {
-        egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, on, named.clone())
-    });
-    changed
 }
 
 /// A list to choose from, as the design's chip: `rux`'s own select in its chip form, opened under it.

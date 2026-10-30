@@ -213,6 +213,7 @@ impl UnluminousApp {
             "shortcuts" => self.cli_window_shortcuts(request),
             "pin" => self.cli_window_pin(request, true),
             "unpin" => self.cli_window_pin(request, false),
+            "move" => self.cli_window_move(request),
             "message" => {
                 if request.has("text") {
                     self.message = request.text("text");
@@ -304,6 +305,25 @@ impl UnluminousApp {
                     json!({ "name": name.trim(), "bar": bar.name(), "pinned": pinned, "changed": changed }),
                 )
             }
+            Err(refused) => no(request, code::NOT_FOUND, refused),
+        }
+    }
+
+    /// `window move`: the right click menu's `Move to Top Bar` and `Move to Side Bar`. `task-2404`.
+    fn cli_window_move(&mut self, request: &Request) -> Outcome {
+        use crate::services::shortcuts::Bar;
+        let Some(name) = request.text("name") else {
+            return no(request, code::USAGE, "Name the shortcut. `window shortcuts` lists them.");
+        };
+        let Some(bar) = request.text("bar").and_then(|words| Bar::from_name(&words)) else {
+            return no(request, code::USAGE, "Say where it goes: --bar rail or --bar top.");
+        };
+        match self.move_the_shortcut(&name, bar) {
+            Ok(moved) => ok(
+                request,
+                format!("Moved {moved} to the {}.", bar.label().to_lowercase()),
+                json!({ "name": moved, "bar": bar.name() }),
+            ),
             Err(refused) => no(request, code::NOT_FOUND, refused),
         }
     }

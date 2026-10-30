@@ -552,6 +552,22 @@ unluminous-cli window unpin Database pane
 unluminous-cli window unpin --bar top View Modes
 ```
 
+### window move
+
+```
+unluminous-cli window move <name> [--bar <rail|top>]
+```
+
+Move a shortcut from one bar to the other: pinned to the bar named and taken off the other one, which is what `Move to Top Bar` and `Move to Side Bar` on its right click menu do.
+
+- `name` (required) — The shortcut's name. Case does not matter. Everything after it on the line belongs to it.
+- `--bar <rail|top>` — The bar it goes to. Required. Put it before the name, which takes the rest of the line.
+
+```sh
+unluminous-cli window move --bar rail Run Configurations
+unluminous-cli window move --bar top Project
+```
+
 ## browser — rendered web pages in Unluminous tabs
 
 Rendered tabs use the operating system browser engine. Local HTML is served from a constrained project origin, so its CSS, scripts and images work without exposing the filesystem to page JavaScript. Every rendered tab and every browser node has a view of its own, so several pages render at once, each with its own address, title and history. These commands act on the tab that is showing in the editing area and say so when it is not a rendered one. A link clicked in a page opens a new tab beside it, or a new browser node beside a node, unless `browser.links` is `same-tab`.

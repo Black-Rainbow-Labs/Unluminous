@@ -2877,6 +2877,8 @@ pub enum ShortcutAction {
     Pin { name: String, bar: crate::services::shortcuts::Bar },
     /// Take the shortcut named `name` off `bar`.
     Unpin { name: String, bar: crate::services::shortcuts::Bar },
+    /// Put the shortcut named `name` on `bar` and take it off the other one: `Move to Top Bar`.
+    Move { name: String, bar: crate::services::shortcuts::Bar },
     /// Open the gallery of every shortcut for a bar, beside that bar.
     Gallery(crate::services::shortcuts::Bar),
     /// Put a bar back the way Unluminous ships it.
@@ -2895,6 +2897,9 @@ impl ShortcutAction {
             }
             ShortcutAction::Unpin { name, bar } => {
                 format!("unpin-shortcut-{}-{}", bar.name(), slug(name))
+            }
+            ShortcutAction::Move { name, bar } => {
+                format!("move-shortcut-{}-{}", bar.name(), slug(name))
             }
             ShortcutAction::Gallery(bar) => format!("customize-shortcuts-{}", bar.name()),
             ShortcutAction::Reset(bar) => format!("reset-shortcuts-{}", bar.name()),
@@ -2916,6 +2921,10 @@ impl ShortcutAction {
             let (bar, name) = bar_and_rest(rest).filter(|(_, name)| !name.is_empty())?;
             return Some(ShortcutAction::Unpin { name, bar });
         }
+        if let Some(rest) = name.strip_prefix("move-shortcut-") {
+            let (bar, name) = bar_and_rest(rest).filter(|(_, name)| !name.is_empty())?;
+            return Some(ShortcutAction::Move { name, bar });
+        }
         if let Some(rest) = name.strip_prefix("pin-shortcut-") {
             let (bar, name) = bar_and_rest(rest).filter(|(_, name)| !name.is_empty())?;
             return Some(ShortcutAction::Pin { name, bar });
@@ -2930,31 +2939,24 @@ impl ShortcutAction {
     }
 }
 
-/// The rows a right click on a shortcut adds to its menu: unpin it from the bar it was opened on, show it on the
-/// other bar too, and open the gallery. `task-2404`.
+/// The rows a right click on a shortcut adds to its menu: unpin it from the bar it was opened on, move it to the
+/// other bar, and open the gallery. `task-2404`.
 ///
 /// @param name - the shortcut's name
 /// @param bar - the bar the menu was opened on
-/// @param on_the_other_bar - whether it is pinned to the other bar now, which ticks that row
-pub fn shortcut_menu(
-    name: &str,
-    bar: crate::services::shortcuts::Bar,
-    on_the_other_bar: bool,
-) -> Vec<Entry> {
+pub fn shortcut_menu(name: &str, bar: crate::services::shortcuts::Bar) -> Vec<Entry> {
     // The shortcut is carried as its slug, so the action's name reads back as the same action.
-    let name = &crate::services::shortcuts::slug(name);
+    let name = crate::services::shortcuts::slug(name);
     let other = bar.other();
-    let toggle_other = match on_the_other_bar {
-        true => ShortcutAction::Unpin { name: name.to_owned(), bar: other },
-        false => ShortcutAction::Pin { name: name.to_owned(), bar: other },
-    };
     vec![
         Entry::item(
             &format!("Unpin from {}", bar.label()),
-            Action::Shortcut(ShortcutAction::Unpin { name: name.to_owned(), bar }),
+            Action::Shortcut(ShortcutAction::Unpin { name: name.clone(), bar }),
         ),
-        Entry::item(&format!("Show in {}", other.label()), Action::Shortcut(toggle_other))
-            .checked(on_the_other_bar),
+        Entry::item(
+            &format!("Move to {}", other.label()),
+            Action::Shortcut(ShortcutAction::Move { name, bar: other }),
+        ),
         Entry::Separator,
         Entry::item("Customize Shortcuts...", Action::Shortcut(ShortcutAction::Gallery(bar))),
     ]

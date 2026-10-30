@@ -108,6 +108,7 @@ impl UnluminousApp {
         match what {
             ShortcutAction::Pin { name, bar } => self.report_a_pin(&name, bar, true),
             ShortcutAction::Unpin { name, bar } => self.report_a_pin(&name, bar, false),
+            ShortcutAction::Move { name, bar } => self.report_a_move(&name, bar),
             ShortcutAction::Reset(bar) => {
                 if shortcuts::reset(&mut self.settings, bar) {
                     self.unsaved_settings = true;
@@ -148,6 +149,121 @@ impl UnluminousApp {
             Ok(_) => format!("Unpinned {name} from the {}.", bar.label().to_lowercase()),
             Err(refused) => refused,
         });
+    }
+
+    /// Move a shortcut to `bar`: pinned there and taken off the other bar, and say so in the status bar.
+    fn report_a_move(&mut self, name: &str, bar: Bar) {
+        self.message = Some(match self.move_the_shortcut(name, bar) {
+            Ok(moved) => format!("Moved {moved} to the {}.", bar.label().to_lowercase()),
+            Err(refused) => refused,
+        });
+    }
+
+    /// Put a shortcut on `bar` and take it off the other bar, through [`UnluminousApp::pin_the_shortcut`] both
+    /// times. Answers the shortcut's own name, or the names there are when `name` is not one of them.
+    /// @param name - the shortcut's name, in any case, or its slug
+    /// @param bar - the bar it goes to
+    pub fn move_the_shortcut(&mut self, name: &str, bar: Bar) -> Result<String, String> {
+        self.pin_the_shortcut(name, bar, true)?;
+        self.pin_the_shortcut(name, bar.other(), false)?;
+        let all = self.shortcuts();
+        Ok(shortcuts::find(&all, name).map_or(name.to_owned(), |one| one.name.clone()))
+    }
+
+    /// The mark a shortcut is drawn with, by its name.
+    pub(crate) fn mark_of(&self, name: &str) -> Option<activity_bar::IconDrawer> {
+        let buttons = self.plugin_rail_buttons();
+        let mut found = None;
+        activity_bar::cards(self.rail_state(), &buttons, |card| {
+            if card.name.eq_ignore_ascii_case(name) {
+                found = Some(card.mark);
+            }
+        });
+        found
+    }
+
+    /// A rail button carried off the rail: drawn under the pointer, with the top bar lit as the drop target while
+    /// the pointer is over it, and moved to the top bar when it is let go there. `task-2404`.
+    /// @param ui - the window
+    /// @param carrying - the button being carried this frame, if it has left the rail
+    /// @param dropped - the button let go off the rail this frame, and where
+    /// @param top - the title bar, and the part of it a shortcut lands in
+    pub(crate) fn carry_from_the_rail(
+        &mut self,
+        ui: &egui::Ui,
+        carrying: Option<String>,
+        dropped: Option<(String, Pos2)>,
+        top: (Rect, Rect),
+    ) {
+        let (title, landing) = top;
+        if let (Some(name), Some(at)) = (carrying, ui.ctx().pointer_latest_pos()) {
+            if title.contains(at) {
+                shortcut_gallery::drop_target(ui.ctx(), landing);
+            }
+            if let Some(mark) = self.mark_of(&name) {
+                shortcut_gallery::drag_ghost(ui.ctx(), mark, at);
+            }
+        }
+        if let Some((name, at)) = dropped {
+            if title.contains(at) {
+                self.report_a_move(&name, Bar::Top);
+            }
+        }
+    }
+
+    /// The top bar's shortcuts carried to the rail: a drag handle over each of them, under its own button so a
+    /// press still presses it. While one is carried it is drawn under the pointer, and over the rail the line that
+    /// says where it would land is drawn. Let go on the rail, it moves there, to that place. `task-2404`.
+    /// @param ui - the window
+    /// @param items - each shortcut on the top bar, by name, and its rectangle
+    /// @param rail - the rail
+    pub(crate) fn carry_from_the_top_bar(
+        &mut self,
+        ui: &egui::Ui,
+        items: &[(String, Rect)],
+        rail: Rect,
+    ) {
+        for (name, rect) in items {
+            let handle = ui.interact(
+                *rect,
+                egui::Id::new(("carry-from-the-top-bar", name)),
+                egui::Sense::drag(),
+            );
+            let Some(at) = ui.ctx().pointer_latest_pos() else { continue };
+            if handle.dragged() {
+                if rail.contains(at) {
+                    let (top, bottom) = self.rail_names_without(name);
+                    let slot = activity_bar::landing(rail, &top, &bottom, name, at.y);
+                    shortcut_gallery::drop_target(ui.ctx(), rail.shrink2(egui::vec2(3.0, 2.0)));
+                    let painter = ui.ctx().layer_painter(egui::LayerId::new(
+                        egui::Order::Foreground,
+                        egui::Id::new("rail-landing"),
+                    ));
+                    activity_bar::insertion_mark(&painter, rail, slot.mark);
+                }
+                if let Some(mark) = self.mark_of(name) {
+                    shortcut_gallery::drag_ghost(ui.ctx(), mark, at);
+                }
+            }
+            if handle.drag_stopped() && rail.contains(at) {
+                let (top, bottom) = self.rail_names_without(name);
+                let slot = activity_bar::landing(rail, &top, &bottom, name, at.y);
+                self.report_a_move(name, Bar::Rail);
+                self.settings.rail_order = activity_bar::order_text(&slot.top, &slot.bottom);
+                self.unsaved_settings = true;
+            }
+        }
+    }
+
+    /// The rail's two groups by name as they are drawn now, without `name`, the shortcut being carried to it.
+    fn rail_names_without(&self, name: &str) -> (Vec<String>, Vec<String>) {
+        let buttons = self.plugin_rail_buttons();
+        let input = self.rail_input(&buttons);
+        let (top, bottom) = activity_bar::group_names(self.rail_state(), &input);
+        let without = |group: Vec<String>| {
+            group.into_iter().filter(|one| !one.eq_ignore_ascii_case(name)).collect()
+        };
+        (without(top), without(bottom))
     }
 
     /// What the rail is asked to draw beside its state: the plugins' buttons, the order, and the pins.
@@ -244,8 +360,7 @@ impl UnluminousApp {
                 }
                 None => Vec::new(),
             };
-            let on_other = self.shortcut_is_pinned(&menu.name, menu.bar.other());
-            entries.extend(actions::shortcut_menu(&menu.name, menu.bar, on_other));
+            entries.extend(actions::shortcut_menu(&menu.name, menu.bar));
             let outcome = context_menu::show(ui, "shortcut", menu.at, &entries);
             if let Some(chosen) = outcome.chosen {
                 *action = Some(chosen);
@@ -406,7 +521,7 @@ impl UnluminousApp {
                     shortcut_gallery::tool_flyout(ctx, open, mark, width, |ui| match view_modes {
                         true => {
                             let (rect, _) = ui.allocate_exact_size(
-                                egui::vec2(text_tools::track_width() + 8.0, 42.0),
+                                egui::vec2(text_tools::track_width() + 8.0, 38.0),
                                 egui::Sense::hover(),
                             );
                             text_tools::view_modes(

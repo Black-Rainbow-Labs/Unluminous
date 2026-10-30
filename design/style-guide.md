@@ -384,15 +384,20 @@ the scroll position the frame opened with is a frame behind the writing, which o
 be seen.
 
 **A gallery of cards.** `components::shortcut_gallery` (`task-2404`), opened by a right click on an empty part
-of the rail or the top bar. It is framed by `controls::menu_frame` like every other popup. Cards are 100 by 76
-points with a 14 point radius, four across with 8 between them, grouped under small section names in
-`TEXT_FAINT`. A card that is on is carved into the frame, the rail's own look for a pane that is showing, with its
-mark in the strong ink and a 7.5 point accent disc carrying a white tick at its top right; a card that is off is a
-raised chip with its mark in the quiet ink. The pointer turns the mark sky. The mark is 22 points and the name is
-12 points under it, centred and wrapped to two lines.
+of the rail or the top bar. It is framed by `controls::menu_frame` like every other popup. A card is a toggle laid
+out on one line: 46 points tall with a 14 point radius, always raised with `raised_sm`'s shadow, its mark in a 30
+point carved well at the left, its name at 12.5 points, and the Settings window's switch
+(`settings_kit::paint_switch`, 33 by 18) at the right. Every card is the width the longest name needs, between 150
+and 240 points, three across with 10 between them for the shadows. A press anywhere on the card flips it. Cards are
+grouped under small section names in `TEXT_FAINT`.
 
 **A flyout beside a rail button.** The same frame, 12 points to the right of the button and level with it, with
-the tool's mark in sky and its name as a heading. It is an `egui::Area`, so it may hold a dropdown.
+the tool's mark in sky and its name as a heading. It is as wide as the wider of its controls and its heading. It is
+an `egui::Area`, so it may hold a dropdown.
+
+**A shortcut being carried between the bars** is a raised disc with its mark under the pointer, and the bar it would
+land on is lit with `controls::accent_wash` and a 1.5 point accent outline. Over the rail the accent line that
+says where it lands is drawn as well.
 
 ## Type
 

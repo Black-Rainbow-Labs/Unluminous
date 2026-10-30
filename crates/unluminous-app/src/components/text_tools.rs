@@ -195,6 +195,27 @@ pub fn show(
     outcome
 }
 
+/// Where the text options chip and the view modes track are inside `area`, the rectangle [`show`] is given,
+/// for whichever of them is drawn. The window lays a handle over each so it can be carried to the rail. `task-2404`.
+pub fn parts(area: Rect, path: Option<&Path>, shown: Shown) -> (Option<Rect>, Option<Rect>) {
+    let middle = area.center().y;
+    let mut pen = area.left();
+    let chip = match shown.text_options && file_kind::formatting_applies(path) {
+        true => {
+            let chip =
+                Rect::from_min_size(Pos2::new(pen, middle - BUTTON / 2.0), Vec2::splat(BUTTON));
+            pen = chip.right() + GROUP_GAP;
+            Some(chip)
+        }
+        false => None,
+    };
+    let modes = (shown.view_modes && file_kind::preview_applies(path)).then(|| {
+        let height = MODE.y + 2.0 * TRACK_PAD;
+        Rect::from_min_size(Pos2::new(pen, middle - height / 2.0), Vec2::new(track_width(), height))
+    });
+    (chip, modes)
+}
+
 /// Which of the tools can apply to a file: the Text Options panel, and the view modes. The rail asks this to
 /// dim a tool's button, and its flyout to say why it is empty. `task-2404`.
 pub fn which_apply(path: Option<&Path>) -> (bool, bool) {

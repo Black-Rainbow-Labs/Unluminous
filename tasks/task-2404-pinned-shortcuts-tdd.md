@@ -148,8 +148,17 @@ Every shortcut on either bar opens a menu built by `actions::shortcut_menu`:
 The shortcut rows are:
 
 - `Unpin from Side Bar` or `Unpin from Top Bar`, for the bar it was opened on;
-- `Show in Top Bar` or `Show in Side Bar`, ticked when it is on the other bar too;
+- `Move to Top Bar` or `Move to Side Bar`, which pins it to the other bar and takes it off this one;
 - a separator, then `Customize Shortcuts...`, which opens the gallery for the bar it was opened on.
+
+## Carrying a shortcut from one bar to the other
+
+A rail button carried off the rail follows the pointer as a raised disc with its mark. Over the top bar, the room
+at its right hand end, from the text tools to the window buttons, is lit; let go there and the shortcut moves to the
+top bar. The top bar's items carry the other way: the text options chip, the view modes track, the run widget and
+each pinned chip have a drag handle laid under them, so a press that does not move still presses the control. Over
+the rail the rail is lit and the accent line says where it lands; let go and it moves there, at that place in
+`rail.order`. Either way it is `window move` underneath.
 
 ## Right click on an empty part of a bar
 
@@ -163,13 +172,11 @@ by Escape.
 
 - A heading, `Side Bar Shortcuts` or `Top Bar Shortcuts`, and a line under it in the quiet ink:
   `Click a card to pin or unpin it.`
-- Two sections, `Panels` and `Tools`, each a grid of cards four across.
-- A card is 100 by 76 points with a 14 point radius, four across. Its mark is 22 points, in the middle of its upper half,
-  and its name is under it in the interface face at 12 points, up to two lines and cut short after that.
-- A pinned card is carved into the gallery, the rail's "on" look, with its mark in the strong ink and a small
-  accent disc with a tick at its top right. An unpinned card is a raised chip with its mark in the quiet ink.
-  The pointer turns the mark sky.
-- Clicking a card pins or unpins it on that bar at once; the gallery stays open so several can be changed.
+- Two sections, `Panels` and `Tools`, each a grid of cards three across.
+- A card is a toggle on one line, 46 points tall with a 14 point radius, raised with a shadow whether it is on or
+  off: its mark in a carved well at the left, its name, and the Settings window's switch at the right. Every card is
+  as wide as the longest name needs, so no name is cut short in the usual window.
+- Clicking anywhere on a card flips it at once; the gallery stays open so several can be changed.
 - A footer with `Reset to Default` (a ghost button), which clears both of that bar's settings.
 - Each card is a control named `Shortcut: <name>`, selected while pinned.
 
@@ -185,6 +192,7 @@ right click, and that row is what makes it an action an agent can run.
 | `Pin { name, bar }` | `pin-shortcut-<bar>-<name>` | puts the shortcut on the bar |
 | `Unpin { name, bar }` | `unpin-shortcut-<bar>-<name>` | takes it off |
 | `Gallery(bar)` | `customize-shortcuts-<bar>` | opens the gallery |
+| `Move { name, bar }` | `move-shortcut-<bar>-<name>` | pins it to `bar` and unpins it from the other |
 | `Reset(bar)` | `reset-shortcuts-<bar>` | clears that bar's two settings |
 
 `<bar>` is `rail` or `top`. `UnluminousApp::pin_the_shortcut` is the one place the settings change, and the
@@ -195,6 +203,7 @@ The command line half is three commands in the `window` area:
 - `window shortcuts [--bar rail|top]`: every shortcut with its kind, its home, and whether it is on each bar.
 - `window pin <name> [--bar rail|top]`: the rail when `--bar` is left out.
 - `window unpin <name> [--bar rail|top]`.
+- `window move --bar rail|top <name>`: what `Move to Top Bar` and a carry do.
 
 A name that is not a shortcut is refused with the list of names. The names are matched without regard to case.
 

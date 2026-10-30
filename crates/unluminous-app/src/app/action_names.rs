@@ -588,9 +588,7 @@ mod tests {
         // And a shortcut's menu on both bars, both ways round, whose rows `action run` reaches as
         // `pin-shortcut:<bar>:<name>` and the rest. `task-2404`.
         for bar in crate::services::shortcuts::Bar::ALL {
-            for on_the_other_bar in [false, true] {
-                walk(&actions::shortcut_menu("Database pane", bar, on_the_other_bar), &mut out);
-            }
+            walk(&actions::shortcut_menu("Database pane", bar), &mut out);
         }
         // And a shape's own menu, whose `Colour...` and `Text` rows are reached from `action run` too.
         // `task-2284`.

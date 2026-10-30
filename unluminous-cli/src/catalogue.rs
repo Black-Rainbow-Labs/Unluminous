@@ -894,6 +894,15 @@ pub const COMMANDS: &[Command] = &[
         examples: &["unluminous-cli window unpin Database pane", "unluminous-cli window unpin --bar top View Modes"],
         local: false,
     },
+    Command {
+        area: "window",
+        verb: "move",
+        summary: "Move a shortcut from one bar to the other: pinned to the bar named and taken off the other one, which is what `Move to Top Bar` and `Move to Side Bar` on its right click menu do.",
+        arguments: &[rest("name", true, "The shortcut's name. Case does not matter.")],
+        flags: &[option("bar", "rail|top", "The bar it goes to. Required. Put it before the name, which takes the rest of the line.")],
+        examples: &["unluminous-cli window move --bar rail Run Configurations", "unluminous-cli window move --bar top Project"],
+        local: false,
+    },
     // ------------------------------------------------------------------------------ the browser
     Command {
         area: "browser",

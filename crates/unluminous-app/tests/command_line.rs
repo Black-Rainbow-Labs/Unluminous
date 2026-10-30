@@ -2072,6 +2072,9 @@ fn drive_the_window_and_the_tabs(coverage: &mut Coverage) {
     c.refuses(&mut harness, "window unpin No Such Shortcut");
     c.works(&mut harness, "window pin Version Control");
     c.refuses(&mut harness, "window pin --bar middle Project");
+    c.works(&mut harness, "window move --bar top Version Control");
+    c.refuses(&mut harness, "window move Version Control");
+    c.works(&mut harness, "window move --bar rail Version Control");
 
     // Before anything has been closed, so there is genuinely nothing to reopen.
     c.refuses(&mut harness, "tab reopen");

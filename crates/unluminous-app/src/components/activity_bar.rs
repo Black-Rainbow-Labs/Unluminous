@@ -195,6 +195,25 @@ pub struct RailOutcome {
     /// A button was carried to another place and let go: the `rail.order` setting that says the rail as it
     /// now is (`task-2340`).
     pub order: Option<String>,
+    /// A button is being carried and the pointer has left the rail, so the window draws it under the pointer
+    /// and shows where on the top bar it would go. `task-2404`.
+    pub carrying: Option<String>,
+    /// A button was carried out of the rail and let go: its name and where. The window moves it to the top bar
+    /// when that is where it was let go. `task-2404`.
+    pub dropped_outside: Option<(String, Pos2)>,
+}
+
+/// The names of the buttons the rail draws, top group and bottom group, top to bottom in each: what `landing`
+/// is given to work out where a shortcut dropped on the rail from the top bar goes. `task-2404`.
+pub fn group_names(state: RailState, input: &RailInput<'_>) -> (Vec<String>, Vec<String>) {
+    let (top, bottom) = arranged_entries(state, input);
+    let names = |group: &[Entry]| group.iter().map(|one| one.name.clone()).collect::<Vec<_>>();
+    (names(&top), names(&bottom))
+}
+
+/// Whether `at` is off the rail, which is where a carried button stops being reordered and starts being moved.
+fn off_the_rail(area: Rect, at: Pos2) -> bool {
+    at.x > area.right() + 4.0 || at.y < area.top()
 }
 
 /// Draw the rail into `area`, and report what was pressed.
@@ -279,7 +298,7 @@ fn buttons(
     let carried = rux.ui.ctx().dragged_id();
     let pointer = rux.ui.ctx().pointer_latest_pos();
     let mut in_the_air: Option<(&Entry, Pos2)> = None;
-    let mut dropped: Option<(String, f32)> = None;
+    let mut dropped: Option<(String, Pos2)> = None;
     let centres = places(area, top.len(), bottom.len());
     for (entry, y) in top.iter().chain(bottom.iter()).zip(centres) {
         let centre = Pos2::new(centre_x, y);
@@ -295,18 +314,34 @@ fn buttons(
         press(rux, entry, centre, &mut outcome, &mut dropped);
     }
     if let Some((entry, rest)) = in_the_air {
-        let y = pointer
-            .map_or(rest.y, |at| at.y)
-            .clamp(area.top() + MARGIN + BUTTON / 2.0, area.bottom() - MARGIN - BUTTON / 2.0);
-        press(rux, entry, Pos2::new(centre_x, y), &mut outcome, &mut dropped);
-        if let Some(at) = pointer {
-            let slot = landing(area, &top_names, &bottom_names, &entry.name, at.y);
-            insertion_mark(rux.ui.painter(), area, slot.mark);
+        match pointer.filter(|at| off_the_rail(area, *at)) {
+            // Carried off the rail, towards the top bar (`task-2404`): it waits in its own place and the window
+            // draws it under the pointer.
+            Some(_) => {
+                press(rux, entry, rest, &mut outcome, &mut dropped);
+                outcome.carrying = Some(entry.name.clone());
+            }
+            None => {
+                let y = pointer.map_or(rest.y, |at| at.y).clamp(
+                    area.top() + MARGIN + BUTTON / 2.0,
+                    area.bottom() - MARGIN - BUTTON / 2.0,
+                );
+                press(rux, entry, Pos2::new(centre_x, y), &mut outcome, &mut dropped);
+                if let Some(at) = pointer {
+                    let slot = landing(area, &top_names, &bottom_names, &entry.name, at.y);
+                    insertion_mark(rux.ui.painter(), area, slot.mark);
+                }
+            }
         }
     }
-    if let Some((name, y)) = dropped {
-        let slot = landing(area, &top_names, &bottom_names, &name, y);
-        outcome.order = Some(order_text(&slot.top, &slot.bottom));
+    if let Some((name, at)) = dropped {
+        match off_the_rail(area, at) {
+            true => outcome.dropped_outside = Some((name, at)),
+            false => {
+                let slot = landing(area, &top_names, &bottom_names, &name, at.y);
+                outcome.order = Some(order_text(&slot.top, &slot.bottom));
+            }
+        }
     }
     outcome
 }
@@ -322,7 +357,7 @@ fn press(
     entry: &Entry,
     centre: Pos2,
     outcome: &mut RailOutcome,
-    dropped: &mut Option<(String, f32)>,
+    dropped: &mut Option<(String, Pos2)>,
 ) {
     // A tool whose flyout is open has no tooltip: the flyout's heading already names it, and the tooltip would
     // be drawn over the flyout.
@@ -344,7 +379,7 @@ fn press(
         outcome.menu = Some((at, entry.name.clone(), entry.panel));
     }
     if let Some(at) = pressed.dropped {
-        *dropped = Some((entry.name.clone(), at.y));
+        *dropped = Some((entry.name.clone(), at));
     }
 }
 
@@ -676,7 +711,7 @@ pub fn landing(area: Rect, top: &[String], bottom: &[String], carried: &str, y: 
 
 /// The two point accent line across the rail that says where a carried button would land, which is the mark
 /// a carried tab draws between two tabs (`file_tabs::insertion_mark`).
-fn insertion_mark(painter: &egui::Painter, area: Rect, y: f32) {
+pub fn insertion_mark(painter: &egui::Painter, area: Rect, y: f32) {
     let y = y.clamp(area.top() + 2.0, area.bottom() - 2.0);
     painter.rect_filled(
         Rect::from_min_size(

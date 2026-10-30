@@ -5291,6 +5291,10 @@ fn every_step() -> Vec<Step> {
             name: "Run Configurations".to_owned(),
             bar: Bar::Rail,
         })),
+        Step::new(Action::Shortcut(ShortcutAction::Move {
+            name: "project".to_owned(),
+            bar: Bar::Top,
+        })),
         Step::new(Action::Shortcut(ShortcutAction::Gallery(Bar::Rail))),
         Step::new(Action::Shortcut(ShortcutAction::Gallery(Bar::Top))),
         Step::new(Action::Shortcut(ShortcutAction::Reset(Bar::Rail)))
@@ -7466,9 +7470,11 @@ fn a_panel_buttons_menu_keeps_its_move_rows_and_adds_the_shortcut_rows() {
     right_click_at(&mut harness, terminal);
     assert!(harness.query_by_label("Move to Right").is_some());
     assert!(harness.query_by_label("Unpin from Side Bar").is_some());
-    harness.get_by_label("Show in Top Bar").click();
+    harness.get_by_label("Move to Top Bar").click();
     steady(&mut harness);
     assert_eq!(harness.state().settings.title_bar_pinned, "Terminal tile");
+    assert_eq!(harness.state().settings.rail_unpinned, "Terminal tile", "and off the side bar");
+    assert!(harness.query_by_label("Terminal tile").is_none(), "no button on the rail");
     assert!(
         harness.query_by_label("Terminal tile in the top bar").is_some(),
         "a chip on the top bar"
@@ -7581,4 +7587,95 @@ fn window_shortcuts_pin_and_unpin_from_the_command_line() {
     assert_eq!(harness.state().settings.rail_unpinned, "");
     did(&mut harness, "action run customize-shortcuts-top");
     assert!(harness.state().shortcut_gallery.is_some_and(|(_, bar)| bar.name() == "top"));
+}
+
+/// Press at `from`, carry to `to`, and leave the button held, so a picture can be taken of the carry.
+fn carry_and_hold(harness: &mut Harness<'static, UnluminousApp>, from: egui::Pos2, to: egui::Pos2) {
+    harness.input_mut().events.push(egui::Event::PointerMoved(from));
+    steady(harness);
+    harness.input_mut().events.push(egui::Event::PointerButton {
+        pos: from,
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers: Modifiers::default(),
+    });
+    steady(harness);
+    let half = from + (to - from) / 2.0;
+    for at in [half, to] {
+        harness.input_mut().events.push(egui::Event::PointerMoved(at));
+        steady(harness);
+    }
+}
+
+/// Let go of the primary button at `at`.
+fn let_go(harness: &mut Harness<'static, UnluminousApp>, at: egui::Pos2) {
+    harness.input_mut().events.push(egui::Event::PointerButton {
+        pos: at,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::default(),
+    });
+    steady(harness);
+}
+
+/// `task-2404`: *"I should be able to drag the icons/items from top to left, and left to top."* A rail button
+/// carried onto the top bar moves there and becomes a chip.
+#[test]
+fn a_rail_button_carried_onto_the_top_bar_moves_there() {
+    let mut harness = harness("");
+    let from = harness.get_by_label("Version Control").rect().center();
+    let run = harness.get_by_label("Add a run configuration").rect();
+    let to = egui::pos2(run.right() + 30.0, run.center().y);
+    carry_and_hold(&mut harness, from, to);
+    harness.snapshot(shot("shortcut_carry_to_the_top_bar"));
+    let_go(&mut harness, to);
+    assert_eq!(harness.state().settings.title_bar_pinned, "Version Control");
+    assert_eq!(harness.state().settings.rail_unpinned, "Version Control");
+    assert!(harness.query_by_label("Version Control in the top bar").is_some());
+    assert!(harness.query_by_label("Version Control").is_none(), "gone from the rail");
+    assert!(harness.state().explorer_visible, "nothing was pressed on the way");
+}
+
+/// And the other way: the run widget carried from the top bar onto the rail lands where it was let go.
+#[test]
+fn the_run_widget_carried_onto_the_rail_lands_where_it_was_let_go() {
+    let mut harness = harness("");
+    let version = harness.get_by_label("Version Control").rect();
+    let from = harness.get_by_label("Add a run configuration").rect().center();
+    let to = egui::pos2(version.center().x, version.bottom() + 2.0);
+    carry_and_hold(&mut harness, from, to);
+    harness.snapshot(shot("shortcut_carry_to_the_rail"));
+    let_go(&mut harness, to);
+    assert!(!harness.state().run_dialog.open, "carrying it did not press it");
+    assert_eq!(harness.state().settings.rail_pinned, "Run Configurations");
+    assert_eq!(harness.state().settings.title_bar_unpinned, "Run Configurations");
+    assert!(harness.query_by_label("Add a run configuration").is_none(), "gone from the top bar");
+    let button = harness.get_by_label("Run Configurations").rect();
+    let realm = harness.get_by_label("Realm").rect();
+    assert!(
+        button.top() > version.bottom() && button.bottom() < realm.top() + 1.0,
+        "under Version Control: {button:?}"
+    );
+}
+
+/// View Modes on the rail: the flyout is as wide as its three modes and its heading, and a mode in it is the same
+/// mode the top bar sets.
+#[test]
+fn view_modes_on_the_rail_fly_out_no_wider_than_the_track() {
+    let mut harness = harness("# Heading");
+    did(&mut harness, "window unpin --bar top View Modes");
+    did(&mut harness, "window pin View Modes");
+    steady(&mut harness);
+    harness.get_by_label("View Modes").click();
+    steady(&mut harness);
+    harness.snapshot(shot("shortcut_flyout_view_modes"));
+    let kind = unluminous_app::services::file_kind::preview_kind(harness.state().document().path());
+    let preview = ViewMode::Preview.label_for(kind);
+    let button = harness.get_by_label(preview).rect();
+    let rail = harness.get_by_label("View Modes").rect();
+    assert!(button.left() > rail.right(), "the modes are in the flyout beside the button");
+    assert!(button.right() - rail.right() < 190.0, "the flyout is no wider than it needs: {button:?}");
+    harness.get_by_label(preview).click();
+    steady(&mut harness);
+    assert_eq!(harness.state().view_mode(), ViewMode::Preview);
 }

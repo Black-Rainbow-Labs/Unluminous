@@ -2735,7 +2735,8 @@ its own custom layout (same behavior as if they were open in different windows).
   nothing. `services::shortcuts` is the arithmetic and `UnluminousApp::pin_the_shortcut` is the one place a pin
   changes; the right click menus, the gallery and `window pin` all call it.
 - **Every rail button has a right click menu now.** A panel's keeps its `Move to` rows and gains the shortcut rows
-  under them (`actions::shortcut_menu`). A right click on the empty rail or on the room that moves the window opens
+  under them (`actions::shortcut_menu`): `Unpin from Side Bar` and `Move to Top Bar`, the second being
+  `UnluminousApp::move_the_shortcut` and `window move`. A right click on the empty rail or on the room that moves the window opens
   `components::shortcut_gallery`, which is also `View -> Customize Shortcuts...`.
 - **A tool on the rail is a button whose flyout holds the top bar's own function**: `text_tools::text_options`,
   `text_tools::view_modes` and `run_widget::show`. The flyout is an `egui::Area`, because it holds a dropdown and
@@ -2743,6 +2744,12 @@ its own custom layout (same behavior as if they were open in different windows).
   the button, the card and the corridor between them, and stays while a popup it opened is open. A press holds it.
 - **A tool's rail button is dimmed, not absent, when the tab cannot use it**, so the rail does not close up when the
   tab changes. On the top bar the tool is still absent.
+- **A shortcut is carried between the bars by dragging it.** A rail button carried off the rail reports
+  `RailOutcome::carrying` and `dropped_outside`, and the window draws it under the pointer and moves it when it is let go
+  on the top bar. The top bar's items get a drag only handle each (`carry_from_the_top_bar`), added **before** the
+  controls they sit under: added after, the handle took the press and a pinned chip stopped answering a click.
+- **A gallery card is a toggle**: raised with a shadow on or off, its name, and the Settings switch drawn by
+  `settings_kit::paint_switch`, the same function `settings_kit::switch` draws with. Cards take the longest name's width.
 - **The panes pinned to the top bar sit against the window buttons** (`title_bar::pinned_rect`, `RightEnd`), so the
   group whose width never changes with the tab is the one nearest the edge. A chip is named `<name> in the top
   bar`, because the rail's button of the same name may be drawn too.

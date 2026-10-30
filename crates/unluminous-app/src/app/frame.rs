@@ -629,6 +629,11 @@ impl UnluminousApp {
             }
         }
 
+        // Everything on the top bar can be carried to the rail (`task-2404`). The handles are added before the
+        // controls they sit under, so a press that does not move still presses the control on top.
+        let items = self.top_bar_items(places, shown);
+        self.carry_from_the_top_bar(ui, &items, places.rail_rect);
+
         // The text tools, drawn over the right hand end of the title bar. After the bar rather than
         // before it, because the bar takes drags over the room between the menus and the buttons to move
         // the window, and a control added earlier would sit underneath that and never be pressed.
@@ -673,6 +678,52 @@ impl UnluminousApp {
             tools_width,
             run_width,
         );
+    }
+
+    /// Each shortcut on the top bar by name, and where it is: the pinned chips, the text options chip, the view
+    /// modes and the run widget. `task-2404`.
+    fn top_bar_items(&self, places: &FramePlaces, shown: text_tools::Shown) -> Vec<(String, Rect)> {
+        use crate::services::shortcuts::Tool;
+        let mut items = Vec::new();
+        if places.tools_width > 0.0 {
+            let (chip, modes) = text_tools::parts(places.tools_rect, self.document().path(), shown);
+            items.extend(chip.map(|rect| (Tool::TextOptions.name().to_owned(), rect)));
+            items.extend(modes.map(|rect| (Tool::ViewModes.name().to_owned(), rect)));
+        }
+        if places.run_width > 0.0 {
+            items.push((Tool::RunConfigurations.name().to_owned(), places.run_rect));
+        }
+        let area =
+            title_bar::pinned_rect(places.title_rect, self.menu_placement, places.pinned_width);
+        for (index, (chip, _)) in self.top_bar_chips().iter().enumerate() {
+            items.push((
+                chip.name.clone(),
+                crate::components::shortcut_gallery::chip_rect(area, index),
+            ));
+        }
+        items
+    }
+
+    /// The part of the top bar a shortcut carried from the rail lands in: from the leftmost of the text tools, the
+    /// run widget and the pinned chips to the window buttons, a chip wide when the bar holds none of them.
+    fn top_bar_landing(&self, places: &FramePlaces) -> Rect {
+        let end = title_bar::RightEnd {
+            tools: places.tools_width,
+            run: places.run_width,
+            pinned: places.pinned_width,
+        };
+        let title = places.title_rect;
+        let right = title_bar::pinned_rect(title, self.menu_placement, 0.0).right();
+        let tools = (places.tools_width > 0.0)
+            .then(|| title_bar::tools_rect_with(title, self.menu_placement, end).left());
+        let run = (places.run_width > 0.0)
+            .then(|| title_bar::run_rect_with(title, self.menu_placement, end).left());
+        let chips = right - places.pinned_width.max(crate::components::shortcut_gallery::CHIP);
+        let left = [tools, run].into_iter().flatten().fold(chips, f32::min);
+        Rect::from_min_max(
+            Pos2::new(left - 6.0, title.top() + 5.0),
+            Pos2::new(right + 6.0, title.bottom() - 7.0),
+        )
     }
 
     /// The panes pinned to the top bar, as chips against the window buttons. `task-2404`.
@@ -796,6 +847,15 @@ impl UnluminousApp {
         }
         // A tool's flyout beside its button.
         self.show_the_rail_flyout(ui, &rail.tools, action);
+        // A button carried off the rail onto the top bar (`task-2404`). It lands in the room at the right hand
+        // end of the bar, which is lit while it is over the bar.
+        let landing = self.top_bar_landing(places);
+        self.carry_from_the_rail(
+            ui,
+            rail.carrying,
+            rail.dropped_outside,
+            (places.title_rect, landing),
+        );
     }
 
     /// The buttons the plugins that are switched on contributed to the rail: one per pane, in the group each

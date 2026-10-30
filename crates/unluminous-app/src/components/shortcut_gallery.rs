@@ -2,10 +2,9 @@
 //! the ones pinned to it, and the flyout a tool's button on the rail opens. `task-2404`.
 //!
 //! *"If I right click the empty region on the left or top bar, I should see a popup menu that nicely displays a
-//! grid of cards with icons with names for each."* The gallery is that popup. Each card is a shortcut, carved in
-//! while it is pinned to the bar the gallery was opened for and raised out of it while it is not, which is how
-//! the rail already says a pane is showing. A click pins or unpins at once, and the gallery stays open so several
-//! can be changed in one visit.
+//! grid of cards with icons with names for each."* The gallery is that popup. Each card is a shortcut, raised with
+//! its shadow, and a switch at its right hand end says whether it is pinned to the bar the gallery was opened for.
+//! A click anywhere on a card flips it at once, and the gallery stays open so several can be changed in one visit.
 //!
 //! **Both popups here are `egui::Area`s rather than `egui::Popup`s.** egui keeps one popup open at a time, and the
 //! Run Configurations flyout holds the configuration dropdown, which is a popup: a flyout that was one would shut
@@ -21,14 +20,26 @@ use crate::components::controls::WithHint as _;
 use crate::services::shortcuts::{Bar, Kind};
 use crate::theme::color;
 
-/// One card: 100 by 76 points with a 14 point radius, four across with 8 between them. Four rather than three so
-/// a window with every plugin switched on still holds the whole gallery above its status bar.
-const CARD: Vec2 = Vec2::new(100.0, 76.0);
+/// One card is 46 points tall with a 14 point radius, three across with 10 between them, which is room for each
+/// card's shadow. A card is laid out on one line, mark, name and switch, so it is as tall as its content needs and
+/// as wide as the longest name needs (`task-2404`, *"the cards should be elevated, have shadow, fit their content
+/// better, and be toggles"*). Every card is that one width, so the columns line up.
+const CARD_HEIGHT: f32 = 46.0;
+/// The narrowest and widest a card is. A name wider than the widest is cut short with an ellipsis.
+const CARD_LEAST: f32 = 150.0;
+const CARD_MOST: f32 = 240.0;
+/// What a card takes beside its name: the gap and the well before it, and the gaps and the switch after it.
+const CARD_FURNITURE: f32 = 8.0 + 30.0 + 9.0 + 8.0 + 33.0 + 12.0;
+/// The size a card's name is set in.
+const CARD_WORDS: f32 = 12.5;
 const CARD_RADIUS: f32 = 14.0;
-const CARD_GAP: f32 = 8.0;
-const COLUMNS: usize = 4;
-/// How big a card's mark is drawn.
-const CARD_MARK: f32 = 22.0;
+const CARD_GAP: f32 = 10.0;
+const COLUMNS: usize = 3;
+/// The carved well a card's mark sits in, and the mark inside it.
+const WELL: f32 = 30.0;
+const CARD_MARK: f32 = 17.0;
+/// The switch at a card's right hand end: the Settings window's switch at three quarters of its size.
+const CARD_SWITCH: Vec2 = Vec2::new(33.0, 18.0);
 /// How far the gallery's contents sit in from the frame on each side, beyond the frame's own margin.
 const INSET: f32 = 6.0;
 
@@ -66,9 +77,24 @@ fn room_above_the_status_bar(ctx: &egui::Context) -> Rect {
     )
 }
 
-/// How wide the gallery's grid is.
-fn grid_width() -> f32 {
-    COLUMNS as f32 * CARD.x + (COLUMNS as f32 - 1.0) * CARD_GAP
+/// How big every card is: the longest name and the card's furniture, between the least and the most.
+fn card_size(ui: &egui::Ui, cards: &[GalleryCard]) -> Vec2 {
+    let font = egui::FontId::proportional(CARD_WORDS);
+    let longest = cards
+        .iter()
+        .map(|card| {
+            ui.painter()
+                .layout_no_wrap(card.name.clone(), font.clone(), color::text_strong())
+                .size()
+                .x
+        })
+        .fold(0.0_f32, f32::max);
+    Vec2::new((longest + CARD_FURNITURE).ceil().clamp(CARD_LEAST, CARD_MOST), CARD_HEIGHT)
+}
+
+/// How wide the gallery's grid is for cards of `card`'s size.
+fn grid_width(card: Vec2) -> f32 {
+    COLUMNS as f32 * card.x + (COLUMNS as f32 - 1.0) * CARD_GAP
 }
 
 /// Draw the gallery for `bar` with its corner near `at`, and report what was pressed.
@@ -82,7 +108,7 @@ pub fn show(ctx: &egui::Context, at: Pos2, bar: Bar, cards: &[GalleryCard]) -> G
     let mut outcome = GalleryOutcome::default();
     let place = match bar {
         Bar::Rail => at + Vec2::new(10.0, -18.0),
-        Bar::Top => at + Vec2::new(-grid_width() / 2.0, 10.0),
+        Bar::Top => at + Vec2::new(-grid_width(Vec2::new(CARD_MOST, 0.0)) / 2.0, 10.0),
     };
     let area = egui::Area::new(egui::Id::new("shortcut-gallery"))
         .order(egui::Order::Foreground)
@@ -105,16 +131,17 @@ pub fn show(ctx: &egui::Context, at: Pos2, bar: Bar, cards: &[GalleryCard]) -> G
 
 /// What is inside the gallery's frame: the heading, the two sections of cards, and the reset button.
 fn contents(ui: &mut egui::Ui, bar: Bar, cards: &[GalleryCard], outcome: &mut GalleryOutcome) {
+    let card = card_size(ui, cards);
     let panels: Vec<&GalleryCard> = cards.iter().filter(|card| card.kind == Kind::Panel).collect();
     let tools: Vec<&GalleryCard> = cards.iter().filter(|card| card.kind != Kind::Panel).collect();
     let rows = |count: usize| count.div_ceil(COLUMNS) as f32;
     let section = |count: usize| match count {
         0 => 0.0,
-        _ => 26.0 + rows(count) * CARD.y + (rows(count) - 1.0) * CARD_GAP + 10.0,
+        _ => 26.0 + rows(count) * card.y + (rows(count) - 1.0) * CARD_GAP + 10.0,
     };
     let height = 52.0 + section(panels.len()) + section(tools.len()) + 40.0;
     let (rect, _) =
-        ui.allocate_exact_size(Vec2::new(grid_width() + 2.0 * INSET, height), Sense::hover());
+        ui.allocate_exact_size(Vec2::new(grid_width(card) + 2.0 * INSET, height), Sense::hover());
     let inner = rect.shrink2(Vec2::new(INSET, 0.0));
     heading(ui, inner, bar);
     let mut top = inner.top() + 52.0;
@@ -129,9 +156,9 @@ fn contents(ui: &mut egui::Ui, bar: Bar, cards: &[GalleryCard], outcome: &mut Ga
         section_label(ui.painter(), Pos2::new(inner.left() + 2.0, top + 9.0), label);
         let grid = Rect::from_min_size(
             Pos2::new(inner.left(), top + 26.0),
-            Vec2::new(grid_width(), section(group.len()) - 36.0),
+            Vec2::new(grid_width(card), section(group.len()) - 36.0),
         );
-        if let Some(name) = grid_of_cards(ui, grid, bar, group) {
+        if let Some(name) = grid_of_cards(ui, grid, (bar, card), group) {
             outcome.toggled = Some(name);
         }
         top + section(group.len())
@@ -187,7 +214,7 @@ fn section_label(painter: &egui::Painter, at: Pos2, label: &str) {
 fn grid_of_cards(
     ui: &mut egui::Ui,
     grid: Rect,
-    bar: Bar,
+    (bar, card_size): (Bar, Vec2),
     group: &[&GalleryCard],
 ) -> Option<String> {
     crate::components::chrome_kit::layer(
@@ -201,8 +228,12 @@ fn grid_of_cards(
                 let column = (index % COLUMNS) as f32;
                 let row = (index / COLUMNS) as f32;
                 let rect = Rect::from_min_size(
-                    grid.min + Vec2::new(column * (CARD.x + CARD_GAP), row * (CARD.y + CARD_GAP)),
-                    CARD,
+                    grid.min
+                        + Vec2::new(
+                            column * (card_size.x + CARD_GAP),
+                            row * (card_size.y + CARD_GAP),
+                        ),
+                    card_size,
                 );
                 if one_card(rux, rect, card) {
                     pressed = Some(card.name.clone());
@@ -213,61 +244,71 @@ fn grid_of_cards(
     )
 }
 
-/// One card: carved in while pinned with a tick at its corner, raised while not, its mark over its name.
+/// One card: raised out of the gallery with its shadow whether it is on or off, its mark in a carved well at the left,
+/// its name, and the Settings window's switch at the right saying whether it is pinned. The whole card is the
+/// toggle, so a press anywhere on it flips the switch.
 fn one_card(rux: &mut rux::Rux<'_>, rect: Rect, card: &GalleryCard) -> bool {
     let name = format!("Shortcut: {}", card.name);
     let hint = match card.pinned {
-        true => format!("{}: pinned, click to unpin", card.name),
-        false => format!("{}: click to pin", card.name),
+        true => format!("{} is pinned. Click to unpin it.", card.name),
+        false => format!("Click to pin {}.", card.name),
     };
     let response = rux
         .ui
         .interact(rect, rux.ui.id().with(("shortcut-card", &card.name)), Sense::click())
         .with_hint(hint);
+    if response.hovered() {
+        rux.ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
     let chat = rux.theme().chat;
     let ink = rux.theme().ink;
-    match card.pinned {
-        true => rux.chrome.surface(rect, CARD_RADIUS, chat.well, chat.carved_sm()),
-        false => rux.chrome.surface(
-            rect,
-            CARD_RADIUS,
-            rux::components::chip(&chat, rect),
-            chat.raised_chip(),
-        ),
-    }
-    if response.hovered() && !card.pinned {
+    rux.chrome.surface(rect, CARD_RADIUS, rux::components::chip(&chat, rect), chat.raised_sm());
+    if response.hovered() {
         rux.wash(rect, CARD_RADIUS, rux.theme().interaction.hover);
     }
+    // The mark in a small carved well, lit while the shortcut is pinned.
+    let well = Rect::from_center_size(
+        Pos2::new(rect.left() + 8.0 + WELL / 2.0, rect.center().y),
+        Vec2::splat(WELL),
+    );
+    rux.chrome.surface(well, WELL / 2.0, chat.well, chat.carved_sm());
     let tint = match (response.hovered(), card.pinned) {
         (true, _) => chat.sky,
         (false, true) => ink.i900,
         (false, false) => ink.i400,
     };
-    paint_mark(rux, card.mark, Pos2::new(rect.center().x, rect.top() + 26.0), CARD_MARK, tint);
-    words(rux.ui.painter(), rect, &card.name, if card.pinned { ink.i900 } else { ink.i500 });
-    if card.pinned {
-        tick(rux, Pos2::new(rect.right() - 13.0, rect.top() + 13.0));
-    }
+    paint_mark(rux, card.mark, well.center(), CARD_MARK, tint);
+    let track = Rect::from_center_size(
+        Pos2::new(rect.right() - 12.0 - CARD_SWITCH.x / 2.0, rect.center().y),
+        CARD_SWITCH,
+    );
+    crate::components::settings_kit::paint_switch(rux, track, card.pinned);
+    let words_left = well.right() + 9.0;
+    words(
+        rux.ui.painter(),
+        words_left,
+        track.left() - 8.0 - words_left,
+        rect.center().y,
+        &card.name,
+        match card.pinned {
+            true => ink.i900,
+            false => ink.i500,
+        },
+    );
     response.widget_info(|| {
-        egui::WidgetInfo::selected(egui::WidgetType::Button, true, card.pinned, &name)
+        egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, card.pinned, &name)
     });
     response.clicked()
 }
 
-/// A card's name under its mark: centred, wrapped to two lines, and cut short after that.
-fn words(painter: &egui::Painter, rect: Rect, name: &str, tint: Color32) {
-    let font = egui::FontId::proportional(12.0);
-    let mut job = egui::text::LayoutJob::simple(name.to_owned(), font, tint, rect.width() - 16.0);
-    job.wrap.max_rows = 2;
-    job.halign = egui::Align::Center;
-    let galley = painter.layout_job(job);
-    painter.galley(Pos2::new(rect.center().x, rect.top() + 44.0), galley, tint);
-}
-
-/// The small accent disc with a tick that says a card is pinned.
-fn tick(rux: &mut rux::Rux<'_>, centre: Pos2) {
-    rux.ui.painter().circle_filled(centre, 7.5, color::accent());
-    rux.mark(rux::Mark::new(rux::Icon::Check, 10.0), centre, color::on_accent());
+/// A card's name between its mark and its switch, placed by its capitals and cut short when it does not fit.
+fn words(painter: &egui::Painter, left: f32, width: f32, middle: f32, name: &str, tint: Color32) {
+    let font = egui::FontId::proportional(CARD_WORDS);
+    let measure = |text: &str| painter.layout_no_wrap(text.to_owned(), font.clone(), tint).size().x;
+    let (shown, _) = crate::components::controls::elide(name, width, measure);
+    let top = crate::theme::crisp::top_centring_capitals(painter, &font, middle);
+    let galley = painter.layout_no_wrap(shown, font, tint);
+    painter.galley(Pos2::new(left, top), galley, tint);
 }
 
 /// One chip on the top bar for a pinned shortcut.
@@ -296,6 +337,12 @@ pub fn chips_width(count: usize) -> f32 {
     }
 }
 
+/// Where chip `index` is in `area`, the rectangle the chips are drawn into.
+pub fn chip_rect(area: Rect, index: usize) -> Rect {
+    let left = area.left() + index as f32 * (CHIP + CHIP_GAP);
+    Rect::from_min_size(Pos2::new(left, area.center().y - CHIP / 2.0), Vec2::splat(CHIP))
+}
+
 /// Draw the chips into `area`, left to right, and report what was done to them.
 ///
 /// A chip is the text options chip's shape: raised out of the bar, carved in while its pane is showing. It is
@@ -303,10 +350,8 @@ pub fn chips_width(count: usize) -> f32 {
 /// and no two controls in the window share a name.
 pub fn chips(ui: &mut egui::Ui, area: Rect, chips: &[Chip]) -> ChipsOutcome {
     let mut outcome = ChipsOutcome::default();
-    let middle = area.center().y;
     for (index, chip) in chips.iter().enumerate() {
-        let left = area.left() + index as f32 * (CHIP + CHIP_GAP);
-        let rect = Rect::from_min_size(Pos2::new(left, middle - CHIP / 2.0), Vec2::splat(CHIP));
+        let rect = chip_rect(area, index);
         let name = format!("{} in the top bar", chip.name);
         crate::components::chrome_kit::layer(ui, ("pinned-chip", &chip.name), rect, 10.0, |rux| {
             let response = rux
@@ -356,9 +401,6 @@ pub struct Flyout {
 /// pointer travel from the button to the flyout's lower rows on a slant.
 pub const GRACE: f64 = 0.25;
 
-/// The least a flyout is wide, so a heading always fits.
-const FLYOUT_LEAST: f32 = 200.0;
-
 /// Draw a tool's flyout beside its button on the rail: a raised card with the tool's mark and name as its heading,
 /// and `add` drawing the tool's own controls under it. Answers what `add` returned and the card's rectangle.
 /// @param ctx - the window
@@ -382,8 +424,10 @@ pub fn tool_flyout<R>(
             crate::components::controls::menu_frame(ui)
                 .show(ui, |ui| {
                     // An area offers the whole screen's width, so the card is given the tool's own.
-                    let width = width(ui);
-                    ui.set_width(width.max(FLYOUT_LEAST));
+                    // As wide as the tool's controls or its heading, whichever is wider, and no wider: a fixed least
+                    // width left the three view modes in a card twice their size.
+                    let width = width(ui).max(heading_width(ui, flyout.tool.name()));
+                    ui.set_width(width);
                     crate::components::controls::set_in_the_list_size(ui);
                     flyout_heading(ui, flyout.tool.name(), mark);
                     add(ui)
@@ -391,6 +435,54 @@ pub fn tool_flyout<R>(
                 .inner
         });
     (shown.inner, shown.response.rect)
+}
+
+/// How wide a flyout's heading is: the mark, the gap after it, and the name.
+fn heading_width(ui: &egui::Ui, title: &str) -> f32 {
+    let galley = ui.painter().layout_no_wrap(
+        title.to_owned(),
+        egui::FontId::proportional(13.0),
+        color::text_strong(),
+    );
+    (30.0 + galley.size().x + 10.0).ceil()
+}
+
+/// A shortcut being carried from one bar to the other, drawn under the pointer as a raised disc with its mark,
+/// over everything else and taking no input. `task-2404`.
+/// @param ctx - the window
+/// @param mark - the shortcut's mark
+/// @param at - where the pointer is
+pub fn drag_ghost(ctx: &egui::Context, mark: IconDrawer, at: Pos2) {
+    let disc = Rect::from_center_size(at, Vec2::splat(CHIP + 4.0));
+    egui::Area::new(egui::Id::new("shortcut-in-the-air"))
+        .order(egui::Order::Tooltip)
+        .fixed_pos(disc.min - Vec2::splat(12.0))
+        .interactable(false)
+        .show(ctx, |ui| {
+            let (room, _) = ui.allocate_exact_size(disc.size() + Vec2::splat(24.0), Sense::hover());
+            let disc = Rect::from_center_size(room.center(), disc.size());
+            crate::components::chrome_kit::layer(ui, "shortcut-in-the-air", disc, 12.0, |rux| {
+                let sky = rux.theme().chat.sky;
+                rux::components::chip_disc(rux, disc);
+                paint_mark(rux, mark, disc.center(), 18.0, sky);
+            });
+        });
+}
+
+/// Where a carried shortcut would land on the other bar: a soft accent wash with an accent outline, drawn over
+/// the bar. `task-2404`.
+pub fn drop_target(ctx: &egui::Context, rect: Rect) {
+    let painter = ctx
+        .layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("shortcut-drop")));
+    let radius =
+        egui::CornerRadius::same(((rect.height().min(rect.width()) / 2.0).min(18.0)) as u8);
+    painter.rect(
+        rect,
+        radius,
+        crate::components::controls::accent_wash(),
+        egui::Stroke::new(1.5, color::accent()),
+        egui::StrokeKind::Inside,
+    );
 }
 
 /// The flyout's heading: the tool's mark and its name in the strong ink.
