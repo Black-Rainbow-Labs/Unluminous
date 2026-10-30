@@ -303,8 +303,11 @@ fn buttons(
     for (entry, y) in top.iter().chain(bottom.iter()).zip(centres) {
         let centre = Pos2::new(centre_x, y);
         // A button that would not fit is not drawn: the rail is as tall as the window and a button half off
-        // the end reads as a fault rather than as a full rail.
-        if centre.y - BUTTON / 2.0 < area.top() || centre.y + BUTTON / 2.0 > area.bottom() {
+        // the end, or over a button of the other group, reads as a fault rather than as a full rail.
+        if y.is_nan()
+            || centre.y - BUTTON / 2.0 < area.top()
+            || centre.y + BUTTON / 2.0 > area.bottom()
+        {
             continue;
         }
         if carried.is_some_and(|id| id == button_id(rux, &entry.name)) {
@@ -614,11 +617,41 @@ fn built_in_entries(state: RailState) -> (Vec<Entry>, Vec<Entry>) {
 /// The middle of each button, top group first and then the bottom group, both top to bottom. The top group
 /// is counted down from the top of the rail and the bottom group up from its bottom, so the last button of
 /// the bottom group is always in the corner however many there are.
+///
+/// **The two groups never draw over each other** (`task-2404`). Pinning the top bar's tools to the rail made a top
+/// group long enough to run into the bottom one in a 720 point window, and a button was drawn on top of another.
+/// So the buttons close up first, down to [`TIGHTEST`] apart, and a top group button that would still reach the
+/// bottom group is not drawn: its place is `NaN`, which the caller passes over.
 fn places(area: Rect, top: usize, bottom: usize) -> Vec<f32> {
-    let downwards = (0..top).map(|index| area.top() + MARGIN + BUTTON / 2.0 + index as f32 * STEP);
+    let step = step_for(area, top, bottom);
+    let downwards = (0..top).map(|index| area.top() + MARGIN + BUTTON / 2.0 + index as f32 * step);
     let upwards = (0..bottom)
-        .map(|index| area.bottom() - MARGIN - BUTTON / 2.0 - (bottom - 1 - index) as f32 * STEP);
-    downwards.chain(upwards).collect()
+        .map(|index| area.bottom() - MARGIN - BUTTON / 2.0 - (bottom - 1 - index) as f32 * step);
+    let upwards: Vec<f32> = upwards.collect();
+    // Where the bottom group starts, less the gap kept between the groups.
+    let limit =
+        upwards.first().map_or(area.bottom() - MARGIN, |first| first - BUTTON / 2.0 - GROUP_GAP);
+    downwards.map(|y| if y + BUTTON / 2.0 > limit { f32::NAN } else { y }).chain(upwards).collect()
+}
+
+/// The least room kept between the rail's two groups.
+const GROUP_GAP: f32 = 12.0;
+/// The closest two buttons are put when the rail is crowded: two points between them.
+const TIGHTEST: f32 = BUTTON + 2.0;
+
+/// How far apart the rail's buttons are: [`STEP`] while both groups fit with room between them, and less, down to
+/// [`TIGHTEST`], when they would not. Placing and dropping both ask this, so a drop lands where the line is drawn.
+fn step_for(area: Rect, top: usize, bottom: usize) -> f32 {
+    let room = area.height() - 2.0 * MARGIN;
+    let count = top + bottom;
+    if count < 2 {
+        return STEP;
+    }
+    let gap = if top > 0 && bottom > 0 { GROUP_GAP } else { 0.0 };
+    let groups = usize::from(top > 0) + usize::from(bottom > 0);
+    // Each group is its first button and a step for each one after it.
+    let fits = (room - gap - groups as f32 * BUTTON) / (count - groups) as f32;
+    fits.clamp(TIGHTEST, STEP)
 }
 
 /// The two groups' names in the order `order` asks for, given the default groups.
@@ -679,14 +712,15 @@ pub struct Landing {
 /// button where it was and the carried one's own place still counted, because those are the gaps a person
 /// sees. Taking the button out first would put every gap below it one place higher than the line drawn.
 pub fn landing(area: Rect, top: &[String], bottom: &[String], carried: &str, y: f32) -> Landing {
-    let half_gap = (STEP - BUTTON) / 2.0;
+    let step = step_for(area, top.len(), bottom.len());
+    let half_gap = (step - BUTTON) / 2.0;
     // The gap above top button `index`, and after the last one at `index == top.len()`.
     let top_gaps = (0..=top.len())
-        .map(|index| (false, index, area.top() + MARGIN + index as f32 * STEP - half_gap));
+        .map(|index| (false, index, area.top() + MARGIN + index as f32 * step - half_gap));
     // The gap above bottom button `index`, and below the corner one at `index == bottom.len()`.
     let count = bottom.len() as f32;
     let bottom_gaps = (0..=bottom.len()).map(|index| {
-        (true, index, area.bottom() - MARGIN - (count - index as f32) * STEP + half_gap)
+        (true, index, area.bottom() - MARGIN - (count - index as f32) * step + half_gap)
     });
     let (in_bottom, mut index, mark) = top_gaps
         .chain(bottom_gaps)
@@ -935,6 +969,22 @@ mod order_tests {
             "Realm, Project, Editing Area, Version Control | Terminal tile, Debug tile, Run tile"
         );
         assert_eq!(arranged(&all_top, &all_bottom, &text), (top, bottom));
+    }
+
+    /// `task-2404`: a long top group in a short window closes up, and never draws over the bottom group.
+    #[test]
+    fn a_crowded_rail_closes_up_and_never_draws_one_group_over_the_other() {
+        let area = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(36.0, 400.0));
+        let roomy = super::places(area, 4, 3);
+        assert_eq!(roomy[1] - roomy[0], STEP, "with room, the usual step");
+        let crowded = super::places(area, 12, 4);
+        let drawn: Vec<f32> = crowded.iter().copied().filter(|y| !y.is_nan()).collect();
+        assert!(drawn.len() < 16, "some of the top group is not drawn");
+        let first_bottom = crowded[12];
+        let last_top =
+            crowded[..12].iter().copied().filter(|y| !y.is_nan()).fold(f32::MIN, f32::max);
+        assert!(last_top + BUTTON / 2.0 + super::GROUP_GAP <= first_bottom - BUTTON / 2.0 + 0.01);
+        assert!(drawn.windows(2).all(|pair| pair[1] - pair[0] >= super::TIGHTEST - 0.01));
     }
 
     #[test]
