@@ -389,9 +389,10 @@ fn the_explorer_lists_the_designs_folder_and_the_one_settings_names() {
     steady(&mut harness);
     let tree = did(&mut harness, "explorer tree").to_string();
     assert!(tree.contains(".designs"), "the plugin's own dot folder is listed: {tree}");
-    assert!(!tree.contains(".mocks"), "and another dot folder is not, yet: {tree}");
+    // Every dot folder is listed since `task-2405`, so a project skill in `.claude/skills` can be seen.
+    assert!(tree.contains(".mocks"), "and so is any other: {tree}");
 
-    // Settings point the Designer at another dot folder, and the explorer is told in the next frames.
+    // Settings point the Designer at another dot folder.
     let designer = harness.state_mut().designer().expect("the designer");
     designer.config.folder = std::path::PathBuf::from(".mocks");
     designer.write_the_configuration().expect("written");

@@ -126,7 +126,7 @@ fn the_board_contributes_a_pane_and_no_tab() {
 fn the_pane_is_moved_and_put_away_from_the_command_line() {
     use unluminous_app::app::dock::{Panel, Side};
     let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-plugin-pane");
-    let settings = folder.join(".unluminous-settings");
+    let settings = folder.join(".unluminous").join("test-settings");
     let plugin = settings.join("plugins").join("agent-tasks");
     std::fs::create_dir_all(&plugin).expect("a plugin folder");
     std::fs::write(
@@ -192,7 +192,7 @@ fn a_pane_or_a_command_nobody_has_is_refused_with_what_there_is() {
 #[test]
 fn a_contributed_tab_opens_in_the_editing_area_beside_the_file_tabs() {
     let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-plugin-tab");
-    let settings = folder.join(".unluminous-settings");
+    let settings = folder.join(".unluminous").join("test-settings");
     let plugin = settings.join("plugins").join("agent-tasks");
     std::fs::create_dir_all(&plugin).expect("a plugin folder");
     std::fs::write(
@@ -584,7 +584,7 @@ fn a_manifest_changed_by_hand_takes_effect_on_a_reload_with_no_restart() {
     // asserts the window changed — which is the claim. Disabling a plugin instead would have tested the tick
     // box.
     let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-plugin-reload");
-    let settings = folder.join(".unluminous-settings");
+    let settings = folder.join(".unluminous").join("test-settings");
     let plugin = settings.join("plugins").join("agent-tasks");
     std::fs::create_dir_all(&plugin).expect("a plugin folder");
     let manifest = |label: &str, side: &str| {
@@ -1134,7 +1134,9 @@ fn where_a_contributed_pane_was_left_is_remembered_against_its_own_name() {
     // plugin installed later cannot be handed the first one's width. This is that round trip through a
     // real settings file rather than through the value in memory.
     let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-plugin-pane-layout");
-    let store = unluminous_app::services::store::Store::at(folder.join(".unluminous-settings"));
+    let store = unluminous_app::services::store::Store::at(
+        folder.join(".unluminous").join("test-settings"),
+    );
     let mut panes = settings::Panes::new();
     panes.dock.set_plugin_panes(&[Side::Right], &[false]);
     panes.dock.dock(Panel::Plugin(0), Side::Bottom, None);
@@ -1181,7 +1183,7 @@ fn a_pane_that_asks_for_a_project_is_absent_when_there_is_none() {
     // `always`, so the other condition is driven through a manifest of its own — installing one is what a
     // person does, and it is the only way to exercise a value no shipped plugin asks for.
     let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-plugin-in-project");
-    let settings = folder.join(".unluminous-settings");
+    let settings = folder.join(".unluminous").join("test-settings");
     let plugin = settings.join("plugins").join("needs-a-project");
     std::fs::create_dir_all(&plugin).expect("a plugin folder");
     std::fs::write(
@@ -1239,7 +1241,7 @@ fn a_pane_that_is_showing_stays_the_pane_that_is_showing_when_the_plugins_change
     // drives one from a manifest written for it, the way `the_pane_is_moved_and_put_away_from_the_command_line`
     // does.
     let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-plugin-pane-persists");
-    let settings = folder.join(".unluminous-settings");
+    let settings = folder.join(".unluminous").join("test-settings");
     let plugin = settings.join("plugins").join("agent-tasks");
     std::fs::create_dir_all(&plugin).expect("a plugin folder");
     std::fs::write(

@@ -3918,7 +3918,8 @@ fn a_realm_file_opens_from_the_explorer_and_the_plugin_is_the_switch() {
     steady(&mut harness);
     assert!(!harness.state().realm.visible, "the panel goes with the plugin");
     assert!(harness.state().files.active().plugin.is_none(), "and so does the realm tab");
-    assert!(harness.query_by_label(".realm-files").is_none(), "and so does the folder");
+    // The folder stays: every dot folder is listed since `task-2405`, the plugin or not.
+    harness.get_by_label(".realm-files");
     assert!(harness.state().plugins.for_path(&folder.join("a.realm")).is_none(), "and the icon");
     assert_eq!(refused(&mut harness, "realm show"), "refused");
     did(&mut harness, "plugins enable realm");
@@ -4656,7 +4657,7 @@ fn a_shape_has_the_same_depth_as_the_node_beside_it() {
 #[test]
 fn a_whiteboard_under_the_glass_theme() {
     let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-glass-shapes");
-    let settings = folder.join(".unluminous-settings");
+    let settings = folder.join(".unluminous").join("test-settings");
     let mut harness = harness_in(&folder);
     harness.state_mut().use_store(unluminous_app::services::store::Store::at(&settings));
     steady(&mut harness);

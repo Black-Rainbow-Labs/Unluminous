@@ -1110,6 +1110,8 @@ const SETTINGS_HELP: &[&str] = &[
     "The rail's own buttons that were unpinned from it, by name, separated by commas, such as `Database pane, Realm`. A right click on a button and `Unpin from Side Bar` writes it, and so does `window unpin`.",
     "The rail's buttons that are pinned to the top bar as well, by name, separated by commas. Each is a round chip at the right hand end of the top bar. `window pin <name> --bar top` writes it.",
     "The top bar's own tools that were unpinned from it: `Text Options`, `View Modes`, `Run Configurations`. `window unpin <name> --bar top` writes it.",
+    "The order of the shortcuts on the top bar by name, left to right, separated by commas, such as `Text Options, Database pane, View Modes, Run Configurations`. Dragging a shortcut along the top bar writes it. A shortcut it does not name goes where it would be with nothing set. Empty is the default order.",
+    "How the next Markdown or Mermaid file opens: `raw`, `side` or `preview`. Choosing a view mode for such a file writes it, so the mode chosen last is the one the next file opens in. Empty opens the source.",
     "Whether resting the pointer on a name while the program is stopped shows its value. Show Value on the Debug menu works either way.",
     "Whether a plugin that asked for it draws depth: the soft shadows, gradients and pressed edges behind its own pane. Off, it draws flat.",
     "Whether this Unluminous serves MCP over HTTP. An agent that launches the server itself needs neither this nor a port.",
@@ -2783,7 +2785,7 @@ fn drive_a_repository(coverage: &mut Coverage) {
 /// rather than left undriven until some plugin happens to want a tab again.
 fn drive_a_contributed_tab(coverage: &mut Coverage) {
     let folder = copy_out_of_the_repository(&dispatch_folder(), "unluminous-dispatch-plugin-tab");
-    let settings = folder.join(".unluminous-settings");
+    let settings = folder.join(".unluminous").join("test-settings");
     let plugin = settings.join("plugins").join("agent-tasks");
     std::fs::create_dir_all(&plugin).expect("a plugin folder");
     std::fs::write(

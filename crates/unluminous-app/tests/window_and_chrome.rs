@@ -4880,7 +4880,8 @@ fn walk_tab_folder() -> PathBuf {
     static ROOT: OnceLock<PathBuf> = OnceLock::new();
     ROOT.get_or_init(|| {
         let folder = copy_out_of_the_repository(&walk_folder(), "unluminous-1922-actions-tab");
-        let plugin = folder.join(".unluminous-settings").join("plugins").join("agent-tasks");
+        let plugin =
+            folder.join(".unluminous").join("test-settings").join("plugins").join("agent-tasks");
         std::fs::create_dir_all(&plugin).expect("a plugin folder");
         std::fs::write(
             plugin.join("plugin.conf"),
@@ -4907,7 +4908,7 @@ fn window_for(place: Where) -> Harness<'static, UnluminousApp> {
             let folder = walk_tab_folder();
             let mut harness = harness_in(&folder);
             harness.state_mut().use_store(unluminous_app::services::store::Store::at(
-                folder.join(".unluminous-settings"),
+                folder.join(".unluminous").join("test-settings"),
             ));
             for _ in 0..4 {
                 harness.step();
@@ -5914,7 +5915,8 @@ fn every_kind_of_tab_folder() -> PathBuf {
             ],
         );
         write_sample_picture(&folder.join("picture.png"));
-        let plugin = folder.join(".unluminous-settings").join("plugins").join("agent-tasks");
+        let plugin =
+            folder.join(".unluminous").join("test-settings").join("plugins").join("agent-tasks");
         std::fs::create_dir_all(&plugin).expect("a plugin folder");
         std::fs::write(
             plugin.join("plugin.conf"),
@@ -5948,9 +5950,9 @@ fn only_a_tab_holding_a_document_has_the_text_tools() {
     // The plugin in this project's own settings folder is what contributes a tab, and a window only
     // reads one when it has been given a store — which the released binary does in `load_settings`
     // and a test does here, so that no test reads the settings of the person running it.
-    harness
-        .state_mut()
-        .use_store(unluminous_app::services::store::Store::at(folder.join(".unluminous-settings")));
+    harness.state_mut().use_store(unluminous_app::services::store::Store::at(
+        folder.join(".unluminous").join("test-settings"),
+    ));
     for _ in 0..4 {
         harness.step();
     }
@@ -6597,7 +6599,7 @@ fn a_draft_that_goes_away_unsent_takes_its_pictures_with_it() {
 #[test]
 fn the_glass_theme_bends_the_picture_behind_its_surfaces() {
     let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-glass-theme");
-    let settings = folder.join(".unluminous-settings");
+    let settings = folder.join(".unluminous").join("test-settings");
     let mut harness = harness_in(&folder);
     harness.state_mut().use_store(unluminous_app::services::store::Store::at(&settings));
     steady(&mut harness);
