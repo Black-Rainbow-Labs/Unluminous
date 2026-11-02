@@ -404,7 +404,7 @@ publish. Five rules:
 | Crate | What is in it | What must never be in it |
 |---|---|---|
 | `unluminous-core` | The editor: the text buffer, the character and paragraph formatting, the caret, layout, undo, the Markdown parser, the syntax tokeniser, and the Mermaid reader and diagram layout. | Any user interface dependency. Its tests run with no window, no graphics card and no fonts. |
-| `unluminous-terminal` | The terminal: the session over a pseudoterminal, the screen the painter reads, the colour palette, the key encoding, the mouse reports, and which shell to start and in what folder. | Any user interface dependency, for the same reason. |
+| `unluminous-terminal` | The terminal: the session over Termoil's emulator and pseudoterminal, the screen the painter reads, the colour palette, the key and mouse encoding (Termoil's), and which shell to start and in what folder. | Any user interface dependency, for the same reason. |
 | `unluminous-git` | Reading and changing a git repository: the status, blame, the log, diffs, branches, and every operation on the Git menu, plus the thread they run on. | Any user interface dependency, and any decision about what a dialog looks like. Its tests build real repositories in a temporary folder and ask git what happened. |
 | `unluminous-dap` | The Debug Adapter Protocol: the `Content-Length` framing, the typed messages, the session state machine, and the thread an adapter is spoken to on. | Any user interface dependency, and any knowledge of *which* adapter to start — where `lldb-dap` lives on this machine is knowledge about the machine, and it lives in `unluminous-app`. Its tests run against scripted adapters with no process. |
 | `unluminous-db` | Reading and changing a database: the PostgreSQL v3 wire protocol, SCRAM-SHA-256, SQLite through `rusqlite`, Inillucent through `inillucent-driver`, the vector a search index stores, the values a grid draws, the statements a pending change becomes, and the thread a query runs on. | Any user interface dependency. Its tests run with no window and, for the PostgreSQL half, against a scripted server on `127.0.0.1:0` replaying fixed bytes. |
@@ -1605,7 +1605,8 @@ would be a capture of the **desktop** rather than of the surface, which is what
 `task-1912` measured why there is no other way on Windows: the console host clears the screen the first time
 the program writes and thereafter repaints the cells it believes it owns, so a screen written into the
 emulator from outside is erased — and put back later it survives until the next keystroke and then comes back
-visibly corrupt. `CreatePseudoConsole` is called by `alacritty_terminal` with `dwFlags = 0`, which is *"a
+visibly corrupt. `CreatePseudoConsole` is called with `dwFlags = 0` (by `alacritty_terminal` then, and by Termoil's
+`termoil-pty` for the console host built into Windows since `task-2489`), which is *"a
 standard pseudoconsole creation"*, against the `PSEUDOCONSOLE_INHERIT_CURSOR` that exists for exactly this;
 carrying a fork of the emulator to pass it is refused in §8 of the design. So a node with a screen to restore
 starts `unluminous-cli --replay-screen <file> -- <shell>`, which prints the bytes and then becomes the shell
@@ -1613,8 +1614,8 @@ starts `unluminous-cli --replay-screen <file> -- <shell>`, which prints the byte
 console: the console host holds it, its repaints keep it, a resize reflows it, and the rows that scroll off
 reach the scrollback as any command's output does.
 
-**It is `unluminous-cli` and not the window's own binary**, which is also measured: `alacritty_terminal`
-creates the child with `STARTF_USESTDHANDLES` and every handle null, and Windows fills a *console* subsystem
+**It is `unluminous-cli` and not the window's own binary**, which is also measured: the terminal
+creates the child with `STARTF_USESTDHANDLES` and no standard handles of its own, and Windows fills a *console* subsystem
 program's standard handles in from the console while a *windows* subsystem one's stay null — so
 `unluminous.exe` as the shim printed nothing and the shell under it printed nothing either. What is saved is
 the **scrollback and the screen**, bounded by `REPLAY_ROWS` and `REPLAY_LIMIT`, because the visible grid alone
@@ -2951,8 +2952,9 @@ functions with tests over each tool's real arguments.
   node's tab), and a `target="_blank"` link or `window.open` from one goes through `send_a_realm_browser_to`,
   which keeps the node's history. `browser.links` (Settings -> Editor -> Web pages, on by default) is about the
   browser tabs in the editing area only.
-- **A tab in a terminal is drawn as a space.** `alacritty_terminal` writes `'	'` into the cell a tab starts from
-  so a copied selection keeps it, and `Session::cell_of` turns it into a space for the painter, which drew a
+- **A tab in a terminal is drawn as a space.** `alacritty_terminal` wrote `'	'` into the cell a tab starts from
+  so a copied selection kept it, and `session::cell_of` turns it into a space for the painter (Termoil writes
+  none, so since `task-2489` this is a guard rather than a fix), which drew a
   missing glyph box after every name macOS `ls` printed. Windows never showed it, because ConPTY turns tabs
   into spaces before the terminal sees them, so a terminal fault that only one platform shows may be one the
   other platform's console host hides.
@@ -5481,11 +5483,10 @@ switch. Making PowerShell report it means adding to the prompt somebody already 
 their shell rather than to this editor — so `terminal.shell_integration` is **off**, with a tick box on
 `Settings -> Terminal`, and `services::shell_integration` is what it turns on.
 
-**The bytes are read between `EventLoop` and the pseudoterminal**, and there is nowhere else they could be.
-`vte`'s `osc_dispatch` has no case for either sequence and no hook to add one, and a session with a shell is
-read by `EventLoop` on a thread Unluminous's own code never touches. `EventLoop` is generic over its
-pseudoterminal, so `session::Watching` sits between the two; `type Reader = Self`, because
-`EventedReadWrite::reader` hands back a borrow and a wrapper cannot own a reader it is only lent.
+**The bytes are read on the session's own reader thread, before the emulator sees them** (`task-2489`). It was a
+wrapper round alacritty's pseudoterminal, because `vte` read neither sequence and alacritty's reader thread was not
+Unluminous's. Termoil's parser reads both, but the checks below are Unluminous's own, so `reported::Scanner` still
+reads every byte the reader thread applies.
 
 **Three things about the reading are refusals rather than features.** A folder on another machine is refused
 — `file://build-box/C:/jason` would otherwise reopen a tab in this machine's own `C:\jason`, so the host is
@@ -5714,18 +5715,13 @@ is only known once the events it sent have been read.
 `a_program_that_prints_and_stops_leaves_what_it_printed_in_its_tab` is the guard, and it fails on
 the code as it was.
 
-**On a busy Windows machine a program's end is seen through `session::Watching`** (`task-2353`).
-`alacritty_terminal`'s child watcher wakes the reader loop only once the loop has registered with its
-poller, so a program that ended before the loop's thread ran was never seen to end: the run said
-`running` for ever with its output on the screen. And the loop stops reading the moment it is told the
-program ended, while the console host writes on its own frame, so a last line that arrived after the exit
-was lost and the tab was empty. `Watching::register` wakes the loop for a program that has already ended.
-On Windows `Watching::next_child_event` sends the window `ChildExit` itself and never tells the loop, so
-the loop goes on reading until the session is closed. Waiting for the pipe to be quiet for 250 ms was
-tried first and still lost the line in a full suite run. Both faults only showed under load: the window
-test passed every time on an idle machine and failed with 36 threads of `tools/perf-smooth/load.mjs`
-running. `a_program_that_ends_before_the_reader_starts_is_still_seen_to_end` starts the loop after the
-program has ended, so it fails on the old code every time.
+**On a busy Windows machine a program's end is seen by asking the program** (`task-2353`, `task-2489`).
+With alacritty, a program that ended before the reader loop had registered with its poller was never seen to
+end, and a last line the console host wrote after the exit was lost. The session's exit watcher now polls
+`Pty::try_wait` every 50 ms and records the end 100 ms after it (`EXIT_GRACE`), and the reader goes on reading
+until the pseudoconsole closes, so neither the order of the threads nor a late line matters. Both faults only
+showed under load: run `many_short_programs_each_leave_their_output_and_their_code` and the run tile's window
+test with `tools/perf-smooth/load.mjs` running when the exit path changes.
 
 **A window opened on a folder another test window just used waits for that window's writes**
 (`harness_in`), because what a project remembers is written on a thread (`project_state::save_later`).
@@ -5820,6 +5816,28 @@ every terminal on Windows makes it: something selected and `Ctrl+C` copies it **
 selection** — left behind it would swallow the next press too — nothing selected and it interrupts,
 `Ctrl+Shift+C` always copies, and `Ctrl+X` reaches the program as `0x18`, because nothing in a
 terminal can be cut and that is how a person leaves `nano`.
+
+## Every terminal runs on Termoil (`task-2489`)
+
+`tasks/task-2489-termoil-tdd.md` is the design. The terminal tile, the run tile, the debug console, a Realm
+terminal node and a ticket's agent terminal are all `unluminous_terminal::Session`, and a session is Termoil's:
+`termoil-vt` is the emulator, `termoil-pty` the pseudoterminal and `termoil-input` the key and mouse encoding, pinned
+by commit in the workspace `Cargo.toml` from `github.com/Black-Rainbow-Labs/Termoil`. Unluminous draws the grid
+itself. Five rules:
+
+- **`unluminous-terminal` is the only crate that names Termoil.** The app reads a `Screen` and calls `Session`;
+  a change to Termoil's interface is a change to `session.rs`, `keys.rs`, `mouse.rs` and `foreground.rs`.
+- **A change Termoil needs is made in Termoil**, released there, and taken here by moving the `rev` on all three
+  crates together. `task-2489` added `Pty::clone_controller` (for `foreground` on Unix) and made `OSC 104` and `RIS`
+  put back the host's palette.
+- **Three threads a session**: the reader applies output in 64 KiB slices and runs `reported::Scanner`, the writer
+  writes what the window sends, and the exit watcher records the end. Nothing writes to the program on the
+  window's thread.
+- **The view scrolled back is held by a row serial** (`Session::scroll_anchor`), so output arriving does not move
+  what is being read. A resize drops it, because a reflow gives the rows new serials.
+- **The keyboard follows the program's protocol.** `keys::Mode` carries the kitty flags and the
+  `modifyOtherKeys` level, so `Shift+Enter` reaches `claude` and `codex` as its own key. Typed text goes through
+  `keys::text`, which sends codes only when the program asked the kitty protocol for every key.
 
 ## The code index answers what ripgrep would, from memory, and it is measured rather than assumed
 
