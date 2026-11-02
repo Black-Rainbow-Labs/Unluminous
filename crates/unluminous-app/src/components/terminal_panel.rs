@@ -910,9 +910,10 @@ fn handle_input(
                 to_send.push(keys::paste(text, mode));
             }
             // The text egui reports, rather than the letter worked out from the key, so that a keyboard
-            // layout, a dead key and an input method all reach the program as what was typed.
+            // layout, a dead key and an input method all reach the program as what was typed. Through
+            // `keys::text`, so a program that asked the kitty protocol for every key as a code gets codes.
             egui::Event::Text(text) if !text.chars().any(char::is_control) => {
-                to_send.push(text.clone().into_bytes());
+                to_send.push(keys::text(text, mode));
             }
             egui::Event::Key { key, pressed: true, modifiers, .. } => {
                 if let Some(press) = key_press(*key, modifiers) {

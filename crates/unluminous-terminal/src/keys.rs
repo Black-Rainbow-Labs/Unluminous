@@ -1,18 +1,23 @@
 //! Turning a key press into the bytes a terminal sends.
 //!
-//! This is the table in section 9 of `tasks/unluminous-terminal-tdd.md`, and the sequences are the ones xterm
-//! defines and every terminal follows. It is written here rather than taken from a crate because it is the
-//! part most likely to need changing for Unluminous, and because a table of expected bytes is the easiest thing
-//! in the whole terminal to test.
+//! The encoding is Termoil's (`termoil_input`, `task-2489`): the legacy xterm sequences, xterm's
+//! `modifyOtherKeys`, and the kitty keyboard protocol with all five of its flags. Which one is used is the
+//! program's choice, made with an escape sequence and reported in [`Mode`]: a shell gets the sequences every
+//! terminal has sent since the eighties, and `claude` or `codex`, which turn the kitty protocol on, are told
+//! `Shift+Enter` apart from `Enter` and `Ctrl+Backspace` apart from `Backspace`.
 //!
-//! Two modes change what some keys send, and both are set by the program on the far side rather than chosen
-//! here. Application cursor keys turn the arrows and Home and End from `ESC [ A` into `ESC O A`, which is
-//! what a full screen program asks for so it can tell an arrow key from a program printing the same
-//! characters. Bracketed paste wraps pasted text so that a shell does not run each pasted line as it
-//! arrives.
+//! Two older modes change what some keys send, and both are set by the program on the far side rather than
+//! chosen here. Application cursor keys turn the arrows and Home and End from `ESC [ A` into `ESC O A`, which
+//! is what a full screen program asks for so it can tell an arrow key from a program printing the same
+//! characters. Bracketed paste wraps pasted text so that a shell does not run each pasted line as it arrives.
 //!
 //! There is no dependency on egui here. The window turns egui's key and modifier types into [`Key`] and
 //! [`Modifiers`], so this crate stays free of any user interface.
+
+use termoil_input::{
+    encode_focus, encode_key, encode_paste, Key as InputKey, KeyEvent, KeyboardModes,
+    Modifiers as InputModifiers, NamedKey,
+};
 
 /// A key, named the way a terminal thinks of keys rather than the way a keyboard is laid out.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,22 +68,19 @@ impl Modifiers {
         Self { alt: true, ..Self::NONE }
     }
 
-    /// The number xterm uses for a set of modifiers in a sequence such as `ESC [ 1 ; 5 D`.
-    ///
-    /// One plus one for shift, two for alt and four for control, which is why shift and control together is
-    /// six and all three is eight.
-    fn parameter(&self) -> Option<u8> {
-        let mut value = 1;
+    /// The same set as Termoil writes it.
+    fn input(&self) -> InputModifiers {
+        let mut bits = 0;
         if self.shift {
-            value += 1;
+            bits |= InputModifiers::SHIFT.0;
         }
         if self.alt {
-            value += 2;
+            bits |= InputModifiers::ALT.0;
         }
         if self.control {
-            value += 4;
+            bits |= InputModifiers::CTRL.0;
         }
-        (value > 1).then_some(value)
+        InputModifiers(bits)
     }
 }
 
@@ -89,6 +91,34 @@ pub struct Mode {
     pub application_cursor: bool,
     /// Pasted text is wrapped in `ESC [ 200 ~` and `ESC [ 201 ~`.
     pub bracketed_paste: bool,
+    /// The keypad sends its own sequences (`DECKPAM`).
+    pub application_keypad: bool,
+    /// Backspace sends `BS` rather than `DEL` (`DECBKM`).
+    pub backspace_sends_bs: bool,
+    /// xterm's `modifyOtherKeys` level, 0 to 2: how keys with modifiers that have no legacy sequence are sent.
+    pub modify_other_keys: u8,
+    /// The kitty keyboard protocol's flags: 1 tells keys apart, 2 reports releases, 4 alternate keys, 8 every
+    /// key as an escape code, 16 the text a key makes. Zero is the legacy encoding.
+    pub kitty_flags: u8,
+}
+
+impl Mode {
+    /// The modes as Termoil's encoder reads them.
+    fn input(&self) -> KeyboardModes {
+        KeyboardModes {
+            app_cursor: self.application_cursor,
+            app_keypad: self.application_keypad,
+            modify_other_keys: self.modify_other_keys,
+            kitty_flags: self.kitty_flags,
+            backarrow_is_bs: self.backspace_sends_bs,
+            alt_sends_escape: true,
+        }
+    }
+
+    /// True when the program asked the kitty protocol to report every key as an escape code, letters included.
+    fn every_key_is_a_code(&self) -> bool {
+        self.kitty_flags & 8 != 0
+    }
 }
 
 /// One key press.
@@ -116,163 +146,95 @@ pub fn encode(press: KeyPress, mode: Mode) -> Option<Vec<u8>> {
     if modifiers.command {
         return None;
     }
-    let parameter = modifiers.parameter();
-
-    let bytes = match key {
-        // A carriage return, not a line feed. A terminal sends what the Return key on a serial terminal
-        // sent, and the program decides what a line ending means.
-        Key::Enter => single(0x0d, modifiers),
-        // Delete rather than backspace, which is what every terminal sends and what readline expects.
-        Key::Backspace => single(0x7f, modifiers),
-        Key::Tab if modifiers.shift => b"\x1b[Z".to_vec(),
-        Key::Tab => single(0x09, modifiers),
-        Key::Escape => single(0x1b, modifiers),
-
-        Key::Up | Key::Down | Key::Right | Key::Left | Key::Home | Key::End => {
-            let last = match key {
-                Key::Up => b'A',
-                Key::Down => b'B',
-                Key::Right => b'C',
-                Key::Left => b'D',
-                Key::Home => b'H',
-                _ => b'F',
-            };
-            match parameter {
-                // A modified key always uses the `ESC [ 1 ; n X` form, whatever the cursor key mode is,
-                // because the `ESC O` form has nowhere to put the modifier.
-                Some(parameter) => format!("\x1b[1;{parameter}{}", last as char).into_bytes(),
-                None if mode.application_cursor => vec![0x1b, b'O', last],
-                None => vec![0x1b, b'[', last],
+    let mods = modifiers.input();
+    let event = match key {
+        Key::Character(character) => {
+            let character = character.to_ascii_lowercase();
+            let event = KeyEvent::press(InputKey::Char(character), mods);
+            // The text the key makes, which the encoder sends for an ordinary key. None with control held,
+            // where the control code is what is sent.
+            if modifiers.control {
+                event
+            } else {
+                let shown = if modifiers.shift {
+                    character.to_uppercase().next().unwrap_or(character)
+                } else {
+                    character
+                };
+                event.with_text(&shown.to_string())
             }
         }
-
-        Key::Insert | Key::Delete | Key::PageUp | Key::PageDown => {
-            let number = match key {
-                Key::Insert => 2,
-                Key::Delete => 3,
-                Key::PageUp => 5,
-                _ => 6,
-            };
-            match parameter {
-                Some(parameter) => format!("\x1b[{number};{parameter}~").into_bytes(),
-                None => format!("\x1b[{number}~").into_bytes(),
-            }
-        }
-
-        // The first four function keys are the older `ESC O` form and the rest are numbered, with the gaps
-        // at 16, 22, 27 and 30 that the standard leaves.
-        Key::Function(number) => {
-            let numbered = |value: u8| match parameter {
-                Some(parameter) => format!("\x1b[{value};{parameter}~").into_bytes(),
-                None => format!("\x1b[{value}~").into_bytes(),
-            };
-            match number {
-                1..=4 => {
-                    let last = [b'P', b'Q', b'R', b'S'][number as usize - 1];
-                    match parameter {
-                        Some(parameter) => {
-                            format!("\x1b[1;{parameter}{}", last as char).into_bytes()
-                        }
-                        None => vec![0x1b, b'O', last],
-                    }
-                }
-                5 => numbered(15),
-                6..=10 => numbered(17 + number - 6),
-                11..=14 => numbered(23 + number - 11),
-                15..=16 => numbered(28 + number - 15),
-                17..=20 => numbered(31 + number - 17),
-                _ => return None,
-            }
-        }
-
-        Key::Character(character) => return character_bytes(character, modifiers),
+        // Function keys beyond 20 are not on any keyboard Unluminous is used with, and the legacy encoding has
+        // no agreed sequence for them.
+        Key::Function(number) if !(1..=20).contains(&number) => return None,
+        named => KeyEvent::press(InputKey::Named(named_key(named)), mods),
     };
-    Some(bytes)
-}
-
-/// A control character, with `ESC` in front of it when alt was held, which is how a shell reads alt.
-fn single(byte: u8, modifiers: Modifiers) -> Vec<u8> {
-    if modifiers.alt {
-        vec![0x1b, byte]
-    } else {
-        vec![byte]
-    }
-}
-
-/// An ordinary key, which is the interesting case because control turns a letter into a control code.
-fn character_bytes(character: char, modifiers: Modifiers) -> Option<Vec<u8>> {
     let mut out = Vec::new();
-    if modifiers.control {
-        let control = control_code(character)?;
-        if modifiers.alt {
-            out.push(0x1b);
-        }
-        out.push(control);
-        return Some(out);
-    }
-    // Without control, the character itself. The window sends the text egui reports rather than working the
-    // letter out from the key, so that a keyboard layout, a dead key or an input method all work; this path
-    // is for a key press with alt held, which egui reports as a key rather than as text.
-    if modifiers.alt {
-        out.push(0x1b);
-    }
-    let mut buffer = [0_u8; 4];
-    let text = if modifiers.shift {
-        character.to_uppercase().next().unwrap_or(character)
-    } else {
-        character
-    };
-    out.extend_from_slice(text.encode_utf8(&mut buffer).as_bytes());
-    Some(out)
+    (encode_key(&event, &mode.input(), &mut out) && !out.is_empty()).then_some(out)
 }
 
-/// The control code a letter or a symbol makes when control is held.
-///
-/// A to Z are 1 to 26, which is why control and C is 3 and control and D is 4. The five symbols after Z
-/// carry on from 27, and control and space is a zero byte, which is how a program is sent a null.
-fn control_code(character: char) -> Option<u8> {
-    let character = character.to_ascii_lowercase();
-    match character {
-        'a'..='z' => Some(character as u8 - b'a' + 1),
-        '[' => Some(0x1b),
-        '\\' => Some(0x1c),
-        ']' => Some(0x1d),
-        '^' | '6' => Some(0x1e),
-        '_' | '-' | '/' => Some(0x1f),
-        ' ' | '2' | '@' => Some(0x00),
-        '3' => Some(0x1b),
-        '4' => Some(0x1c),
-        '5' => Some(0x1d),
-        '7' | '8' => Some(0x7f),
-        _ => None,
+/// The key as Termoil names it. Only called for keys that are not ordinary characters.
+fn named_key(key: Key) -> NamedKey {
+    match key {
+        Key::Enter => NamedKey::Enter,
+        Key::Backspace => NamedKey::Backspace,
+        Key::Tab => NamedKey::Tab,
+        Key::Escape => NamedKey::Escape,
+        Key::Up => NamedKey::Up,
+        Key::Down => NamedKey::Down,
+        Key::Right => NamedKey::Right,
+        Key::Left => NamedKey::Left,
+        Key::Home => NamedKey::Home,
+        Key::End => NamedKey::End,
+        Key::PageUp => NamedKey::PageUp,
+        Key::PageDown => NamedKey::PageDown,
+        Key::Insert => NamedKey::Insert,
+        Key::Delete => NamedKey::Delete,
+        Key::Function(number) => NamedKey::F(number),
+        Key::Character(_) => NamedKey::Escape,
     }
+}
+
+/// The bytes for text the keyboard typed: a letter, a word from an input method, a character a dead key made.
+///
+/// The text itself, which is what every program expects, unless the program asked the kitty protocol to report
+/// every key as an escape code. Then each character is sent as the key that makes it, with the character as its
+/// text, which is what such a program reads.
+pub fn text(typed: &str, mode: Mode) -> Vec<u8> {
+    if !mode.every_key_is_a_code() {
+        return typed.as_bytes().to_vec();
+    }
+    let mut out = Vec::new();
+    for character in typed.chars() {
+        let lower = character.to_lowercase().next().unwrap_or(character);
+        let mods = if lower != character { InputModifiers::SHIFT } else { InputModifiers::NONE };
+        let event = KeyEvent::press(InputKey::Char(lower), mods).with_text(&character.to_string());
+        if !encode_key(&event, &mode.input(), &mut out) {
+            let mut buffer = [0_u8; 4];
+            out.extend_from_slice(character.encode_utf8(&mut buffer).as_bytes());
+        }
+    }
+    out
 }
 
 /// The bytes for text arriving from the clipboard.
 ///
 /// Wrapped in the bracketed paste sequences when the program asked for them, so that a shell takes several
-/// pasted lines as text to edit rather than as commands to run one after another. Carriage returns are
-/// turned into line feeds first, because a terminal treats a carriage return as Return being pressed and
-/// pasted text with both would run every line twice.
+/// pasted lines as text to edit rather than as commands to run one after another. Line breaks are turned into
+/// carriage returns, because a terminal treats a carriage return as Return being pressed and pasted text with
+/// both would run every line twice.
 pub fn paste(text: &str, mode: Mode) -> Vec<u8> {
     let text = text.replace("\r\n", "\r").replace('\n', "\r");
-    if mode.bracketed_paste {
-        let mut out = b"\x1b[200~".to_vec();
-        out.extend_from_slice(text.as_bytes());
-        out.extend_from_slice(b"\x1b[201~");
-        out
-    } else {
-        text.into_bytes()
-    }
+    let mut out = Vec::new();
+    encode_paste(&text, mode.bracketed_paste, &mut out);
+    out
 }
 
 /// The bytes that tell a program the terminal has gained or lost the keyboard, when it asked to be told.
 pub fn focus(gained: bool) -> Vec<u8> {
-    if gained {
-        b"\x1b[I".to_vec()
-    } else {
-        b"\x1b[O".to_vec()
-    }
+    let mut out = Vec::new();
+    encode_focus(gained, &mut out);
+    out
 }
 
 #[cfg(test)]
@@ -426,5 +388,52 @@ mod tests {
     fn a_focus_report_says_which_way_round_it_is() {
         assert_eq!(String::from_utf8_lossy(&focus(true)).replace('\x1b', "ESC "), "ESC [I");
         assert_eq!(String::from_utf8_lossy(&focus(false)).replace('\x1b', "ESC "), "ESC [O");
+    }
+
+    #[test]
+    fn shift_and_return_is_told_apart_when_the_program_asks_for_the_kitty_protocol() {
+        // `task-2489`. `claude` and `codex` turn the kitty keyboard protocol on and read `Shift+Enter` as a new
+        // line in the prompt. With alacritty's encoder it reached them as a plain carriage return.
+        let kitty = Mode { kitty_flags: 1, ..Mode::default() };
+        assert_eq!(text(Key::Enter, Modifiers::shift(), kitty), "ESC [13;2u");
+        assert_eq!(
+            text(Key::Enter, Modifiers::NONE, kitty),
+            "\r",
+            "a plain Return is still a carriage return"
+        );
+        assert_eq!(
+            text(Key::Escape, Modifiers::NONE, kitty),
+            "ESC [27u",
+            "and Escape is told apart from a sequence"
+        );
+    }
+
+    #[test]
+    fn shift_and_return_is_told_apart_under_modify_other_keys() {
+        let modify = Mode { modify_other_keys: 2, ..Mode::default() };
+        assert_eq!(text(Key::Enter, Modifiers::shift(), modify), "ESC [27;2;13~");
+    }
+
+    #[test]
+    fn control_and_backspace_is_told_apart_under_the_kitty_protocol() {
+        let kitty = Mode { kitty_flags: 1, ..Mode::default() };
+        assert_eq!(text(Key::Backspace, Modifiers::control(), kitty), "ESC [127;5u");
+    }
+
+    #[test]
+    fn typed_text_is_sent_as_itself_unless_every_key_is_to_be_a_code() {
+        assert_eq!(super::text("héllo", Mode::default()), "héllo".as_bytes().to_vec());
+        let every = Mode { kitty_flags: 1 | 8, ..Mode::default() };
+        let sent = String::from_utf8_lossy(&super::text("a", every)).replace('\x1b', "ESC ");
+        assert_eq!(sent, "ESC [97u", "a letter is the key that makes it");
+    }
+
+    #[test]
+    fn a_paste_cannot_end_its_own_bracket() {
+        // A pasted `ESC [ 201 ~` would end the bracket early and run what follows as typed commands.
+        let bracketed = Mode { bracketed_paste: true, ..Mode::default() };
+        let sent =
+            String::from_utf8_lossy(&paste("a\x1b[201~rm -rf", bracketed)).replace('\x1b', "ESC ");
+        assert_eq!(sent, "ESC [200~arm -rfESC [201~");
     }
 }

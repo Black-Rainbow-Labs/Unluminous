@@ -10,7 +10,9 @@
 //! clear it, two of them started with no banner and no profile, which is what says it is the console host
 //! rather than any one shell. Microsoft's own `CreatePseudoConsole` documentation names the flag that would
 //! avoid it — `PSEUDOCONSOLE_INHERIT_CURSOR`, *"attempt to inherit the cursor position of the parent
-//! console"* — and `alacritty_terminal` passes `0`, which is *"a standard pseudoconsole creation"*.
+//! console"* — and the terminal passes `0`, which is *"a standard pseudoconsole creation"*: `alacritty_terminal`
+//! did, and Termoil's `termoil-pty` does for the console host built into Windows, which `unluminous-terminal`
+//! asks for (`task-2489`).
 //!
 //! So the screen is restored the way every other piece of text in a terminal arrives: something inside the
 //! console prints it. Then the console host holds it, its repaints keep it, a resize reflows it, and the rows
@@ -39,9 +41,10 @@ pub struct Restore {
     pub file: PathBuf,
     /// The program that prints the file and then becomes the shell, which is `unluminous-cli`.
     ///
-    /// **The console program rather than the window's**, and the reason is measured. `alacritty_terminal`
-    /// creates a pseudoconsole's child with `STARTF_USESTDHANDLES` and every handle left null — its own
-    /// comment says that is so the child inherits nothing from the editor — and Windows fills a console
+    /// **The console program rather than the window's**, and the reason is measured. The terminal creates a
+    /// pseudoconsole's child with `STARTF_USESTDHANDLES` and no standard handles of its own — `alacritty_terminal`
+    /// left them null and Termoil's `termoil-pty` sets them invalid, both so the child inherits nothing from the
+    /// editor — and Windows fills a console
     /// subsystem program's standard handles in from the console it is attached to, while a *windows*
     /// subsystem program's stay null. So `unluminous.exe` as the shim printed nothing at all, and the shell it
     /// started inherited the same null handles and printed nothing either: a node that came back perfectly
@@ -129,8 +132,8 @@ fn become_the_program(program: &str, args: &[String]) -> i32 {
 #[cfg(not(unix))]
 fn become_the_program(program: &str, args: &[String]) -> i32 {
     match std::process::Command::new(program).args(args).spawn() {
-        // Waited for rather than left to run, because the pseudoconsole's child is this process: alacritty
-        // watches *its* handle for the exit, so a shim that returned would be read as the shell ending and
+        // Waited for rather than left to run, because the pseudoconsole's child is this process: the
+        // terminal watches *its* handle for the exit, so a shim that returned would be read as the shell ending and
         // would take the pseudoterminal with it.
         Ok(mut child) => match child.wait() {
             Ok(status) => status.code().unwrap_or(0),

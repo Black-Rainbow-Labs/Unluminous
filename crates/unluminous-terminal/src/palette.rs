@@ -5,11 +5,11 @@
 //! is a number from 0 to 255 into the table below. Or a colour given in full, which is what 24 bit colour
 //! means and which needs no table at all.
 //!
-//! `alacritty_terminal` keeps a table of colours a program has changed with an escape sequence and leaves
-//! everything else empty, so the defaults are ours to supply. These are Unluminous's own: the same blue as the
-//! accent in the window, the same amber as the unsaved marker, and a background that is the editor's
-//! background, so that the terminal belongs to the window rather than looking like another application
-//! sitting inside it.
+//! Termoil's terminal holds a table of 256 colours a program can change with an escape sequence, and the
+//! defaults are ours to supply: `session` hands this palette over and resolves each cell against what the
+//! program made of it (`task-2489`). These are Unluminous's own: the same blue as the accent in the window, the
+//! same amber as the unsaved marker, and a background that is the editor's background, so that the terminal
+//! belongs to the window rather than looking like another application sitting inside it.
 
 /// A colour, as three bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -31,18 +31,6 @@ impl Rgb {
             (self.g as f32 * 0.62) as u8,
             (self.b as f32 * 0.62) as u8,
         )
-    }
-}
-
-impl From<alacritty_terminal::vte::ansi::Rgb> for Rgb {
-    fn from(value: alacritty_terminal::vte::ansi::Rgb) -> Self {
-        Self::new(value.r, value.g, value.b)
-    }
-}
-
-impl From<Rgb> for alacritty_terminal::vte::ansi::Rgb {
-    fn from(value: Rgb) -> Self {
-        Self { r: value.r, g: value.g, b: value.b }
     }
 }
 
@@ -193,72 +181,6 @@ impl Palette {
             }
         }
     }
-
-    /// The colour a cell asked for.
-    ///
-    /// `bright` says whether bold text should use the bright variant of a named colour, which is what every
-    /// terminal does and what makes a heading in `claude` stand out. `overrides` is the table
-    /// `alacritty_terminal` keeps of colours a program has changed with an escape sequence; a colour set
-    /// there wins over the default.
-    pub fn resolve(
-        &self,
-        colour: alacritty_terminal::vte::ansi::Color,
-        bright: bool,
-        overrides: &alacritty_terminal::term::color::Colors,
-    ) -> Rgb {
-        use alacritty_terminal::vte::ansi::{Color, NamedColor};
-        match colour {
-            Color::Spec(rgb) => rgb.into(),
-            Color::Indexed(index) => {
-                let index = if bright && index < 8 { index + 8 } else { index };
-                match overrides[index as usize] {
-                    Some(rgb) => rgb.into(),
-                    None => self.indexed(index),
-                }
-            }
-            Color::Named(named) => {
-                let named = if bright { named.to_bright() } else { named };
-                if let Some(rgb) = overrides[named] {
-                    return rgb.into();
-                }
-                match named {
-                    NamedColor::Foreground => self.foreground,
-                    NamedColor::BrightForeground => self.bright_foreground,
-                    NamedColor::DimForeground => self.dimmed(self.foreground),
-                    NamedColor::Background => self.background,
-                    NamedColor::Cursor => self.cursor,
-                    // The dim colours are the named ones mixed towards black, which is what a terminal
-                    // without a dim table of its own does.
-                    NamedColor::DimBlack
-                    | NamedColor::DimRed
-                    | NamedColor::DimGreen
-                    | NamedColor::DimYellow
-                    | NamedColor::DimBlue
-                    | NamedColor::DimMagenta
-                    | NamedColor::DimCyan
-                    | NamedColor::DimWhite => {
-                        let ordinary = named as usize - NamedColor::DimBlack as usize;
-                        self.dimmed(self.named[ordinary])
-                    }
-                    other => self.named[(other as usize).min(15)],
-                }
-            }
-        }
-    }
-
-    /// The table to hand `alacritty_terminal` so that a program asking what colour something is gets an
-    /// answer, and so that resetting a colour puts Unluminous's own back rather than nothing.
-    pub fn as_colors(&self) -> alacritty_terminal::term::color::Colors {
-        use alacritty_terminal::vte::ansi::NamedColor;
-        let mut colors = alacritty_terminal::term::color::Colors::default();
-        for index in 0..=255_u8 {
-            colors[index as usize] = Some(self.indexed(index).into());
-        }
-        colors[NamedColor::Foreground] = Some(self.foreground.into());
-        colors[NamedColor::Background] = Some(self.background.into());
-        colors[NamedColor::Cursor] = Some(self.cursor.into());
-        colors
-    }
 }
 
 impl Default for Palette {
@@ -270,8 +192,6 @@ impl Default for Palette {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alacritty_terminal::term::color::Colors;
-    use alacritty_terminal::vte::ansi::{Color, NamedColor};
 
     #[test]
     fn the_sixteen_named_colours_are_all_different() {
@@ -315,50 +235,17 @@ mod tests {
     }
 
     #[test]
-    fn a_colour_given_in_full_is_used_as_it_is() {
-        let palette = Palette::new();
-        let colour = Color::Spec(alacritty_terminal::vte::ansi::Rgb { r: 1, g: 2, b: 3 });
-        assert_eq!(palette.resolve(colour, false, &Colors::default()), Rgb::new(1, 2, 3));
-    }
-
-    #[test]
-    fn bold_text_in_a_named_colour_is_drawn_in_the_bright_one() {
-        let palette = Palette::new();
-        let plain = palette.resolve(Color::Named(NamedColor::Red), false, &Colors::default());
-        let bold = palette.resolve(Color::Named(NamedColor::Red), true, &Colors::default());
-        assert_eq!(plain, palette.indexed(1));
-        assert_eq!(bold, palette.indexed(9), "bold red is bright red");
-    }
-
-    #[test]
-    fn a_colour_a_program_has_changed_wins_over_the_default() {
-        let palette = Palette::new();
-        let mut overrides = Colors::default();
-        overrides[1_usize] = Some(alacritty_terminal::vte::ansi::Rgb { r: 9, g: 9, b: 9 });
-        assert_eq!(
-            palette.resolve(Color::Indexed(1), false, &overrides),
-            Rgb::new(9, 9, 9),
-            "the program asked for a different red, so it gets one"
-        );
-    }
-
-    #[test]
     fn dim_text_is_darker_than_ordinary_text() {
         let palette = Palette::new();
-        let ordinary =
-            palette.resolve(Color::Named(NamedColor::Foreground), false, &Colors::default());
-        let dim =
-            palette.resolve(Color::Named(NamedColor::DimForeground), false, &Colors::default());
+        let dim = palette.dimmed(palette.foreground);
+        let ordinary = palette.foreground;
         assert!(dim.r < ordinary.r && dim.g < ordinary.g && dim.b < ordinary.b);
     }
 
     #[test]
-    fn the_table_handed_over_holds_every_colour() {
-        let palette = Palette::new();
-        let colors = palette.as_colors();
-        for index in 0..=255_usize {
-            assert!(colors[index].is_some(), "colour {index} should have a value");
-        }
-        assert_eq!(colors[NamedColor::Background], Some(palette.background.into()));
+    fn dim_text_on_a_light_ground_moves_towards_the_ground() {
+        let palette = Palette::light();
+        let dim = palette.dimmed(palette.foreground);
+        assert!(dim.r > palette.foreground.r, "lighter than the ink, so it reads as quieter");
     }
 }

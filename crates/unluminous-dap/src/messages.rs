@@ -633,7 +633,7 @@ fn read_reverse_request(value: &Value) -> Message {
 /// client can supply one**, and the specification makes it optional for exactly this reason: a
 /// pseudoconsole hands back a console rather than a child, so a client that runs the program through
 /// one often cannot say which process it became. Unluminous is one of those — `unluminous_terminal::Session`
-/// owns a ConPTY and alacritty's pty layer does not surface the child — so it answers `success: true`
+/// owns a ConPTY and does not hand the child's process id out — so it answers `success: true`
 /// with no id, which is what lldb-dap's own comm-file scheme and js-debug both expect.
 ///
 /// A command that could not be started is `success: false` with a sentence, and the adapter then

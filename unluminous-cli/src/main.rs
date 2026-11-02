@@ -58,7 +58,8 @@ fn run(words: &[String]) -> i32 {
     // **Before the catalogue, because this is not a command.** A terminal node that is coming back showing
     // what was on it starts `unluminous-cli --replay-screen <file> -- <shell> [args]`, which prints the
     // remembered screen and then becomes the shell. It is here, in the program that does four things and no
-    // more, for one measured reason: `alacritty_terminal` gives a pseudoconsole's child null standard handles,
+    // more, for one measured reason: the terminal gives a pseudoconsole's child no standard handles (alacritty did,
+    // and Termoil's `termoil-pty` does the same since `task-2489`),
     // and Windows fills those in from the console for a **console** program and not for a windows subsystem
     // one — so the window's own binary printed nothing at all, and neither did the shell it started.
     // `unluminous_terminal::restore` owns both ends of the shape, and §3 of

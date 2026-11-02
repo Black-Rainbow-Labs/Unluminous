@@ -11,8 +11,9 @@ name = "unluminous_terminal"
 path = "src/lib.rs"
 
 [dependencies]
-alacritty_terminal.workspace = true
-polling.workspace = true
+termoil-vt.workspace = true
+termoil-pty.workspace = true
+termoil-input.workspace = true
 unicode-width.workspace = true
 
 # `tcgetpgrp`, and nothing else: the one question that answers what program a terminal is really talking to,

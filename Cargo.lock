@@ -181,31 +181,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "alacritty_terminal"
-version = "0.26.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59"
-dependencies = [
- "base64 0.22.1",
- "bitflags 2.13.1",
- "home",
- "libc",
- "log",
- "miow",
- "parking_lot",
- "piper",
- "polling",
- "regex-automata",
- "rustix 1.1.4",
- "rustix-openpty",
- "serde",
- "signal-hook",
- "unicode-width",
- "vte",
- "windows-sys 0.59.0",
-]
-
-[[package]]
 name = "allocator-api2"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2658,15 +2633,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "home"
-version = "0.5.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc627f471c528ff0c4a49e1d5e60450c8f6461dd6d10ba9dcd3a61d3dff7728d"
-dependencies = [
- "windows-sys 0.61.2",
-]
-
-[[package]]
 name = "html5ever"
 version = "0.39.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3747,15 +3713,6 @@ dependencies = [
  "libc",
  "log",
  "wasi",
- "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "miow"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "536bfad37a309d62069485248eeaba1e8d9853aaf951caaeaed0585a95346f08"
-dependencies = [
  "windows-sys 0.61.2",
 ]
 
@@ -5790,16 +5747,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
-name = "signal-hook"
-version = "0.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2a0c28ca5908dbdbcd52e6fdaa00358ab88637f8ab33e1f188dd510eb44b53d"
-dependencies = [
- "libc",
- "signal-hook-registry",
-]
-
-[[package]]
 name = "signal-hook-registry"
 version = "1.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6417,6 +6364,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06794f8f6c5c898b3275aebefa6b8a1cb24cd2c6c79397ab15774837a0bc5755"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "termoil-input"
+version = "1.4.1"
+source = "git+https://github.com/Black-Rainbow-Labs/Termoil.git?rev=afd13a812cd7f99195fd7d8ac1cd7bc4ac03ea60#afd13a812cd7f99195fd7d8ac1cd7bc4ac03ea60"
+
+[[package]]
+name = "termoil-pty"
+version = "1.4.1"
+source = "git+https://github.com/Black-Rainbow-Labs/Termoil.git?rev=afd13a812cd7f99195fd7d8ac1cd7bc4ac03ea60#afd13a812cd7f99195fd7d8ac1cd7bc4ac03ea60"
+dependencies = [
+ "libc",
+ "rustix 1.1.4",
+ "rustix-openpty",
+ "windows 0.62.2",
+]
+
+[[package]]
+name = "termoil-vt"
+version = "1.4.1"
+source = "git+https://github.com/Black-Rainbow-Labs/Termoil.git?rev=afd13a812cd7f99195fd7d8ac1cd7bc4ac03ea60#afd13a812cd7f99195fd7d8ac1cd7bc4ac03ea60"
+dependencies = [
+ "base64 0.22.1",
+ "flate2",
+ "lz4_flex",
+ "memchr",
+ "png 0.17.16",
+ "regex",
+ "simdutf8",
 ]
 
 [[package]]
@@ -7156,9 +7133,10 @@ dependencies = [
 name = "unluminous-terminal"
 version = "1.23.0"
 dependencies = [
- "alacritty_terminal",
  "libc",
- "polling",
+ "termoil-input",
+ "termoil-pty",
+ "termoil-vt",
  "unicode-width",
  "windows-sys 0.61.2",
 ]
@@ -7346,20 +7324,6 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
-
-[[package]]
-name = "vte"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd"
-dependencies = [
- "arrayvec",
- "bitflags 2.13.1",
- "cursor-icon",
- "log",
- "memchr",
- "serde",
-]
 
 [[package]]
 name = "walkdir"

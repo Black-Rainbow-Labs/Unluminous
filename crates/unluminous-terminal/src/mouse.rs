@@ -1,31 +1,72 @@
 //! Telling a program about the mouse.
 //!
 //! A program that has asked for mouse reporting, which `claude` does, expects a click inside it to arrive
-//! as an escape sequence rather than selecting text. Two encodings are in use and both are here, because a
-//! program chooses which it wants: the older one from X10, which cannot describe a column past 223, and
-//! SGR, which can and which every recent program asks for.
+//! as an escape sequence rather than selecting text. The encoding is Termoil's (`termoil_input`, `task-2489`),
+//! which writes every form a program can ask for: the X10 and normal tracking modes, button and any motion,
+//! and the default, UTF-8, SGR, urxvt and SGR pixel encodings. A program chooses; this module only encodes.
 //!
 //! Holding shift always selects locally instead of reporting, which is the convention every terminal
 //! follows and the only way to copy out of a program that has taken over the mouse. That decision is the
-//! window's; this module only encodes.
+//! window's.
+
+use termoil_input::{
+    encode_mouse, Modifiers as InputModifiers, MouseButton, MouseEncoding, MouseEvent,
+    MouseEventKind, MouseModes, MouseTracking,
+};
 
 /// What the program has asked for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct MouseMode {
-    /// Report a press and a release.
+    /// Report presses only, with no modifiers (mode 9).
+    pub x10: bool,
+    /// Report a press and a release (mode 1000).
     pub report_click: bool,
-    /// Report movement while a button is held.
+    /// Report movement while a button is held (mode 1002).
     pub drag: bool,
-    /// Report movement even with no button held.
+    /// Report movement even with no button held (mode 1003).
     pub motion: bool,
-    /// Use the SGR encoding rather than the older one.
+    /// Use the SGR encoding rather than the older one (mode 1006).
     pub sgr: bool,
+    /// SGR with pixel positions (mode 1016). Reported in cells times the cell size, which is what Unluminous has.
+    pub sgr_pixels: bool,
+    /// The urxvt encoding (mode 1015).
+    pub urxvt: bool,
+    /// The older encoding with UTF-8 coded positions (mode 1005).
+    pub utf8: bool,
 }
 
 impl MouseMode {
     /// True when a click should be reported rather than starting a selection.
     pub fn reports_clicks(&self) -> bool {
-        self.report_click || self.drag || self.motion
+        self.x10 || self.report_click || self.drag || self.motion
+    }
+
+    /// The modes as Termoil's encoder reads them. The most permissive tracking mode the program set wins, and the
+    /// most capable encoding.
+    fn input(&self) -> MouseModes {
+        let tracking = if self.motion {
+            MouseTracking::AnyEvent
+        } else if self.drag {
+            MouseTracking::ButtonEvent
+        } else if self.report_click {
+            MouseTracking::Normal
+        } else if self.x10 {
+            MouseTracking::X10
+        } else {
+            MouseTracking::Off
+        };
+        let encoding = if self.sgr_pixels {
+            MouseEncoding::SgrPixels
+        } else if self.sgr {
+            MouseEncoding::Sgr
+        } else if self.urxvt {
+            MouseEncoding::Urxvt
+        } else if self.utf8 {
+            MouseEncoding::Utf8
+        } else {
+            MouseEncoding::Default
+        };
+        MouseModes { tracking, encoding }
     }
 }
 
@@ -40,14 +81,13 @@ pub enum Button {
 }
 
 impl Button {
-    fn number(self) -> u8 {
+    fn input(self) -> MouseButton {
         match self {
-            Button::Left => 0,
-            Button::Middle => 1,
-            Button::Right => 2,
-            // The wheel is reported as buttons 64 and 65.
-            Button::WheelUp => 64,
-            Button::WheelDown => 65,
+            Button::Left => MouseButton::Left,
+            Button::Middle => MouseButton::Middle,
+            Button::Right => MouseButton::Right,
+            Button::WheelUp => MouseButton::WheelUp,
+            Button::WheelDown => MouseButton::WheelDown,
         }
     }
 }
@@ -61,18 +101,18 @@ pub struct Modifiers {
 }
 
 impl Modifiers {
-    fn bits(&self) -> u8 {
+    fn input(&self) -> InputModifiers {
         let mut bits = 0;
         if self.shift {
-            bits |= 4;
+            bits |= InputModifiers::SHIFT.0;
         }
         if self.alt {
-            bits |= 8;
+            bits |= InputModifiers::ALT.0;
         }
         if self.control {
-            bits |= 16;
+            bits |= InputModifiers::CTRL.0;
         }
-        bits
+        InputModifiers(bits)
     }
 }
 
@@ -83,6 +123,10 @@ pub enum Kind {
     Release,
     Drag,
 }
+
+/// The size of one cell in pixels that a pixel position report counts in. Unluminous reports where in a cell
+/// the pointer is no finer than the cell, so the corner of the cell is what is said.
+const PIXELS_A_CELL: (u32, u32) = (8, 16);
 
 /// The bytes that tell the program about one mouse event.
 ///
@@ -97,35 +141,26 @@ pub fn report(
     column: usize,
     modifiers: Modifiers,
 ) -> Option<Vec<u8>> {
-    if !mode.reports_clicks() {
-        return None;
-    }
-    if kind == Kind::Drag && !(mode.drag || mode.motion) {
-        return None;
-    }
     let wheel = matches!(button, Button::WheelUp | Button::WheelDown);
     // The wheel has no release, and reporting one would look like a second turn.
     if wheel && kind != Kind::Press {
         return None;
     }
-    let mut code = button.number() + modifiers.bits();
-    if kind == Kind::Drag {
-        code += 32;
-    }
-    let (row, column) = (row + 1, column + 1);
-
-    if mode.sgr {
-        let last = if kind == Kind::Release { 'm' } else { 'M' };
-        return Some(format!("\x1b[<{code};{column};{row}{last}").into_bytes());
-    }
-
-    // The older encoding adds 32 to everything and puts it in one byte each, so a column past 223 cannot be
-    // said at all. Nothing is sent rather than a position that is wrong.
-    if row + 32 > 255 || column + 32 > 255 {
-        return None;
-    }
-    let button_byte = if kind == Kind::Release { 3 + modifiers.bits() } else { code };
-    Some(vec![0x1b, b'[', b'M', 32 + button_byte, (32 + column) as u8, (32 + row) as u8])
+    let event = MouseEvent {
+        kind: match kind {
+            Kind::Press => MouseEventKind::Press,
+            Kind::Release => MouseEventKind::Release,
+            Kind::Drag => MouseEventKind::Motion,
+        },
+        button: button.input(),
+        col: column as u32,
+        row: row as u32,
+        pixel_x: column as u32 * PIXELS_A_CELL.0,
+        pixel_y: row as u32 * PIXELS_A_CELL.1,
+        mods: modifiers.input(),
+    };
+    let mut out = Vec::new();
+    encode_mouse(&event, &mode.input(), None, &mut out).then_some(out)
 }
 
 #[cfg(test)]
@@ -133,7 +168,13 @@ mod tests {
     use super::*;
 
     fn sgr() -> MouseMode {
-        MouseMode { report_click: true, drag: true, motion: false, sgr: true }
+        MouseMode {
+            report_click: true,
+            drag: true,
+            motion: false,
+            sgr: true,
+            ..MouseMode::default()
+        }
     }
 
     fn text(bytes: Vec<u8>) -> String {
@@ -190,7 +231,13 @@ mod tests {
         let dragging =
             report(sgr(), Kind::Drag, Button::Left, 1, 1, Modifiers::default()).expect("a drag");
         assert_eq!(text(dragging), "ESC [<32;2;2M");
-        let clicks_only = MouseMode { report_click: true, drag: false, motion: false, sgr: true };
+        let clicks_only = MouseMode {
+            report_click: true,
+            drag: false,
+            motion: false,
+            sgr: true,
+            ..MouseMode::default()
+        };
         assert_eq!(report(clicks_only, Kind::Drag, Button::Left, 1, 1, Modifiers::default()), None);
     }
 
@@ -206,7 +253,13 @@ mod tests {
 
     #[test]
     fn the_older_encoding_puts_the_position_in_one_byte_each() {
-        let old = MouseMode { report_click: true, drag: false, motion: false, sgr: false };
+        let old = MouseMode {
+            report_click: true,
+            drag: false,
+            motion: false,
+            sgr: false,
+            ..MouseMode::default()
+        };
         let bytes =
             report(old, Kind::Press, Button::Left, 4, 9, Modifiers::default()).expect("a press");
         assert_eq!(bytes, vec![0x1b, b'[', b'M', 32, 32 + 10, 32 + 5]);
@@ -214,7 +267,13 @@ mod tests {
 
     #[test]
     fn the_older_encoding_says_nothing_rather_than_something_wrong_past_its_limit() {
-        let old = MouseMode { report_click: true, drag: false, motion: false, sgr: false };
+        let old = MouseMode {
+            report_click: true,
+            drag: false,
+            motion: false,
+            sgr: false,
+            ..MouseMode::default()
+        };
         assert_eq!(report(old, Kind::Press, Button::Left, 0, 300, Modifiers::default()), None);
         // The same click in SGR is fine, because it counts in numbers rather than in bytes.
         let bytes = report(sgr(), Kind::Press, Button::Left, 0, 300, Modifiers::default())

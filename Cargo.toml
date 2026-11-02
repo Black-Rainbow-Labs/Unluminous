@@ -95,7 +95,7 @@ serde_json = "1.0"
 # `services::control` already keeps for the control channel.
 ureq = { version = "3.4", default-features = false, features = ["native-tls"] }
 # The Database plugin's client, and the four crates it needs that are not already in the tree by
-# another route. `sha2` arrives through `wry`, `base64` through `alacritty_terminal`, `native-tls`
+# another route. `sha2` arrives through `wry`, `base64` through `termoil-vt`, `native-tls`
 # through `ureq` and `getrandom` through several — so naming them here costs nothing new, and the
 # whole PostgreSQL client adds `hmac` and `md-5`. See `tasks/task-1777-database-plugin-tdd.md` §2.1
 # for the count and for why `tokio-postgres` was refused.
@@ -179,12 +179,13 @@ image = { version = "0.25", default-features = false, features = [
 ] }
 rfd = "0.17"
 muda = "0.19"
-alacritty_terminal = "0.26"
-# The three types `alacritty_terminal::tty::EventedReadWrite` names in its own signatures, and nothing else.
-# `task-1950` puts a wrapper between `EventLoop` and the pseudoterminal so the bytes a shell writes can be read
-# for the sequence it reports its own folder with, and a wrapper cannot implement a trait without naming the
-# types in it. It is already in the tree: `alacritty_terminal` depends on it, so this adds no crate at all.
-polling = "3.8"
+# The terminal emulator, the pseudoterminal and the key and mouse encoding, from Termoil (`task-2489`).
+# Black Rainbow Labs' own terminal, split so another program can embed it; `unluminous-terminal` is the one
+# crate that names these. A git dependency pinned to a commit for the reason `rux` is: a release must not
+# depend on a folder on one machine. `tasks/task-2489-termoil-tdd.md` is the design.
+termoil-vt = { git = "https://github.com/Black-Rainbow-Labs/Termoil.git", rev = "afd13a812cd7f99195fd7d8ac1cd7bc4ac03ea60" }
+termoil-pty = { git = "https://github.com/Black-Rainbow-Labs/Termoil.git", rev = "afd13a812cd7f99195fd7d8ac1cd7bc4ac03ea60" }
+termoil-input = { git = "https://github.com/Black-Rainbow-Labs/Termoil.git", rev = "afd13a812cd7f99195fd7d8ac1cd7bc4ac03ea60" }
 unicode-width = "0.2"
 winresource = "0.1"
 windows-sys = { version = "0.61", features = [

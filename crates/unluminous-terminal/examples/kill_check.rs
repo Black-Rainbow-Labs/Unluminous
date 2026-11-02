@@ -4,12 +4,13 @@
 //!
 //! **Why this exists.** `task-1907` duplicates the pseudoterminal master in `Session::spawn` so that
 //! `Session::foreground` can ask what is running, and the Codex Sol review of that change raised the obvious
-//! worry: on Unix `Reaper::kill` does nothing, so if ending a program depended on the pseudoterminal closing,
-//! a second descriptor held open would stop it — and a run the person had stopped would go on running.
+//! worry: if ending a program depended on the pseudoterminal closing, a second descriptor held open would stop
+//! it — and a run the person had stopped would go on running.
 //!
-//! Measured, it does not: `alacritty_terminal`'s own `impl Drop for Pty` sends `SIGHUP` to the child **by
-//! process id** rather than relying on the descriptor closing, so a duplicate makes no difference. What this
-//! printed with the duplicate held and the session deliberately kept alive, which is the run tile's own case:
+//! Measured, it does not. Since `task-2489` the pseudoterminal is Termoil's, and `Pty::kill` sends `SIGKILL` to
+//! the child's whole process group **by id** rather than relying on the descriptor closing, so a duplicate makes
+//! no difference. What this printed with the duplicate held and the session deliberately kept alive, which is the
+//! run tile's own case (measured on `alacritty_terminal`, whose `Drop` sent `SIGHUP` by process id the same way):
 //!
 //! ```text
 //! before kill, matching processes: 46992

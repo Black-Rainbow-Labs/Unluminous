@@ -1,37 +1,42 @@
-//! One terminal: a shell in a pseudoterminal, and the emulator that reads what it writes.
+//! One terminal: a program in a pseudoterminal, and the emulator that reads what it writes.
 //!
-//! This is the one file that knows `alacritty_terminal` exists. Everything above it works on [`Screen`],
-//! so a change to that crate's interface is a change to this file and nothing else.
+//! This is the one file that knows Termoil exists (`task-2489`). Everything above it works on [`Screen`], so a
+//! change to Termoil's interface is a change to this file, [`crate::keys`], [`crate::mouse`] and
+//! [`crate::palette`], and nothing else. `tasks/task-2489-termoil-tdd.md` is the design.
 //!
 //! How the pieces fit, and where each one runs:
 //!
-//! - `tty::new` opens the pseudoterminal and starts the shell.
-//! - `Term` holds the grid, the scrollback, the alternate screen and the modes. It lives behind a
-//!   `FairMutex` because two threads reach it.
-//! - `EventLoop` runs on a thread of its own, reads the pseudoterminal, parses the escape sequences and
-//!   updates `Term`. Unluminous's own code never touches that thread.
-//! - `Notifier` writes bytes to the shell and tells it when the size changed.
-//! - Anything the emulation cannot deal with on its own, such as a program asking for the window title or
-//!   writing to the clipboard, arrives as an event on a channel and is dealt with in [`Session::pump`] on
-//!   the window's thread.
+//! - `termoil_pty::Pty` opens the pseudoterminal and starts the program, in a job object on Windows and in a
+//!   process group of its own on Unix, so killing the session ends everything the program started.
+//! - `termoil_vt::Terminal` holds the screens, the scrollback, the modes and the palette. It is a plain value
+//!   with no thread of its own, and it lives behind a `Mutex` because two threads reach it.
+//! - The **reader thread** reads the pseudoterminal, passes every byte through [`crate::reported::Scanner`],
+//!   applies the bytes to the terminal in slices, hands the terminal's replies to the writer, queues its events
+//!   and wakes the window.
+//! - The **writer thread** writes what the window sends, so a program with a full input pipe never stops the
+//!   window drawing.
+//! - The **exit watcher** asks the pseudoterminal whether the program has ended, and records how.
+//! - Anything the window has to act on, such as a title, the bell or a program writing to the clipboard, is
+//!   dealt with in [`Session::pump`] on the window's thread.
 //!
 //! A session can also be built with no pseudoterminal at all, with [`Session::detached`], and fed bytes
 //! directly with [`Session::feed`]. That is what makes the screen testable: a test writes
 //! `ESC [ 31 m hello` and asserts that the first five cells are red, with no shell, no thread and no
 //! waiting.
 
-use std::sync::mpsc::Receiver;
-use std::sync::Arc;
+use std::io::{Read, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
 
-use alacritty_terminal::event::{Event, EventListener, Notify, OnResize, WindowSize};
-use alacritty_terminal::event_loop::{EventLoop, Msg, Notifier};
-use alacritty_terminal::grid::{Dimensions, Scroll};
-use alacritty_terminal::index::{Column, Line, Point, Side};
-use alacritty_terminal::selection::{Selection, SelectionType};
-use alacritty_terminal::sync::FairMutex;
-use alacritty_terminal::term::cell::Flags;
-use alacritty_terminal::term::{Config, Term, TermMode};
-use alacritty_terminal::vte::ansi::{CursorShape as VteCursorShape, Processor};
+use termoil_pty::{ExitStatus, Pty, PtySize, SpawnOptions};
+use termoil_vt::cell::Wide;
+use termoil_vt::modes::Mode as VtMode;
+use termoil_vt::page::Page;
+use termoil_vt::pagelist::{PageList, ScrollbackLimit};
+use termoil_vt::selection::{Selection, SelectionMode, DEFAULT_WORD_SEPARATORS};
+use termoil_vt::style::{attr, Color, Rgb as VtRgb, Style};
+use termoil_vt::terminal::{CursorShape as VtCursorShape, DynamicColors, Event};
+use termoil_vt::{Terminal, TerminalConfig};
 
 use crate::keys::Mode;
 
@@ -44,12 +49,28 @@ use crate::keys::Mode;
 /// slower to notice and the ordinary frame asks nothing.
 pub const FOLDER_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
 use crate::mouse::MouseMode;
-use crate::palette::Palette;
-use crate::reap::Reaper;
+use crate::palette::{Palette, Rgb};
 use crate::screen::{Cursor, CursorShape, Screen, ScreenCell};
 
 /// How many lines of output are kept above the top of the screen.
 pub const SCROLLBACK: usize = 10_000;
+
+/// How many bytes the reader thread reads at once, and the most it applies to the terminal under one lock.
+///
+/// Termoil's own figure (`termoil-app`'s `SessionOptions::shell`): large enough that a flood of output is a few
+/// locks a frame, small enough that the window never waits long for one.
+const READ_CHUNK: usize = 64 << 10;
+
+/// How often the exit watcher asks whether the program has ended.
+const EXIT_POLL: std::time::Duration = std::time::Duration::from_millis(50);
+
+/// How long after the program has ended its end is reported.
+///
+/// **What a program wrote just before it ended has to reach the screen first.** On Windows the console host
+/// writes to the pipe on its own frame, and on a busy machine a program's only line arrived after the program had
+/// gone (`task-2353`). The reader goes on reading whatever the watcher says, so a line that is later still reaches
+/// the screen anyway; this is only how long the tab waits before it says the program stopped.
+const EXIT_GRACE: std::time::Duration = std::time::Duration::from_millis(100);
 
 /// How wide and tall the grid is, in cells and in points.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,29 +93,24 @@ impl Size {
         self.cell_height = height.round().max(1.0) as u16;
         self
     }
-}
 
-impl Dimensions for Size {
-    fn total_lines(&self) -> usize {
-        self.rows
+    /// The columns as Termoil counts them, which is a `u16`.
+    fn cols(&self) -> u16 {
+        self.columns.min(u16::MAX as usize) as u16
     }
 
-    fn screen_lines(&self) -> usize {
-        self.rows
+    /// The rows as Termoil counts them.
+    fn rows_u16(&self) -> u16 {
+        self.rows.min(u16::MAX as usize) as u16
     }
 
-    fn columns(&self) -> usize {
-        self.columns
-    }
-}
-
-impl From<Size> for WindowSize {
-    fn from(size: Size) -> Self {
-        WindowSize {
-            num_lines: size.rows as u16,
-            num_cols: size.columns as u16,
-            cell_width: size.cell_width,
-            cell_height: size.cell_height,
+    /// What the pseudoterminal is told: the cells and the area they cover in pixels.
+    fn pty(&self) -> PtySize {
+        PtySize {
+            cols: self.cols(),
+            rows: self.rows_u16(),
+            pixel_width: self.cols().saturating_mul(self.cell_width),
+            pixel_height: self.rows_u16().saturating_mul(self.cell_height),
         }
     }
 }
@@ -150,185 +166,31 @@ impl std::fmt::Debug for SessionSettings {
 /// function, and the caller's function is the one that knows about egui.
 pub type Waker = Arc<dyn Fn() + Send + Sync + 'static>;
 
-/// A pseudoterminal with [`crate::reported::Scanner`] reading everything on its way out of it.
+/// What the threads behind a session share with the window's thread.
+struct Shared {
+    /// The terminal's events, queued by the reader for [`Session::pump`].
+    events: Mutex<Vec<Event>>,
+    /// Set once the program has ended and its end has been recorded.
+    exited: AtomicBool,
+    /// How it ended, when that could be read.
+    exit: Mutex<Option<ExitStatus>>,
+}
+
+/// Locks a mutex, carrying on with the data if a thread panicked while it held it.
 ///
-/// **Why the stream is read here and not in the emulator.** `Session::pump` sees *events*, which is what the
-/// emulation could not deal with itself, and `vte`'s `osc_dispatch` has no case for `OSC 7` or `OSC 9;9` and no
-/// hook to add one — it logs them as unhandled. The bytes themselves reach nothing else in Unluminous: a session
-/// with a shell is read by `EventLoop` on a thread of its own, which is the sentence at the top of this file.
-///
-/// `EventLoop` is generic over its pseudoterminal, so this sits between the two and reads every byte on its way
-/// through. `type Reader = Self`, because `EventedReadWrite::reader` hands back a borrow and a wrapper cannot
-/// own a reader it is only lent — being the reader is what makes this safe rather than a lifetime laundered
-/// through a raw pointer. What it costs is one pass over each chunk on the reader thread, which is the state
-/// machine in [`crate::reported::Scanner`] and no allocation for a stream that reports nothing.
-///
-/// **It also covers two faults in how `alacritty_terminal` sees a program end on Windows** (`task-2353`). Both
-/// were found by a run tab whose program prints one line and stops, on a machine busy enough that the threads
-/// involved ran late:
-///
-/// - **An exit before the loop starts was never seen.** The child watcher waits on the program from the moment
-///   the pseudoconsole is made, but it wakes the loop only once the loop has registered with its poller. A
-///   program that ended first put its exit into a channel nothing was woken to read, and the tab said `running`
-///   for ever. `register` asks whether the program has already ended and wakes the loop itself.
-/// - **What the console host wrote after the exit was lost.** On an exit the loop drains the pipe with one
-///   read that does not wait and stops reading. The console host writes to the pipe on its own frame, and on a
-///   busy machine a program's only line arrived after the program had gone, so the tab was empty. Waiting for
-///   the pipe to go quiet for a quarter of a second was tried and was not enough. So on Windows
-///   `next_child_event` tells the window the program ended and does **not** tell the loop: the loop goes on
-///   reading the pipe until the session is closed, which shuts it down, so whatever arrives later reaches the
-///   screen however late it is.
-struct Watching<T> {
-    inner: T,
-    scanner: crate::reported::Scanner,
-    /// Where the program's end is reported, because on Windows the loop is not told it.
-    #[cfg_attr(not(windows), allow(dead_code))]
-    proxy: Proxy,
-    /// The program's process handle, as a number so this stays `Send`, for asking whether it has ended.
-    #[cfg(windows)]
-    child: usize,
-    /// Whether the program's end has been reported, so it is reported once.
-    #[cfg_attr(not(windows), allow(dead_code))]
-    ended: bool,
-}
-
-impl Watching<alacritty_terminal::tty::Pty> {
-    fn new(
-        inner: alacritty_terminal::tty::Pty,
-        scanner: crate::reported::Scanner,
-        proxy: Proxy,
-    ) -> Self {
-        Self {
-            #[cfg(windows)]
-            child: inner.child_watcher().raw_handle() as usize,
-            inner,
-            scanner,
-            proxy,
-            ended: false,
-        }
-    }
-}
-
-/// Whether the process behind `handle` has ended, asked without waiting.
-#[cfg(windows)]
-fn has_ended(handle: usize) -> bool {
-    use windows_sys::Win32::Foundation::WAIT_OBJECT_0;
-    use windows_sys::Win32::System::Threading::WaitForSingleObject;
-    // SAFETY: the handle belongs to the pseudoterminal this value owns, which is alive while it is.
-    handle != 0 && unsafe { WaitForSingleObject(handle as _, 0) } == WAIT_OBJECT_0
-}
-
-impl<T: alacritty_terminal::tty::EventedReadWrite> std::io::Read for Watching<T> {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let read = self.inner.reader().read(buf)?;
-        self.scanner.read(&buf[..read]);
-        Ok(read)
-    }
-}
-
-impl<T: alacritty_terminal::tty::EventedReadWrite> alacritty_terminal::tty::EventedReadWrite
-    for Watching<T>
-{
-    type Reader = Self;
-    type Writer = T::Writer;
-
-    /// Register as the loop asks, and then wake the loop for a program that has already ended.
-    ///
-    /// The watcher's own wake is posted only to a poller it has been given, which happens in the call
-    /// below, so an exit before it was posted nowhere. Asking after the call covers every order: an exit
-    /// after it is posted by the watcher, and one before it is posted here. If the watcher's callback has
-    /// not yet run when the loop wakes, the loop finds no exit, carries on, and is woken again by the
-    /// watcher, which by then has the poller.
-    unsafe fn register(
-        &mut self,
-        poller: &Arc<polling::Poller>,
-        event: polling::Event,
-        mode: polling::PollMode,
-    ) -> std::io::Result<()> {
-        unsafe { self.inner.register(poller, event, mode) }?;
-        #[cfg(windows)]
-        if has_ended(self.child) {
-            use polling::os::iocp::{CompletionPacket, PollerIocpExt};
-            let wake = polling::Event::readable(alacritty_terminal::tty::PTY_CHILD_EVENT_TOKEN);
-            let _ = poller.post(CompletionPacket::new(wake));
-        }
-        Ok(())
-    }
-
-    fn reregister(
-        &mut self,
-        poller: &Arc<polling::Poller>,
-        event: polling::Event,
-        mode: polling::PollMode,
-    ) -> std::io::Result<()> {
-        self.inner.reregister(poller, event, mode)
-    }
-
-    fn deregister(&mut self, poller: &Arc<polling::Poller>) -> std::io::Result<()> {
-        self.inner.deregister(poller)
-    }
-
-    fn reader(&mut self) -> &mut Self::Reader {
-        self
-    }
-
-    fn writer(&mut self) -> &mut Self::Writer {
-        self.inner.writer()
-    }
-}
-
-impl<T: alacritty_terminal::tty::EventedPty> alacritty_terminal::tty::EventedPty for Watching<T> {
-    /// On Windows, the program's end is sent to the window here and the loop is never told it.
-    ///
-    /// What the window receives is what the loop would have sent: `ChildExit` with the code, or `Exit` when no
-    /// code could be read. The loop goes on reading the pipe, so output the console host writes after the exit
-    /// still reaches the screen, and it stops when the session is closed. Everywhere else the loop is told, as
-    /// before: a Unix pseudoterminal holds what the program wrote, so the loop's one drain reads all of it.
-    fn next_child_event(&mut self) -> Option<alacritty_terminal::tty::ChildEvent> {
-        let event = self.inner.next_child_event();
-        #[cfg(windows)]
-        if let Some(alacritty_terminal::tty::ChildEvent::Exited(status)) = event {
-            // A second wake can find the channel closed, which the watcher reports as another exit.
-            if !std::mem::replace(&mut self.ended, true) {
-                match status {
-                    Some(status) => self.proxy.send_event(Event::ChildExit(status)),
-                    None => self.proxy.send_event(Event::Exit),
-                }
-            }
-            return None;
-        }
-        event
-    }
-}
-
-impl<T: OnResize> OnResize for Watching<T> {
-    fn on_resize(&mut self, size: WindowSize) {
-        self.inner.on_resize(size);
-    }
-}
-
-/// Passes the emulator's events to the window's thread, and wakes it.
-#[derive(Clone)]
-struct Proxy {
-    events: std::sync::mpsc::Sender<Event>,
-    waker: Waker,
-}
-
-impl EventListener for Proxy {
-    fn send_event(&self, event: Event) {
-        // A send that fails means the window has gone, which is not worth reporting: the session is about
-        // to be dropped.
-        let _ = self.events.send(event);
-        (self.waker)();
-    }
+/// A panic on the reader thread must not take every later frame of the window down with it.
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// One terminal.
 pub struct Session {
-    term: Arc<FairMutex<Term<Proxy>>>,
-    events: Receiver<Event>,
-    /// Writes to the shell. Absent in a detached session, which has no shell.
-    notifier: Option<Notifier>,
+    term: Arc<Mutex<Terminal>>,
+    shared: Arc<Shared>,
+    /// The pseudoterminal and its program. Absent in a detached session, and once the program was killed.
+    pty: Option<Arc<Mutex<Option<Pty>>>>,
+    /// Hands bytes to the writer thread. Absent in a detached session, which has no program.
+    writer: Option<std::sync::mpsc::Sender<Vec<u8>>>,
     /// What was sent to a session with **no shell behind it**, kept so a test can read it back.
     ///
     /// A detached session is what every screenshot test of a terminal uses, and until `task-1914` a key
@@ -338,40 +200,34 @@ pub struct Session {
     ///
     /// `None` for a session with a program, where the bytes go to the program and holding a second copy
     /// of everything typed would be a transcript nobody asked for.
-    sent_while_detached: Option<std::sync::Mutex<Vec<u8>>>,
-    /// Ends the shell, and everything the shell started, when this session goes.
-    ///
-    /// Shutting the reader loop down drops the pseudoterminal, which is a hangup on Unix and only a
-    /// closed pipe on Windows — and a closed pipe is not noticed by a program that is not reading
-    /// it. `task-1769` found 119 shells left behind that way. See [`crate::reap`].
-    reaper: Reaper,
-    /// Whether the program has written anything to the grid yet.
-    ///
-    /// **What [`Session::replay`] is gated on.** Putting a screen back is safe only before the program's own
-    /// output has started arriving; afterwards it would land in the middle of whatever the program is drawing.
+    sent_while_detached: Option<Mutex<Vec<u8>>>,
     /// The pseudoterminal, kept only to be asked what program is in the foreground of it.
     ///
     /// See [`crate::foreground`]: a node's recorded command is what it was *given*, and what is running in it
     /// is a different question that only the terminal can answer.
     master: crate::foreground::Master,
-    /// Parses bytes given to [`Session::feed`]. Only a detached session has one; a session with a shell
-    /// has the reader thread's parser instead.
-    parser: Option<Processor>,
     size: Size,
     /// The palette this session's emulator was last given. A `Cell`, because drawing is `&self` and is
     /// where a theme change is noticed: see [`Session::follow_the_palette`].
     palette: std::cell::Cell<Palette>,
+    /// The serial of the row at the top of the view while it is scrolled back, and `None` at the bottom.
+    ///
+    /// **A serial rather than a count of rows**, so output that arrives while somebody reads the history does
+    /// not move what they are reading: the rows under the view are the same rows, and only how far they are
+    /// from the bottom has changed. `termoil_vt` leaves the view to its host. See [`Session::display_offset`].
+    scroll_anchor: Option<u64>,
+    /// The selection, and whether it was made on the alternate screen.
+    ///
+    /// Its two ends are pins in one screen's page list, so it means nothing on the other screen.
+    selection: Option<Picked>,
     /// The title the program set, which is what the tab is named after.
     title: String,
     /// What the program asked to be put on the clipboard, for the window to hand over.
     clipboard: Option<String>,
-    /// False once the shell has stopped.
+    /// False once the program has stopped.
     running: bool,
     /// What the program exited with, once it has. `None` while it is still running, and `None`
     /// after [`Session::kill`], because a program Unluminous killed did not choose a code.
-    ///
-    /// `Event::ChildExit` has always carried it and the terminal has always thrown it away; a run
-    /// panel is the first thing that has a use for it, which is `task-1683` §5.1.
     exit_code: Option<i32>,
     /// How many times the program rang the bell, which a test can check.
     bells: usize,
@@ -390,7 +246,7 @@ pub struct Session {
     /// **The half of "where the shell is" the operating system cannot answer**, which is PowerShell: measured
     /// again on `task-1950`, `Set-Location C:\jason\dev\ai-service` leaves the process's own current
     /// directory where it was, and running a native command after it does not move it either. See
-    /// [`crate::reported`] for the sequences this is filled in from and `Watching` for where they are read.
+    /// [`crate::reported`] for the sequences this is filled in from; the reader thread reads them.
     reported: crate::reported::Reported,
     /// When the process was last asked where it is, and what it said.
     ///
@@ -409,115 +265,75 @@ pub struct Session {
     given: String,
 }
 
-impl Session {
-    /// Start a shell in a pseudoterminal.
-    pub fn spawn(settings: &SessionSettings, size: Size, waker: Waker) -> std::io::Result<Self> {
-        // `TERM` and `COLORTERM` tell the program what it is talking to. Without them a program either
-        // draws nothing clever or draws it wrongly.
-        //
-        // **Once for the life of the process, and that is a correctness rule rather than a saving.**
-        // `setup_env` calls `std::env::set_var`, which rewrites the process's whole environment
-        // block, and that is not safe to do while another thread is reading it -- which is exactly
-        // what `CreateProcess` does. It is not only the tests that can be in that position:
-        // `unluminous_chat::agent` starts its program on a worker thread, so a terminal tab opened
-        // at the moment an agent is starting is two threads, one writing the environment and one
-        // reading it. Rust 2024 makes `set_var` `unsafe` for this reason.
-        //
-        // **This was not the cause of anything that has been seen**, and it is worth saying so:
-        // `task-1922` reached for it while chasing a child with a missing variable, and that turned
-        // out to be the launching shell's own environment rather than a race. It stays because
-        // calling it once is right on its own terms and the values it writes are the same every
-        // time, so calling it once changes nothing about what any child is told.
-        static ONCE: std::sync::Once = std::sync::Once::new();
-        ONCE.call_once(alacritty_terminal::tty::setup_env);
+/// A selection, with the screen it was made on.
+struct Picked {
+    selection: Selection,
+    /// Made on the alternate screen.
+    alternate: bool,
+    /// A plain selection that has only been pressed, not dragged, selects nothing: a click is not a selection.
+    extended: bool,
+}
 
+impl Session {
+    /// Start a program in a pseudoterminal.
+    pub fn spawn(settings: &SessionSettings, size: Size, waker: Waker) -> std::io::Result<Self> {
         let shell = settings.shell.clone().unwrap_or_else(default_shell);
         // **The name is what the caller says it is, whatever is really started.** A node restoring its screen
         // starts `unluminous-cli --replay-screen …`, which prints the screen and then becomes the shell, and a
         // tab named after the program that was spawned would be a tab named `unluminous-cli`. See
         // `SessionSettings::name`.
-        let name = program_name(&shell);
-        let name = settings.name.clone().unwrap_or(name);
         let started = program_name(&shell);
-        let args = settings.args.clone();
-        let options = alacritty_terminal::tty::Options {
-            shell: Some(alacritty_terminal::tty::Shell::new(shell, args)),
+        let name = settings.name.clone().unwrap_or_else(|| started.clone());
+        let options = SpawnOptions {
+            program: shell,
+            args: settings.args.clone(),
             // Through `paths::plain`, because a verbatim Windows path is a path `cmd.exe` will not
             // start in: it says so and starts in `C:\Windows` instead, which is a terminal that opens,
             // works, and is quietly in the wrong folder. That module says where such a path comes from.
-            working_directory: settings.working_directory.as_deref().map(crate::paths::plain),
-            // Not the one that matters, and it is left alone deliberately: `tty::new` does not
-            // read it. The draining is decided by the fourth argument to `EventLoop::new` below,
-            // which is where alacritty's own configuration eventually puts this value and which is
-            // where the comment about it is.
-            drain_on_exit: false,
-            // Laid over what this process already has rather than replacing it: `tty::new` starts
-            // the child from Unluminous's own environment and applies these on top.
-            env: settings.env.iter().cloned().collect(),
-            #[cfg(target_os = "windows")]
-            escape_args: true,
+            cwd: settings.working_directory.as_deref().map(crate::paths::plain),
+            env: environment(&settings.env),
+            size: size.pty(),
+            // A login shell is what a terminal application opens by itself. Every caller here names the program
+            // it wants, and a run configuration's `node server.js` is not a login.
+            login: false,
         };
-        let (sender, events) = std::sync::mpsc::channel();
-        let proxy = Proxy { events: sender, waker };
-        let palette = Palette::current();
-        let mut term = Term::new(config(), &size, proxy.clone());
-        term.colors_mut(&palette);
-        let term = Arc::new(FairMutex::new(term));
-
-        // A window identifier of zero: Unluminous has one window in a process, so there is nothing to tell
-        // apart. It reaches the shell as `WINDOWID`.
-        let pty = alacritty_terminal::tty::new(&options, size.into(), 0)?;
-        // Before the pseudoterminal is handed over, take the program it started into a job of its
-        // own, so that closing the terminal ends it whatever it happens to be doing at the time.
-        // Borrowed rather than owned: `child_watcher` keeps using the same handle to report the exit.
-        #[cfg(windows)]
-        let reaper = Reaper::adopt(pty.child_watcher().raw_handle());
-        #[cfg(not(windows))]
-        let reaper = Reaper::detached();
-        // **And the pseudoterminal itself, so what is running in it can be asked for later.** This is the one
-        // window in which it is reachable: `tty::new` has answered and `EventLoop::new` below moves the `Pty`
-        // into the loop, after which — as `Session::kill` records — there is no handle left here at all. A
-        // duplicate rather than the same descriptor, because the loop owns and closes the original.
-        //
-        // What it is for is `Session::foreground`: a node on the canvas records the *command it was given*,
-        // and a person adds a plain terminal node and then types `claude` into the shell, so a canvas that
-        // knew only the command came back as a shell whatever had been running in it. `task-1907`.
+        let mut pty = Pty::spawn_with_config(&options, &conpty())?;
+        let reader = pty.take_reader().ok_or_else(|| std::io::Error::other("no pty reader"))?;
+        let output = pty.take_writer().ok_or_else(|| std::io::Error::other("no pty writer"))?;
+        // **The pseudoterminal itself, so what is running in it can be asked for later.** What it is for is
+        // `Session::foreground`: a node on the canvas records the *command it was given*, and a person adds a
+        // plain terminal node and then types `claude` into the shell, so a canvas that knew only the command
+        // came back as a shell whatever had been running in it. `task-1907`.
         let master = crate::foreground::Master::duplicating(&pty);
-        // The fourth argument is `drain_on_exit`, and it is `true` so that **what a program wrote
-        // just before it ended is read**. With it false the reader loop leaves the pseudoterminal
-        // alone the moment the child exits, and a program that prints one line and stops has all of
-        // its output still sitting in the pipe — so the screen comes out empty. Whether it did was
-        // a race: a slow enough program was read on an earlier turn of the loop and looked fine,
-        // which is what made this look like it worked in `unluminous-terminal`'s own tests.
-        //
-        // The terminal never showed it, because a shell does not exit a millisecond after printing
-        // and its tab closes when it goes. `task-1683`'s run tile is where it became visible:
-        // `node hello.js` finished with an empty tab, which is the one thing a run tile must not
-        // do, since the whole point of it is that the evidence outlives the process. It costs one
-        // non-blocking read of a pipe that already has its end-of-file on it.
-        //
-        // The identically named `tty::Options::drain_on_exit` above is **not** this one; `tty::new`
-        // does not read it.
+
+        let palette = Palette::current();
+        let term = Arc::new(Mutex::new(new_terminal(size, &palette)));
+        let shared = Arc::new(Shared {
+            events: Mutex::new(Vec::new()),
+            exited: AtomicBool::new(false),
+            exit: Mutex::new(None),
+        });
+        let writer = spawn_writer(output)?;
         // **Every byte the emulator is given is read on its way there**, for the one thing the emulator does
-        // not answer: which folder the shell says it is in. See `Watching` and [`crate::reported`]. It is
-        // always on, because a shell that reports its folder is followed and one that does not is unchanged.
+        // not answer: which folder the shell says it is in. See [`crate::reported`]. It is always on, because a
+        // shell that reports its folder is followed and one that does not is unchanged.
         let reported = crate::reported::Reported::new();
-        let pty =
-            Watching::new(pty, crate::reported::Scanner::new(reported.clone()), proxy.clone());
-        let event_loop = EventLoop::new(term.clone(), proxy, pty, true, false)?;
-        let notifier = Notifier(event_loop.channel());
-        event_loop.spawn();
+        let scanner = crate::reported::Scanner::new(reported.clone());
+        let pty = Arc::new(Mutex::new(Some(pty)));
+        spawn_reader(reader, scanner, term.clone(), writer.clone(), shared.clone(), waker.clone())?;
+        spawn_exit_watcher(pty.clone(), shared.clone(), waker)?;
 
         Ok(Self {
             term,
-            events,
-            notifier: Some(notifier),
+            shared,
+            pty: Some(pty),
+            writer: Some(writer),
             sent_while_detached: None,
-            reaper,
             master,
-            parser: None,
             size,
             palette: std::cell::Cell::new(palette),
+            scroll_anchor: None,
+            selection: None,
             title: String::new(),
             clipboard: None,
             running: true,
@@ -537,22 +353,22 @@ impl Session {
     /// so what it draws is what a real shell writing those bytes would draw, and it is the same on every
     /// run because nothing is waited for.
     pub fn detached(size: Size) -> Self {
-        let (sender, events) = std::sync::mpsc::channel();
-        let waker: Waker = Arc::new(|| {});
-        let proxy = Proxy { events: sender, waker };
         let palette = Palette::current();
-        let mut term = Term::new(config(), &size, proxy);
-        term.colors_mut(&palette);
         Self {
-            term: Arc::new(FairMutex::new(term)),
-            events,
-            notifier: None,
-            sent_while_detached: Some(std::sync::Mutex::new(Vec::new())),
-            reaper: Reaper::detached(),
+            term: Arc::new(Mutex::new(new_terminal(size, &palette))),
+            shared: Arc::new(Shared {
+                events: Mutex::new(Vec::new()),
+                exited: AtomicBool::new(false),
+                exit: Mutex::new(None),
+            }),
+            pty: None,
+            writer: None,
+            sent_while_detached: Some(Mutex::new(Vec::new())),
             master: crate::foreground::Master::detached(),
-            parser: Some(Processor::new()),
             size,
             palette: std::cell::Cell::new(palette),
+            scroll_anchor: None,
+            selection: None,
             title: String::new(),
             clipboard: None,
             running: true,
@@ -569,12 +385,24 @@ impl Session {
 
     /// Run `bytes` through the emulator as if the shell had written them. Only a detached session.
     pub fn feed(&mut self, bytes: &[u8]) {
-        let Some(parser) = self.parser.as_mut() else {
+        if self.pty.is_some() {
             return;
+        }
+        self.apply_here(bytes);
+    }
+
+    /// Apply bytes to the terminal on this thread, and deal with what they asked for at once.
+    ///
+    /// The replies a detached session makes go to [`Self::send`], which keeps them, as the replies of a session
+    /// with a program go to the program.
+    fn apply_here(&mut self, bytes: &[u8]) {
+        let (replies, events) = {
+            let mut term = lock(&self.term);
+            term.advance(bytes);
+            (term.take_replies(), term.take_events())
         };
-        let mut term = self.term.lock();
-        parser.advance(&mut *term, bytes);
-        drop(term);
+        self.send(replies);
+        lock(&self.shared.events).extend(events);
         self.pump();
     }
 
@@ -619,9 +447,10 @@ impl Session {
     /// `unluminous_cli::restore`, and §2 of `tasks/task-1912-a-session-and-a-terminal-tdd.md` for why there is
     /// no other place it survives.
     pub fn draw_over_the_terminal(&mut self, bytes: &[u8]) {
-        let mut parser: Processor = Processor::new();
-        let mut term = self.term.lock();
-        parser.advance(&mut *term, bytes);
+        let mut term = lock(&self.term);
+        term.advance(bytes);
+        // What the bytes asked the terminal to answer is not the program's business: it did not ask.
+        term.take_replies();
     }
 
     /// The name for the tab: the title the program set, or the program's own name.
@@ -679,21 +508,23 @@ impl Session {
     /// The polite stop is the interrupt byte down the pty, which is `send` and belongs to the
     /// caller — `task-1683` §5.3 gives it a grace of two seconds. This is what comes after it.
     ///
-    /// `alacritty_terminal` keeps the pseudoterminal inside its `EventLoop`, so there is no child
-    /// handle here to terminate; shutting the loop down drops the pty, which is a hangup on Unix
-    /// and `ClosePseudoConsole` on Windows. That is exactly the path [`Session::drop`] already
-    /// takes when a terminal tab is closed, so this is not a new way of stopping a program — it is
-    /// the same one, without dropping the session. The grid stays, because this `Session` holds its
-    /// own reference to it, which is what lets a run tab go on showing the output of a program that
-    /// is no longer there.
+    /// `Pty::kill` ends the job object on Windows and the process group on Unix, so the program and everything
+    /// it started go together, whatever the program was in the middle of: closing a pseudoconsole is only a
+    /// closed pipe on Windows, which a busy program does not notice, and `task-1769` found 119 shells left
+    /// behind that way. The pseudoterminal is then dropped, which ends the reader. The grid stays, because this
+    /// `Session` holds its own reference to it, which is what lets a run tab go on showing the output of a
+    /// program that is no longer there.
     pub fn kill(&mut self) {
-        if let Some(notifier) = self.notifier.take() {
-            let _ = notifier.0.send(Msg::Shutdown);
+        if let Some(pty) = self.pty.take() {
+            let taken = lock(&pty).take();
+            if let Some(mut pty) = taken {
+                let _ = pty.kill();
+                let_go_of(pty);
+            }
         }
-        // And the program itself, because the shutdown above only closes the pseudoterminal, which
-        // on Windows a program in the middle of something does not notice. `task-1769`.
-        self.reaper.kill();
+        self.writer = None;
         self.running = false;
+        self.exit_code = None;
     }
 
     pub fn bells(&self) -> usize {
@@ -704,8 +535,7 @@ impl Session {
     ///
     /// **What is running, not what it was started with**, which are different things: a terminal node on the
     /// canvas records the command it was *given*, and a person adds a plain terminal node and then types
-    /// `claude` into the shell. See [`crate::foreground`] for the mechanism, and for why Windows answers
-    /// nothing.
+    /// `claude` into the shell. See [`crate::foreground`] for the mechanism on each platform.
     ///
     /// A program that has ended answers nothing, because a terminal with no foreground group is not running
     /// anything — so a node whose program stopped before the window closed is not recorded as still having it.
@@ -733,14 +563,9 @@ impl Session {
         if let Some(reported) = self.reported.folder() {
             return Some(reported);
         }
-        // **The process's answer is asked on a clock** (`task-1984` A4). The comment above this used
-        // to say no question is asked of the disk here, and the fallback ends in `path.is_dir()` —
-        // reached through `OpenProcess`, `NtQueryInformationProcess` and two `ReadProcessMemory`
-        // calls on Windows, and `/proc/<pid>/cwd` on Linux. `remember_the_project` asks this for
-        // every terminal tab on every frame, so an idle window with three shells open was nine
-        // kernel round trips and three `stat`s twice a second, for an answer that changes when
-        // somebody types `cd`. `WATCH_INTERVAL` is what the folder watch and the adapter search are
-        // already asked on.
+        // **The process's answer is asked on a clock** (`task-1984` A4): it is kernel round trips and a
+        // `stat`, `remember_the_project` asks this for every terminal tab on every frame, and the answer
+        // changes when somebody types `cd`.
         let mut asked = self.process_folder_asked.borrow_mut();
         let fresh = asked.as_ref().is_some_and(|(when, _)| when.elapsed() < FOLDER_INTERVAL);
         if !fresh {
@@ -768,57 +593,57 @@ impl Session {
         self.clipboard.take()
     }
 
-    /// Deal with everything the emulation could not deal with itself.
+    /// Deal with everything the window has to act on: the terminal's events, and the program's end.
     ///
-    /// Called once a frame, and after feeding a detached session. Some of these carry a function that
-    /// formats the answer the program is waiting for, which is written straight back to it.
+    /// Called once a frame, and after feeding a detached session.
     pub fn pump(&mut self) {
-        while let Ok(event) = self.events.try_recv() {
+        let events = std::mem::take(&mut *lock(&self.shared.events));
+        for event in events {
             match event {
                 Event::Title(title) => self.title = title,
-                Event::ResetTitle => self.title.clear(),
-                Event::PtyWrite(text) => self.send(text.into_bytes()),
-                Event::ColorRequest(index, formatter) => {
-                    let colour = self.palette.get().indexed(index.min(255) as u8);
-                    self.send(formatter(colour.into()).into_bytes());
-                }
-                Event::TextAreaSizeRequest(formatter) => {
-                    let answer = formatter(self.size.into());
-                    self.send(answer.into_bytes());
-                }
-                Event::ClipboardStore(_, text) => self.clipboard = Some(text),
-                // Reading the clipboard on a program's say so is not answered. A program that could read
-                // the clipboard could read a password out of it, and nothing Unluminous runs needs to.
-                Event::ClipboardLoad(_, _) => {}
                 Event::Bell => self.bells += 1,
-                // The code the program chose, kept rather than discarded: it is what a run tab
-                // writes in its strip once the program has gone. `Exit` carries none, and neither
-                // does a status with no code — a program killed by a signal on Unix.
-                Event::ChildExit(status) => {
-                    self.exit_code = status.code();
-                    self.running = false;
+                Event::ClipboardWrite { data, .. } => {
+                    self.clipboard = Some(String::from_utf8_lossy(&data).into_owned());
                 }
-                Event::Exit => self.running = false,
-                // **`Wakeup` is the reader thread saying the grid changed**, which the window needs no more
-                // from than the frame it is already drawing: the waker has asked for one.
-                Event::Wakeup => {}
-                Event::MouseCursorDirty | Event::CursorBlinkingChange => {}
+                // A program asking whether the ground is light or dark (`CSI ? 996 n`). Answered here because the
+                // palette is the window thread's, which the reader thread cannot read.
+                Event::ColorSchemeQuery => {
+                    let replies = {
+                        let mut term = lock(&self.term);
+                        term.reply_color_scheme(!self.palette.get().light);
+                        term.take_replies()
+                    };
+                    self.send(replies);
+                }
+                // Reading the clipboard on a program's say so is never asked for: `allow_osc52_read` is off, so a
+                // program that could read a password out of the clipboard is not answered.
+                _ => {}
             }
+        }
+        // The program's end, which the exit watcher records after the last of its output has had time to
+        // arrive. A killed program has already been marked stopped by `kill`, with no code.
+        if self.running && self.shared.exited.load(Ordering::Acquire) {
+            self.running = false;
+            self.exit_code = match *lock(&self.shared.exit) {
+                Some(ExitStatus::Code(code)) => Some(code),
+                // A program ended by a signal on Unix chose no code, and neither did one whose status could not
+                // be read.
+                Some(ExitStatus::Signal(_)) | None => None,
+            };
         }
     }
 
-    /// Write bytes to the shell.
+    /// Write bytes to the program.
     pub fn send(&self, bytes: Vec<u8>) {
         if bytes.is_empty() {
             return;
         }
         if let Some(kept) = &self.sent_while_detached {
-            if let Ok(mut kept) = kept.lock() {
-                kept.extend_from_slice(&bytes);
-            }
+            lock(kept).extend_from_slice(&bytes);
         }
-        if let Some(notifier) = &self.notifier {
-            notifier.notify(bytes);
+        if let Some(writer) = &self.writer {
+            // A send that fails means the writer has stopped because the program has gone.
+            let _ = writer.send(bytes);
         }
     }
 
@@ -828,25 +653,27 @@ impl Session {
     pub fn sent_to_a_detached_session(&self) -> String {
         self.sent_while_detached
             .as_ref()
-            .and_then(|kept| kept.lock().ok())
-            .map(|kept| String::from_utf8_lossy(&kept).into_owned())
+            .map(|kept| String::from_utf8_lossy(&lock(kept)).into_owned())
             .unwrap_or_default()
     }
 
     /// What the program has asked for, which decides what some keys send.
     pub fn mode(&self) -> Mode {
-        let term = self.term.lock();
-        let mode = *term.mode();
+        let term = lock(&self.term);
         Mode {
-            application_cursor: mode.contains(TermMode::APP_CURSOR),
-            bracketed_paste: mode.contains(TermMode::BRACKETED_PASTE),
+            application_cursor: term.mode(VtMode::CursorKeys),
+            bracketed_paste: term.mode(VtMode::BracketedPaste),
+            application_keypad: term.mode(VtMode::KeypadApplication),
+            backspace_sends_bs: term.mode(VtMode::BackarrowSendsBs),
+            modify_other_keys: term.modify_other_keys(),
+            kitty_flags: term.screen().kitty_keyboard.flags(),
         }
     }
 
     /// True when the program is drawing a screen of its own, which is what `claude` and a text editor in a
     /// terminal do. There is no scrollback on that screen.
     pub fn on_alternate_screen(&self) -> bool {
-        self.term.lock().mode().contains(TermMode::ALT_SCREEN)
+        lock(&self.term).is_alt_screen()
     }
 
     /// True when the program has asked to be told about clicks.
@@ -856,27 +683,29 @@ impl Session {
 
     /// What the program has asked to be told about the mouse, and in which encoding.
     pub fn mouse_mode(&self) -> MouseMode {
-        let term = self.term.lock();
-        let mode = *term.mode();
+        let term = lock(&self.term);
         MouseMode {
-            report_click: mode.contains(TermMode::MOUSE_REPORT_CLICK),
-            drag: mode.contains(TermMode::MOUSE_DRAG),
-            motion: mode.contains(TermMode::MOUSE_MOTION),
-            sgr: mode.contains(TermMode::SGR_MOUSE),
+            x10: term.mode(VtMode::MouseX10),
+            report_click: term.mode(VtMode::MouseNormal),
+            drag: term.mode(VtMode::MouseButtonEvent),
+            motion: term.mode(VtMode::MouseAnyEvent),
+            sgr: term.mode(VtMode::MouseSgr),
+            sgr_pixels: term.mode(VtMode::MouseSgrPixels),
+            urxvt: term.mode(VtMode::MouseUrxvt),
+            utf8: term.mode(VtMode::MouseUtf8),
         }
     }
 
     /// True when the program is drawing its own screen and has asked for the wheel to arrive as arrow
     /// keys, which is what makes scrolling work in a program that has no scrollback of its own.
     pub fn alternate_scroll(&self) -> bool {
-        let term = self.term.lock();
-        let mode = *term.mode();
-        mode.contains(TermMode::ALT_SCREEN) && mode.contains(TermMode::ALTERNATE_SCROLL)
+        let term = lock(&self.term);
+        term.is_alt_screen() && term.mode(VtMode::AlternateScroll)
     }
 
     /// True when the program has asked to be told when the terminal gains or loses the keyboard.
     pub fn wants_focus_reports(&self) -> bool {
-        self.term.lock().mode().contains(TermMode::FOCUS_IN_OUT)
+        lock(&self.term).mode(VtMode::FocusEvents)
     }
 
     /// Change the size, telling the emulator and the program on the far side together.
@@ -884,22 +713,15 @@ impl Session {
     /// Both have to be told, and they have to be told the same thing: the emulator so the grid is the right
     /// shape, and the program through `SIGWINCH` so it draws in the right places. Telling only one is the
     /// fault that leaves a full screen program drawing into the wrong half of the tile.
+    ///
     /// **A program that has ended is not told.** `ResizePseudoConsole` makes the console host
     /// re-render its buffer, and once the child has gone that buffer is empty — so telling it
     /// wipes everything the program wrote, on the frame after it finished.
     ///
     /// Resizing one that has only just **started** loses its output too, and that half is not
     /// fixed here because it cannot be: a pseudoconsole resized while its child is writing its
-    /// first line loses that line, measured at six times out of six. The answer is not to resize
-    /// it at all, which means opening it at the size it is going to be drawn at — see
-    /// `UnluminousApp::run_grid_size`.
-    ///
-    /// That is what `task-1683` found: `cmd /c echo something` left an empty run tab **every**
-    /// time, and `node hello.js` two runs in three. Both write, exit within a millisecond, and are
-    /// then resized by the first frame the tile draws, because a session is spawned at a guessed
-    /// size and told the real one once there is a rectangle to measure. A program still running
-    /// survived it, because there the host re-renders a buffer that still has the text in it —
-    /// which is why a dev server looked fine and made this look like a race.
+    /// first line loses that line. The answer is not to resize it at all, which means opening it at the size
+    /// it is going to be drawn at — see `UnluminousApp::run_grid_size`.
     ///
     /// The emulator is still resized, so the finished output reflows to the width the tile is now
     /// and the view is not stuck at the shape it happened to end at. There is simply nothing on the
@@ -909,12 +731,20 @@ impl Session {
             return;
         }
         self.size = size;
-        self.term.lock().resize(size);
+        {
+            let mut term = lock(&self.term);
+            term.set_cell_pixels(size.cell_width, size.cell_height);
+            term.resize(size.cols(), size.rows_u16());
+        }
+        // A reflow gives the rows new serials, so a view scrolled back by serial would land anywhere.
+        self.scroll_anchor = None;
         if !self.running {
             return;
         }
-        if let Some(notifier) = self.notifier.as_mut() {
-            notifier.on_resize(size.into());
+        if let Some(pty) = &self.pty {
+            if let Some(pty) = lock(pty).as_ref() {
+                let _ = pty.resize(size.pty());
+            }
         }
     }
 
@@ -923,12 +753,33 @@ impl Session {
         if lines == 0 {
             return;
         }
-        self.term.lock().scroll_display(Scroll::Delta(lines));
+        let term = lock(&self.term);
+        let offset = self.display_offset(&term) as i64;
+        let pages = &term.screen().pages;
+        let wanted = (offset + lines as i64).clamp(0, pages.history_rows() as i64) as usize;
+        self.scroll_anchor = (wanted > 0).then(|| pages.serial_of(pages.active_y(0) - wanted));
     }
 
     /// Put the view back at the newest output, which typing does.
     pub fn scroll_to_bottom(&mut self) {
-        self.term.lock().scroll_display(Scroll::Bottom);
+        self.scroll_anchor = None;
+    }
+
+    /// How many rows above the bottom the view is, worked out from where it was anchored.
+    ///
+    /// A row that has been pruned out of the scrollback puts the view at the oldest row there is. The alternate
+    /// screen has no history, so it is always at the bottom.
+    fn display_offset(&self, term: &Terminal) -> usize {
+        let Some(serial) = self.scroll_anchor else { return 0 };
+        if term.is_alt_screen() {
+            return 0;
+        }
+        let pages = &term.screen().pages;
+        let history = pages.history_rows();
+        match pages.y_of(serial) {
+            Some(y) => pages.active_y(0).saturating_sub(y).min(history),
+            None => history,
+        }
     }
 
     /// Throw away everything on the screen and in the history, and put the cursor at the top left.
@@ -936,62 +787,80 @@ impl Session {
     /// The run tile's third button — `task-1683` §6.1 — and the one thing about a run that is not
     /// about the program: a program that has finished cannot be asked to clear its own screen, and
     /// one that is still going would take an escape sequence as *input* rather than as a command.
-    /// So the emulator is told directly, which is the same call the sequence would have made had a
-    /// program written it, rather than bytes being pushed at a shell that may not be listening.
+    /// So the emulator is given the sequences directly, which is the same change they would have made had a
+    /// program written them, rather than bytes being pushed at a shell that may not be listening.
     pub fn clear(&mut self) {
-        use alacritty_terminal::vte::ansi::{ClearMode, Handler as _};
-        let mut term = self.term.lock();
-        term.clear_screen(ClearMode::All);
-        term.clear_screen(ClearMode::Saved);
-        term.goto(0, 0);
-        term.scroll_display(Scroll::Bottom);
+        self.clear_selection();
+        {
+            let mut term = lock(&self.term);
+            term.advance(b"\x1b[H\x1b[2J\x1b[3J");
+            term.take_replies();
+        }
+        self.scroll_anchor = None;
     }
 
     /// Send the interrupt byte, which reaches the program as Ctrl+C.
     ///
     /// The polite half of `task-1683` §5.3, named here rather than written out at each of the
     /// places that stop a run — the tile's button, the widget's, the menu and the command line —
-    /// because four copies of one byte is four chances to send a different one. The encoding is
-    /// `keys`', which has turned Ctrl+C into `0x03` since the terminal was written.
+    /// because four copies of one byte is four chances to send a different one. It is always the
+    /// byte, whatever keyboard protocol the program asked for: this is a signal, not a key press.
     pub fn interrupt(&self) {
-        let press = crate::keys::KeyPress::new(
-            crate::keys::Key::Character('c'),
-            crate::keys::Modifiers::control(),
-        );
-        if let Some(bytes) = crate::keys::encode(press, self.mode()) {
-            self.send(bytes);
-        }
+        self.send(vec![0x03]);
     }
 
-    /// Start a selection at a cell. `line` is a row of the screen, counted from the top.
+    /// Start a selection at a cell. `row` is a row of the screen, counted from the top.
     pub fn begin_selection(&mut self, row: usize, column: usize, kind: SelectionKind) {
-        let point = self.point_at(row, column);
-        let side = Side::Left;
-        let mut term = self.term.lock();
-        let selection = match kind {
-            SelectionKind::Simple => Selection::new(SelectionType::Simple, point, side),
-            SelectionKind::Word => Selection::new(SelectionType::Semantic, point, side),
-            SelectionKind::Line => Selection::new(SelectionType::Lines, point, side),
+        self.clear_selection();
+        let mode = match kind {
+            SelectionKind::Simple => SelectionMode::Char,
+            SelectionKind::Word => SelectionMode::Word,
+            SelectionKind::Line => SelectionMode::Line,
         };
-        term.selection = Some(selection);
+        let mut term = lock(&self.term);
+        let (y, col) = self.point_at(&term, row, column);
+        let alternate = term.is_alt_screen();
+        let selection = Selection::new(&mut term.screen_mut().pages, mode, y, col);
+        self.selection =
+            Some(Picked { selection, alternate, extended: kind != SelectionKind::Simple });
     }
 
     /// Drag a selection out to a cell.
     pub fn extend_selection(&mut self, row: usize, column: usize) {
-        let point = self.point_at(row, column);
-        let mut term = self.term.lock();
-        if let Some(selection) = term.selection.as_mut() {
-            selection.update(point, Side::Right);
+        let mut term = lock(&self.term);
+        let (y, col) = self.point_at(&term, row, column);
+        let alternate = term.is_alt_screen();
+        if let Some(picked) = self.selection.as_mut() {
+            if picked.alternate == alternate {
+                picked.selection.update(&mut term.screen_mut().pages, y, col);
+                picked.extended = true;
+            }
         }
     }
 
     pub fn clear_selection(&mut self) {
-        self.term.lock().selection = None;
+        let Some(picked) = self.selection.take() else { return };
+        let mut term = lock(&self.term);
+        // The pins belong to the screen the selection was made on. If that is no longer the one showing, its
+        // page list may have gone with the alternate screen, and nothing is held there to let go of.
+        if picked.alternate == term.is_alt_screen() {
+            picked.selection.release(&mut term.screen_mut().pages);
+        }
     }
 
     /// What is selected, as text, ready for the clipboard.
     pub fn selected_text(&self) -> Option<String> {
-        self.term.lock().selection_to_string().filter(|text| !text.is_empty())
+        let term = lock(&self.term);
+        let picked = self.live_selection(&term)?;
+        let text = picked.selection.text(&term.screen().pages, DEFAULT_WORD_SEPARATORS);
+        (!text.is_empty()).then_some(text)
+    }
+
+    /// The selection, when there is one on the screen that is showing.
+    fn live_selection(&self, term: &Terminal) -> Option<&Picked> {
+        self.selection
+            .as_ref()
+            .filter(|picked| picked.extended && picked.alternate == term.is_alt_screen())
     }
 
     /// Everything the program has written that the terminal still holds: the scrollback and then the
@@ -1006,48 +875,25 @@ impl Session {
     /// `most_recent` bounds the answer to that many lines from the end. `None` is everything, which
     /// [`SCROLLBACK`] already bounds.
     pub fn written_text(&self, most_recent: Option<usize>) -> String {
-        let term = self.term.lock();
-        let columns = term.columns();
-        let screen_lines = term.screen_lines() as i32;
-        let history = term.history_size() as i32;
-        let grid = term.grid();
-        let row_text = |line: i32| {
-            let row = &grid[Line(line)];
-            let mut text = String::new();
-            for column in 0..columns {
-                let cell = &row[Column(column)];
-                if cell.flags.contains(Flags::WIDE_CHAR_SPACER) {
-                    continue;
-                }
-                text.push(cell.c);
-                if let Some(marks) = cell.zerowidth() {
-                    text.extend(marks);
-                }
-            }
-            text.trim_end().to_owned()
-        };
-
+        let term = lock(&self.term);
+        let pages = &term.screen().pages;
+        let total = pages.total_rows();
         // The last line with something on it, which is where counting back from the end starts. The
         // rows under it are the empty part of the screen rather than output — after `line60\r\n` the
         // cursor is on a fresh blank row — so a bound applied before they were dropped would spend
         // one of the lines asked for on a blank.
-        let oldest = -history;
-        let mut last = screen_lines - 1;
-        while last >= oldest && row_text(last).is_empty() {
-            last -= 1;
-        }
-        if last < oldest {
+        let Some(last) = (0..total).rev().find(|&y| !row_text(pages, y).is_empty()) else {
             return String::new();
-        }
+        };
         // Bounded before the rows are read rather than after, so a `tail` of 20 over ten thousand
         // lines of history builds twenty strings instead of ten thousand. A blank line *between* two
         // lines of output is output and is kept.
         let first = match most_recent {
             Some(0) => return String::new(),
-            Some(wanted) => (last + 1 - wanted as i32).max(oldest),
-            None => oldest,
+            Some(wanted) => (last + 1).saturating_sub(wanted),
+            None => 0,
         };
-        (first..=last).map(row_text).collect::<Vec<String>>().join("\n")
+        (first..=last).map(|y| row_text(pages, y)).collect::<Vec<String>>().join("\n")
     }
 
     /// The last `rows` rows of the scrollback **and** the screen, as one [`Screen`].
@@ -1055,186 +901,87 @@ impl Session {
     /// **What "five commands and their results" needs**, and what [`Self::snapshot`] cannot give: a snapshot is
     /// the visible grid, so a node fourteen rows tall wrote fourteen rows down and the first commands were
     /// already gone. `task-1912` measured that at 457 bytes for five commands. This is the reading
-    /// [`Self::written_text`] has always done — the grid indexes history at negative lines — with the colours
-    /// and the attributes kept, which is what makes the difference between a restored terminal and a
-    /// transcript of one.
+    /// [`Self::written_text`] does, with the colours and the attributes kept, which is what makes the difference
+    /// between a restored terminal and a transcript of one.
     ///
     /// Trailing blank rows are left in: [`crate::replay::bytes_of`] drops them, and doing it twice in two
     /// places is two rules about the same thing.
     pub fn screen_and_history(&self, rows: usize) -> Screen {
-        let mut term = self.term.lock();
+        let mut term = lock(&self.term);
         let palette = self.follow_the_palette(&mut term);
-        let columns = term.columns();
-        let screen_lines = term.screen_lines() as i32;
-        let history = term.history_size() as i32;
-        let first = (screen_lines - rows as i32).max(-history);
-        let taken = (screen_lines - first).max(0) as usize;
-        let mut screen = Screen::empty(taken, columns, palette.foreground, palette.background);
-        // The colours a program may have redefined, which `renderable_content` is the only way to reach. The
-        // grid is read directly afterwards, because `display_iter` walks the *visible* rows and the point of
-        // this is the rows behind them.
-        let colours = *term.renderable_content().colors;
-        let grid = term.grid();
-        for line in first..screen_lines {
-            let row = &grid[Line(line)];
-            let into = (line - first) as usize;
-            for column in 0..columns {
-                screen.cells[into * columns + column] =
-                    self.cell_of(&row[Column(column)], &colours);
-            }
-        }
+        let colours = Colours::of(&term, &palette);
+        let pages = &term.screen().pages;
+        let columns = pages.cols() as usize;
+        let total = pages.total_rows();
+        let first = total.saturating_sub(rows);
+        let mut screen =
+            Screen::empty(total - first, columns, colours.foreground, colours.background);
+        copy_rows(pages, first..total, &colours, &mut screen);
         screen
     }
 
     /// Move this session onto the thread's palette if the window's theme has changed since it was last
     /// drawn, and answer with the palette it is on.
     ///
-    /// The emulator holds every colour as one a program could have set, which is how `resolve` and a
-    /// program asking for the background colour both get Unluminous's answer, so a theme change has to give
-    /// the emulator the whole table again. It is done here, under the lock the drawing already takes,
-    /// rather than by the window walking every terminal it knows about: the tile, the run tile, a canvas
-    /// node and a ticket's terminal each hold sessions, and a list of the places that have to be told
-    /// is a list whose next entry is the one that forgets. `task-2215`.
-    fn follow_the_palette<T: EventListener>(&self, term: &mut Term<T>) -> Palette {
+    /// The emulator holds every colour as one a program could have set, which is how a program asking for the
+    /// background colour gets Unluminous's answer, so a theme change has to give the emulator the whole table
+    /// again. It is done here, under the lock the drawing already takes, rather than by the window walking every
+    /// terminal it knows about: the tile, the run tile, a canvas node and a ticket's terminal each hold
+    /// sessions, and a list of the places that have to be told is a list whose next entry is the one that
+    /// forgets. `task-2215`.
+    fn follow_the_palette(&self, term: &mut Terminal) -> Palette {
         let wanted = Palette::current();
         if self.palette.get() != wanted {
-            term.colors_mut(&wanted);
+            give_the_palette(term, &wanted);
             self.palette.set(wanted);
         }
         wanted
     }
 
-    /// One cell of the grid, with its colours resolved against the palette and whatever the program changed.
-    ///
-    /// Shared by [`Self::snapshot`] and [`Self::screen_and_history`], because a cell that came out looking one
-    /// way on the screen and another way in the file would be a restored terminal that is visibly not the one
-    /// somebody left.
-    fn cell_of(
-        &self,
-        cell: &alacritty_terminal::term::cell::Cell,
-        colours: &alacritty_terminal::term::color::Colors,
-    ) -> ScreenCell {
-        let flags = cell.flags;
-        let bold = flags.contains(Flags::BOLD) || flags.contains(Flags::DIM_BOLD);
-        let dim = flags.contains(Flags::DIM);
-        let palette = self.palette.get();
-        let mut foreground = palette.resolve(cell.fg, bold && !dim, colours);
-        if dim {
-            foreground = palette.dimmed(foreground);
-        }
-        let mut background = palette.resolve(cell.bg, false, colours);
-        if flags.contains(Flags::INVERSE) {
-            std::mem::swap(&mut foreground, &mut background);
-        }
-        ScreenCell {
-            // **A tab is a space on the screen** (`task-2325`). `alacritty_terminal` writes the tab character
-            // itself into the cell a tab starts from, so that a selection copied across it comes back as a tab,
-            // and leaves drawing nothing there to the painter. The painter has no glyph for it and drew a box:
-            // macOS `ls` lines its columns up with tabs, so every name had a box after it. Copying still reads
-            // the grid, not this, and keeps the tab.
-            character: match cell.c {
-                '\t' => ' ',
-                other => other,
-            },
-            marks: cell.zerowidth().map(<[char]>::to_vec).unwrap_or_default(),
-            foreground,
-            background,
-            bold,
-            italic: flags.contains(Flags::ITALIC) || flags.contains(Flags::BOLD_ITALIC),
-            underline: flags.intersects(Flags::ALL_UNDERLINES),
-            strikethrough: flags.contains(Flags::STRIKEOUT),
-            wide: flags.contains(Flags::WIDE_CHAR),
-            spacer: flags.contains(Flags::WIDE_CHAR_SPACER)
-                || flags.contains(Flags::LEADING_WIDE_CHAR_SPACER),
-            hidden: flags.contains(Flags::HIDDEN),
-        }
-    }
-
-    /// A point in the grid from a row on the screen, taking the scrollback into account.
-    fn point_at(&self, row: usize, column: usize) -> Point {
-        let term = self.term.lock();
-        let offset = term.grid().display_offset();
-        let columns = term.columns();
-        let line = Line(row as i32 - offset as i32);
-        Point::new(line, Column(column.min(columns.saturating_sub(1))))
+    /// A row and column in the page list from a row on the screen, taking the scrollback into account.
+    fn point_at(&self, term: &Terminal, row: usize, column: usize) -> (usize, u16) {
+        let pages = &term.screen().pages;
+        let top = pages.active_y(0) - self.display_offset(term);
+        let row = row.min(pages.rows() as usize - 1);
+        let column = column.min(pages.cols() as usize - 1);
+        (top + row, column as u16)
     }
 
     /// Everything the painter needs, copied out under the lock.
     ///
-    /// The lock is held for this copy and not for the drawing. See the file's own documentation for why.
+    /// The lock is held for this copy and not for the drawing, so the reader thread never waits for a frame.
     pub fn snapshot(&self) -> Screen {
-        let mut term = self.term.lock();
+        let mut term = lock(&self.term);
         let palette = self.follow_the_palette(&mut term);
-        let rows = term.screen_lines();
-        let columns = term.columns();
-        let mut screen = Screen::empty(rows, columns, palette.foreground, palette.background);
-        screen.history = term.history_size();
-
-        let content = term.renderable_content();
-        screen.scrollback = content.display_offset;
-        let colours = content.colors;
-        for indexed in content.display_iter {
-            let row = (indexed.point.line.0 + content.display_offset as i32) as usize;
-            let column = indexed.point.column.0;
-            if row >= rows || column >= columns {
-                continue;
-            }
-            // Bold text in a named colour is drawn in the bright variant, which is what every terminal does;
-            // dim text is drawn in the darker one; and inverse video swaps the two, which is how a program
-            // marks a line without changing its colours. All three are resolved in `cell_of`, so the painter
-            // has one rule — draw the background, draw the letter — and so that a cell written down for a
-            // restore is the cell that was on the screen.
-            screen.cells[row * columns + column] = self.cell_of(indexed.cell, colours);
-        }
-
-        // The cursor. Hidden while the view is scrolled back, because it is not on the screen being looked
-        // at, and hidden when the program asked for it to be.
-        let cursor = content.cursor;
-        if cursor.shape != VteCursorShape::Hidden && content.display_offset == 0 {
-            let row = (cursor.point.line.0 + content.display_offset as i32).max(0) as usize;
-            if row < rows {
-                screen.cursor = Some(Cursor {
-                    row,
-                    column: cursor.point.column.0.min(columns.saturating_sub(1)),
-                    shape: match cursor.shape {
-                        VteCursorShape::Beam => CursorShape::Beam,
-                        VteCursorShape::Underline => CursorShape::Underline,
-                        _ => CursorShape::Block,
-                    },
-                });
-            }
-        }
-
-        if let Some(range) = content.selection {
-            let start = range.start;
-            let end = range.end;
-            let first = (start.line.0 + content.display_offset as i32).max(0) as usize;
-            let last = (end.line.0 + content.display_offset as i32).max(0) as usize;
-            if first < rows {
-                let from = first * columns + start.column.0.min(columns - 1);
-                let to = (last.min(rows - 1) * columns + end.column.0.min(columns - 1) + 1)
-                    .min(screen.cells.len());
-                if to > from {
-                    screen.selection = Some(from..to);
-                }
-            }
-        }
-
+        let colours = Colours::of(&term, &palette);
+        let offset = self.display_offset(&term);
+        let pages = &term.screen().pages;
+        let rows = pages.rows() as usize;
+        let columns = pages.cols() as usize;
+        let top = pages.active_y(0) - offset;
+        let mut screen = Screen::empty(rows, columns, colours.foreground, colours.background);
+        screen.history = pages.history_rows();
+        screen.scrollback = offset;
+        copy_rows(pages, top..top + rows, &colours, &mut screen);
+        screen.cursor = cursor_of(&term, offset);
+        screen.selection = self.live_selection(&term).and_then(|picked| {
+            let range = picked.selection.range(pages, DEFAULT_WORD_SEPARATORS)?;
+            visible_range(range.start, range.end, top, rows, columns)
+        });
         screen.title = self.name().to_owned();
         screen
     }
 }
 
 impl Drop for Session {
-    /// Stop the reader thread and drop the pseudoterminal, so the shell gets a hangup rather than being
-    /// left behind with nobody reading it.
+    /// End the program and let go of the pseudoterminal, so nothing it started is left behind.
     fn drop(&mut self) {
-        if let Some(notifier) = &self.notifier {
-            let _ = notifier.0.send(Msg::Shutdown);
+        self.writer = None;
+        if let Some(pty) = self.pty.take() {
+            if let Some(pty) = lock(&pty).take() {
+                let_go_of(pty);
+            }
         }
-        // `Reaper`'s own `Drop` runs straight after this and is what actually ends the program: the
-        // hangup above is enough on Unix and is not enough on Windows. Nothing to do here — it is
-        // named so that a reader of this function knows the shell is not being left to the hangup.
     }
 }
 
@@ -1249,8 +996,369 @@ pub enum SelectionKind {
     Line,
 }
 
-fn config() -> Config {
-    Config { scrolling_history: SCROLLBACK, ..Config::default() }
+/// A terminal of `size`, holding `palette`.
+fn new_terminal(size: Size, palette: &Palette) -> Terminal {
+    let config = TerminalConfig {
+        scrollback: ScrollbackLimit { lines: Some(SCROLLBACK), ..ScrollbackLimit::default() },
+        // A program reading the clipboard could read a password out of it, and nothing Unluminous runs needs to.
+        allow_osc52_read: false,
+        version_string: format!("Unluminous({})", env!("CARGO_PKG_VERSION")),
+        ..TerminalConfig::default()
+    };
+    let mut term = Terminal::new(size.cols(), size.rows_u16(), config);
+    term.set_cell_pixels(size.cell_width, size.cell_height);
+    give_the_palette(&mut term, palette);
+    term
+}
+
+/// Give the terminal Unluminous's colours, so that a program asking what colour something is gets an answer and
+/// so that resetting a colour puts Unluminous's own back rather than xterm's.
+fn give_the_palette(term: &mut Terminal, palette: &Palette) {
+    let mut table = [VtRgb::new(0, 0, 0); 256];
+    for (index, entry) in table.iter_mut().enumerate() {
+        *entry = vt_rgb(palette.indexed(index as u8));
+    }
+    term.set_palette(table);
+    term.set_default_colors(DynamicColors {
+        foreground: Some(vt_rgb(palette.foreground)),
+        background: Some(vt_rgb(palette.background)),
+        cursor: Some(vt_rgb(palette.cursor)),
+        ..DynamicColors::default()
+    });
+}
+
+/// Unluminous's colour as Termoil's.
+fn vt_rgb(colour: Rgb) -> VtRgb {
+    VtRgb::new(colour.r, colour.g, colour.b)
+}
+
+/// Termoil's colour as Unluminous's.
+fn rgb(colour: VtRgb) -> Rgb {
+    Rgb::new(colour.r, colour.g, colour.b)
+}
+
+/// The variables every program in an Unluminous terminal is given, under the caller's own.
+///
+/// `TERM` and `COLORTERM` tell the program what it is talking to. Without them a program either draws nothing
+/// clever or draws it wrongly. `xterm-256color` rather than Termoil's own name, because a machine Unluminous is
+/// installed on has the xterm description and not Termoil's. They are set on the child rather than in
+/// Unluminous's own environment, which alacritty did through `setup_env`: rewriting the process's environment
+/// while another thread starts a program is not safe, and per child there is nothing to race.
+///
+/// A name the caller gives replaces the one here, compared without regard to case on Windows, where
+/// environment names are.
+fn environment(caller: &[(String, String)]) -> Vec<(String, String)> {
+    let same = |left: &str, right: &str| {
+        if cfg!(windows) {
+            left.eq_ignore_ascii_case(right)
+        } else {
+            left == right
+        }
+    };
+    let ours = [
+        ("TERM", "xterm-256color".to_owned()),
+        ("COLORTERM", "truecolor".to_owned()),
+        ("TERM_PROGRAM", "Unluminous".to_owned()),
+        ("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION").to_owned()),
+    ];
+    let mut env: Vec<(String, String)> = ours
+        .into_iter()
+        .filter(|(name, _)| !caller.iter().any(|(given, _)| same(given, name)))
+        .map(|(name, value)| (name.to_owned(), value))
+        .collect();
+    env.extend(caller.iter().cloned());
+    env
+}
+
+/// The Windows pseudoconsole to use: the one built into Windows.
+///
+/// Termoil ships a newer `conpty.dll` and `OpenConsole.exe` so that kitty and sixel images reach its own window.
+/// Unluminous's painter does not draw images, and `unluminous_cli::restore` was measured against the console
+/// host built into Windows, so that is the one asked for. Ignored on Unix.
+fn conpty() -> termoil_pty::ConptyConfig {
+    termoil_pty::ConptyConfig { choice: termoil_pty::ConptyChoice::Inbox, ..Default::default() }
+}
+
+/// Drop a pseudoterminal on a thread of its own.
+///
+/// Closing a pseudoconsole waits for the console host to finish, which can take tens of milliseconds, and the
+/// window's thread is where a session is dropped. Dropping `Pty` ends the job object, so the program goes with
+/// it whichever thread does it.
+fn let_go_of(pty: Pty) {
+    let spawned =
+        std::thread::Builder::new().name("unluminous pty close".into()).spawn(move || drop(pty));
+    // A thread that could not be started is no reason to keep the program: drop it here.
+    if let Err(error) = spawned {
+        drop(error);
+    }
+}
+
+/// Start the thread that writes what the window sends to the program.
+fn spawn_writer(
+    mut output: Box<dyn Write + Send>,
+) -> std::io::Result<std::sync::mpsc::Sender<Vec<u8>>> {
+    let (sender, receiver) = std::sync::mpsc::channel::<Vec<u8>>();
+    std::thread::Builder::new().name("unluminous pty writer".into()).spawn(move || {
+        for bytes in receiver {
+            if output.write_all(&bytes).and_then(|()| output.flush()).is_err() {
+                break;
+            }
+        }
+    })?;
+    Ok(sender)
+}
+
+/// Start the thread that reads the program's output into the terminal.
+///
+/// It runs until the pseudoterminal closes, which is when the session is dropped or the program killed. On
+/// Windows the pipe stays open after the program ends, so output the console host writes late still reaches the
+/// screen (`task-2353`).
+fn spawn_reader(
+    mut reader: Box<dyn Read + Send>,
+    mut scanner: crate::reported::Scanner,
+    term: Arc<Mutex<Terminal>>,
+    writer: std::sync::mpsc::Sender<Vec<u8>>,
+    shared: Arc<Shared>,
+    waker: Waker,
+) -> std::io::Result<()> {
+    std::thread::Builder::new().name("unluminous pty reader".into()).spawn(move || {
+        let mut buffer = vec![0_u8; READ_CHUNK];
+        loop {
+            let read = match reader.read(&mut buffer) {
+                Ok(0) | Err(_) => break,
+                Ok(read) => read,
+            };
+            let bytes = &buffer[..read];
+            scanner.read(bytes);
+            let (replies, events) = {
+                let mut term = lock(&term);
+                term.advance(bytes);
+                (term.take_replies(), term.take_events())
+            };
+            if !replies.is_empty() {
+                let _ = writer.send(replies);
+            }
+            if !events.is_empty() {
+                lock(&shared.events).extend(events);
+            }
+            waker();
+        }
+    })?;
+    Ok(())
+}
+
+/// Start the thread that notices the program ending.
+///
+/// The reader alone cannot tell on Windows, where the output pipe stays open until the pseudoconsole closes. So
+/// the program is asked, and its end is recorded [`EXIT_GRACE`] later, once its last output has had time to land.
+fn spawn_exit_watcher(
+    pty: Arc<Mutex<Option<Pty>>>,
+    shared: Arc<Shared>,
+    waker: Waker,
+) -> std::io::Result<()> {
+    std::thread::Builder::new().name("unluminous pty exit".into()).spawn(move || loop {
+        let status = match lock(&pty).as_mut() {
+            Some(pty) => pty.try_wait(),
+            // The session let go of the program: it was killed or dropped, and that is not an exit to report.
+            None => return,
+        };
+        match status {
+            Ok(None) => std::thread::sleep(EXIT_POLL),
+            // An error asking is read as an end with no code: the program cannot be asked about any more.
+            ended => {
+                std::thread::sleep(EXIT_GRACE);
+                *lock(&shared.exit) = ended.ok().flatten();
+                shared.exited.store(true, Ordering::Release);
+                waker();
+                return;
+            }
+        }
+    })?;
+    Ok(())
+}
+
+/// The colours a cell is resolved against: the terminal's palette, which a program may have changed, and the
+/// defaults, which a program may have changed with `OSC 10` and `OSC 11`.
+struct Colours {
+    table: [VtRgb; 256],
+    foreground: Rgb,
+    background: Rgb,
+    /// What bold text in the default colour is drawn in.
+    bright_foreground: Rgb,
+    palette: Palette,
+    /// The program asked for reverse video (`DECSCNM`).
+    reverse: bool,
+}
+
+impl Colours {
+    /// The colours in effect in `term`, on `palette`.
+    fn of(term: &Terminal, palette: &Palette) -> Self {
+        let dynamic = term.dynamic_colors();
+        let foreground = dynamic.foreground.map(rgb).unwrap_or(palette.foreground);
+        Colours {
+            table: *term.palette(),
+            foreground,
+            background: dynamic.background.map(rgb).unwrap_or(palette.background),
+            bright_foreground: if dynamic.foreground.is_some() {
+                foreground
+            } else {
+                palette.bright_foreground
+            },
+            palette: *palette,
+            reverse: term.mode(VtMode::ReverseVideo),
+        }
+    }
+
+    /// The foreground and background a cell with `style` is drawn in.
+    ///
+    /// Bold text in a named colour is drawn in the bright variant, which is what every terminal does; faint text
+    /// is drawn in the darker one; and inverse video swaps the two, which is how a program marks a line without
+    /// changing its colours. All three are resolved here, so the painter has one rule — draw the background,
+    /// draw the letter — and so that a cell written down for a restore is the cell that was on the screen.
+    fn resolve(&self, style: &Style) -> (Rgb, Rgb) {
+        let bold = style.has(attr::BOLD);
+        let faint = style.has(attr::FAINT);
+        let brighten = bold && !faint;
+        let mut foreground = match style.fg {
+            Color::Default if brighten => self.bright_foreground,
+            Color::Default => self.foreground,
+            Color::Palette(index) if brighten && index < 8 => rgb(self.table[index as usize + 8]),
+            Color::Palette(index) => rgb(self.table[index as usize]),
+            Color::Rgb(r, g, b) => Rgb::new(r, g, b),
+        };
+        if faint {
+            foreground = self.palette.dimmed(foreground);
+        }
+        let mut background = match style.bg {
+            Color::Default => self.background,
+            Color::Palette(index) => rgb(self.table[index as usize]),
+            Color::Rgb(r, g, b) => Rgb::new(r, g, b),
+        };
+        if style.has(attr::INVERSE) != self.reverse {
+            std::mem::swap(&mut foreground, &mut background);
+        }
+        (foreground, background)
+    }
+}
+
+/// Copy the rows in `range` of `pages` into `screen`, from its first row down.
+fn copy_rows(
+    pages: &PageList,
+    range: std::ops::Range<usize>,
+    colours: &Colours,
+    screen: &mut Screen,
+) {
+    let first = range.start;
+    let columns = screen.columns;
+    pages.for_rows(range, |y, page, row| {
+        let into = y - first;
+        for (column, cell) in page.cells(row).iter().enumerate().take(columns) {
+            screen.cells[into * columns + column] = cell_of(page, row, column, *cell, colours);
+        }
+    });
+}
+
+/// One cell of a page, with its colours resolved.
+///
+/// Shared by [`Session::snapshot`] and [`Session::screen_and_history`], because a cell that came out looking one
+/// way on the screen and another way in the file would be a restored terminal that is visibly not the one
+/// somebody left.
+fn cell_of(
+    page: &Page,
+    row: usize,
+    column: usize,
+    cell: termoil_vt::cell::Cell,
+    colours: &Colours,
+) -> ScreenCell {
+    let style = page.style(cell.style_id());
+    let (foreground, background) = colours.resolve(&style);
+    let marks = if cell.is_cluster() {
+        page.grapheme(page.cell_index(row, column)).to_vec()
+    } else {
+        Vec::new()
+    };
+    let wide = cell.wide();
+    ScreenCell {
+        // **A tab is a space on the screen** (`task-2325`): the painter has no glyph for one and drew a box.
+        character: match cell.char() {
+            None | Some('\t') => ' ',
+            Some(other) => other,
+        },
+        marks,
+        foreground,
+        background,
+        bold: style.has(attr::BOLD),
+        italic: style.has(attr::ITALIC),
+        underline: style.underline != termoil_vt::style::Underline::None,
+        strikethrough: style.has(attr::STRIKE),
+        wide: wide == Wide::Wide,
+        spacer: matches!(wide, Wide::SpacerTail | Wide::SpacerHead),
+        hidden: style.has(attr::INVISIBLE),
+    }
+}
+
+/// The text of row `y`, with wide character spacers skipped and the blanks at its end taken off.
+fn row_text(pages: &PageList, y: usize) -> String {
+    pages.with_row(y, |page, row| {
+        let mut text = String::new();
+        for (column, cell) in page.cells(row).iter().enumerate() {
+            if matches!(cell.wide(), Wide::SpacerTail | Wide::SpacerHead) {
+                continue;
+            }
+            match cell.char() {
+                None | Some('\t') => text.push(' '),
+                Some(character) => text.push(character),
+            }
+            if cell.is_cluster() {
+                text.extend(page.grapheme(page.cell_index(row, column)));
+            }
+        }
+        text.trim_end().to_owned()
+    })
+}
+
+/// The cursor, where the program put it, unless it is hidden or the view is scrolled away from it.
+fn cursor_of(term: &Terminal, offset: usize) -> Option<Cursor> {
+    if offset > 0 || !term.mode(VtMode::CursorVisible) {
+        return None;
+    }
+    let screen = term.screen();
+    let columns = screen.pages.cols() as usize;
+    Some(Cursor {
+        row: screen.cursor.row as usize,
+        column: (screen.cursor.col as usize).min(columns.saturating_sub(1)),
+        shape: match term.cursor_shape() {
+            VtCursorShape::Bar { .. } => CursorShape::Beam,
+            VtCursorShape::Underline { .. } => CursorShape::Underline,
+            VtCursorShape::Block { .. } | VtCursorShape::Default => CursorShape::Block,
+        },
+    })
+}
+
+/// A selected range in page list rows, as the run of screen cells the painter shades, or nothing when none of it
+/// is on the screen.
+fn visible_range(
+    start: (usize, u16),
+    end: (usize, u16),
+    top: usize,
+    rows: usize,
+    columns: usize,
+) -> Option<std::ops::Range<usize>> {
+    let bottom = top + rows;
+    if end.0 < top || start.0 >= bottom || columns == 0 {
+        return None;
+    }
+    let from = if start.0 < top {
+        0
+    } else {
+        (start.0 - top) * columns + (start.1 as usize).min(columns - 1)
+    };
+    let to = if end.0 >= bottom {
+        rows * columns
+    } else {
+        (end.0 - top) * columns + (end.1 as usize).min(columns - 1) + 1
+    };
+    (to > from).then_some(from..to)
 }
 
 /// The shell to run when none was chosen.
@@ -1312,26 +1420,6 @@ fn program_name(shell: &str) -> String {
         .file_name()
         .map(|name| name.to_string_lossy().to_string())
         .unwrap_or_else(|| shell.to_owned())
-}
-
-/// Give the emulator Unluminous's colours, so that a program asking what colour something is gets an answer and
-/// so that resetting a colour puts Unluminous's own back.
-trait WithColors {
-    fn colors_mut(&mut self, palette: &Palette);
-}
-
-impl<T: EventListener> WithColors for Term<T> {
-    fn colors_mut(&mut self, palette: &Palette) {
-        // `set_color` is one of the things an escape sequence can do, so it is on the handler trait rather
-        // than on `Term` itself.
-        use alacritty_terminal::vte::ansi::Handler as _;
-        let colours = palette.as_colors();
-        for index in 0..alacritty_terminal::term::color::COUNT {
-            if let Some(colour) = colours[index] {
-                self.set_color(index, colour);
-            }
-        }
-    }
 }
 
 #[cfg(test)]
@@ -1477,6 +1565,27 @@ mod tests {
     }
 
     #[test]
+    fn a_colour_a_program_has_changed_wins_over_the_default() {
+        let mut session = detached();
+        session.feed(b"\x1b]4;1;rgb:09/09/09\x07\x1b[31mX");
+        let cell = session.snapshot().cell(0, 0).cloned().expect("a cell");
+        assert_eq!(
+            cell.foreground,
+            crate::palette::Rgb::new(9, 9, 9),
+            "the program asked for a different red"
+        );
+    }
+
+    #[test]
+    fn faint_text_is_drawn_darker() {
+        let mut session = detached();
+        session.feed(b"\x1b[2mX");
+        let cell = session.snapshot().cell(0, 0).cloned().expect("a cell");
+        let palette = Palette::new();
+        assert_eq!(cell.foreground, palette.dimmed(palette.foreground));
+    }
+
+    #[test]
     fn bold_text_in_a_named_colour_comes_out_bright() {
         let mut session = detached();
         session.feed(b"\x1b[1;31mbold red");
@@ -1595,7 +1704,8 @@ mod tests {
         let mut session = detached();
         assert_eq!(session.mode(), Mode::default());
         session.feed(b"\x1b[?1h\x1b[?2004h");
-        assert_eq!(session.mode(), Mode { application_cursor: true, bracketed_paste: true });
+        let mode = session.mode();
+        assert!(mode.application_cursor && mode.bracketed_paste, "{mode:?}");
     }
 
     #[test]
@@ -1665,17 +1775,24 @@ mod tests {
         assert_eq!(session.snapshot().history, 0);
         session.resize(Size::new(6, 10));
 
-        // Twenty five characters at ten columns is three lines. The cursor is at the end of them, so the
-        // view is at the bottom and the two lines in front of it are in the history, which is where a
-        // terminal puts what has gone off the top.
+        // Twenty five characters at ten columns is three lines, and six rows hold all three, so the whole line
+        // stays on the screen and nothing is pushed into the history. alacritty kept the cursor on the row it
+        // was on and pushed the first two rows into the history; Termoil wraps the line where it is (`task-2489`).
         let screen = session.snapshot();
-        assert_eq!(screen.row_text(0), "01234", "the end of the line is on the screen");
-        assert_eq!(screen.history, 2, "and the rest of it went into the history");
+        assert_eq!(screen.row_text(0), "0123456789", "the line starts where it started");
+        assert_eq!(screen.row_text(1), "0123456789");
+        assert_eq!(screen.row_text(2), "01234", "and its end is on the third row");
+        assert_eq!(screen.history, 0, "nothing had to go into the history");
+        let cursor = screen.cursor.expect("the cursor is showing");
+        assert_eq!((cursor.row, cursor.column), (2, 5), "the cursor is after the end of the line");
 
-        session.scroll(2);
-        let scrolled = session.snapshot();
-        assert_eq!(scrolled.row_text(0), "0123456789", "which can be scrolled back to");
-        assert_eq!(scrolled.row_text(1), "0123456789");
+        // Narrower than the screen is tall, and the start does go into the history, where it can be scrolled
+        // back to.
+        session.resize(Size::new(2, 10));
+        assert_eq!(session.snapshot().row_text(1), "01234");
+        assert_eq!(session.snapshot().history, 1);
+        session.scroll(1);
+        assert_eq!(session.snapshot().row_text(0), "0123456789", "which can be scrolled back to");
     }
 
     #[test]
@@ -1848,40 +1965,46 @@ Start-Sleep -Seconds 900"
 
     #[cfg(windows)]
     #[test]
-    fn a_session_puts_its_program_in_a_job_of_its_own() {
-        // The test above states the contract and passes without the fix as often as not, because
-        // whether closing a pseudoconsole happens to end a particular shell is a race — which is
-        // exactly why the fix cannot rely on it. This one states the mechanism instead, and is the
-        // regression test: without the job there is nothing holding the program, and an Unluminous that
-        // crashes or is killed (which is most of how the 119 orphans of `task-1769` were made) takes
-        // nothing with it.
+    fn killing_a_busy_program_ends_it_at_once() {
+        // The test above states the contract on drop. This one states it on `kill`, which a run tab's second
+        // press of Stop uses: Termoil's job object ends the program whatever it is doing, so a program that
+        // reads nothing and sleeps is gone within a few seconds rather than whenever it next looks at its
+        // console. `task-1769` found 119 shells left behind before there was a job.
+        let nonce = format!("unluminous-kill-{}", std::process::id());
         let settings = SessionSettings {
             shell: Some("pwsh.exe".to_owned()),
             args: vec![
                 "-NoProfile".to_owned(),
                 "-Command".to_owned(),
-                "Start-Sleep -Seconds 30".to_owned(),
+                format!("# {nonce}\nStart-Sleep -Seconds 300"),
             ],
             working_directory: Some(std::env::temp_dir()),
             ..SessionSettings::default()
         };
         let mut session =
             Session::spawn(&settings, Size::new(14, 160), Arc::new(|| {})).expect("start a shell");
-        assert!(
-            session.reaper.is_held_by_job(),
-            "the program is in a job that ends with this session"
-        );
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        let mut shells = Vec::new();
+        while std::time::Instant::now() < deadline && shells.is_empty() {
+            shells = own_shells_named(&nonce);
+            std::thread::sleep(std::time::Duration::from_millis(250));
+        }
+        assert_eq!(shells.len(), 1, "exactly one shell, started by this test");
         session.kill();
-        assert!(!session.reaper.is_holding(), "killing hands the job back");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        while std::time::Instant::now() < deadline && still_running(shells[0]) {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+        }
+        assert!(!still_running(shells[0]), "the shell outlived kill (pid {})", shells[0]);
     }
 
-    #[cfg(windows)]
     #[test]
-    fn a_detached_session_holds_no_program_to_reap() {
+    fn a_detached_session_holds_no_program() {
         // The other half of the contract: a session with no shell behind it must not be holding a
-        // handle to anything, or dropping one would end a process it never started.
+        // pseudoterminal, or dropping one would end a process it never started.
         let session = Session::detached(Size::new(10, 40));
-        assert!(!session.reaper.is_holding());
+        assert!(session.pty.is_none());
+        assert!(session.foreground().is_none());
     }
 
     #[test]
@@ -2034,200 +2157,119 @@ Start-Sleep -Seconds 900"
         );
     }
 
-    /// A pseudoconsole whose program has already ended before the reader loop starts, read by a loop
-    /// built the way [`Session::spawn`] builds one, and the events that loop sends.
-    ///
-    /// `task-2353`. `Session::spawn` starts the program and then the loop's thread, and on a busy
-    /// machine a program that prints one line ends before that thread has run. This makes the order
-    /// certain rather than likely, which is what lets a test say what happens then.
-    #[cfg(windows)]
-    fn a_loop_started_after_the_program_ended(
-        command: &str,
-    ) -> (Receiver<Event>, Arc<FairMutex<Term<Proxy>>>) {
-        use windows_sys::Win32::System::Threading::WaitForSingleObject;
-        let options = alacritty_terminal::tty::Options {
-            shell: Some(alacritty_terminal::tty::Shell::new(
-                test_shell(),
-                vec!["/c".to_owned(), command.to_owned()],
-            )),
-            working_directory: None,
-            drain_on_exit: false,
-            env: Default::default(),
-            escape_args: true,
-        };
-        let size = Size::new(8, 60);
-        let pty =
-            alacritty_terminal::tty::new(&options, size.into(), 0).expect("start the program");
-        // SAFETY: the handle is the pseudoterminal's own and the pseudoterminal is alive here.
-        let ended = unsafe { WaitForSingleObject(pty.child_watcher().raw_handle(), 30_000) };
-        assert_eq!(ended, 0, "the program did not end in thirty seconds");
-        // The watcher's own callback runs on a wait thread when the program ends. Give it time to
-        // have run, so it finds no loop to wake, which is the order being tested.
-        std::thread::sleep(std::time::Duration::from_millis(300));
-        let (sender, events) = std::sync::mpsc::channel();
-        let proxy = Proxy { events: sender, waker: Arc::new(|| {}) };
-        let term = Arc::new(FairMutex::new(Term::new(config(), &size, proxy.clone())));
-        let pty = Watching::new(
-            pty,
-            crate::reported::Scanner::new(crate::reported::Reported::new()),
-            proxy.clone(),
-        );
-        let event_loop =
-            EventLoop::new(term.clone(), proxy, pty, true, false).expect("make the loop");
-        event_loop.spawn();
-        (events, term)
+    #[test]
+    fn a_program_that_ends_at_once_is_still_seen_to_end_with_its_code() {
+        // `task-2353`. With alacritty a program that ended before the reader loop had registered with its
+        // poller was never seen to end, and a run tab said `running` for ever. Termoil's exit watcher asks the
+        // program itself, so the order of the threads does not matter; this is the shortest program there is.
+        let session = run_to_the_end(exiting_with(7));
+        assert!(!session.is_running());
+        assert_eq!(session.exit_code(), Some(7));
     }
 
-    #[cfg(windows)]
     #[test]
-    fn a_program_that_ends_before_the_reader_starts_is_still_seen_to_end() {
-        // `task-2353`. alacritty's Windows child watcher wakes the loop only once the loop has
-        // registered with its poller, so an exit that came first went into a channel nothing was
-        // woken to read, and a run tab said `running` for ever with the program's output on it.
-        let (events, _term) = a_loop_started_after_the_program_ended("exit 7");
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-        loop {
-            let left = deadline.saturating_duration_since(std::time::Instant::now());
-            match events.recv_timeout(left) {
-                Ok(Event::ChildExit(status)) => {
-                    assert_eq!(status.code(), Some(7));
-                    break;
-                }
-                Ok(_) => {}
-                Err(_) => panic!("the loop never said the program had ended"),
-            }
-        }
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn what_a_program_printed_before_ending_reaches_a_loop_started_after_it_ended() {
-        // `task-2353`, with output: the screen the run tab would show, from the same order.
-        let marker = "unluminous-printed-before-the-loop";
-        let (events, term) = a_loop_started_after_the_program_ended(&format!("echo {marker}"));
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-        while !matches!(
-            events.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now())),
-            Ok(Event::ChildExit(_))
-        ) {
-            assert!(
-                std::time::Instant::now() < deadline,
-                "the loop never said the program had ended"
-            );
-        }
-        // The console host may write the line after the exit was reported, and the loop goes on
-        // reading for exactly that reason, so the screen is watched rather than read once.
-        let screen_text = || {
-            let term = term.lock();
-            (0..term.screen_lines())
-                .map(|line| {
-                    let row = &term.grid()[Line(line as i32)];
-                    let text: String = (0..term.columns()).map(|at| row[Column(at)].c).collect();
-                    text + "\n"
+    fn many_short_programs_each_leave_their_output_and_their_code() {
+        // `task-2353` was found on a busy machine, where a program's only line arrived after it had ended.
+        // Several at once is the cheapest way to make the machine busy enough for the order to vary.
+        let runs: Vec<std::thread::JoinHandle<(bool, Option<i32>)>> = (0..6)
+            .map(|index| {
+                std::thread::spawn(move || {
+                    let marker = format!("unluminous-many-{index}");
+                    let (flag, command) = if cfg!(target_os = "windows") {
+                        ("/c", format!("echo {marker}&& exit 4"))
+                    } else {
+                        ("-c", format!("echo {marker}; exit 4"))
+                    };
+                    let settings = SessionSettings {
+                        shell: Some(test_shell()),
+                        args: vec![flag.to_owned(), command],
+                        ..SessionSettings::default()
+                    };
+                    let mut session = run_to_the_end(settings);
+                    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+                    while !session.snapshot().contains(&marker)
+                        && std::time::Instant::now() < deadline
+                    {
+                        session.pump();
+                        std::thread::sleep(std::time::Duration::from_millis(25));
+                    }
+                    (session.snapshot().contains(&marker), session.exit_code())
                 })
-                .collect::<String>()
-        };
-        while !screen_text().contains(marker) {
-            assert!(std::time::Instant::now() < deadline, "the screen holds {:?}", screen_text());
-            std::thread::sleep(std::time::Duration::from_millis(25));
+            })
+            .collect();
+        for run in runs {
+            let (printed, code) = run.join().expect("the run finished");
+            assert!(printed, "every program's line reached its screen");
+            assert_eq!(code, Some(4), "and every program's code arrived");
         }
     }
 
-    /// A pseudoterminal with nothing behind it whose program has just ended, which is all the
-    /// end-of-program half of [`Watching`] reads.
-    #[cfg(windows)]
-    struct Ended {
-        exits: std::collections::VecDeque<alacritty_terminal::tty::ChildEvent>,
-    }
-
-    #[cfg(windows)]
-    impl std::io::Read for Ended {
-        fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
-            Err(std::io::ErrorKind::WouldBlock.into())
-        }
-    }
-
-    #[cfg(windows)]
-    impl std::io::Write for Ended {
-        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-            Ok(bytes.len())
-        }
-
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-
-    #[cfg(windows)]
-    impl alacritty_terminal::tty::EventedReadWrite for Ended {
-        type Reader = Self;
-        type Writer = Self;
-
-        unsafe fn register(
-            &mut self,
-            _: &Arc<polling::Poller>,
-            _: polling::Event,
-            _: polling::PollMode,
-        ) -> std::io::Result<()> {
-            Ok(())
-        }
-
-        fn reregister(
-            &mut self,
-            _: &Arc<polling::Poller>,
-            _: polling::Event,
-            _: polling::PollMode,
-        ) -> std::io::Result<()> {
-            Ok(())
-        }
-
-        fn deregister(&mut self, _: &Arc<polling::Poller>) -> std::io::Result<()> {
-            Ok(())
-        }
-
-        fn reader(&mut self) -> &mut Self {
-            self
-        }
-
-        fn writer(&mut self) -> &mut Self {
-            self
-        }
-    }
-
-    #[cfg(windows)]
-    impl alacritty_terminal::tty::EventedPty for Ended {
-        fn next_child_event(&mut self) -> Option<alacritty_terminal::tty::ChildEvent> {
-            self.exits.pop_front()
-        }
-    }
-
-    #[cfg(windows)]
     #[test]
-    fn on_windows_the_window_is_told_a_program_ended_and_the_loop_goes_on_reading() {
-        // `task-2353`. The loop stops reading the moment it is told, and the console host can still
-        // be writing the program's last line, so the loop is never told: the window is, once, with
-        // the code. A second exit, which the watcher reports when its channel has closed, says nothing.
-        use alacritty_terminal::tty::{ChildEvent, EventedPty};
-        use std::os::windows::process::ExitStatusExt;
-        let (sender, events) = std::sync::mpsc::channel();
-        let mut watching = Watching {
-            inner: Ended {
-                exits: [
-                    ChildEvent::Exited(Some(std::process::ExitStatus::from_raw(5))),
-                    ChildEvent::Exited(None),
-                ]
-                .into(),
-            },
-            scanner: crate::reported::Scanner::new(crate::reported::Reported::new()),
-            proxy: Proxy { events: sender, waker: Arc::new(|| {}) },
-            child: 0,
-            ended: false,
-        };
-        assert!(watching.next_child_event().is_none(), "the loop is not told");
-        assert!(watching.next_child_event().is_none(), "nor the second time");
-        let told: Vec<Event> = events.try_iter().collect();
-        assert_eq!(told.len(), 1, "the window is told once: {told:?}");
-        assert!(matches!(&told[0], Event::ChildExit(status) if status.code() == Some(5)));
+    fn scrolling_back_holds_its_place_while_output_arrives() {
+        // alacritty kept the view on the rows being read while new output pushed the screen up, and a person
+        // reading the history of a dev server expects the lines in front of them to stay put.
+        let mut session = Session::detached(Size::new(4, 20));
+        for line in 0..30 {
+            session.feed(format!("line {line}\r\n").as_bytes());
+        }
+        session.scroll(10);
+        let before = session.snapshot().row_text(0);
+        for line in 30..40 {
+            session.feed(format!("line {line}\r\n").as_bytes());
+        }
+        let after = session.snapshot();
+        assert_eq!(after.row_text(0), before, "the row at the top of the view is the same row");
+        assert_eq!(after.scrollback, 20, "and it is further from the bottom by what arrived");
+    }
+
+    #[test]
+    fn resetting_a_colour_puts_unluminous_back_not_xterm() {
+        // `task-2489`. Termoil put xterm's palette back on `OSC 104` and `RIS`, so `tput reset` in Unluminous
+        // turned red into xterm's red. It keeps the palette it was given now.
+        let mut session = detached();
+        session.feed(b"\x1b]4;1;rgb:00/00/00\x07\x1b]104\x07\x1b[31mX");
+        let cell = session.snapshot().cell(0, 0).cloned().expect("a cell");
+        assert_eq!(cell.foreground, Palette::new().indexed(1));
+        session.feed(b"\x1bc\x1b[31mY");
+        let cell = session.snapshot().cell(0, 0).cloned().expect("a cell");
+        assert_eq!(cell.character, 'Y');
+        assert_eq!(cell.foreground, Palette::new().indexed(1));
+    }
+
+    #[test]
+    fn a_program_asking_for_a_colour_is_told_unluminous_colours() {
+        // `OSC 11 ; ?` is how `claude` and `vim` decide whether the ground is light or dark.
+        let mut session = detached();
+        session.feed(b"\x1b]11;?\x07");
+        let background = Palette::new().background;
+        let wanted = format!(
+            "rgb:{0:02x}{0:02x}/{1:02x}{1:02x}/{2:02x}{2:02x}",
+            background.r, background.g, background.b
+        );
+        let sent = session.sent_to_a_detached_session();
+        assert!(sent.contains(&wanted), "the answer names the editor's ground: {sent:?}");
+    }
+
+    #[test]
+    fn a_click_without_a_drag_selects_nothing() {
+        // A click begins a selection and must not select the cell it landed on, or `Ctrl+C` after a click
+        // would copy one letter instead of interrupting the program.
+        let mut session = detached();
+        session.feed(b"some words");
+        session.begin_selection(0, 2, SelectionKind::Simple);
+        assert!(session.selected_text().is_none());
+        assert!(session.snapshot().selection.is_none());
+    }
+
+    #[test]
+    fn the_variables_a_program_needs_to_know_its_terminal_are_set_and_the_caller_wins() {
+        let env = environment(&[("TERM".to_owned(), "dumb".to_owned())]);
+        let value =
+            |name: &str| env.iter().rev().find(|(given, _)| given == name).map(|(_, v)| v.clone());
+        assert_eq!(value("TERM").as_deref(), Some("dumb"), "the caller's value is used");
+        assert_eq!(env.iter().filter(|(name, _)| name == "TERM").count(), 1, "and only once");
+        assert_eq!(value("COLORTERM").as_deref(), Some("truecolor"));
+        assert_eq!(value("TERM_PROGRAM").as_deref(), Some("Unluminous"));
     }
 
     #[test]
@@ -2443,6 +2485,7 @@ Start-Sleep -Seconds 900"
     }
 
     /// The prefix Windows puts on a canonical path, which `cmd.exe` reads as a network share.
+    #[cfg(target_os = "windows")]
     const VERBATIM: &str = r"\\?\";
 
     #[test]

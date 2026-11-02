@@ -11,7 +11,7 @@ license.workspace = true
 # port and nothing to install.
 rusqlite.workspace = true
 # The PostgreSQL client's own arithmetic. `sha2` and `base64` are already in the tree — `sha2` through
-# `wry` and `base64` through `alacritty_terminal` — so what this really adds is `hmac` and `md-5`,
+# `wry` and `base64` through `termoil-vt` — so what this really adds is `hmac` and `md-5`,
 # each a thin layer on the `digest` traits that are here already. Two crates, against roughly fifty
 # for `tokio-postgres` and the runtime it brings with it.
 sha2.workspace = true

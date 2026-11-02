@@ -28,9 +28,9 @@
 
 /// A duplicate of a session's pseudoterminal, kept only to be asked what is running in it.
 ///
-/// **Taken in `Session::spawn`**, in the window between `tty::new` answering and `EventLoop::new` moving the
-/// `Pty` into the loop — which is the same window `reap::Reaper` takes the Windows handle in, and the last
-/// moment either is reachable. A duplicate, because the loop owns and closes the original.
+/// **Taken in `Session::spawn`**, straight after Termoil's `Pty` has started the program. A duplicate of the
+/// controller descriptor on Unix (`Pty::clone_controller`, which Termoil gained for this in `task-2489`), because
+/// the reader and the writer own the originals, and the child's process id on Windows.
 pub struct Master {
     #[cfg(unix)]
     fd: Option<std::os::fd::OwnedFd>,
@@ -40,22 +40,19 @@ pub struct Master {
 }
 
 impl Master {
-    /// Duplicate the master side of `pty`, where the platform has one to duplicate.
-    #[cfg_attr(not(unix), allow(unused_variables))]
-    pub fn duplicating(pty: &alacritty_terminal::tty::Pty) -> Self {
+    /// Keep what is needed to ask `pty` what is running in it, where the platform can be asked.
+    #[cfg_attr(not(any(unix, windows)), allow(unused_variables))]
+    pub fn duplicating(pty: &termoil_pty::Pty) -> Self {
         #[cfg(unix)]
         {
-            use std::os::fd::AsFd;
-            Self { fd: pty.file().as_fd().try_clone_to_owned().ok() }
+            Self { fd: pty.clone_controller().ok() }
         }
         #[cfg(windows)]
         {
-            // The process id rather than the handle, because that is what a snapshot of the process table is
+            // The process id rather than a handle, because that is what a snapshot of the process table is
             // keyed on and because an id that has gone simply matches nothing — where a handle kept open would
             // hold the dead process's object alive for as long as this session lives.
-            let handle = pty.child_watcher().raw_handle();
-            // Safe: the handle belongs to the pseudoterminal and is open for the length of this call.
-            let id = unsafe { windows_sys::Win32::System::Threading::GetProcessId(handle) };
+            let id = pty.pid();
             Self { child: (id != 0).then_some(id) }
         }
         #[cfg(not(any(unix, windows)))]

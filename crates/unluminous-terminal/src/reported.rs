@@ -12,9 +12,11 @@
 //! - `ESC ] 9 ; 9 ; <path> ST` — ConEmu's, which Windows Terminal reads and which Microsoft's own PowerShell
 //!   snippet writes, with the path in quotes.
 //!
-//! `alacritty_terminal` handles neither: `vte`'s `osc_dispatch` knows 0, 2, 4, 8, 10-19, 22, 52, 104-111 and
-//! 112, and logs everything else as unhandled. There is no hook to add one. So [`Scanner`] reads the byte
-//! stream on its way into the parser and keeps what it finds; see `session::Watching` for where it sits.
+//! [`Scanner`] reads the byte stream on its way into the emulator and keeps what it finds; the reader thread in
+//! `session` is where it sits. It was written when the emulator was `alacritty_terminal`, whose parser handled
+//! neither sequence and had no hook to add one. Termoil's parser reads both and reports the raw text, but the
+//! checks below (another machine's host, a folder that is not on the disk, a sequence too long to keep) are this
+//! crate's own and run on the reader thread rather than on the window's, so the scanner stays the one reading.
 //!
 //! **Reading costs nothing and is always on.** A shell that already reports its directory is followed and one
 //! that does not is unchanged, which is why this half needs no setting. Making PowerShell report it is the

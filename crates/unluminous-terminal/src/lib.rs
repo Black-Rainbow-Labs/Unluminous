@@ -4,16 +4,18 @@
 //! with no window and no graphics card, and the parts most likely to be wrong, which are the key encoding
 //! and the colour palette, are then plain functions with plain expected values.
 //!
-//! What is here and what is not is set out in `tasks/unluminous-terminal-tdd.md`. In short: the escape sequence
-//! emulation and the pseudoterminal come from `alacritty_terminal`, and the palette, the key encoding, the
-//! screen the painter reads and the tabs are written here.
+//! What is here and what is not is set out in `tasks/unluminous-terminal-tdd.md`, and what changed when Termoil
+//! took over in `tasks/task-2489-termoil-tdd.md`. In short: the escape sequence emulation, the pseudoterminal and
+//! the key and mouse encoding come from Termoil (`termoil-vt`, `termoil-pty`, `termoil-input`), and the palette,
+//! the screen the painter reads, the replay of a screen and the tabs are written here. Termoil puts a session's
+//! program in a job object on Windows and a process group on Unix, so killing a session ends everything it
+//! started; that used to be this crate's `reap` module.
 //!
 //! - [`foreground`] answers what program is running in a terminal, as opposed to what it was started with.
 //! - [`keys`] turns a key press into the bytes a terminal sends.
 //! - [`mouse`] turns a click or a turn of the wheel into the bytes a program that asked for them expects.
 //! - [`palette`] turns a terminal colour into red, green and blue.
 //! - [`paths`] takes the verbatim prefix off a Windows path, which is the one form a shell cannot start in.
-//! - [`reap`] makes sure a session's program goes when the session does, which Windows does not promise.
 //! - [`reported`] reads the sequence a shell reports its own folder with, which is the one answer
 //!   PowerShell has: `Set-Location` never moves the process's current directory.
 //! - [`replay`] turns a screen into the bytes that would draw it, so a terminal can come back showing it.
@@ -26,7 +28,6 @@ pub mod keys;
 pub mod mouse;
 pub mod palette;
 pub mod paths;
-pub mod reap;
 pub mod replay;
 pub mod reported;
 pub mod screen;
