@@ -2854,15 +2854,19 @@ dependencies = [
 
 [[package]]
 name = "inillucent-base"
-version = "2.8.1"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e80115863d3dd83552efe62ab142174c9c9dbd24830bfa47d41df3924299412"
+checksum = "806730a5ca22b6f01b0928779cc5508d5b8345403289710fa097526431c36b03"
+dependencies = [
+ "libc",
+ "windows-sys 0.59.0",
+]
 
 [[package]]
 name = "inillucent-catalog"
-version = "2.8.1"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36b3228a643b20e95fed30448c0ab9b8fc0a4c4247ea73e5f12b54f5fb342ffa"
+checksum = "50e6b8b30de4e935bb5e04b82cf20c829fc81601fb278735562ec413adfc87eb"
 dependencies = [
  "inillucent-base",
  "inillucent-pool",
@@ -2874,9 +2878,9 @@ dependencies = [
 
 [[package]]
 name = "inillucent-core"
-version = "2.8.1"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7cd4dbb42b2d43732cb55e3daa05e8562213e727431958872db38e5a25b5327f"
+checksum = "b9a10591aad5233582883dfe5a10ca2e06bb31a601a05fc915cbe8c97ba8998d"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -2893,18 +2897,18 @@ dependencies = [
 
 [[package]]
 name = "inillucent-driver"
-version = "2.8.1"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ecd513ec587ee3d88e9009065deef2707673de21dc0b41d4400a33e0bea9c09c"
+checksum = "15c6fa90b69780acc2f458f12edea2e2f2cb4bc59f5c8b1091a6f3fda052649d"
 dependencies = [
  "inillucent-engine",
 ]
 
 [[package]]
 name = "inillucent-engine"
-version = "2.8.1"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "203b87e372e1f5165e6c501c401310bcf37e6e8e4db85365c1e61f21ad3ea55c"
+checksum = "a627e060cb92c43c2f5aa31e05481579ab06ef7638f211b212eade7f5297c922"
 dependencies = [
  "inillucent-base",
  "inillucent-catalog",
@@ -2923,9 +2927,9 @@ dependencies = [
 
 [[package]]
 name = "inillucent-exec"
-version = "2.8.1"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5518f5ac0710c0ee87783771726ff734a5be117519a448563ba8f5c632c09eb"
+checksum = "68ac33f9dcad93661730d92b24cdb226c49caf8da329600a3ed7ca748cd24f40"
 dependencies = [
  "inillucent-base",
  "inillucent-pool",
@@ -2937,9 +2941,9 @@ dependencies = [
 
 [[package]]
 name = "inillucent-ext"
-version = "2.8.1"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c36709ce983ee454c1d34059de0991477b098e3fa63a109e35d7d142eee5d6d3"
+checksum = "4b1196505d5ea0f429b8de4c2a400393d6f0ee69c968a0d12c1ec985a9dcb2c8"
 dependencies = [
  "inillucent-base",
  "inillucent-catalog",
@@ -2950,9 +2954,9 @@ dependencies = [
 
 [[package]]
 name = "inillucent-pool"
-version = "2.8.1"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df65fe01510472c57dd58d4c322198a07f62c0ab4f04a4f93f59a4543255ecbd"
+checksum = "4bc707947553d1b9d27f06a27ece2fbcc1d471a12bb72a918857d1235023a6e4"
 dependencies = [
  "inillucent-base",
  "inillucent-vfs",
@@ -2960,9 +2964,9 @@ dependencies = [
 
 [[package]]
 name = "inillucent-scalar"
-version = "2.8.1"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb3d15349ce00738a944cb88adb265581c40422c11e56c60766a3c59cc8ffd86"
+checksum = "6f198f3fe40b55886bc8fdcfaf49d0ac5b25d321968dd0fb3b26f66a4837a641"
 dependencies = [
  "inillucent-base",
  "inillucent-sql",
@@ -2972,9 +2976,9 @@ dependencies = [
 
 [[package]]
 name = "inillucent-search"
-version = "2.8.1"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4800ad6db8adf7faed8100a568300cc7bb1162f7478da018af4ab82393fba208"
+checksum = "3c6dee83b7801cdd4a1f9d5c6e18f0e633cc97ec77427da45fe06efbdd624397"
 dependencies = [
  "inillucent-base",
  "inillucent-core",
@@ -2984,9 +2988,9 @@ dependencies = [
 
 [[package]]
 name = "inillucent-sql"
-version = "2.8.1"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c2433a88a0c2879a428d09c82167286992b3b13d1f6ff6c941988dd505b9678"
+checksum = "5b31d9bc4f4163ce80f4216c9de80bb14e4cacde2668ea62bba9f50e8c158797"
 dependencies = [
  "inillucent-base",
  "inillucent-value",
@@ -2994,9 +2998,9 @@ dependencies = [
 
 [[package]]
 name = "inillucent-sqlite-reader"
-version = "2.8.1"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f7231869000ef25641fdd0775eacbb4c61a8cfc6edb1e93668f36f5625827c7"
+checksum = "08140aea5573b843e34788920c9bef32a5e8541a9e96bbfc07d78e3e3d4f0575"
 dependencies = [
  "inillucent-base",
  "inillucent-catalog",
@@ -3010,9 +3014,9 @@ dependencies = [
 
 [[package]]
 name = "inillucent-storage"
-version = "2.8.1"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "057ce0e9005c1420d0d0ea07a97f67e2deef49fe6b35c88a4741f5fa5122d0ba"
+checksum = "e168b0a23cbf36ebaf9098f2eecee6d926f142852fc497821117cd67a7d16258"
 dependencies = [
  "inillucent-base",
  "inillucent-value",
@@ -3021,9 +3025,9 @@ dependencies = [
 
 [[package]]
 name = "inillucent-transaction"
-version = "2.8.1"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cc514f8bd4b62d2688ec4972556b7cd0c5b43a05f1ea3aed0375f1f0ce19234"
+checksum = "8045bac04ba554c385bc1fea60f42d0c59193822f5e77e01a9c325e99e2b2ecb"
 dependencies = [
  "inillucent-base",
  "inillucent-storage",
@@ -3032,9 +3036,9 @@ dependencies = [
 
 [[package]]
 name = "inillucent-tree"
-version = "2.8.1"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a07feff73cc5b4bf351cc07f2b223c708b259130f8ccbe36cc019e87506811fe"
+checksum = "0bad3efc520817e0f208062ad39cf51a2172a755c923ccfa693e394317deb521"
 dependencies = [
  "inillucent-base",
  "inillucent-pool",
@@ -3044,9 +3048,9 @@ dependencies = [
 
 [[package]]
 name = "inillucent-txn"
-version = "2.8.1"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ce6d11c59a9f781fb6cb4d601efb047bd823318c381060191d17e96c16b31a2"
+checksum = "00501c1b0732bde55783e4138084c9c66ece94e845717a80e665c5ec75eb6236"
 dependencies = [
  "inillucent-base",
  "inillucent-pool",
@@ -3058,18 +3062,18 @@ dependencies = [
 
 [[package]]
 name = "inillucent-value"
-version = "2.8.1"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64a60a28d9a08f641fb4a3e41697e1558c01b814b13076ce33670ce52e558081"
+checksum = "a1033af09a7b57137df1281fa7ec9b4048c5f6fb7c95073db59fd638b5008b1b"
 dependencies = [
  "inillucent-base",
 ]
 
 [[package]]
 name = "inillucent-vfs"
-version = "2.8.1"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8b64f5225bbffc47b91bef628f0f8149dbaf6d3c3cdaa48a602c2f0fe3193eb"
+checksum = "16bd8778f6b601a67b230a116dc6591fb9f03e58059f07f4bdf2f81f8f007e34"
 dependencies = [
  "inillucent-base",
  "libc",
@@ -3078,9 +3082,9 @@ dependencies = [
 
 [[package]]
 name = "inillucent-wal"
-version = "2.8.1"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e4e20967536036e3ea15f10041057e9e00602a95ff41f05529c838916e051af"
+checksum = "b22337fec70843754ef95789213fe084bde25b0180e1088505ecaabb560af3fd"
 dependencies = [
  "inillucent-base",
  "inillucent-vfs",
@@ -6979,7 +6983,7 @@ checksum = "39ec24b3121d976906ece63c9daad25b85969647682eee313cb5779fdd69e14e"
 
 [[package]]
 name = "unluminous-app"
-version = "1.23.0"
+version = "1.24.0"
 dependencies = [
  "ab_glyph",
  "arboard",
@@ -7044,7 +7048,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-chat"
-version = "1.23.0"
+version = "1.24.0"
 dependencies = [
  "serde_json",
  "sha2",
@@ -7053,7 +7057,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-cli"
-version = "1.23.0"
+version = "1.24.0"
 dependencies = [
  "atrius-index",
  "blake3",
@@ -7064,7 +7068,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-core"
-version = "1.23.0"
+version = "1.24.0"
 dependencies = [
  "unicode-segmentation",
  "unicode-width",
@@ -7072,14 +7076,14 @@ dependencies = [
 
 [[package]]
 name = "unluminous-dap"
-version = "1.23.0"
+version = "1.24.0"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "unluminous-db"
-version = "1.23.0"
+version = "1.24.0"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.3.4",
@@ -7093,7 +7097,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-git"
-version = "1.23.0"
+version = "1.24.0"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
@@ -7101,14 +7105,14 @@ dependencies = [
 
 [[package]]
 name = "unluminous-jupyter"
-version = "1.23.0"
+version = "1.24.0"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "unluminous-lsp"
-version = "1.23.0"
+version = "1.24.0"
 dependencies = [
  "serde_json",
  "unluminous-core",
@@ -7117,7 +7121,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-sheet"
-version = "1.23.0"
+version = "1.24.0"
 dependencies = [
  "base64 0.22.1",
  "crc32fast",
@@ -7131,7 +7135,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-terminal"
-version = "1.23.0"
+version = "1.24.0"
 dependencies = [
  "libc",
  "termoil-input",
@@ -7143,7 +7147,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-voice"
-version = "1.23.0"
+version = "1.24.0"
 dependencies = [
  "block2 0.6.2",
  "cpal",
@@ -7160,7 +7164,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-word"
-version = "1.23.0"
+version = "1.24.0"
 dependencies = [
  "ab_glyph",
  "aes",

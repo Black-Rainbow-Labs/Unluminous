@@ -6,7 +6,16 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.23.0 — 2026-10-30
+## 1.24.0 — 2026-11-03
+
+- Every terminal runs on Termoil instead of alacritty_terminal (`task-2489`)
+- CLAUDE.md says every terminal runs on Termoil, and drops what described alacritty's internals (`task-2489`)
+- The wheel scrolls a full screen program as it did, and Ctrl+- still sends 0x1f (`task-2489`)
+- Take Termoil 9b995ae, where a missing program reads os error 2 again (`task-2489`)
+- Inillucent 2.10 builds the trigram tokenizer, so the unsupported example is an UPDATE of a subquery (`task-2489`)
+- Rustfmt the Inillucent test (`task-2489`)
+
+## 1.23.0 — 2026-10-29
 
 - Dot folders in the explorer, a top bar in any order, zoomed search wells, skills that fetch whole, a remembered view mode, and a second tab on one project (`task-2405`)
 - Window tests for a top bar shortcut carried into place and the remembered view mode (`task-2405`)
