@@ -372,9 +372,8 @@ fn what_the_engine_has_not_built_keeps_its_own_words_and_its_own_code() {
     // until 2.10.0 built that; an UPDATE whose target is a subquery is the example now. If a later phase
     // builds that too, this test says so by failing.
     let mut session = Session::open(&a_database("gaps"), false).expect("opened");
-    let refused = session
-        .run("UPDATE (SELECT * FROM member) SET name = 'x'", &[], 0)
-        .expect_err("refused");
+    let refused =
+        session.run("UPDATE (SELECT * FROM member) SET name = 'x'", &[], 0).expect_err("refused");
     assert_eq!(refused.code, "unsupported", "{refused}");
     assert!(refused.detail.contains("not a table"), "the engine's own word for it: {refused}");
 
@@ -468,4 +467,3 @@ fn a_file_that_is_not_a_database_at_all_refuses_rather_than_panicking() {
     let refused = Session::open(&file, false).expect_err("refused");
     assert!(!refused.message.is_empty(), "and it says something");
 }
-
