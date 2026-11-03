@@ -368,14 +368,15 @@ fn a_read_only_source_is_refused_by_the_driver_rather_than_by_unluminous() {
 fn what_the_engine_has_not_built_keeps_its_own_words_and_its_own_code() {
     // The distinction the driver exists to make: *this engine cannot do that yet* is a different
     // answer from *check your spelling*, and an explorer that folded them together would have thrown
-    // the design away. VACUUM was the example until Inillucent 2.0.2 built it; the trigram tokenizer is
-    // the example now. If a later phase builds that too, this test says so by failing.
+    // the design away. VACUUM was the example until Inillucent 2.0.2 built it, and the trigram tokenizer
+    // until 2.10.0 built that; an UPDATE whose target is a subquery is the example now. If a later phase
+    // builds that too, this test says so by failing.
     let mut session = Session::open(&a_database("gaps"), false).expect("opened");
     let refused = session
-        .run("CREATE VIRTUAL TABLE grams USING fts5(body, tokenize = 'trigram')", &[], 0)
+        .run("UPDATE (SELECT * FROM member) SET name = 'x'", &[], 0)
         .expect_err("refused");
     assert_eq!(refused.code, "unsupported", "{refused}");
-    assert!(refused.detail.contains("trigram"), "the engine's own word for it: {refused}");
+    assert!(refused.detail.contains("not a table"), "the engine's own word for it: {refused}");
 
     // And a typo is still a typo, with a different code.
     let missing = session.run("select * from nope", &[], 0).expect_err("refused");
@@ -467,3 +468,4 @@ fn a_file_that_is_not_a_database_at_all_refuses_rather_than_panicking() {
     let refused = Session::open(&file, false).expect_err("refused");
     assert!(!refused.message.is_empty(), "and it says something");
 }
+
