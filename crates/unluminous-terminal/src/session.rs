@@ -1008,6 +1008,11 @@ fn new_terminal(size: Size, palette: &Palette) -> Terminal {
     let mut term = Terminal::new(size.cols(), size.rows_u16(), config);
     term.set_cell_pixels(size.cell_width, size.cell_height);
     give_the_palette(&mut term, palette);
+    // **The wheel scrolls a full screen program that has no mouse reporting** (mode 1007, alternate scroll).
+    // xterm starts with it off and so does Termoil; alacritty started with it on, which is what made the wheel
+    // move through `less`, `git log` and `man` in Unluminous. A program that does not want it can still turn it
+    // off.
+    term.advance(b"\x1b[?1007h");
     term
 }
 
@@ -1706,6 +1711,19 @@ mod tests {
         session.feed(b"\x1b[?1h\x1b[?2004h");
         let mode = session.mode();
         assert!(mode.application_cursor && mode.bracketed_paste, "{mode:?}");
+    }
+
+    #[test]
+    fn the_wheel_moves_a_full_screen_program_unless_it_says_otherwise() {
+        let mut session = detached();
+        assert!(!session.alternate_scroll(), "on the ordinary screen the wheel moves the history");
+        session.feed(b"\x1b[?1049h");
+        assert!(
+            session.alternate_scroll(),
+            "a pager on its own screen is scrolled with arrow keys"
+        );
+        session.feed(b"\x1b[?1007l");
+        assert!(!session.alternate_scroll(), "unless the program turned that off");
     }
 
     #[test]

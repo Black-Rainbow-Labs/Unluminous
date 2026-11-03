@@ -150,6 +150,18 @@ pub fn encode(press: KeyPress, mode: Mode) -> Option<Vec<u8>> {
     let event = match key {
         Key::Character(character) => {
             let character = character.to_ascii_lowercase();
+            // `Ctrl+-` is `0x1f`, the same as `Ctrl+_`, which is what Unluminous has always sent and what undoes
+            // in `readline` and Emacs. Termoil's legacy table follows Ghostty's and sends `-`, so the key is asked
+            // for as the underscore. The kitty protocol and `modifyOtherKeys` report the minus key as itself.
+            let character = if modifiers.control
+                && character == '-'
+                && mode.kitty_flags == 0
+                && mode.modify_other_keys == 0
+            {
+                '_'
+            } else {
+                character
+            };
             let event = KeyEvent::press(InputKey::Char(character), mods);
             // The text the key makes, which the encoder sends for an ordinary key. None with control held,
             // where the control code is what is sent.
