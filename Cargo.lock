@@ -6369,12 +6369,12 @@ dependencies = [
 [[package]]
 name = "termoil-input"
 version = "1.4.1"
-source = "git+https://github.com/Black-Rainbow-Labs/Termoil.git?rev=afd13a812cd7f99195fd7d8ac1cd7bc4ac03ea60#afd13a812cd7f99195fd7d8ac1cd7bc4ac03ea60"
+source = "git+https://github.com/Black-Rainbow-Labs/Termoil.git?rev=9b995aef1bf1a0cb3095ff4b1d7e5898d4c1a471#9b995aef1bf1a0cb3095ff4b1d7e5898d4c1a471"
 
 [[package]]
 name = "termoil-pty"
 version = "1.4.1"
-source = "git+https://github.com/Black-Rainbow-Labs/Termoil.git?rev=afd13a812cd7f99195fd7d8ac1cd7bc4ac03ea60#afd13a812cd7f99195fd7d8ac1cd7bc4ac03ea60"
+source = "git+https://github.com/Black-Rainbow-Labs/Termoil.git?rev=9b995aef1bf1a0cb3095ff4b1d7e5898d4c1a471#9b995aef1bf1a0cb3095ff4b1d7e5898d4c1a471"
 dependencies = [
  "libc",
  "rustix 1.1.4",
@@ -6385,7 +6385,7 @@ dependencies = [
 [[package]]
 name = "termoil-vt"
 version = "1.4.1"
-source = "git+https://github.com/Black-Rainbow-Labs/Termoil.git?rev=afd13a812cd7f99195fd7d8ac1cd7bc4ac03ea60#afd13a812cd7f99195fd7d8ac1cd7bc4ac03ea60"
+source = "git+https://github.com/Black-Rainbow-Labs/Termoil.git?rev=9b995aef1bf1a0cb3095ff4b1d7e5898d4c1a471#9b995aef1bf1a0cb3095ff4b1d7e5898d4c1a471"
 dependencies = [
  "base64 0.22.1",
  "flate2",
