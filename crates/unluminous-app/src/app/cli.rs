@@ -586,7 +586,12 @@ impl UnluminousApp {
                     Reply::done(
                         &request.command,
                         format!("Found {needle} on the terminal"),
-                        json!({ "text": screen, "waitedFor": needle, "found": true }),
+                        json!({
+                            "text": screen,
+                            "waitedFor": needle,
+                            "found": true,
+                            "links": self.terminal_links(*tab),
+                        }),
                     )
                 })
             }
@@ -772,7 +777,12 @@ impl UnluminousApp {
                     ok: false,
                     command: "terminal.read".to_owned(),
                     message: format!("{needle} did not appear on the terminal in time."),
-                    result: json!({ "text": screen, "waitedFor": needle, "found": false }),
+                    result: json!({
+                        "text": screen,
+                        "waitedFor": needle,
+                        "found": false,
+                        "links": self.terminal_links(*tab),
+                    }),
                     error: Some(unluminous_cli::protocol::Failure {
                         code: code::TIMED_OUT.to_owned(),
                         message: format!("{needle} did not appear on the terminal in time."),

@@ -156,13 +156,15 @@ fn collect_cell(
     if is_emoji(cell.character, &cell.marks) {
         let text: String =
             std::iter::once(cell.character).chain(cell.marks.iter().copied()).collect();
-        if let Some(uv) = renderer.color_glyph(&text, pixels(rect.width()), pixels(rect.height())) {
+        if let Some(uv) =
+            renderer.color_glyph(&text, pixels(snapped.width()), pixels(snapped.height()))
+        {
             quads.colored.push((snapped, uv));
             return;
         }
     }
     if let Some(sprite) =
-        renderer.sprite_glyph(cell.character, pixels(rect.width()), pixels(rect.height()))
+        renderer.sprite_glyph(cell.character, pixels(snapped.width()), pixels(snapped.height()))
     {
         quads.tinted.push((snapped, sprite.uv, colour));
         return;
@@ -204,6 +206,9 @@ pub(crate) fn paint_lines(
     hovered_link: Option<u32>,
 ) {
     let thickness = line_thickness(grid.cell);
+    // **One mesh of plain rectangles rather than a `rect_filled` each.** egui draws a filled rectangle a pixel tall
+    // and only a few pixels wide as a thin line, which smeared a dash across two rows and dropped a dot entirely.
+    let mut bars = Mesh::default();
     for row in 0..screen.rows {
         for column in 0..screen.columns {
             let Some(cell) = screen.cell(row, column) else { continue };
@@ -231,23 +236,25 @@ pub(crate) fn paint_lines(
                 thickness,
                 colour: underline_colour,
             };
-            paint_underline(painter, style, underline, grid);
+            paint_underline(painter, &mut bars, style, underline, grid);
             if cell.overline {
                 let rect = Rect::from_min_size(
                     Pos2::new(pen.x, pen.y.round()),
                     Vec2::new(width, thickness),
                 );
-                painter.rect_filled(rect, 0.0, foreground);
+                bars.add_colored_rect(rect, foreground);
             }
             if cell.strikethrough {
                 let y = (pen.y + grid.cell.ascent * 0.65).round();
-                painter.rect_filled(
+                bars.add_colored_rect(
                     Rect::from_min_size(Pos2::new(pen.x, y), Vec2::new(width, thickness)),
-                    0.0,
                     foreground,
                 );
             }
         }
+    }
+    if !bars.is_empty() {
+        painter.add(Shape::mesh(bars));
     }
 }
 
@@ -265,37 +272,39 @@ struct Underline {
 ///
 /// The dotted, dashed and curly lines are measured from the grid's own left edge rather than from the cell, so
 /// a run of underlined cells is one unbroken pattern rather than a pattern that starts again in every cell.
-fn paint_underline(painter: &egui::Painter, style: UnderlineStyle, line: Underline, grid: Grid) {
+fn paint_underline(
+    painter: &egui::Painter,
+    bars: &mut Mesh,
+    style: UnderlineStyle,
+    line: Underline,
+    grid: Grid,
+) {
     let Underline { left, y, width, thickness, colour } = line;
     let bar =
         |x: f32, w: f32, y: f32| Rect::from_min_size(Pos2::new(x, y), Vec2::new(w, thickness));
     match style {
         UnderlineStyle::None => {}
         UnderlineStyle::Single => {
-            painter.rect_filled(bar(left, width, y), 0.0, colour);
+            bars.add_colored_rect(bar(left, width, y), colour);
         }
         UnderlineStyle::Double => {
-            painter.rect_filled(bar(left, width, y - thickness), 0.0, colour);
-            painter.rect_filled(bar(left, width, y + thickness), 0.0, colour);
+            bars.add_colored_rect(bar(left, width, y - thickness), colour);
+            bars.add_colored_rect(bar(left, width, y + thickness), colour);
         }
+        // **Dots and dashes start on whole pixels.** Placed at the fractions of a point a cell's edge falls on, a
+        // one pixel dot was spread over two pixels at half strength and the dotted line could not be seen at all.
         UnderlineStyle::Dotted => {
-            let step = thickness * 2.0;
-            let mut x = left + (step - (left - grid.origin.x).rem_euclid(step)) % step;
-            while x < left + width {
-                painter.rect_filled(bar(x, thickness.min(left + width - x), y), 0.0, colour);
-                x += step;
+            let dot = thickness;
+            for (from, to) in pattern(left, width, grid.origin.x, dot, dot * 2.0, painter) {
+                bars.add_colored_rect(bar(from, to - from, y), colour);
             }
         }
         UnderlineStyle::Dashed => {
-            let (dash, step) = (grid.cell.width * 0.5, grid.cell.width * 0.75);
-            let start = left - (left - grid.origin.x).rem_euclid(step);
-            let mut x = start;
-            while x < left + width {
-                let (from, to) = (x.max(left), (x + dash).min(left + width));
-                if to > from {
-                    painter.rect_filled(bar(from, to - from, y), 0.0, colour);
-                }
-                x += step;
+            let dash = (thickness * 3.0).max(3.0);
+            for (from, to) in
+                pattern(left, width, grid.origin.x, dash, dash + thickness * 2.0, painter)
+            {
+                bars.add_colored_rect(bar(from, to - from, y), colour);
             }
         }
         UnderlineStyle::Curly => {
@@ -312,6 +321,44 @@ fn paint_underline(painter: &egui::Painter, style: UnderlineStyle, line: Underli
             painter.add(Shape::line(points, Stroke::new(thickness, colour)));
         }
     }
+}
+
+/// The runs of a repeating pattern of `mark` points every `step` points that fall inside one cell's underline,
+/// counted from the grid's left edge so a run of cells is one unbroken pattern, each run starting and ending on a
+/// whole pixel.
+///
+/// @param left - where the cell's underline starts
+/// @param width - how long it is
+/// @param origin - the grid's left edge, which the pattern is counted from
+/// @param mark - how long each dot or dash is
+/// @param step - how far apart two dots or dashes start
+/// @param painter - the painter, for the size of a pixel
+fn pattern(
+    left: f32,
+    width: f32,
+    origin: f32,
+    mark: f32,
+    step: f32,
+    painter: &egui::Painter,
+) -> Vec<(f32, f32)> {
+    let pixels = painter.pixels_per_point();
+    let snap = |value: f32| (value * pixels).round() / pixels;
+    let (right, step) = (left + width, step.max(1.0 / pixels));
+    let mut runs = Vec::new();
+    let mut index = ((left - origin) / step).floor() as i64;
+    loop {
+        let start = snap(origin + index as f32 * step);
+        if start >= right {
+            break;
+        }
+        let (from, to) =
+            (start.max(snap(left)), snap(start + mark.max(1.0 / pixels)).min(snap(right)));
+        if to > from {
+            runs.push((from, to));
+        }
+        index += 1;
+    }
+    runs
 }
 
 /// Which pictures a pass draws, by their `z`.
