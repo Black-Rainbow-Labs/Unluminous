@@ -43,7 +43,7 @@ person speaks. Every area answered. And **24% of its 126 tool calls went to its 
 status, find-references, go-to-definition, making a folder, renaming a symbol across the project.
 
 It bypassed `editor rename`, which is one undo step per file and leaves comments and strings alone,
-in favour of three replace-alls that rewrote a Mermaid diagram and wrote three files behind a window
+in favor of three replace-alls that rewrote a Mermaid diagram and wrote three files behind a window
 that had two of them open. And in the debug scenario it drove the debugger correctly and then
 answered the value of a variable **by doing arithmetic on the source**, because the value it had
 already been handed was buried behind nineteen stack frames.
@@ -215,7 +215,7 @@ first time, exactly as the Windows installer script installs Inno Setup.
 signs them with `rcodesign`, assembles `Unluminous.app`, and notarises and staples a zipped bundle. It
 needs a copy of Apple's macOS SDK on the machine, because Unluminous links AppKit, Metal, WebKit and
 eight more frameworks and zig ships a stub for `libSystem` alone; `installer/README.md` says where the
-SDK comes from and what Apple's licence says about keeping one there. It is off by default for that
+SDK comes from and what Apple's license says about keeping one there. It is off by default for that
 reason, and `installer/macos/build.sh` is unchanged and still the route on a Mac.
 
 ### Every release is a nightly, and a person promotes one to stable (`task-2328`)
@@ -404,11 +404,11 @@ publish. Five rules:
 | Crate | What is in it | What must never be in it |
 |---|---|---|
 | `unluminous-core` | The editor: the text buffer, the character and paragraph formatting, the caret, layout, undo, the Markdown parser, the syntax tokeniser, and the Mermaid reader and diagram layout. | Any user interface dependency. Its tests run with no window, no graphics card and no fonts. |
-| `unluminous-terminal` | The terminal: the session over Termoil's emulator and pseudoterminal, the screen the painter reads, the colour palette, the key and mouse encoding (Termoil's), and which shell to start and in what folder. | Any user interface dependency, for the same reason. |
+| `unluminous-terminal` | The terminal: the session over Termoil's emulator and pseudoterminal, the screen the painter reads, the color palette, the key and mouse encoding (Termoil's), and which shell to start and in what folder. | Any user interface dependency, for the same reason. |
 | `unluminous-git` | Reading and changing a git repository: the status, blame, the log, diffs, branches, and every operation on the Git menu, plus the thread they run on. | Any user interface dependency, and any decision about what a dialog looks like. Its tests build real repositories in a temporary folder and ask git what happened. |
 | `unluminous-dap` | The Debug Adapter Protocol: the `Content-Length` framing, the typed messages, the session state machine, and the thread an adapter is spoken to on. | Any user interface dependency, and any knowledge of *which* adapter to start — where `lldb-dap` lives on this machine is knowledge about the machine, and it lives in `unluminous-app`. Its tests run against scripted adapters with no process. |
 | `unluminous-db` | Reading and changing a database: the PostgreSQL v3 wire protocol, SCRAM-SHA-256, SQLite through `rusqlite`, Inillucent through `inillucent-driver`, the vector a search index stores, the values a grid draws, the statements a pending change becomes, and the thread a query runs on. | Any user interface dependency. Its tests run with no window and, for the PostgreSQL half, against a scripted server on `127.0.0.1:0` replaying fixed bytes. |
-| `unluminous-app` | The window: drawing, input, real fonts, the settings on disk, the menus, and the plugin registry. | Editor behaviour, terminal emulation or git plumbing. Those belong in the crates above. |
+| `unluminous-app` | The window: drawing, input, real fonts, the settings on disk, the menus, and the plugin registry. | Editor behavior, terminal emulation or git plumbing. Those belong in the crates above. |
 | `unluminous-cli` | The command line: the catalogue of commands, the wire format, and the client program. It lives in `unluminous-cli/` beside its own documentation rather than under `crates/`, because the two are read together. | Anything that depends on `unluminous-app`. The dependency points one way, so the client stays a small program with no window, no graphics card and no fonts behind it. |
 
 `unluminous-app` is laid out in four folders and a new file belongs in one of them:
@@ -759,8 +759,8 @@ pane that quietly uploaded whatever was on the screen is a pane nobody could use
 confidential. With the tools on the model can read it by asking, which is the right shape for an
 editor whose every command is already a tool.
 
-**`Look` gained a highlighter**, so a fenced block in an answer is coloured by the plugin that claims
-its language, exactly as the Markdown preview colours one. A message body is
+**`Look` gained a highlighter**, so a fenced block in an answer is colored by the plugin that claims
+its language, exactly as the Markdown preview colors one. A message body is
 `components::markdown_text`, which is `unluminous_core::markdown::render` plus the ordinary layout — the
 same thing the editor's own preview is made of — so headings, lists, quotes, tables and code all work
 and none of it is a second renderer. A picture *attached* to a message is drawn; one written as
@@ -956,14 +956,14 @@ everywhere and the window could not be moved at all.
 
 The Claude Design canvas "Unluminous", page Agent-Chat (artboards ChatPane, ChatSettings and ChatParts),
 is the picture the pane is measured against. No card round the whole pane; a header of two 38 point
-round buttons with the conversation's name centred between them; the person's messages as raised
+round buttons with the conversation's name centered between them; the person's messages as raised
 bubbles (`22px 22px 8px 22px`) and the agent's words on the pane with no bubble, under a round avatar
-and the agent's name; a run of tool calls as a command card with a status well; a 30 point gear centred
+and the agent's name; a run of tool calls as a command card with a status well; a 30 point gear centered
 over one carved prompt box with the 44 point send button; and the model choice (a pill switch, one pill
 a provider) and the context ring in a Chat settings dialog that only its round cross closes. Four rules:
 
 - **Every surface is `rux`.** `rux::theme::Chat` holds the design's values, worked out from the pane's
-  colour by `Chat::lit_from`, so on Unluminous Dark's `#1f232a` they are exactly the canvas's hex and on
+  color by `Chat::lit_from`, so on Unluminous Dark's `#1f232a` they are exactly the canvas's hex and on
   Unluminous Light they are the same design turned the right way up. `components/agent_chat/kit.rs`
   opens a small `rux` layer for each piece, and the words are drawn after it so they sit on top.
 - **There are no status dots, lamps or segmented meters anywhere in the pane**, the answer components
@@ -1003,8 +1003,8 @@ object with a `type`: `card`, `columns`, `tabs`, `stack`, `callout`, `steps`, `t
   else.** It cannot run a command, change a file or fetch anything, and `open_a_file` refuses a path
   outside the project.
 - **The look is the instrument language** (TDD §5.0): plates with a lit top edge, recessed screens, key
-  caps that sink, LEDs, faders, segmented meters. Colour is light, never a filled control or a stripe.
-  Jason rejected coloured side bars and generic blue buttons and checkboxes in the first baseline.
+  caps that sink, LEDs, faders, segmented meters. Color is light, never a filled control or a stripe.
+  Jason rejected colored side bars and generic blue buttons and checkboxes in the first baseline.
 - **One function measures and draws a component.** `blocks::Kit::draw` is false for the measuring pass, so
   a row cannot be measured as one thing and drawn as another. What a component remembers is
   `PaneState::blocks`, keyed by `message::block_key` and the path inside the block, which
@@ -1016,9 +1016,9 @@ a status screen of what it can see, and the last three conversations.
 
 ### The words of an answer follow the theme on the frame it changes (`task-2219`)
 
-`markdown_text::Rendered` bakes its colours into the layout, and the cache used to make it again only
-when the source or the width changed. So choosing a theme left every message in the old theme's colours
-until a resize moved the width. A `Rendered` now remembers its colours, size and family and is made
+`markdown_text::Rendered` bakes its colors into the layout, and the cache used to make it again only
+when the source or the width changed. So choosing a theme left every message in the old theme's colors
+until a resize moved the width. A `Rendered` now remembers its colors, size and family and is made
 again when any of them differs. `a_change_of_theme_recolours_the_words_already_on_the_screen` reads the
 pixels inside a bubble before and after `theme set`.
 
@@ -1111,12 +1111,12 @@ gap between them reads.
 Three things about the copy, and each was found by driving a real window rather than by reading:
 
 - **`Ctrl`/`Cmd`+`C` is an `egui::Event::Copy` and never a key press**, because `egui-winit`
-  recognises the chord and returns. So `components::agent_chat::copying` claims the event and takes
+  recognizes the chord and returns. So `components::agent_chat::copying` claims the event and takes
   it out of the frame, which is `route_the_preview_copy`'s rule; and it does not claim it at all
   while a text box has the keyboard, because the composer is a text box in this same pane.
 - **`unluminous-cli input key c --cmd` sent a key press nothing reads**, so the chord could not be
   driven anywhere in the window — not here, not in the preview, not in a field. `services::input`
-  sends `Event::Copy` and `Event::Cut` for the four chords `egui-winit` recognises now. Paste is
+  sends `Event::Copy` and `Event::Cut` for the four chords `egui-winit` recognizes now. Paste is
   deliberately not one of them: that library reads the clipboard's *text* to build its event, and the
   key going back up is the one report of the chord `pasting` above can read.
 - **A press outside the pane ends the selection**, or words selected in an answer would go on being
@@ -1127,7 +1127,7 @@ Three things about the copy, and each was found by driving a real window rather 
 The menu's `Copy` is the **rendered** words, so a heading comes back without its hashes; `Copy
 Message` is the source, which is what the button beside the bubble has always copied.
 
-### A message's words are centred on the glyph band, and the copy button waits to be reached
+### A message's words are centered on the glyph band, and the copy button waits to be reached
 
 Two more of `task-2060`, and both are the same kind of fault the gutter already had.
 
@@ -1160,9 +1160,9 @@ right where the thing beside a mark is a row of the same height at every zoom; h
 
 **And a tool's arguments are laid out over several lines and fenced as `json`.** They arrive as one
 long line, and a fence naming no language is a fence no plugin is asked about — so the whole block was
-drawn in the one code colour. Named, the JSON plugin tells its strings, its numbers and its three
+drawn in the one code color. Named, the JSON plugin tells its strings, its numbers and its three
 literal values apart, exactly as it does in a `.json` file. Anything that is not JSON is left exactly
-as it arrived: a shell command's output is not JSON and colouring it as though it were would colour it
+as it arrived: a shell command's output is not JSON and coloring it as though it were would color it
 wrongly.
 
 A call is **folded until somebody opens it** (`task-2255`). It used to be open while it ran and fold when it
@@ -1185,10 +1185,10 @@ egui panics on a family nobody bound. `rux::text::install` binds them by replaci
 context, which would change the whole window's typeface, so `theme::install_fonts` binds the seven names
 to the interface's own faces instead. A `rux` control drawn anywhere in Unluminous needs nothing more.
 
-**Its colours are Unluminous's too** (`task-2219`). `theme::rux_theme` builds a `rux::Theme` from the
+**Its colors are Unluminous's too** (`task-2219`). `theme::rux_theme` builds a `rux::Theme` from the
 active palette with `rux::Theme::retoned`: the board surfaces, the text ladder and the accent replace
 `rux`'s own, and the elevations are worked out again from them. Before, a component plate in a chat
-answer was `rux`'s grey beside bubbles in the theme's colour, which in a plugin theme did not match at
+answer was `rux`'s gray beside bubbles in the theme's color, which in a plugin theme did not match at
 all. One theme is made per palette and kept, so `theme::in_step` still compares two addresses.
 
 **And a pane does not follow the editor's font.** A plugin's `Look` is built from
@@ -1199,7 +1199,7 @@ about the editor's text can still answer true.
 ### Pasting a picture is seen on the key going **up**, and it could never have been seen any other way
 
 `task-1771` reported that pasting a picture into the composer did nothing, and the reason is in
-`egui-winit` rather than here. Its `on_keyboard_input` recognises the paste chord, reads the
+`egui-winit` rather than here. Its `on_keyboard_input` recognizes the paste chord, reads the
 clipboard's **text**, pushes `Event::Paste` only `if !contents.is_empty()`, and then returns — so the
 `V` key press is swallowed as well. With a picture on the clipboard `get_text()` fails outright and
 the frame carries **no event at all**. This pane was watching for an *empty* `Event::Paste`, which is
@@ -1225,7 +1225,7 @@ gating the drop on it threw the picture away silently. Nothing else in Unluminou
 `task-1765` asks the Agent-Tasks board to look like the tasks page of `ai-service`, which is **dark
 neumorphism**: every surface is lit from the top left, so a raised thing carries a pale shadow above and
 left of it and a dark one below and right, and a recessed thing carries the same pair *inside* it. The
-buttons are diagonal gradients with coloured glows under them and the lane dots have haloes.
+buttons are diagonal gradients with colored glows under them and the lane dots have haloes.
 `tasks/agent-tasks-vello-ui-tdd.md` is the design and
 `_agent_output/task-1765-vello-board/reference-measurements.md` is the picture read back one pixel at a
 time.
@@ -1251,9 +1251,9 @@ also makes it deterministic — which is what 411 screenshot comparisons rest on
 **Three types, and the middle one is the seam.** `Chrome` is what a component talks to: it says what kind
 of surface it is drawing — `raised`, `sunken`, `glow`, `ring`, `clip` — and the elevation recipe lives in
 one file, so no component holds a shadow offset. That is the rule that a plugin **manifest** cannot name a
-colour, applied to depth. (The rule is about the manifest and it is worth stating exactly: a provider is
+color, applied to depth. (The rule is about the manifest and it is worth stating exactly: a provider is
 ordinary Rust compiled into Unluminous and can of course write `Color32::from_rgb`. What a plugin *folder*
-cannot do is name a colour, because there is no manifest key that sets one.) `Decor` is what that records: five kinds of shape and a clip, in points, a plain value a
+cannot do is name a color, because there is no manifest key that sets one.) `Decor` is what that records: five kinds of shape and a clip, in points, a plain value a
 test asserts on with no window — the same seam `unluminous_core::mermaid::Scene` is. `Canvas` replays the list
 into `vello_cpu`, rasterises into a premultiplied-RGBA8 `Pixmap` — which is `egui::Color32` byte for byte —
 and uploads it as one texture painted **behind** the pane's widgets, into a slot reserved with
@@ -1267,9 +1267,9 @@ highlight is a lifted gray (not white)" — so the palette stays closed while th
 dimension. **And the pale half is barely there**, which was measured rather than judged: in the picture the
 halo above a card lifts the lane it sits on by about two units a channel and the one above a lane is not
 there at all, so the character comes almost entirely from the dark side. Lifting by eighteen read as a
-bright grey rim round every surface.
+bright gray rim round every surface.
 
-`Palette` grew `board_page`, `board_lane`, `board_card` and `board_well`, and all four are colours Unluminous
+`Palette` grew `board_page`, `board_lane`, `board_card` and `board_well`, and all four are colors Unluminous
 already had: `EDITOR`, `EXPLORER`, `CODE_PANEL` and `FIELD`, each within a few units a channel of the
 picture. Three are genuinely new — `AGENT`, `ATTACHED` and `BOARD_ACCENT` — and each says why beside
 itself. The last of those is a **second blue**, which is the one thing here that breaks a rule on purpose:
@@ -1319,7 +1319,7 @@ honest bottom of it: the depth is worth the milliseconds or it is not, and the p
 
 **An inset shadow is clipped to its own shape, and that is not tidiness.**
 `fill_blurred_rounded_rect`'s inverted form paints the *complement* of the blur — opaque outside the
-rectangle, fading to nothing inside it — so an unclipped well washes its colour across the whole pane. CSS
+rectangle, fading to nothing inside it — so an unclipped well washes its color across the whole pane. CSS
 clips an inset shadow to the border box for the same reason.
 
 **The screenshot tests pin the SIMD level.** `vello_cpu` picks the widest one the processor has and does
@@ -1694,13 +1694,13 @@ holding Apple Lossless needs `symphonia-alac` as well (`task-2207`). A video pla
 ### Whiteboard shapes are a node kind with no header (`task-2284`)
 
 `.designs/realm-whiteboard.html` is the design. `Kind::Shape` holds a `shape::Shape`: one of nine outlines
-(rectangle, rounded, circle, triangle, diamond, hexagon, parallelogram, star, sticky), its words, a colour of its
+(rectangle, rounded, circle, triangle, diamond, hexagon, parallelogram, star, sticky), its words, a color of its
 own or none, how the words are aligned, and their size. Five rules:
 
 - **`services::realm::shape` is the arithmetic and `components::realm::shape` is the picture.** The outline, the
   part of a shape that holds its words, the points a wire joins and whether a point is inside the outline are
   pure functions of the shape and its rectangle, each with a test. A shape is drawn whole into its node's layer:
-  no header, no card behind it, its two shadows feathered from its own outline, and `None` for its colour is the
+  no header, no card behind it, its two shadows feathered from its own outline, and `None` for its color is the
   theme's card, so it follows a theme change.
 - **A wire joins a point, not a port.** `Edge::from_point` and `to_point` are indexes into `Node::anchors`,
   written as `from.point` and `to.point`. A node that is not a shape has two anchors, input then output, so an
@@ -1711,8 +1711,8 @@ own or none, how the words are aligned, and their size. Five rules:
   `RealmState::typing` says which shape; the box is handed the keyboard through `controls::wants_the_keyboard`
   on the next frame, and losing it (Escape, a click outside) or Ctrl+Enter ends typing. A realm file line cannot
   hold a line break or a `#`, so the words are written with `shape::encode_text`.
-- **The colour picker floats rather than being a modal**, so the shape can be watched while the colour is
-  dragged. The shape is drawn in `RealmState::picking`'s colour, and nothing is written until Apply.
+- **The color picker floats rather than being a modal**, so the shape can be watched while the color is
+  dragged. The shape is drawn in `RealmState::picking`'s color, and nothing is written until Apply.
   `finish_the_colour_picker` is what Apply, Cancel and `realm shape <node> pick apply|cancel` all reach.
 - **The Add a node dialog scrolls a row at a time** when the window is too short for every kind, which eleven
   kinds in a 740 point window are. The Shape row opens its flyout of shapes beside the dialog
@@ -1979,13 +1979,13 @@ its height: the explorer's box is `view.at(24.0)` and its rows are `view.at(12.5
 rows at every zoom. The two shapes that genuinely know better — a box whose text follows a pane's own font,
 and a well several rows tall — pass their size to `field_takes_the_whole_rectangle_at`.
 
-### A field centres the row it is going to draw
+### A field centers the row it is going to draw
 
 `controls::field_text_rect` measures its strip with `TextStyle::Body`, which is `appearance.ui.font.size`
 — 12.5 by default and **24** on the machine `task-1914` was reported from. A caller that then draws at a
 size of its own gets a strip measured for one size holding text set in another: at 24 the browser node's
 address bar was handed a 28 point strip inside a 22 point field, `egui` laid its 12 point words out at the
-**top** of it, and the address sat above centre with its top cut off by the field's own border. That is
+**top** of it, and the address sat above center with its top cut off by the field's own border. That is
 *"the web browser node url text is not vertically centered in the bar, so its up too high and partially
 clipped."*
 
@@ -1996,7 +1996,7 @@ every field that draws at the interface size goes on using.
 The composer is the same fault in a different shape: it asked for however many rows would **fit** in its
 well, which at the well's own one-line height is two, and `egui` draws a hint at the top of the box it is
 given. It asks for as many rows as there is text now — one reckoning, `composer::prompt_lines`, read both
-by the well that is measured and by the box inside it — so `Ui::put` centres a box that is the height of
+by the well that is measured and by the box inside it — so `Ui::put` centers a box that is the height of
 what it holds. And `composer::hint` drops the long form where it would wrap, because a hint that wraps
 grows the box past the well measured for one line.
 
@@ -2030,9 +2030,9 @@ ticket modal's `No issue` and `What needs doing?` are right too.
 name is read by, from the top of a capital down to the baseline, does not sit in the middle of it. With the
 face the report came from, the explorer's names were two and a half points above the icon beside them.
 `crisp::top_centring_capitals(painter, font, centre_y)` answers the top to draw a line at so its capitals are
-centred on `centre_y`, measured off the font from an `H`, so every row in a list is placed the same whatever
+centered on `centre_y`, measured off the font from an `H`, so every row in a list is placed the same whatever
 letters are in it. The explorer's rows and the file tabs use it. Text that has no icon beside it is still
-centred by its box.
+centered by its box.
 
 **The band is read off the ink of the `H`, never off `Glyph::pos`** (`task-2287`). `theme::centred_in_its_row`
 gives the interface face a `y_offset` tweak (`task-2282`), and the tweak moves the ink while `Glyph::pos` stays
@@ -2074,7 +2074,7 @@ says so — 480 by 360, and 300 by 280 for a chat. The alternative is a node tha
 at which it draws something nobody can read.
 
 And a Folder node draws **no file count**: the strip that counts a project's files belongs to the panel,
-which `footer_top` has said since the node was built, and the count was drawn anyway — centred on a
+which `footer_top` has said since the node was built, and the count was drawn anyway — centered on a
 rectangle of no height sitting on the node's own bottom edge, so half of it was inside the node and half
 below. The footer is named `File count` now, which is what made a test of it possible at all.
 
@@ -2109,7 +2109,7 @@ defined as it and keeps its own 120, because what the two protect is not the sam
 **And only a panel whose own stored number is part of a side's share is settled**, which is `dock::regions`'
 rule read back: a column's side is the sum of its panels and a strip's side is the greatest of them. So
 every column is written back and only the deepest panel in a strip is — the others are drawn at the strip's
-depth because `lay_a_strip_out` equalises it, and writing that back gave the terminal the canvas's own
+depth because `lay_a_strip_out` equalizes it, and writing that back gave the terminal the canvas's own
 height and kept it after the canvas was hidden. Nothing is written at all until the drag is known to move
 something, because a drag that turns out to be clamped to nothing used to rewrite every stored size.
 
@@ -2207,7 +2207,7 @@ when a file inside it is *written*: the tree was correctly left alone and then w
 `reread_the_tab_only` is that function without the walk, and it took the worst watch frame from 88.44 ms
 to **1.11**.
 
-## A colour is a question, and the list of names is still closed
+## A color is a question, and the list of names is still closed
 
 `task-1776` asks for themes, and the thing in the way was that `theme::color` was forty `const`s read
 at **689 places in 56 files**. A constant cannot be themed, so each name became a function over the
@@ -2216,9 +2216,9 @@ about the palette is still true. **A theme says what a name means; it cannot add
 
 The list lives once, in the `palette!` invocation in `theme/mod.rs`, and the struct, the default
 theme, the names a manifest may set, the reader, the writer and the forty accessors are generated
-from it. Writing them out would be five places to forget a name. Four colours are **derived** rather
+from it. Writing them out would be five places to forget a name. Four colors are **derived** rather
 than roles — `breakpoint()` is the close button's red, `attached()` is git's added green — and
-`execution_point()` is derived for a sharper reason: it is the one colour whose alpha carries
+`execution_point()` is derived for a sharper reason: it is the one color whose alpha carries
 meaning, so a role a manifest set as `#RRGGBB` would have painted an **opaque** band over the line
 the debugger stopped on and hidden the code.
 
@@ -2231,14 +2231,14 @@ test.
 
 **`plugin.kind = theme` is the third value, widened in the open with a check** — one plugin carries
 several themes, a role it does not name inherits Unluminous Dark's (IntelliJ's `parentTheme` in one line),
-a role Unluminous has not got is refused with the list, and eight of the nine token colours is refused
+a role Unluminous has not got is refused with the list, and eight of the nine token colors is refused
 because that would leave one line of code drawn in two schemes at once. Light was refused too, until
 `task-2215` built Unluminous Light; the section on the light theme below is what changed.
 
-**The colour scheme moved off the language plugins.** Rust, JavaScript, TypeScript, CSS and HTML each
+**The color scheme moved off the language plugins.** Rust, JavaScript, TypeScript, CSS and HTML each
 carried their own copy of Dracula — five copies, and a sixth language would have arrived with a sixth.
 `plugins::scheme_of` answers with the theme's nine if it names them and the plugin's own otherwise, and
-**Unluminous Dark names none**, so an Unluminous nobody has chosen a theme in colours every file exactly as it did
+**Unluminous Dark names none**, so an Unluminous nobody has chosen a theme in colors every file exactly as it did
 before.
 
 `themes-bundle-1` is five dark themes whose every number was read out of the IntelliJ plugin jars on
@@ -2246,7 +2246,7 @@ this machine — Islands Dracula Colorful (the one switched on), Material Paleni
 Monokai Pro and One Dark. `tasks/task-1776-themes-tdd.md` §1 says which file each came from.
 
 **Icons are themeable in two ways and neither is a bitmap.** Five icon roles joined the palette, each
-defaulting to the colour that was already being passed, so all fifty drawn marks follow the theme with
+defaulting to the color that was already being passed, so all fifty drawn marks follow the theme with
 nothing having moved. On top of that `theme::IconSet` has two members: `classic` is what shipped, and
 `material` — filled, rounder, a **chevron** disclosure and a folder mark in the explorer — is the
 default, because the ticket asked for the defaults to be *improved* rather than merely to become
@@ -2261,16 +2261,16 @@ all choose the light one. An empty `appearance.theme` is still Unluminous Dark. 
 is written out in full, so a role added to the `palette!` list is a compile error until somebody says
 what it means on a light ground.
 
-**The light theme names the nine token colours**, in a One Light scheme, because every language plugin
+**The light theme names the nine token colors**, in a One Light scheme, because every language plugin
 carries a scheme chosen for a dark ground. A theme plugin may say `dark = false` now, and it inherits from
-Unluminous Light, code colours included, rather than from Unluminous Dark.
+Unluminous Light, code colors included, rather than from Unluminous Dark.
 
-**What follows the darkness of the theme rather than a colour in it** is a short list, and each item
+**What follows the darkness of the theme rather than a color in it** is a short list, and each item
 reads `theme::is_dark()`: egui's own visuals and `Context::set_theme`, so egui does not follow the
 operating system's preference instead; `vello_canvas`'s depth, which is black and a lifted surface on a
-dark ground and a cool grey under a white edge on a light one; `derived::control_hover`, `scrim`,
+dark ground and a cool gray under a white edge on a light one; `derived::control_hover`, `scrim`,
 `execution_point` and `board_surfaces`; which of `rux`'s two themes a control is drawn in
-(`theme::rux_theme`); and the terminal's sixteen colours. The terminal's ground, text and cursor are the
+(`theme::rux_theme`); and the terminal's sixteen colors. The terminal's ground, text and cursor are the
 theme's own editor, text and accent, which for Unluminous Dark are exactly the numbers the terminal always
 had.
 
@@ -2278,7 +2278,7 @@ had.
 palette per thread (`Palette::set_current`), `services::terminal_colours::follow_the_theme` sets it from
 `prepare` and `apply_the_theme`, and `Session::follow_the_palette` gives the emulator the new table under
 the lock the drawing already takes. That is also what a program asking the terminal for its background
-colour is told. Nothing walks the sessions, because the tile, the run tile, a canvas node and a ticket's
+color is told. Nothing walks the sessions, because the tile, the run tile, a canvas node and a ticket's
 terminal each hold some.
 
 **Three tests keep it from coming apart.** `no_component_paints_a_white_or_black_of_its_own` refuses a
@@ -2291,7 +2291,7 @@ light text pair against WCAG 2.2. `on_accent` is the role for words on an accent
 **The light survey.** `UNLUMINOUS_SURVEY_THEME=light` makes `theme::when_nothing_is_chosen` answer
 Unluminous Light, and `shot()` sends each picture to `tests/snapshots/survey-light/`, which git ignores.
 With `UPDATE_SNAPSHOTS=1` and `--no-fail-fast` it photographs every surface the whole suite reaches in the
-light theme. Some tests fail in that run because they assert a dark colour; the pictures are the point.
+light theme. Some tests fail in that run because they assert a dark color; the pictures are the point.
 `design/style-guide.md` has the rules a new control keeps.
 
 
@@ -2299,7 +2299,7 @@ light theme. Some tests fail in that run because they assert a dark colour; the 
 
 `tasks/task-2281-glass-theme-tdd.md` is the design, after the Claude Design canvas "Unluminous", page
 "Agent-Chat 2". `unluminous/glass` is a dark theme whose raised surfaces are glass: the background picture
-behind each one is bent the way a lens bends it, with a faint colour split at the edge, and the design's
+behind each one is bent the way a lens bends it, with a faint color split at the edge, and the design's
 tint is painted over it. The rules:
 
 - **The bending is `rux`'s.** `theme::rux_theme` answers `Theme::glazed` under glass, and `rux::Chrome`
@@ -2318,7 +2318,7 @@ tint is painted over it. The rules:
   appearance once it arrived, which was the modal "chunking" open. Every other theme still photographs.
 - **What egui frames itself is glazed after the frame is drawn.** A menu, a dropdown, a context menu and a
   tooltip are filled in `theme::glass::popup_fill`, and `theme::glass::glaze_the_popups` puts the bent
-  picture under every rectangle of that colour. A canvas node's card is `theme::glass::paint_glass` at
+  picture under every rectangle of that color. A canvas node's card is `theme::glass::paint_glass` at
   full strength, which is what still hides the nodes behind it.
   A popup fading in is glazed at the opacity it has reached, or its shadow shows black through it.
 - **The grounds are a light smoke.** `theme::faded` multiplies the opacity setting by `theme::veil()`,
@@ -2447,9 +2447,9 @@ still open a session that cannot write. Nothing in the window offers it.
 
 **Three faults this found in work that had already shipped**, each invisible to every passing test:
 
-- **`Look::colouring_with` had no caller.** The seam that colours a fenced block through the plugin
+- **`Look::colouring_with` had no caller.** The seam that colors a fenced block through the plugin
   claiming its language was built and never plugged in, so **Agent-Chat's fenced code had been drawing
-  in one flat colour since `task-1767`**. It is wired in the three places a plugin's `Look` is built.
+  in one flat color since `task-1767`**. It is wired in the three places a plugin's `Look` is built.
 - **`plugins::PANE_ICONS` and `activity_bar::pane_icon` are two lists**, and a name in one and not the
   other silently falls back to the board icon. `every_named_icon_is_actually_drawn...` is the test.
 - **`rusqlite`'s default flags include `SQLITE_OPEN_CREATE`**, so a mistyped path made an empty
@@ -2568,7 +2568,7 @@ Four things are different from the other two engines, and each is a rule rather 
   nothing. Do not draw a Stop button."* Absent rather than dimmed, which is the rule that leaves the
   `F` button off a `.rs` file — and it is read from the driver at run time rather than written down
   here, so the day the engine grows a cancel the button appears with nothing edited.
-- **A row count is exact.** The engine materialises, so `Rows::total` is what the statement really
+- **A row count is exact.** The engine materializes, so `Rows::total` is what the statement really
   produced and the grid can say `1-200 of 4,317` and mean it, where the other two are asked for
   `limit + 1` and answer `200+`. The cost is that a query over a large table costs the whole result.
 - **Read-only is the driver's classification of a statement, not the file being opened read-only.**
@@ -2609,7 +2609,7 @@ make, and one an explorer that folded them together would have thrown away. `unl
 about never inventing an error message, applied to a status code.
 
 **Three refusals route rather than puzzle.** A SQLite file added as Inillucent names the import that
-converts one; a `.rdb` added as SQLite is recognised by its first eight bytes; and a data source added
+converts one; a `.rdb` added as SQLite is recognized by its first eight bytes; and a data source added
 from a bare path reads the engine off the file, because a person who has a database has a path rather
 than an opinion about which engine wrote it.
 
@@ -2628,7 +2628,7 @@ clothes: a person and an agent looking at one row were shown different things.
 - **The read-only sentence depended on the tree having been read.** `plugins run database open docs` on
   a window nobody has clicked in leaves the grid's `kind` at its default, and the banner then fell back
   to "has no primary key" - true, and the weaker of the two answers, while the same page's own data
-  said "is a search index". A search index is recognised from its **schema** now, so both say the same
+  said "is a search index". A search index is recognized from its **schema** now, so both say the same
   thing whichever way the grid was opened.
 
 Neither had a failing test, and neither would have got one: both were only visible by starting the
@@ -2655,7 +2655,7 @@ the grid lists what is there, and removing one removes it for good. `write_into`
 and writes only what is missing, so a person who deleted `wood-rings.jpg` does not get it back.
 
 **They are JPEG at quality 82.** A background is drawn at 86% behind a window full of text, which is the
-one place a compression artefact cannot be seen.
+one place a compression artifact cannot be seen.
 
 **The default is chosen in `use_store`, not as the `Settings` default**, and that is the one thing here
 that needed care rather than typing. An empty `appearance.background.image` means *"let the desktop show
@@ -2745,7 +2745,7 @@ its own custom layout (same behavior as if they were open in different windows).
 - **An empty document's one span takes the base style** (`StyleSpans::restyle_when_empty`), so its caret is the
   zoomed size.
 - **Choosing an open project from the project tabs' `+` list opens a second tab on it** (`Ask::OpenAgain`,
-  `project tab-open --again`). A closed tab's neighbour is found by key, since two tabs can share a folder.
+  `project tab-open --again`). A closed tab's neighbor is found by key, since two tabs can share a folder.
 
 ## What `task-2404` changed, and the rules it left
 
@@ -2972,7 +2972,7 @@ functions with tests over each tool's real arguments.
   texture the card takes. A browser node zoomed in made a 9,067 pixel wide picture and wgpu ended the program.
 - **A new tab's empty page is built on the editing area's ground** (`with_background_color`), and the white
   default goes back the first time the view is sent to a page, because a page with no background of its own
-  is drawn on that colour. The picture under a popup over a page is taken even when the page is one colour
+  is drawn on that color. The picture under a popup over a page is taken even when the page is one color
   (`photograph_even_if_plain`), so the hole round a right click menu shows the page.
 - **`voice.microphone` chooses the input device** dictation and "Sable" listen through, by the name the
   system gives it; empty is the system's default. `Settings -> Voice -> Microphone` lists the devices, read on a
@@ -3014,7 +3014,7 @@ functions with tests over each tool's real arguments.
 - **A command's words name only flags it takes** (`every_flag_a_command_mentions_is_one_it_takes`), and a listing
   pads with `cli::column`, which always leaves a space before the next column.
 - **`search` with `--instance` searches that window's project**, in the CLI and in the MCP server.
-- **Code on a File Editor node is coloured** (`colour_the_open_file`), and `tab open` of a file on a node shows the
+- **Code on a File Editor node is colored** (`colour_the_open_file`), and `tab open` of a file on a node shows the
   canvas and that node.
 
 ## What `task-2317` changed, and the rules it left
@@ -3174,7 +3174,7 @@ explorer's rows and the status bar are not part of it and were not changed. Five
 - **The title bar is 46 points.** A menu is a 30 point pill whose word is in the quiet ink, carved into the
   bar while its list is open. The project is a carved chip. On Windows the three window buttons are flat
   46 point strips, and the close button turns the close red under the pointer. On macOS the traffic lights
-  are drawn by Unluminous and keep their colours.
+  are drawn by Unluminous and keep their colors.
 - **A menu's list is `controls::menu_frame`**: a raised card with an 18 point radius. A row is 30 points, the
   hover is a small carved well, and a separator is a groove. The flyouts use the same frame.
 - **The rail is 44 points wide and its buttons are round, 34 across**, carved in while their pane is showing,
@@ -3209,7 +3209,7 @@ Four rules the implementation keeps:
   shifting them would be a second implementation of the rule `Document::insert` already keeps for the
   marks, the folds and the breakpoints — and unlike those, a search match is *derived* from the text,
   so there is nothing a fresh reading would not give.
-- **The current match is the selection; the others carry `find_match`.** Two colours for two meanings,
+- **The current match is the selection; the others carry `find_match`.** Two colors for two meanings,
   which is why the palette gained a name. And `Find::refresh` answers whether the *search* changed
   rather than whether the *text* did, so typing in the box walks the file and typing in the file does
   not pull the caret away.
@@ -3285,7 +3285,7 @@ command. It is on `Find` rather than on `Edit`: that menu exists because Edit ra
 
 **`editor.indent` says what one indent is, and it cannot yet say it about a selection.** The default is
 `tabs`, which is what the `Tab` key already typed — `task-1922` §2 says a setting added to a shipped
-editor leaves the current behaviour as the default, and §5.5's note that `spaces:4` is what Unluminous
+editor leaves the current behavior as the default, and §5.5's note that `spaces:4` is what Unluminous
 already does was measured and is not. With nothing selected, `Tab` types what the setting says.
 Indenting a **selection** still moves each line by one character, because
 `unluminous_core::IndentUnit` is a character and the crate says why; applying `Command::Indent` four
@@ -3329,7 +3329,7 @@ of 28 pairs meet WCAG 2.2 and the word on the primary button is 2.77:1 — and t
 whether screen-reader support ships in 1.0, which is **no**.
 
 `node tools/contrast.mjs` computes every ratio from the palette itself, so it can be run again the day
-a colour moves, and `--check` fails when an ordinary-text pair is under 4.5:1.
+a color moves, and `--check` fails when an ordinary-text pair is under 4.5:1.
 
 ## A file is written back the way it was read, and the document is what remembers
 
@@ -3345,7 +3345,7 @@ Every line ending rewritten by a one character edit. On this machine, whose `cor
 git checkout is enough to put every file in that state, so **any edit to any file produced a whole
 file diff**; on a repository not using it the conversion is permanent.
 
-The normalisation itself is right and `task-1794` explains why: offsets and line counts need one
+The normalization itself is right and `task-1794` explains why: offsets and line counts need one
 meaning, and a breakpoint sent to a debugger from a file read raw landed about fifty bytes early. The
 fault was only that the write did not undo it. So `unluminous-core::encoding` is what a file **was**,
 kept beside the text: a `LineEnding` — `Lf`, `Crlf`, or a lone `Cr`, which nothing has written since
@@ -3366,7 +3366,7 @@ Three things follow, and each is a rule rather than a detail:
 `a_round_trip_leaves_every_line_ending_exactly_as_it_was` is the measurement above, made a test: open,
 type, save, compare **bytes**, for each of CRLF, LF, CRLF with no trailing newline, and CR.
 
-## Colouring reads the part that changed, and `set_in` is the half nobody expected
+## Coloring reads the part that changed, and `set_in` is the half nobody expected
 
 `task-1666` §12 named this in advance — *"the tokeniser reads the whole file after every edit… it is
 the next thing to become the largest item"* — and `task-1804` measured it becoming that: **73.8 ms a
@@ -3383,13 +3383,13 @@ It is now **34.9 ms**, and it took two changes rather than one:
   different reading with state of its own, and that is written down rather than assumed.
 - `StyleSpans::set_in`, and this was the **larger** half. Once the tokeniser stopped reading the file,
   what was left was the span list being rebuilt: `set_many` writes a fresh vector cloning each span's
-  style into it, and a `CharStyle` owns its family name — so a 2 MB file coloured into 234,000 spans
+  style into it, and a `CharStyle` owns its family name — so a 2 MB file colored into 234,000 spans
   cost **234,000 string allocations to describe a change of one letter**. It is `task-1666` §12's
   third bullet arriving from a direction nobody expected.
 
 **Five hundred random edits, each checked against the whole-file reading**, is what keeps the first
 one honest, and a differential test against `set` plus `set_many` is what keeps the second one honest.
-Neither is the kind of thing to change on reasoning alone: a file coloured wrongly from the middle
+Neither is the kind of thing to change on reasoning alone: a file colored wrongly from the middle
 down is visible and hard to attribute.
 
 ## An area tool's schema is a union, and two things follow from that
@@ -3476,8 +3476,8 @@ the frame are re-attached to the real nodes once everything has an absolute posi
 a subgraph points at the box it names rather than at the frame.
 
 **A diagram's own `style`, `classDef` and `click` are read and ignored**, which is the same decision
-`services::plugins` already made about a colour scheme: a document does not get to choose the
-window's colours, and nothing in a diagram is going to run. **Nothing is fetched**, ever.
+`services::plugins` already made about a color scheme: a document does not get to choose the
+window's colors, and nothing in a diagram is going to run. **Nothing is fetched**, ever.
 
 **An edge that crosses a subgraph's frame crosses it once, at a port** (`task-2194`). Laying a
 subgraph out as one box keeps its contents apart from everything else, and it used to cost the edges:
@@ -3540,7 +3540,7 @@ drawn are modules of their own: `c4`, `architecture`, `venn`, `ishikawa`, `wardl
   `egui::Shape::convex_polygon` fills as a fan, which painted outside every concave outline: the
   asymmetric node, the mindmap cloud, a document's wavy foot, the Cynefin quadrants.
 - **`@{ shape: … }` knows all of Mermaid's named shapes** (`shapes::Shape`, `flowchart::named_shape`),
-  each with a `text_area` its words are centred in. The symbols Mermaid draws without words (`fork`,
+  each with a `text_area` its words are centered in. The symbols Mermaid draws without words (`fork`,
   the small circles, `bolt`, `hourglass`) have a `fixed_size` and no label.
 - **Words that a line can cross sit on a panel drawn after the lines**: a git commit's id, a subgraph's,
   a namespace's, a boundary's and a group's title. Photographing the corpus found every one of them
@@ -3550,11 +3550,11 @@ Reading the photographs also found faults in the types that already drew, each f
 mentioned inside a subgraph moves into it (`flowchart::encloses`), a gantt chart reads `dateFormat` as a
 calendar, a time of day or a plain number (`gantt::Format`), class diagrams have generics, lollipop
 interfaces and notes, ER diagrams have word relationships (`only one to zero or more`) and subgraphs, a
-pie share too small for its words is labelled outside the circle, a block diagram sizes each block to its
+pie share too small for its words is labeled outside the circle, a block diagram sizes each block to its
 words, a kanban card may be written as bare brackets, and a markdown string keeps its line breaks and
 loses its `_` and `*` marks.
 
-Three of them changed how a type is modelled, and each is a rule now:
+Three of them changed how a type is modeled, and each is a rule now:
 
 - **A composite state is a state.** `state First { ... }` is a frame, and an arrow to `First` goes to the
   frame (`state::Ends`, `EdgeSpec::to_group`). It used to be drawn twice, as a frame and as a separate box
@@ -3562,7 +3562,7 @@ Three of them changed how a type is modelled, and each is a rule now:
 - **A sequence participant's `@{ "type": … }` is read, not kept in its name.** `boundary`, `control`,
   `entity`, `database`, `collections` and `queue` are drawn as their UML figures above the name, the way an
   actor is (`sequence::Symbol`), and `"alias"` names it. `Alice()->>()John` draws the small circles of a
-  central connection, and `rect rgb(…)` is a faint band of that colour with no frame and no words.
+  central connection, and `rect rgb(…)` is a faint band of that color with no frame and no words.
 - **Words that do not fit get smaller or move, never overflow.** A packet field a bit or two wide shrinks
   its words to fit, a pie share too small for its slice is written outside with room reserved above and
   below the circle, a quadrant's title moves to the top of its quadrant when the chart has points, a
@@ -3596,12 +3596,12 @@ references and rename still work there, because neither needs a definition.
 **Honesty is the whole of the design.** Where the mechanism cannot tell two same-named things apart
 it shows both rather than guessing one, a definition found by the brace heuristic is marked
 `Confidence::Likely` and stays marked all the way to the screen, and an occurrence inside a comment
-or a string carries the `Role` that says which — listed second, in the quiet colour, and never
+or a string carries the `Role` that says which — listed second, in the quiet color, and never
 ticked by default in a rename.
 
 **One pass, read once and asked many times.** `unluminous_core::syntax::scan` is the seam: it reports
 every token including the plain words, and `highlight` is that with the plain words dropped, so
-colouring a file and reading its definitions are one reading of the rules rather than two that
+coloring a file and reading its definitions are one reading of the rules rather than two that
 would drift. `symbols::FileSymbols::read` turns one file into two sorted lists — its words and its
 comments and strings — and the window keeps one per open tab keyed on `Document::text_revision()`,
 the same key `colour_the_file` is keyed on. That is what makes the hover query, which runs while the
@@ -3685,7 +3685,7 @@ chords. `Tab` replaces the whole identifier and `Enter` replaces the stem, which
 distinction and is right in both directions.
 
 **The popup is an `egui::Area`, not an `egui::Popup`.** egui keeps one popup open at a time — the
-rule that already shaped the flyouts and the colour wheel — and this list must coexist with nothing
+rule that already shaped the flyouts and the color wheel — and this list must coexist with nothing
 *and* must never take the keyboard. It is drawn after the pane loop from the caret geometry the pane
 with the keyboard recorded, so it is never under a divider and never drawn twice in a split view.
 
@@ -3833,7 +3833,7 @@ naming what was looked for and where it comes from, built by the registry entry 
 
 **Debug is Run, under a debugger.** The same `Configuration` the play button starts — same command,
 same folder, same environment — which is IntelliJ's own model. The debuggee runs **in the run tile**,
-through the `runInTerminal` reverse request, so it gets a real ConPTY with its colours and its
+through the `runInTerminal` reverse request, so it gets a real ConPTY with its colors and its
 interactivity and all of the run tile's own rules. Unluminous answers that request with `success` and
 **no process id**: a pseudoconsole hands back a console rather than a child, the specification makes
 the id optional for exactly that reason, and it is what lldb-dap's comm-file scheme and js-debug both
@@ -4080,10 +4080,10 @@ refusal names the script.
 `task-1693` reported nine things at once and `tasks/task-1693-gutter-and-window-state-tdd.md` is the
 design. Four of them changed a rule rather than a line.
 
-**A gutter mark is centred on the glyph band, never on the line box.** A `PlacedLine` is taller than
+**A gutter mark is centered on the glyph band, never on the line box.** A `PlacedLine` is taller than
 the letters in it: the baseline sits `ascent` from the top and *all* of the extra leading is added
 below, which is what makes single and double spaced paragraphs start in the same place, and
-`text_renderer::READING_LEADING` alone is 0.45 of the point size. So centring a number, a breakpoint
+`text_renderer::READING_LEADING` alone is 0.45 of the point size. So centering a number, a breakpoint
 dot or a fold arrow in the line put it low by about a fifth of the point size — three points at the
 default sixteen and thirty at the hundred and forty-four the settings allow, which is why it was
 noticed while zooming. `gutter::text_band` is the box the letters really occupy, and it is the same
@@ -4093,13 +4093,13 @@ blame cell's background, for the same reason. **The gutter's own type follows th
 ratio of `settings::DEFAULT_FONT_SIZE`, clamped at both ends, so at the default it is exactly the
 11.5 and 10.5 points it always was and only the alignment moved.
 
-**No resize grip is added while the window is maximised**, and that is not tidiness. `BeginResize`
+**No resize grip is added while the window is maximized**, and that is not tidiness. `BeginResize`
 becomes a posted `WM_NCLBUTTONDOWN`, and winit latches a private `dragging` flag that only
-`WM_EXITSIZEMOVE` clears — a message a **maximised** window never sends, because Windows disables
+`WM_EXITSIZEMOVE` clears — a message a **maximized** window never sends, because Windows disables
 Size on one. One refused edge drag therefore wedges moving *and* resizing for the life of the
 process; measured twice on a real window. So the grips are absent when they cannot apply, which is
 Unluminous's own rule, and is what makes it impossible to send a request the window manager will throw
-away. The title bar's `StartDrag` is left alone: Windows really does handle dragging a maximised
+away. The title bar's `StartDrag` is left alone: Windows really does handle dragging a maximized
 window, restoring it and moving it, which is an honest modal loop.
 
 **The explorer's pill means the file that is showing and nothing else.** Both marks filled the same
@@ -4469,14 +4469,14 @@ drawn *inline* and three more rows there made the Edit menu taller than the wind
 `Settings` out of reach. They are **absent** for a file that cannot fold, which is Unluminous's rule for a
 control that can never apply.
 
-**The cost is one reading of the file, shared with the colouring.** `colour_the_file` already runs
+**The cost is one reading of the file, shared with the coloring.** `colour_the_file` already runs
 `syntax::scan` over the same text at the same revision, so it now collects `folding::Tokens` — the
 comments and the strings, which is the only thing reading brackets needs a tokeniser for — and
 `fold_regions` uses them. A second pass was 2.5 ms of every keystroke on `app/mod.rs`. Measured
 there, 274 kilobytes and 5,554 lines: **1.25 ms to read its 1,276 blocks** with the scan shared, and
 3.8 ms for a whole keystroke with a fold closed. `cargo run --release -p unluminous-app --example
 folding_cost` is how those are measured again. A file past `COLOUR_LIMIT` loses its arrows as it
-loses its colours, and for the same reason.
+loses its colors, and for the same reason.
 
 `unluminous-cli fold list | toggle | collapse | expand | others` is the command line half, and the MCP
 tools come from the catalogue with no further work.
@@ -4516,7 +4516,7 @@ like a drawing bug and lives in the model. It is checked against a full layout f
 edit and has to be **identical**, not close.
 
 **Nothing that runs once a letter may allocate.** `StyleSpans::set_many` applies a tokeniser's whole
-output in one pass rather than one pass per token — 561 ms to 1.4 ms on a coloured 170 kilobyte file.
+output in one pass rather than one pass per token — 561 ms to 1.4 ms on a colored 170 kilobyte file.
 `StyleSpans::spans()` gives layout the span list once with absolute positions to binary search,
 instead of `runs_in` walking from byte zero once a paragraph. `PlacedCluster::text` is a
 `ClusterText`, twenty-two bytes inline, rather than a `String`. And `TextRenderer` gives each font
@@ -4524,7 +4524,7 @@ face a small integer id and remembers the last style it resolved, so measuring a
 no longer build a `String` to look one up.
 
 `crates/unluminous-app/examples/frame_cost.rs` is how any of this is measured again: it opens a real file
-with the real fonts of the machine, colours it as the window colours it, and prints what each part of
+with the real fonts of the machine, colors it as the window colors it, and prints what each part of
 a frame costs. `tasks/task-1666-performance-tdd.md` has the before and after tables and the two
 designs that were rejected.
 
@@ -4641,9 +4641,9 @@ scrolling frame. `ProjectState::differs_only_in_what_a_gesture_moves` is what wa
 file while the camera moves. Anything that is one press, such as a tab opened or a pane split, is still
 written the frame it happens, and `on_exit` writes whatever is outstanding.
 
-**Showing a tab keeps what was laid out for it.** The layout, the preview and the colouring live on each
+**Showing a tab keeps what was laid out for it.** The layout, the preview and the coloring live on each
 tab, keyed on its own revisions, so nothing about a switch makes them stale. `show_tab`,
-`Ctrl`+`Tab` and `tab next` each threw them away until this ticket, which cost a full colouring and a
+`Ctrl`+`Tab` and `tab next` each threw them away until this ticket, which cost a full coloring and a
 full layout on every switch.
 
 **A cost the frame trace cannot name gets a phase before it gets a fix.** `frame_trace::phase` is one
@@ -4749,7 +4749,7 @@ already answered, which is the duplication coming back in a different shape.
 **A run names a range of its line's clusters rather than owning a vector of them.** `PlacedRun` is 16
 bytes where it was 64, and the clusters of a line are one contiguous array, so a line with six style
 runs in it is one allocation rather than seven. The style is an `Arc<CharStyle>` shared between every
-run that has the same formatting, because a `CharStyle` owns a family name and a file coloured into
+run that has the same formatting, because a `CharStyle` owns a family name and a file colored into
 63,000 runs was 63,000 copies of the word `Consolas`.
 
 **Compaction happens at exactly two points, and both are off the input path**: the first full layout
@@ -4773,7 +4773,7 @@ and an edited one keeps its editing headroom.
 
 Reading a screenful of glyphs out of the rope costs **0.09 ms** where an owned copy cost 0.04. That
 is the price of the whole change and it is paid once a frame, so it is left alone: `task-1813` sets
-the bar at 0.25 ms median before a phase is worth optimising, and slicing the rope once per run
+the bar at 0.25 ms median before a phase is worth optimizing, and slicing the rope once per run
 instead of once per cluster is the thing to do the day it crosses it. **The capacity control,
 the flat layout arrays and the frame-loop cleanup in that design were not built**, because it says
 in as many words to apply them only if the textless representation misses the targets. It did not.
@@ -4853,12 +4853,12 @@ while the line it sits on is taller, and its bitmap is a whole pixel wider than 
 letters, a table's rules came out dotted and its columns came out as rows of ticks. Eleven characters,
 each a pair of half-cell strokes. `design/style-guide.md` already said this about icons.
 
-**Code is coloured by the plugin that reads the language.** The seam is `CodeHighlighter`, one method:
+**Code is colored by the plugin that reads the language.** The seam is `CodeHighlighter`, one method:
 `unluminous-core` holds no plugin registry and must not learn about one, so it asks and the window answers
 with the same `syntax::highlight` and the same theme `colour_the_file` uses for a source file.
 `Plugins::for_language` matches a fence's word against a plugin's id, its name and every extension it
 claims, so ```` ```rs ```` and ```` ```rust ```` are one question and Unluminous holds no table of aliases.
-A language nothing claims falls back to the one code colour, which is what the preview did before, so
+A language nothing claims falls back to the one code color, which is what the preview did before, so
 the change can never make anything worse. Where the code blocks are comes back as `Preview::panels`
 and where the inline code is as `Preview::code_spans`, and the window paints a panel behind the first
 and a chip behind the second — this crate says which paragraphs and which bytes, and the window
@@ -4895,7 +4895,7 @@ so a picture had to become something the layout engine already understands.
 It is `ParagraphStyle::min_height`: a paragraph may ask to be at least so tall, and layout takes
 `(natural * line_spacing).max(min_height)`. A floor, never a ceiling. The line holding a picture is
 **empty**, and the window paints into the room it reserved: the picture, or the alt text in the quiet
-colour when the file cannot be read. An image mark **inside** a line of prose stays its alt text,
+color when the file cannot be read. An image mark **inside** a line of prose stays its alt text,
 because a picture in the middle of a paragraph needs inline layout the engine does not have.
 
 Two passes, and the reason is worth keeping: how tall a picture is drawn depends on how wide the pane
@@ -4909,10 +4909,10 @@ never make a network request. **And nothing is uploaded that the graphics card w
 *panics* when handed a bigger one and a four thousand pixel screenshot is an ordinary thing to put in
 a document. Both the picture tab and the preview go through it.
 
-## A highlight is a colour behind a passage, and it moves with the text
+## A highlight is a color behind a passage, and it moves with the text
 
-Select some words, right click, choose one of four colours or open the colour wheel, and the
-background behind those words is that colour — in this file, next time it is opened, and until it is
+Select some words, right click, choose one of four colors or open the color wheel, and the
+background behind those words is that color — in this file, next time it is opened, and until it is
 cleared. `task-1663` asks for it across as many files as you like, by hand or from the command line.
 
 **The ranges live in `unluminous_core::highlights`, inside the `Document`.** A sparse set, sorted by where
@@ -4921,7 +4921,7 @@ and the handful on the screen a binary search and a walk. It is **not** `StyleSp
 whole document with no gaps, so a document with two marked words would hold five spans; it carries no
 alpha, deliberately, because text in Unluminous is always fully opaque; and formatting is inherited by
 whatever is typed next, which a mark drawn over a passage must not be. Adding a mark **cuts away**
-whatever it lands on, because two translucent colours over one another give a third colour nobody
+whatever it lands on, because two translucent colors over one another give a third color nobody
 chose and `Clear Highlight` under the pointer would have no single answer.
 
 It lives in the document so that `insert` and `remove_range` — the only two places in Unluminous that know
@@ -4943,22 +4943,22 @@ document's revision moves — an integer comparison a tab a frame — and pulls 
 is opened. `UnluminousApp::change_highlights` is the one place that choice is made, so no command has to
 think about it.
 
-**The right click menu is `components::text_menu`**, the editing area's first. The colour wheel is
+**The right click menu is `components::text_menu`**, the editing area's first. The color wheel is
 drawn **inside the same popup** rather than in a second one over it, because egui keeps at most one
 popup open at a time — the same rule that turned the three line spacings into three buttons. A right
 click inside a selection leaves the selection alone; anywhere else it puts the caret there first,
 which is what makes `Clear Highlight` mean the one under the pointer.
 
 `components::color_wheel` is drawn rather than borrowed: egui's own picker is a square with two
-strips beside it, and the ask is a wheel. The four colours are in `theme::color` and are accents
-already sampled from the design; a colour chosen in the wheel is somebody's own mark on their own
-text, which is the exception `design/style-guide.md` records beside a syntax theme's token colours.
+strips beside it, and the ask is a wheel. The four colors are in `theme::color` and are accents
+already sampled from the design; a color chosen in the wheel is somebody's own mark on their own
+text, which is the exception `design/style-guide.md` records beside a syntax theme's token colors.
 
 `tasks/task-1663-highlights-tdd.md` records what was weighed. `unluminous-cli highlight` is the command
 line half — `list`, `add`, `clear` and `apply`, the last taking a JSON array so twenty passages across
 twenty files are one request and none of the files has to be opened.
 
-### A selection is a line tall and centred on the letters (`task-2198`)
+### A selection is a line tall and centered on the letters (`task-2198`)
 
 *"highlighted text isn't vertically aligned, its too much at bottom and not enough at top."* A line puts its
 baseline `ascent` from its top and adds every scrap of extra leading below the letters, so a rectangle laid
@@ -5001,7 +5001,7 @@ for it; a row answers the ask and every operation on it is a small function with
 diagrams. With two panes at two widths a single cache is not slow so much as *wrong* in the way a
 cache is wrong: the first pane lays its file out, the second lays its own over the top, and the next
 frame does it again for ever. `coloured_revision` moved for the same reason, so the file in the second
-pane is coloured too. Three caches deliberately stay on the window — `preview_images`,
+pane is colored too. Three caches deliberately stay on the window — `preview_images`,
 `mermaid_scenes` and `icons` — because none of them is keyed on a document.
 
 **The pane loop borrows the focus.** For each pane in turn the window sets `files.focus` to it, draws
@@ -5016,7 +5016,7 @@ previews, would otherwise be one widget. The dividers are added after every pane
 
 The explorer's heading is the project folder's row. It has no row of its own in the tree, so a right
 click on the name opens the same menu a folder row opens — `task-1673`, which also took away the plus
-beside it: it was labelled `New file` and it called `save`, which is why it never made one.
+beside it: it was labeled `New file` and it called `save`, which is why it never made one.
 
 ## The explorer follows the tab
 
@@ -5246,7 +5246,7 @@ cannot see a press a widget drawn over it consumed.
 `status --section window` carries `focused` and `maximised`, which is the operating system's answer about the
 **window** where `--section keyboard` is Unluminous's own answer about the surface inside it. And
 `show_the_resize_grips` sends no `BeginResize` while a page holds the operating system's keyboard, for the
-same reason it adds no grips at all while the window is maximised: `components::resize_edges` records what
+same reason it adds no grips at all while the window is maximized: `components::resize_edges` records what
 one refused request costs, and a request the window manager throws away latches a flag in `winit` that only
 `WM_EXITSIZEMOVE` clears.
 
@@ -5386,7 +5386,7 @@ and stopped two steps short of the whole answer. `task-1945` is those two steps.
 
 **It refused to go below 1.0.** `Crispness::at` ended in `max(1.0)`, so a canvas zoomed **out** rasterised
 its glyphs at the layout's own size and let the transform shrink them through a nearest filter. The camera
-this was reported from is at 0.61 and the Agent Tasks cards there were a grey mush. Rounding up still holds
+this was reported from is at 0.61 and the Agent Tasks cards there were a gray mush. Rounding up still holds
 below one — 0.61 asks for 0.75 — so the transform is still only ever shrinking, and the ladder is ten quarter
 steps across the whole camera range rather than seven.
 
@@ -5422,7 +5422,7 @@ The glyph atlas is keyed in sixty-fourths of a pixel, so two exact sizes close t
 `crisp::tests::a_layer_at_any_zoom_is_drawn_one_texel_to_one_pixel` checks that a glyph covers exactly as many
 pixels as it has texels at zooms the quarter steps miss, and `crispness_tests` checks the snapping, the ladder
 and the display density. `_agent_output/task-2216-crisp-text/` has the screenshots: text in a node at 1.1, 1.33
-and 0.61 measured 31% to 43% sharper by neighbouring pixel difference, and unchanged at 1.0.
+and 0.61 measured 31% to 43% sharper by neighboring pixel difference, and unchanged at 1.0.
 
 ## A zoom glides, and a command sets it outright
 
@@ -5513,7 +5513,7 @@ the fault; with the script in front of it the first column follows the `cd` and 
 ## Enter answers a modal, and a modal takes the keyboard
 
 **`components::modal::footer` is where that is decided**, so a dialog written later gets it without
-asking. Its last button is the one that does the thing and is filled in the accent colour; Enter
+asking. Its last button is the one that does the thing and is filled in the accent color; Enter
 presses it. A footer whose last button is dimmed is a modal there is nothing to confirm, so the key
 press is left alone rather than doing nothing loudly. The two dialogs that draw their own footer —
 `prompt_dialog`, which the text prompt and the confirmation share, and the Settings window — ask the
@@ -5577,7 +5577,7 @@ the explorer and the terminal are not egui widgets: they read the frame's events
 of them held egui's focus and nothing said those keys were taken. The focus therefore walked out of
 the document on the first arrow key and landed on the first button in the window, which is `Close` in
 the title bar. A button that holds the focus is pressed by `Space` and by `Enter`. Typing a space then
-closed the window, or minimised it when the focus had reached `Minimise`.
+closed the window, or minimized it when the focus had reached `Minimise`.
 
 That was reported as Unluminous crashing while somebody typed, and there was nothing to find: no panic, no
 line in `crash.log`, no report from macOS. The window had been asked to close in the ordinary way.
@@ -5781,7 +5781,7 @@ on purpose: `unluminous` typed in a folder has to open that folder.
 **And the rest of the command line is `unluminous_app::arguments`, not `main.rs`.** The same reason:
 what a switch means is a rule, and a rule that only a real process can run is a rule nothing tests.
 `main` is left with printing, exiting and building a window. The loop this replaced ended
-`other => path = Some(PathBuf::from(other))`, so **anything it did not recognise became the project** —
+`other => path = Some(PathBuf::from(other))`, so **anything it did not recognize became the project** —
 `unluminous --version` opened a window on a folder called `--version` and, because a project's state
 is written beside the project, created it. `task-1812` found one of those in a repository. So an
 argument beginning with a dash is a switch: known ones are read, `--version` and `--help` are answered,
@@ -5940,7 +5940,7 @@ folder and reads and writes nothing.
 **A drag in a zoomed modal or a zoomed canvas node did select, and nothing drew it.** egui paints a text
 box's selection into the galley: a rectangle added to each selected row's mesh and the selected glyphs
 recoloured. `crisp::sharpen_the_text_in` lays every text shape in a zoomed layer out again at the zoom, from
-the job, which has none of that. `crisp::carry_the_selection` copies the rectangle and the colours across.
+the job, which has none of that. `crisp::carry_the_selection` copies the rectangle and the colors across.
 Unzoomed, nothing is relaid and nothing was ever wrong, which is why every test passed and the ticket modal,
 which Jason zooms, was where it was seen.
 
@@ -6156,7 +6156,7 @@ without it the last notch of a gesture sits uncorrected until something else wak
 ## Every pane zooms, and what one step means is the pane's own business
 
 `task-1771` asks that *"every pane (file panel, folders, terminal, agent chat, agent tasks, etc) be
-zoomable with Ctrl/Cmd + or Ctrl/Cmd scroll wheel"*, centred on the text under the pointer.
+zoomable with Ctrl/Cmd + or Ctrl/Cmd scroll wheel"*, centered on the text under the pointer.
 
 **The claim is the editing area's own rule, widened.** A gesture belongs to the window and the pointer
 says whose it is: `zoom_taken` is set by the first pane to find the pointer inside itself, and
@@ -6193,37 +6193,37 @@ numbers really decides that panel's size.
 `task-1771`: *"I should be able to double click anywhere in the top of a pane to get it to maximize,
 then Esc or double click to put it back to the size it was."*
 
-**Maximising is putting everything else away, and that is the whole of it.** Unluminous already has a way for
-a panel not to be showing, and `dock::regions` already gives the room to whatever is left. So a maximised
+**Maximizing is putting everything else away, and that is the whole of it.** Unluminous already has a way for
+a panel not to be showing, and `dock::regions` already gives the room to whatever is left. So a maximized
 pane is not a fifth kind of layout with its own arithmetic to get wrong; it is the layout there already
 is, with one thing switched on and the rest switched off — and the dividers, the rail's lit buttons,
 `panel list` and the drop bands all report the truth without being told. What has to be remembered is
 what *was* showing, which is `app::Maximised`.
 
 **And it is what the project remembers, not what is on the screen.** `project_state` writes which panels are
-showing into the project's own `.unluminous` on every frame, so a window closed with a pane maximised would have
+showing into the project's own `.unluminous` on every frame, so a window closed with a pane maximized would have
 opened next time with the editing area and the terminal hidden and no `Maximised` left to say why — the
 review of this ticket found it. `was_showing` is the one function that answers "showing, as far as a project
-is concerned", and it answers with the memory whenever there is one. **A toggle inside a maximise ends it**
-for the same reason: hiding the maximised pane left a body with nothing in it at all, so every route that
+is concerned", and it answers with the memory whenever there is one. **A toggle inside a maximize ends it**
+for the same reason: hiding the maximized pane left a body with nothing in it at all, so every route that
 shows or hides a panel calls `leave_the_maximised_pane` first, and `settling_the_maximise` is what stops the
-maximise ending itself while it is putting the panels away.
+maximize ending itself while it is putting the panels away.
 
-### A toggle opens the pane it names, and ending a maximise is not restoring one (`task-2003`)
+### A toggle opens the pane it names, and ending a maximize is not restoring one (`task-2003`)
 
 *"When I have base of infinite open, the press/toggle agent chat pane, it opens the editor pane too. The
 behavior is inconsistent. sometimes it has that issue, other times it doesn't."*
 
-The inconsistency was the maximise, which is why the same button behaved differently on two afternoons.
-`leave_the_maximised_pane` did not end the maximise, it called `restore_the_maximised_pane` — which puts
+The inconsistency was the maximize, which is why the same button behaved differently on two afternoons.
+`leave_the_maximised_pane` did not end the maximize, it called `restore_the_maximised_pane` — which puts
 back every panel that was showing before one pane filled the window. So with the canvas merely showing,
 the Agent-Chat button opened the Agent-Chat pane; with the canvas **filling the window**, the same button
 restored the editing area and the explorer and then opened the chat pane on top of them. One press, three
 panes, and nothing on the screen to say why.
 
-Ending a maximise and restoring an arrangement are two different things and are two functions now.
+Ending a maximize and restoring an arrangement are two different things and are two functions now.
 `leave_the_maximised_pane` sets `Maximise::No` and touches nothing else: what is filling the window stays
-on the screen, the editing area stays where the maximise left it, every other panel stays put away, and
+on the screen, the editing area stays where the maximize left it, every other panel stays put away, and
 the pane that was asked for opens. Putting the arrangement back is `restore_the_maximised_pane`, which is
 what `Escape`, a second double click on the header and `toggle-maximised-pane` all mean.
 
@@ -6233,8 +6233,8 @@ editing area away was safe only because the restore had already put the editing 
 from `show_a_panel`, from each of the three tiles and from `show_the_plugin_pane`, so the routes that
 reach a tile directly — `Action::ToggleTerminal`, `unluminous-cli terminal hide` — keep it too.
 
-`RealmAction::Toggle` asked `was_showing`, which answers with the arrangement the maximise is holding
-rather than with what is on the screen. That was right while leaving a maximise restored it and wrong
+`RealmAction::Toggle` asked `was_showing`, which answers with the arrangement the maximize is holding
+rather than with what is on the screen. That was right while leaving a maximize restored it and wrong
 afterwards, so it reads `realm.visible`. Nothing else asked.
 
 `every_panel_toggle_changes_only_the_panel_it_names` walks `Panel::all` rather than naming three panels,
@@ -6326,7 +6326,7 @@ point and the editing area asks for all of it — a bar interacted with first ca
 draws at the end, once the wheel and the caret have had their say, because a thumb drawn from the
 scroll position the frame opened with is a frame behind the writing.
 
-**The fade is between two palette colours, not down one colour's alpha.** At the alpha that reads as
+**The fade is between two palette colors, not down one color's alpha.** At the alpha that reads as
 subtle against `EDITOR`, the idle thumb was nine values a channel from the background and was not
 honestly a scrollbar. Quiet it is a five point mark in `CONTROL`; used, eight points in `TEXT_DIM`
 with the track behind it. It is never taken away altogether, because a bar that disappears stops
@@ -6371,7 +6371,7 @@ and by nothing else, exactly as `load_settings` is. A test must not touch a pers
 the middle of a test.
 
 **The panes a plugin draws come back too** (`task-2255`): `plugin.panes` in `workspace.conf` names them by
-`<plugin id>/<pane id>`, written from what was showing before a pane was maximised, the rule the panels keep.
+`<plugin id>/<pane id>`, written from what was showing before a pane was maximized, the rule the panels keep.
 And **opening a tab brings a hidden editing area back** (`show_the_editing_area_for_a_tab`), because a design
 opened from the Designs pane with the editing area hidden opened into a tab nobody could see.
 
@@ -6568,7 +6568,7 @@ one code path. Do not add a version switch, and do not add a session.
 **A tool call goes down the control channel.** It becomes exactly the request `unluminous-cli` would have
 sent — same wire name, same arguments, same token, same port — so `run_cli` stays the one place a
 command becomes a change. Two things follow, and both are wanted: one server drives every open window,
-so two Unluminous windows sharing one `mcp.port` is the behaviour rather than a collision; and a window started
+so two Unluminous windows sharing one `mcp.port` is the behavior rather than a collision; and a window started
 with `--control off` has nothing for a server to drive, which the page says rather than listening
 uselessly.
 
@@ -6795,11 +6795,11 @@ asks for the starting rectangle moved by the whole distance. Where the screen ca
 movement inside the window is added up from the start rather than applied to a window position that
 lags behind. `EdgeDrag::step` is a pure function, and its two tests run on every platform.
 
-## A labelled edge's words take room in the layout, and Ctrl+Click and Ctrl+[ work like IntelliJ's
+## A labeled edge's words take room in the layout, and Ctrl+Click and Ctrl+[ work like IntelliJ's
 
 Three smaller rules from `task-2063`, each written where it is kept.
 
-**Mermaid.** `layered.rs` gives a labelled edge's middle dummy the size of its label, with every edge
+**Mermaid.** `layered.rs` gives a labeled edge's middle dummy the size of its label, with every edge
 spanning twice the ranks, which is dagre's answer and took the photographed overlaps from 499 pairs to
 23. An edge into a subgraph enters along a straight run from the side with nothing in the way rather than
 through the frame. `source::label` reads HTML's entities and drops the tags that only change how words
@@ -6921,7 +6921,7 @@ be a screenshot test.
 ## The mark in the title bar is the blue U (`task-2258`, `task-2271`)
 
 The application's own menu at the left of the bar is the Unluminous mark rather than the word: the blue `U`
-with eight coloured pages turning round its bowl, from the Claude Design canvas "unluminous — App Icon",
+with eight colored pages turning round its bowl, from the Claude Design canvas "unluminous — App Icon",
 stopped half way through its turn. `installer/icon` draws it from the design's own numbers and writes it on
 nothing as `crates/unluminous-app/icons/logo/logo.png`, the same picture in a light and a dark theme.
 `components::logo` shrinks it to the display's pixels once. **It does not move**: an animated version was
@@ -7011,7 +7011,7 @@ Four layers, and a change should leave all four green:
 3. `crates/unluminous-app/tests/`: fourteen binaries that build the whole window through `egui_kittest`,
    feed it real events, render through `wgpu` and write a PNG for each test. **Look at the images.** They
    are how a
-   person or an agent confirms that bold text is bolder and that the terminal's colours are right. Once
+   person or an agent confirms that bold text is bolder and that the terminal's colors are right. Once
    accepted they are the comparison baseline, so a later change that alters the rendering fails a test.
    `UPDATE_SNAPSHOTS=1 cargo test` accepts new images, and nothing should be accepted without opening it.
    Each platform has its own accepted set — macOS reads `tests/snapshots`, Windows `tests/snapshots/windows`
@@ -7035,11 +7035,11 @@ Four layers, and a change should leave all four green:
    terminal. For git, `pwsh tools/build-git-demo.ps1` builds a small repository under the temporary
    folder — three commits by three authors on three widely separated dates, a branch, an uncommitted
    change and an untracked file — which is enough to exercise every entry on the Git menu by hand. Layer 3 renders through the same code but offscreen, so only a real run shows that the
-   operating system honoured the window's transparency or drew the menu bar.
+   operating system honored the window's transparency or drew the menu bar.
 
 **A performance change is measured, not asserted.**
 `cargo run --release -p unluminous-app --example frame_cost -- <file> [width]` lays a real file out with
-the real fonts of this machine, colours it as the window colours it, and prints what each part of a
+the real fonts of this machine, colors it as the window colors it, and prints what each part of a
 frame costs. It is not a test and nothing fails it: a threshold in milliseconds would be a different
 number on every machine. What *is* a test is the work itself — how many glyphs the painter placed,
 how many clusters the fonts were asked to measure — because those are the same on every machine.
@@ -7150,7 +7150,7 @@ key by sending a key-down and releases it by sending a key-up, and Windows belie
 until the up arrives — for the rest of the session, if it never does. Nothing on the screen says so,
 and the physical keyboard cannot clear it, because the physical key was never down: its own key-up
 has already been and gone. `task-1762` was measured with the **left Windows key** in that state, on
-which every letter becomes a shortcut and pressing `D` minimises whatever is in front.
+which every letter becomes a shortcut and pressing `D` minimizes whatever is in front.
 
 Every capture and reproduction script written before it had the fault in the same shape — press the
 modifier, do the work, release it on the line after, with a `throw` between the two for the window
@@ -7199,7 +7199,7 @@ British spelling in prose, and the American spelling where a name in the code al
 
 A plugin is a folder with a `plugin.conf` and an icon in it, read by the same value store the
 settings file uses. It describes a language: its extensions, its keywords, what a comment and a
-string look like, and a colour per kind of token. **Nothing is run.** A dynamic library would mean an
+string look like, and a color per kind of token. **Nothing is run.** A dynamic library would mean an
 unstable interface across a `dlopen` boundary and a plugin crash taking the editor with it;
 WebAssembly answers both and costs a runtime and a host interface that has to be designed first.
 
@@ -7227,8 +7227,8 @@ fences go back to being code in the same frame.
 three, and writing the manifest was half an hour's work that would have produced a bad plugin. CSS
 breaks three of the rules in `unluminous_core::syntax`: **a hyphen is a letter** — nearly every property
 name has one in it, every custom property starts with two, and a pass that split a word there could
-not name a single property; `#ff0000` is a **colour**, and `number` wants a digit first, so half the
-colours in a file were coloured and half were not; and a stylesheet has **three** kinds of word worth
+not name a single property; `#ff0000` is a **color**, and `number` wants a digit first, so half the
+colors in a file were colored and half were not; and a stylesheet has **three** kinds of word worth
 telling apart — the at-rule, the property and the value — where a grammar had two lists.
 
 So `Grammar` gained three fields, each a manifest key, each **off unless a language asks for it**, so
@@ -7239,7 +7239,7 @@ part of a word wherever they appear, `-` and `@` here), `language.types` (a thir
 keeps them opt-in.
 
 Which word goes in which list is the whole of the plugin's design, and one rule decides the awkward
-cases: **a word that is both a property and a value is coloured whichever way it is written more
+cases: **a word that is both a property and a value is colored whichever way it is written more
 often**. `inset`, `left` and `content` are properties; `flex`, `grid` and `all` are values, because
 `display: flex` and `transition: all` are far commoner than the shorthand properties of the same
 name. `tasks/task-1671-css-plugin-tdd.md` has the table and the rest.
@@ -7249,7 +7249,7 @@ name. `tasks/task-1671-css-plugin-tdd.md` has the table and the rest.
 that is off unless a language asks for it. But the key changes the rules rather than adding to a
 list, because HTML cannot be done the CSS way. CSS needed three word lists read one token at a time;
 HTML cannot, because most of an HTML file is prose and seventy-six of its element names are ordinary
-English words — `body`, `table`, `form`, `main`, `code`, `time` — so a word-list plugin would colour
+English words — `body`, `table`, `form`, `main`, `code`, `time` — so a word-list plugin would color
 a paragraph of English like a stylesheet, and an apostrophe read as a quote would make every
 contraction yellow to the end of its line.
 
@@ -7261,21 +7261,21 @@ and only whether the language defines it is unknown; an attribute the language n
 one it does not is plain text, which is the CSS rule applied where it belongs. `language.raw_text =
 script=javascript, style=css, textarea, title` is the second key: an entry that names a language is a
 raw text element and one that names none is an escapable one, so `&amp;` inside a `<title>` is still
-coloured and `&amp;` inside a `<script>` is not, exactly as a browser reads them, and the
+colored and `&amp;` inside a `<script>` is not, exactly as a browser reads them, and the
 distinction is derived rather than written down twice.
 
 The body of a raw text element is another language, and `unluminous-core` says where it is and what it
-names rather than colouring it — `scan_with_embedded` reports an `Embedded` range and the window's
+names rather than coloring it — `scan_with_embedded` reports an `Embedded` range and the window's
 `colour_the_file` runs the ordinary scan over that stretch with the plugin that claims its language,
 the mirror of `PluginHighlighter` asking the same question of a fence in a Markdown document. So a
-`<style>` block is coloured exactly as a `.css` file is, and switching the CSS plugin off withdraws
-the colouring inside `<style>` in the same frame. One level deep: the embedded scan's own list is
+`<style>` block is colored exactly as a `.css` file is, and switching the CSS plugin off withdraws
+the coloring inside `<style>` in the same frame. One level deep: the embedded scan's own list is
 discarded. `syntax::tags` is the second pass folding runs for a markup file, and it is what keeps a
 `<` inside a comment, an attribute value or a `<script>` body from opening a fold; there is no list
 of void elements, because an end tag pops back to the nearest matching name on the stack. Completion
 asks `syntax::markup_position` — read backwards from the caret — which of the language's word lists
 to offer: the element names at a tag name, the attribute names at an attribute, and none of them in
-prose, a value or raw text. `tasks/task-1694-html-plugin-tdd.md` has the states, the colours and the
+prose, a value or raw text. `tasks/task-1694-html-plugin-tdd.md` has the states, the colors and the
 eight things deliberately left out.
 
 A bundled plugin's icon is generated rather than drawn, and each one records how:
@@ -7284,7 +7284,7 @@ commands, so it can be made again without guessing. The HTML one is the exceptio
 the image service's upstream was failing, so `plugins/html/icon.md` records the programmatic
 `< / >` mark drawn instead, and `task-1717` swaps in the generated picture.
 
-A colour scheme **colours the tokens and not the editing area**. The window letting the desktop show
+A color scheme **colors the tokens and not the editing area**. The window letting the desktop show
 through is the whole character of the product, and a scheme that repaints the background opaque would
 trade that away to be a shade nearer a screenshot.
 
@@ -7303,7 +7303,7 @@ language keys are the code index's own manifests so Go to Definition reads them 
 - **`language.keys`** (delimiters such as `=, :`) makes the first thing on a line before one a key, drawn as
   `Token::Type`. Indentation, `- ` list markers and the language's keywords may stand before it (`export
   NAME=`, `ENV NAME=`); a `:` counts only before whitespace, the end of the line, `=` or `:`; a word the
-  language lists keeps its own colour.
+  language lists keeps its own color.
 - **`language.sections`** makes a line holding only `[name]` or `[[name]]` one keyword.
   **`language.more_line_comments`** adds comment openers beside `line_comment`, which is still the one the
   toggle writes; an opener ending in a letter (`REM`) needs a word boundary after it.
@@ -7430,17 +7430,17 @@ left, a menu, a Settings page and `explorer.shows = .designs`. Six rules to keep
   two calls, and what "more subtle" was made to mean.
 - `tasks/task-1663-highlights-tdd.md` — highlighting a passage: where the ranges live so they move
   with the text, the file beside the project that remembers them, the right click menu and the drawn
-  colour wheel, and the bulk commands.
+  color wheel, and the bulk commands.
 - `tasks/task-1670-terminal-tdd.md` — the terminal that opened in `C:\Windows` running the wrong
   shell: the verbatim Windows path and where it came from, why `COMSPEC` is not the shell, when Unluminous
   reopens the last project, and the punctuation keys that reached no program at all.
 - `tasks/task-1671-css-plugin-tdd.md` — the CSS plugin: the four shapes of CSS the tokeniser could
   not read, the three grammar keys added for them, which CSS word goes in which of the three lists,
   and why `Ctrl+C` reached no program on Windows.
-- `tasks/task-1694-html-plugin-tdd.md` — the HTML plugin: why a word-list plugin would colour a
+- `tasks/task-1694-html-plugin-tdd.md` — the HTML plugin: why a word-list plugin would color a
   paragraph of English like a stylesheet, the five states `language.markup` turns on and the
   tag-open rule the HTML Standard gives, the two raw text categories derived from one key, the
-  embedded-language seam a `<style>` block is coloured through, and the eight things deliberately
+  embedded-language seam a `<style>` block is colored through, and the eight things deliberately
   left out.
 - `tasks/task-1672-zoom-tdd.md` — the zoom that kept the line you were reading: why a scroll
   position cannot survive a change of size, the three ways of putting the view back that were
@@ -7460,7 +7460,7 @@ left, a menu, a Settings page and `explorer.shows = .designs`. Six rules to keep
   that were found, what each was worth, the two revisions a document counts, the incremental layout
   and why its fingerprint is derived rather than reported, and what was deliberately not done.
 - `tasks/task-1677-autocomplete-tdd.md` — auto-complete: what each tier of editor does and which of
-  their behaviours is worth copying, why the candidates are the ones `task-1676` already keeps rather
+  their behaviors is worth copying, why the candidates are the ones `task-1676` already keeps rather
   than a word database of their own, the Sublime scoring rubric restated for identifiers, the five
   keys and why `Tab` and `Enter` differ, and the thirty-five scenario battery. `task-1678` is the
   implementation of it; `cargo run --release -p unluminous-app --example completion_cost` is how its one
@@ -7523,8 +7523,8 @@ left, a menu, a Settings page and `explorer.shows = .designs`. Six rules to keep
 - `tasks/task-1776-themes-tdd.md` — themes: which IntelliJ themes are actually installed on this
   machine and what was read out of their jars, why forty constants had to become forty functions and
   why the active theme is thread-local rather than global, the manifest a `plugin.kind = theme` reads
-  and the four things it refuses, why the colour scheme moved off the language plugins, the two icon
-  sets and the one colour that could not be a role, and the two things left out with the reason for
+  and the four things it refuses, why the color scheme moved off the language plugins, the two icon
+  sets and the one color that could not be a role, and the two things left out with the reason for
   each.
 - `tasks/task-1697-panel-docking-tdd.md` — dragging a panel to an edge of the window: why the three
   Rust docking crates are the wrong shape for a window that is measured against an image, the two
@@ -7618,7 +7618,7 @@ left, a menu, a Settings page and `explorer.shows = .designs`. Six rules to keep
 - `tasks/task-1914-testing-without-stealing-focus-tdd.md` — driving the real window without taking the
   keyboard out of whatever a person is typing into: which of the three steps was actually at fault, the
   three ways of photographing a window that is not in front and the one already in the product, why
-  posted `WM_CHAR` was refused in favour of feeding `egui` its own events, and what was measured.
+  posted `WM_CHAR` was refused in favor of feeding `egui` its own events, and what was measured.
 - `tools/drive-a-window.ps1` and `tools/drive-a-window.sh` — how a window is started for driving, on
   Windows and on macOS. Neither of them activates anything.
 - `tools/capture-window.ps1` — `PrintWindow`, for the one thing `window screenshot` cannot hold.
@@ -7687,13 +7687,13 @@ rules:
 and written, the formula language, the evaluator and its 523 functions, recalculation, number formats, CSV, and
 every editing operation as an undoable `edit::Session` call. Seven rules:
 
-- **What is not modelled is kept.** Every part the writer does not regenerate is written back as the bytes it was
+- **What is not modeled is kept.** Every part the writer does not regenerate is written back as the bytes it was
   read as, and every worksheet element the model does not hold is written back as its XML in the schema's order.
   A chart Excel made is read only to be drawn (`xlsx/chart.rs`); its parts go back untouched. A chart made here is
   written as new parts in Excel's default shape, appended to a drawing the sheet already had.
 - **Excel is the oracle.** `tools/excel-oracle/` drives the installed Excel through COM. `tests/oracle/formulas.txt`
   is every function's cases with the value Excel computed, and `tests/files.rs` has Excel open what Unluminous
-  writes and compare its values, with no repair. A behaviour that differs from Excel is fixed to Excel's measured
+  writes and compare its values, with no repair. A behavior that differs from Excel is fixed to Excel's measured
   answer, not to the documentation: number to text uses 15 significant digits, DATEDIF's `MD` keeps Excel's bug,
   and `#SPILL!` and `#CALC!` are written into a file as `#VALUE!`. The tests that start Excel pass with a line
   where Excel is not installed.
@@ -7712,7 +7712,7 @@ every editing operation as an undoable `edit::Session` call. Seven rules:
 - **The grid draws the visible rows and columns only**, positioned by `services::spreadsheet::axis` (the default
   size and a sorted list of exceptions), in Excel's units: a column is `round(width * 7)` points, a row `height *
   4 / 3`. Cell text is set with Unluminous's own glyph renderer in the workbook's font. `paper = theme` draws on the
-  theme's ground and lightens dark workbook colours to read on it; `paper = light` is white, as Excel draws.
+  theme's ground and lightens dark workbook colors to read on it; `paper = light` is white, as Excel draws.
 - **Undo keeps the cells a change could touch, empty ones included.** A snapshot cut to the used range before the
   change could not undo typing into a new column, and nothing in the engine's own tests found it.
 
@@ -7763,7 +7763,7 @@ tests, and the agent study's `s37-spreadsheet` watches a model add a column to a
 - **A pointing drag keeps where it started in `Drag::Point(cell, PointOver)`**, never in `GridOut`, which is
   built new every frame: that is why `=SUM(` and a drag used to point at one cell. Shift and a click grows the
   reference, Ctrl adds one after a comma, headers point at whole columns and rows.
-- **A reference's coloured outline is a handle** (`Drag::Finder`, `editor::finder_at`): its border carries it,
+- **A reference's colored outline is a handle** (`Drag::Finder`, `editor::finder_at`): its border carries it,
   a corner resizes it, and `formula_text::replace_reference` keeps its sheet and `$` marks.
 - **A click on another sheet's tab while a formula takes a reference keeps the formula open**
   (`point_on_another_sheet`); references get the sheet's name from `keys::pointing_prefix`, and the commit goes
@@ -7788,7 +7788,7 @@ cell; the looser `# %%` reading is only for importing a `.py` file. A source lin
 marker gets a word joiner (U+2060) after its `#` in the document, which `text::cell_source` takes
 out again, so the round trip is exact. Use `cell_source`, never `source_of`, for anything that is
 run, saved or shown to an agent. So the caret, the selection, undo,
-find, multiple carets, completion, colouring and the gutter all work on a notebook without knowing
+find, multiple carets, completion, coloring and the gutter all work on a notebook without knowing
 it is one, because they work on a document. `unluminous_jupyter::text` converts between the two:
 `to_text` writes the document from a `Notebook`, `spans` finds the cells in the document, and
 `merge_owned` builds the `Notebook` back from the document, keeping each cell's outputs, metadata
@@ -7896,7 +7896,7 @@ skip with a printed line without it. The pictures are `notebook_top`, `notebook_
   catalogue.source.json` and `skills/mirror/<id>/` are the list and the files of every skill somebody else made, and
   `scripts/sync-skills.mjs` publishes `public/skills/catalogue.json`, the files and the pictures, reading the
   Unluminous skills from this checkout. After changing a skill here, run the sync there and the snapshot here.
-- **A skill larger than 256 KB ships only its `SKILL.md` and licence** (`bundled: partial`); the rest is fetched from
+- **A skill larger than 256 KB ships only its `SKILL.md` and license** (`bundled: partial`); the rest is fetched from
   the site, checked against each file's SHA-256, the first time it is installed or edited.
 - **`harness::HARNESSES` is the table of agents and folders**, read out of each agent's documentation
   (`_agent_output/task-2396-skills/research/harnesses.md`). An agent that reads a folder this install already wrote
