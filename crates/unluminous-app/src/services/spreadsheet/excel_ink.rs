@@ -59,3 +59,16 @@ pub const FILTER_FACE: Color32 = Color32::from_gray(0xFF);
 pub const FILTER_EDGE: Color32 = Color32::from_gray(0xAB);
 /// The arrow on a filter button on white paper.
 pub const FILTER_ARROW: Color32 = Color32::from_gray(0x44);
+
+/// A slicer's paper, and an item button's when its style names no fill (task-2513).
+pub const SLICER_PAPER: Color32 = Color32::from_rgb(0xFF, 0xFF, 0xFF);
+/// A slicer's words when its style names no color.
+pub const SLICER_INK: Color32 = Color32::from_rgb(0, 0, 0);
+/// A slicer's lines when its style names no color.
+pub const SLICER_LINE: Color32 = Color32::from_rgb(0xA0, 0xA0, 0xA0);
+/// The Clear Filter funnel while the slicer keeps only some items.
+pub const SLICER_FUNNEL: Color32 = Color32::from_rgb(0x40, 0x40, 0x40);
+/// The Clear Filter funnel while there is nothing to clear.
+pub const SLICER_FUNNEL_OFF: Color32 = Color32::from_rgb(0xAA, 0xAA, 0xAA);
+/// The red cross on the Clear Filter funnel.
+pub const SLICER_CLEAR: Color32 = Color32::from_rgb(0xD1, 0x34, 0x38);

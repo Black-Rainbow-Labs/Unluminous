@@ -10,6 +10,7 @@ use super::grid::Frame;
 use super::panes_b::{button, card};
 use crate::services::plugin_ui::Look;
 use crate::services::spreadsheet::catalogue::Item;
+use crate::services::spreadsheet::excel_ink as ink;
 use crate::services::spreadsheet::verbs_b_pivot::{area_of_field, func_word};
 use crate::services::spreadsheet::view::Prompt;
 use crate::services::spreadsheet::{catalogue_b, verbs_b_slicers, Book};
@@ -426,19 +427,19 @@ fn excel_slicer(
     let z = frame.zoom;
     let painter = ui.painter_at(clip);
     let family: std::sync::Arc<str> = workbook.styles.font_of(0).name.as_str().into();
-    painter.rect_filled(rect, 0, Color32::WHITE);
+    painter.rect_filled(rect, 0, ink::SLICER_PAPER);
     if let Some(line) = &style.frame {
         painter.rect_stroke(
             rect,
             0,
-            Stroke::new(1.0, paint(Some(line.color), Color32::GRAY)),
+            Stroke::new(1.0, paint(Some(line.color), ink::SLICER_LINE)),
             StrokeKind::Inside,
         );
     }
     // The header: the caption in bold, the Clear Filter button at the right, and the line under it.
     let header = Rect::from_min_size(rect.min, Vec2::new(rect.width(), 27.0 * z));
     let caption = slicer.caption.clone().unwrap_or_else(|| name.to_owned());
-    let text = paint(style.header.color, Color32::BLACK);
+    let text = paint(style.header.color, ink::SLICER_INK);
     super::grid::paint_label(
         ui,
         look,
@@ -457,7 +458,7 @@ fn excel_slicer(
         let y = header.bottom();
         painter.line_segment(
             [Pos2::new(rect.left() + 4.0 * z, y), Pos2::new(rect.right() - 4.0 * z, y)],
-            Stroke::new(1.0, paint(Some(line.color), Color32::GRAY)),
+            Stroke::new(1.0, paint(Some(line.color), ink::SLICER_LINE)),
         );
     }
     let filtered = items.iter().any(|(_, on)| !*on);
@@ -488,17 +489,17 @@ fn excel_slicer(
         painter.rect_filled(
             button,
             CornerRadius::same((2.0 * z) as u8),
-            paint(part.fill, Color32::WHITE),
+            paint(part.fill, ink::SLICER_PAPER),
         );
         if let Some(line) = &part.line {
             painter.rect_stroke(
                 button,
                 CornerRadius::same((2.0 * z) as u8),
-                Stroke::new(1.0, paint(Some(line.color), Color32::GRAY)),
+                Stroke::new(1.0, paint(Some(line.color), ink::SLICER_LINE)),
                 StrokeKind::Inside,
             );
         }
-        let ink = paint(part.color, Color32::BLACK);
+        let words = paint(part.color, ink::SLICER_INK);
         super::grid::paint_label(
             ui,
             look,
@@ -508,7 +509,7 @@ fn excel_slicer(
             11.0,
             part.bold,
             z,
-            ink,
+            words,
             button.left() + 9.0 * z,
             button.center().y,
             button.intersect(clip),
@@ -529,15 +530,15 @@ fn excel_slicer(
 /// Excel's Clear Filter mark: a funnel, with a red cross when the slicer keeps only some items and grey when
 /// it keeps them all and there is nothing to clear.
 fn funnel(painter: &egui::Painter, at: Rect, active: bool, z: f32) {
-    use egui::{Color32, Stroke};
-    let ink = if active { Color32::from_gray(64) } else { Color32::from_gray(170) };
+    use egui::Stroke;
+    let mark = if active { ink::SLICER_FUNNEL } else { ink::SLICER_FUNNEL_OFF };
     let w = at.width();
     let p = |x: f32, y: f32| Pos2::new(at.left() + x * w, at.top() + y * w);
     let outline =
         vec![p(0.1, 0.15), p(0.75, 0.15), p(0.5, 0.5), p(0.5, 0.85), p(0.35, 0.75), p(0.35, 0.5)];
-    painter.add(egui::Shape::closed_line(outline, Stroke::new(1.0 * z.max(1.0), ink)));
+    painter.add(egui::Shape::closed_line(outline, Stroke::new(1.0 * z.max(1.0), mark)));
     if active {
-        let red = Stroke::new(1.5 * z.max(1.0), Color32::from_rgb(0xD1, 0x34, 0x38));
+        let red = Stroke::new(1.5 * z.max(1.0), ink::SLICER_CLEAR);
         painter.line_segment([p(0.62, 0.55), p(0.92, 0.85)], red);
         painter.line_segment([p(0.92, 0.55), p(0.62, 0.85)], red);
     }
