@@ -32,6 +32,7 @@ pub mod replay;
 pub mod reported;
 pub mod screen;
 pub mod session;
+pub mod sprite;
 pub mod tabs;
 
 pub use keys::{encode, KeyPress, Mode};

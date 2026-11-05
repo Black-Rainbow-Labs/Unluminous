@@ -9,7 +9,46 @@
 //! Inverse video means the two colours are swapped, and dim means the foreground is the darker variant. A
 //! painter that had to know those rules would be a second place they could be got wrong.
 
+use std::sync::Arc;
+
 use crate::palette::Rgb;
+
+/// How a cell is underlined. The five styles `SGR 4` and its sub parameters can select.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum UnderlineStyle {
+    /// Not underlined.
+    #[default]
+    None,
+    /// One straight line, `SGR 4` or `4:1`.
+    Single,
+    /// Two straight lines, `SGR 21` or `4:2`.
+    Double,
+    /// A wavy line, `SGR 4:3`, which is how a program marks a spelling or a type error.
+    Curly,
+    /// A dotted line, `SGR 4:4`.
+    Dotted,
+    /// A dashed line, `SGR 4:5`.
+    Dashed,
+}
+
+impl UnderlineStyle {
+    /// True for every style but `None`.
+    pub fn is_on(self) -> bool {
+        self != UnderlineStyle::None
+    }
+
+    /// The sub parameter of `SGR 4` that selects this style, which is how a restore writes it back.
+    pub fn sub_parameter(self) -> u8 {
+        match self {
+            UnderlineStyle::None => 0,
+            UnderlineStyle::Single => 1,
+            UnderlineStyle::Double => 2,
+            UnderlineStyle::Curly => 3,
+            UnderlineStyle::Dotted => 4,
+            UnderlineStyle::Dashed => 5,
+        }
+    }
+}
 
 /// One cell of the grid.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,8 +61,15 @@ pub struct ScreenCell {
     pub background: Rgb,
     pub bold: bool,
     pub italic: bool,
-    pub underline: bool,
+    /// Which of the five underline styles, if any.
+    pub underline: UnderlineStyle,
+    /// The color the program gave the underline with `SGR 58`. `None` draws it in the foreground color.
+    pub underline_color: Option<Rgb>,
+    /// A line over the top of the cell, `SGR 53`.
+    pub overline: bool,
     pub strikethrough: bool,
+    /// The `OSC 8` link the cell is part of, as an index into [`Screen::links`].
+    pub link: Option<u32>,
     /// The character takes two columns, which is what a Chinese, Japanese or Korean character does, and
     /// what many emoji do.
     pub wide: bool,
@@ -43,8 +89,11 @@ impl ScreenCell {
             background,
             bold: false,
             italic: false,
-            underline: false,
+            underline: UnderlineStyle::None,
+            underline_color: None,
+            overline: false,
             strikethrough: false,
+            link: None,
             wide: false,
             spacer: false,
             hidden: false,
@@ -96,6 +145,53 @@ pub struct Screen {
     pub title: String,
     /// The colour behind the whole grid, which is what the tile is filled with before the cells are drawn.
     pub background: Rgb,
+    /// The addresses of the `OSC 8` links on the screen. A cell's [`ScreenCell::link`] is an index into this.
+    pub links: Vec<String>,
+    /// The pictures a program placed on the screen with the kitty, sixel or iTerm2 protocols, in the order they
+    /// are drawn: the lowest `z` first.
+    pub images: Vec<ScreenImage>,
+}
+
+/// The pixels of one picture a program sent, shared with the emulator rather than copied each frame.
+#[derive(Debug, Clone)]
+pub struct ImagePixels {
+    /// The emulator's id for the picture.
+    pub id: u32,
+    /// Changes whenever the pixels behind `id` change, so a painter can keep one texture until they do.
+    pub generation: u64,
+    pub width: u32,
+    pub height: u32,
+    /// Straight alpha RGBA, four bytes a pixel, `width * height * 4` bytes.
+    pub rgba: Arc<Vec<u8>>,
+}
+
+impl PartialEq for ImagePixels {
+    /// The same id and generation are the same pixels.
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && self.generation == other.generation
+    }
+}
+
+impl Eq for ImagePixels {}
+
+/// One picture on the screen, measured in cells so the painter can place it with its own cell size.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScreenImage {
+    pub pixels: Arc<ImagePixels>,
+    /// The top left corner, in cells from the top left of the screen. The row is negative when the picture
+    /// starts above the top of the view.
+    pub row: i64,
+    pub column: i64,
+    /// How far into that cell the corner is, in the pixels of the cell size the program was told.
+    pub offset: (u32, u32),
+    /// How large it is drawn, in the pixels of the cell size the program was told.
+    pub size: (u32, u32),
+    /// The cell size the program was told, in pixels, which `offset` and `size` are measured in.
+    pub cell: (u16, u16),
+    /// The part of the picture shown: left, top, width and height, in the picture's own pixels.
+    pub source: (u32, u32, u32, u32),
+    /// Below zero is drawn under the text, zero and above over it.
+    pub z: i32,
 }
 
 impl Screen {
@@ -110,6 +206,8 @@ impl Screen {
             history: 0,
             title: String::new(),
             background,
+            links: Vec::new(),
+            images: Vec::new(),
         }
     }
 
@@ -147,6 +245,36 @@ impl Screen {
             lines.pop();
         }
         lines.join("\n")
+    }
+
+    /// The `OSC 8` links on the screen, as the words each one is written over and the address it goes to, top to
+    /// bottom. A link that wraps onto a second row is two entries with the same address, because the screen is
+    /// what is read and the two halves are on two rows of it.
+    pub fn link_runs(&self) -> Vec<(String, String)> {
+        let mut runs = Vec::new();
+        for row in 0..self.rows {
+            let mut column = 0;
+            while column < self.columns {
+                let Some(index) = self.cell(row, column).and_then(|cell| cell.link) else {
+                    column += 1;
+                    continue;
+                };
+                let mut words = String::new();
+                while let Some(cell) =
+                    self.cell(row, column).filter(|cell| cell.link == Some(index))
+                {
+                    if !cell.spacer {
+                        words.push(cell.character);
+                        words.extend(cell.marks.iter());
+                    }
+                    column += 1;
+                }
+                if let Some(address) = self.links.get(index as usize) {
+                    runs.push((words.trim_end().to_owned(), address.clone()));
+                }
+            }
+        }
+        runs
     }
 
     /// True when `needle` is anywhere on the screen. A test waiting for output asks this.
@@ -197,6 +325,19 @@ mod tests {
         assert!(screen.cell(2, 5).is_some());
         assert!(screen.cell(3, 0).is_none());
         assert!(screen.cell(0, 6).is_none());
+    }
+
+    #[test]
+    fn a_link_reads_back_as_its_words_and_its_address() {
+        let mut screen = screen();
+        screen.links = vec!["https://example.com/".to_owned()];
+        for column in 0..5 {
+            screen.cells[6 + column].link = Some(0);
+        }
+        assert_eq!(
+            screen.link_runs(),
+            vec![("world".to_owned(), "https://example.com/".to_owned())]
+        );
     }
 
     #[test]

@@ -13,7 +13,7 @@
 //! which tells both the emulator and the program on the far side. Getting that wrong is what leaves a full
 //! screen program drawing in the wrong place, so it happens in one place only.
 
-use egui::{Color32, CornerRadius, Mesh, Pos2, Rect, Sense, Shape, Stroke, Vec2};
+use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 use unluminous_terminal::keys::{self, KeyPress, Modifiers as TermModifiers};
 use unluminous_terminal::mouse;
 use unluminous_terminal::screen::{CursorShape, Screen};
@@ -23,6 +23,7 @@ use unluminous_terminal::Tabs;
 use crate::components::controls;
 use crate::components::file_tabs;
 use crate::components::splitter;
+use crate::components::terminal_paint;
 use crate::services::text_renderer::TextRenderer;
 use crate::theme::crisp::CrispPainter;
 use crate::theme::{color, icon};
@@ -446,9 +447,26 @@ pub(crate) fn grid(
     let origin = Pos2::new(area.left() + PADDING_X, area.top() + PADDING_Y);
     let mut painter_ui = ui.new_child(egui::UiBuilder::new().max_rect(area));
     painter_ui.set_clip_rect(ui.painter().clip_rect().intersect(area));
+    // The `OSC 8` link under the pointer, which is drawn underlined so it can be seen to be one (`task-2514`).
+    let hovered_link = response.hover_pos().and_then(|position| {
+        let column = ((position.x - origin.x) / cell.width).floor();
+        let row = ((position.y - origin.y) / cell.height).floor();
+        (column >= 0.0 && row >= 0.0)
+            .then(|| screen.cell(row as usize, column as usize).and_then(|cell| cell.link))
+            .flatten()
+    });
     paint(
         &painter_ui,
-        ScreenPaint { renderer, screen: &screen, origin, cell, font_size, focused, opacity },
+        ScreenPaint {
+            renderer,
+            screen: &screen,
+            origin,
+            cell,
+            font_size,
+            focused,
+            opacity,
+            hovered_link,
+        },
     );
 
     // Input, once the drawing is decided, so that a key press is acted on with the size the program already
@@ -508,15 +526,19 @@ struct ScreenPaint<'a> {
     font_size: f32,
     focused: bool,
     opacity: f32,
+    /// The `OSC 8` link the pointer is over, as an index into the screen's links.
+    hovered_link: Option<u32>,
 }
 
 /// Draw one screen.
 fn paint(ui: &egui::Ui, draw: ScreenPaint<'_>) {
-    let ScreenPaint { renderer, screen, origin, cell, font_size, focused, opacity } = draw;
+    let ScreenPaint { renderer, screen, origin, cell, font_size, focused, opacity, hovered_link } =
+        draw;
     let painter = ui.painter();
-    let at = |row: usize, column: usize| {
-        Pos2::new(origin.x + column as f32 * cell.width, origin.y + row as f32 * cell.height)
-    };
+    let grid = terminal_paint::Grid { origin, cell };
+    let at = |row: usize, column: usize| grid.at(row, column);
+
+    terminal_paint::paint_images(ui, screen, grid, terminal_paint::ImageLayer::BelowBackgrounds);
 
     // The backgrounds first, one rectangle for each run of cells that share a colour, so a line with a
     // coloured background is one shape rather than eighty.
@@ -549,6 +571,8 @@ fn paint(ui: &egui::Ui, draw: ScreenPaint<'_>) {
         }
     }
 
+    terminal_paint::paint_images(ui, screen, grid, terminal_paint::ImageLayer::BelowText);
+
     // The selection, over the backgrounds and under the text, as it is in the editor.
     if let Some(range) = &screen.selection {
         for index in range.clone() {
@@ -562,91 +586,11 @@ fn paint(ui: &egui::Ui, draw: ScreenPaint<'_>) {
         }
     }
 
-    // The glyphs. Collected before the atlas texture is uploaded, and the whole pass repeated if collecting
-    // filled the atlas and cleared it, for the reason `editor_view::paint_text` records.
-    let mut placed: Vec<(Rect, egui::Rect, Color32)> = Vec::new();
-    for _ in 0..3 {
-        let generation = renderer.generation();
-        placed.clear();
-        for row in 0..screen.rows {
-            for column in 0..screen.columns {
-                let Some(cell_data) = screen.cell(row, column) else {
-                    continue;
-                };
-                if cell_data.is_blank() {
-                    continue;
-                }
-                let style = renderer.terminal_style(font_size, cell_data.bold, cell_data.italic);
-                let colour = Color32::from_rgb(
-                    cell_data.foreground.r,
-                    cell_data.foreground.g,
-                    cell_data.foreground.b,
-                );
-                let pen = at(row, column);
-                for character in
-                    std::iter::once(cell_data.character).chain(cell_data.marks.iter().copied())
-                {
-                    let Some(glyph) = renderer.glyph(character, &style) else {
-                        continue;
-                    };
-                    // Snapped to whole pixels: a glyph drawn on a fraction of a pixel is resampled, which
-                    // softens every letter in the grid. **Whole pixels rather than whole points**, because a
-                    // terminal node on the canvas is composited through the camera — see `Crispness::snap`.
-                    let position = renderer.crispness().snap(Pos2::new(
-                        pen.x + glyph.offset.x,
-                        pen.y + cell.ascent + glyph.offset.y,
-                    ));
-                    placed.push((Rect::from_min_size(position, glyph.size), glyph.uv, colour));
-                }
-            }
-        }
-        if renderer.generation() == generation {
-            break;
-        }
-    }
-    let texture = renderer.texture(ui.ctx());
-    let mut mesh = Mesh::with_texture(texture);
-    for (rect, uv, colour) in placed {
-        mesh.add_rect_with_uv(rect, uv, colour);
-    }
-    if !mesh.is_empty() {
-        painter.add(Shape::mesh(mesh));
-    }
-
-    // Underline and strikethrough, drawn as rules from the cell's own measurements rather than baked into
-    // the glyphs, which is how the editor draws them too.
-    for row in 0..screen.rows {
-        for column in 0..screen.columns {
-            let Some(cell_data) = screen.cell(row, column) else {
-                continue;
-            };
-            if !cell_data.underline && !cell_data.strikethrough {
-                continue;
-            }
-            let colour = Color32::from_rgb(
-                cell_data.foreground.r,
-                cell_data.foreground.g,
-                cell_data.foreground.b,
-            );
-            let pen = at(row, column);
-            if cell_data.underline {
-                let y = (pen.y + cell.ascent + 2.0).round();
-                painter.rect_filled(
-                    Rect::from_min_size(Pos2::new(pen.x, y), Vec2::new(cell.width, 1.0)),
-                    CornerRadius::ZERO,
-                    colour,
-                );
-            }
-            if cell_data.strikethrough {
-                let y = (pen.y + cell.ascent * 0.65).round();
-                painter.rect_filled(
-                    Rect::from_min_size(Pos2::new(pen.x, y), Vec2::new(cell.width, 1.0)),
-                    CornerRadius::ZERO,
-                    colour,
-                );
-            }
-        }
-    }
+    // The glyphs, then the lines drawn over and under them, then the pictures a program placed over the text.
+    // `terminal_paint` says what each of these draws that a letter from the atlas alone could not (`task-2514`).
+    terminal_paint::paint_glyphs(ui, renderer, screen, grid, font_size);
+    terminal_paint::paint_lines(painter, screen, grid, hovered_link);
+    terminal_paint::paint_images(ui, screen, grid, terminal_paint::ImageLayer::OverText);
 
     // The cursor last, so nothing covers it. Solid when the terminal has the keyboard and an outline when it
     // does not, which is what says where the keys are going.
@@ -667,28 +611,22 @@ fn paint(ui: &egui::Ui, draw: ScreenPaint<'_>) {
             // read through the cursor.
             if let Some(under) = screen.cell(cursor.row, cursor.column) {
                 if cursor.shape == CursorShape::Block && !under.is_blank() {
-                    let style = renderer.terminal_style(font_size, under.bold, under.italic);
-                    if let Some(glyph) = renderer.glyph(under.character, &style) {
-                        // Snapped the same way the grid's own glyphs are — whole pixels rather than whole
-                        // points, because a terminal node on the canvas is composited through the camera. The
-                        // two must agree, or the letter under the cursor sits a fraction off the one the grid
-                        // drew in the same cell.
-                        let position = renderer.crispness().snap(Pos2::new(
-                            pen.x + glyph.offset.x,
-                            pen.y + cell.ascent + glyph.offset.y,
-                        ));
-                        let mut mesh = Mesh::with_texture(renderer.texture(ui.ctx()));
-                        mesh.add_rect_with_uv(
-                            Rect::from_min_size(position, glyph.size),
-                            glyph.uv,
-                            Color32::from_rgb(
-                                screen.background.r,
-                                screen.background.g,
-                                screen.background.b,
-                            ),
-                        );
-                        painter.add(Shape::mesh(mesh));
-                    }
+                    // Drawn by the same function the grid's own glyphs are, so a sprite, an emoji or a mark under
+                    // the cursor is drawn the way it is everywhere else in the grid.
+                    let ground = Color32::from_rgb(
+                        screen.background.r,
+                        screen.background.g,
+                        screen.background.b,
+                    );
+                    terminal_paint::paint_one(
+                        ui,
+                        renderer,
+                        under,
+                        grid,
+                        (cursor.row, cursor.column),
+                        font_size,
+                        ground,
+                    );
                 }
             }
         } else {
@@ -745,6 +683,24 @@ fn handle_input(
         let row = ((position.y - origin.y) / cell.height).floor().max(0.0) as usize;
         (row.min(screen.rows.saturating_sub(1)), column.min(screen.columns.saturating_sub(1)))
     };
+
+    // **An `OSC 8` link says where it goes when the pointer is over it, and `Ctrl`/`Cmd` with a click follows
+    // it** (`task-2514`), the same as a web address written out. A program writing a link shows its words and
+    // hides its address, so the address is shown in a tooltip; the painter underlines the link's words.
+    if let Some(address) = response.hover_pos().and_then(|position| {
+        let (row, column) = cell_at(position);
+        let index = screen.cell(row, column)?.link?;
+        screen.links.get(index as usize).cloned()
+    }) {
+        response.clone().on_hover_text(&address);
+        if modifiers.command {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            if response.clicked() {
+                crate::components::markdown_text::ask_to_open_a_link(ui.ctx(), &address);
+                return;
+            }
+        }
+    }
 
     // **`Ctrl`/`Cmd` with a click on a web address opens it in a browser tab** (`task-2255`), which is what
     // every terminal a person comes from does with an address a dev server prints. The pointer is a hand
@@ -915,6 +871,14 @@ fn handle_input(
             egui::Event::Text(text) if !text.chars().any(char::is_control) => {
                 to_send.push(keys::text(text, mode));
             }
+            // **The previous and the next prompt the shell marked** (`task-2514`), on Termoil's own keys:
+            // `Ctrl+Shift+Up` and `Down`, and `Cmd+Up` and `Down` on macOS. Not on a program's own screen,
+            // which has no prompts and may want the keys.
+            egui::Event::Key { key, pressed: true, modifiers, .. }
+                if is_prompt_jump(*key, modifiers) && !session.on_alternate_screen() =>
+            {
+                session.jump_to_prompt(*key == egui::Key::ArrowDown);
+            }
             egui::Event::Key { key, pressed: true, modifiers, .. } => {
                 if let Some(press) = key_press(*key, modifiers) {
                     // A key press with no modifier that egui also reported as text is left to the text
@@ -954,6 +918,18 @@ fn handle_input(
             input.consume_key(egui::Modifiers::NONE, key);
         }
     });
+}
+
+/// Whether a key press is one of the two that move between the prompts the shell marked: `Ctrl+Shift+Up` and
+/// `Down`, which is Termoil's chord on Windows and Linux, or `Cmd+Up` and `Down` on macOS.
+fn is_prompt_jump(key: egui::Key, modifiers: &egui::Modifiers) -> bool {
+    if !matches!(key, egui::Key::ArrowUp | egui::Key::ArrowDown) || modifiers.alt {
+        return false;
+    }
+    match cfg!(target_os = "macos") {
+        true => modifiers.mac_cmd && !modifiers.shift && !modifiers.ctrl,
+        false => modifiers.ctrl && modifiers.shift,
+    }
 }
 
 fn terminal_keyboard_key() -> egui::Id {

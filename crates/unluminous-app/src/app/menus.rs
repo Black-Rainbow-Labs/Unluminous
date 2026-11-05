@@ -288,6 +288,8 @@ impl UnluminousApp {
             | Action::SelectOpenFile
             | Action::NewTerminalTab
             | Action::RenameTerminalTab
+            | Action::PreviousTerminalPrompt
+            | Action::NextTerminalPrompt
             | Action::CloseTerminalTab
             | Action::ToggleRunTile
             | Action::ToggleDebugTile
@@ -1169,6 +1171,10 @@ impl UnluminousApp {
             Action::NewTerminalTab => {
                 self.show_the_terminal_tile(true);
                 self.new_terminal_tab();
+            }
+            Action::PreviousTerminalPrompt | Action::NextTerminalPrompt => {
+                let forward = matches!(action, Action::NextTerminalPrompt);
+                self.message = Some(self.jump_to_a_terminal_prompt(forward).to_owned());
             }
             Action::RenameTerminalTab => {
                 let index = self.terminal.tabs.active_index();

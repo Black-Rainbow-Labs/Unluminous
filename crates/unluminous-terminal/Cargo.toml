@@ -14,6 +14,8 @@ path = "src/lib.rs"
 termoil-vt.workspace = true
 termoil-pty.workspace = true
 termoil-input.workspace = true
+kurbo.workspace = true
+ab_glyph_rasterizer.workspace = true
 unicode-width.workspace = true
 
 # `tcgetpgrp`, and nothing else: the one question that answers what program a terminal is really talking to,

@@ -4370,6 +4370,8 @@ const EVERY_VARIANT: &[&str] = &[
     "NewTerminalTab",
     "CloseTerminalTab",
     "RenameTerminalTab",
+    "PreviousTerminalPrompt",
+    "NextTerminalPrompt",
     "NewFile",
     "NewFileFromTemplate",
     "SaveAsTemplate",
@@ -4504,6 +4506,8 @@ fn variant_name(action: &Action) -> &'static str {
         Action::NewTerminalTab => "NewTerminalTab",
         Action::CloseTerminalTab => "CloseTerminalTab",
         Action::RenameTerminalTab => "RenameTerminalTab",
+        Action::PreviousTerminalPrompt => "PreviousTerminalPrompt",
+        Action::NextTerminalPrompt => "NextTerminalPrompt",
         Action::NewFile(_) => "NewFile",
         Action::NewFileFromTemplate { .. } => "NewFileFromTemplate",
         Action::SaveAsTemplate(_) => "SaveAsTemplate",
@@ -5151,6 +5155,28 @@ fn a_terminal_tab(harness: &mut Harness<'static, UnluminousApp>) {
     harness.step();
 }
 
+/// A terminal tab whose shell marked three prompts with `OSC 133`, with output enough between them to scroll.
+fn a_terminal_tab_with_prompts(harness: &mut Harness<'static, UnluminousApp>) {
+    harness.state_mut().new_detached_terminal_tab(6, 60);
+    let session = harness.state_mut().terminal.tabs.active_mut().expect("the tab just opened");
+    for command in ["one", "two", "three"] {
+        session.feed(format!("\x1b]133;A\x07$ echo {command}\r\n").as_bytes());
+        for line in 0..8 {
+            session.feed(format!("{command} {line}\r\n").as_bytes());
+        }
+    }
+    harness.step();
+}
+
+/// The same tab, scrolled back to its second prompt, so there is a next one to go to.
+fn a_terminal_tab_scrolled_back_to_a_prompt(harness: &mut Harness<'static, UnluminousApp>) {
+    a_terminal_tab_with_prompts(harness);
+    let session = harness.state_mut().terminal.tabs.active_mut().expect("the tab");
+    session.jump_to_prompt(false);
+    session.jump_to_prompt(false);
+    harness.step();
+}
+
 fn a_project_that_has_been_open_before(harness: &mut Harness<'static, UnluminousApp>) {
     harness.state_mut().recent = vec![PathBuf::from("/a/project")];
 }
@@ -5322,6 +5348,8 @@ fn every_step() -> Vec<Step> {
         Step::new(Action::NewTerminalTab),
         Step::new(Action::CloseTerminalTab).ready_with(a_terminal_tab),
         Step::new(Action::RenameTerminalTab).ready_with(a_terminal_tab),
+        Step::new(Action::PreviousTerminalPrompt).ready_with(a_terminal_tab_with_prompts),
+        Step::new(Action::NextTerminalPrompt).ready_with(a_terminal_tab_scrolled_back_to_a_prompt),
         Step::new(Action::NewFile(folder.join("docs"))),
         Step::new(Action::NewFileFromTemplate {
             folder: folder.join("docs"),

@@ -197,3 +197,7 @@ Both get a test in Termoil and ship in a Termoil release before Unluminous pins 
 - Five underline styles and underline colours in the painter. `Screen` keeps one underline flag.
 - `OSC 8` hyperlinks drawn and followed as links. Unluminous already follows web addresses with `Ctrl`/`Cmd` and a click.
 - `OSC 133` prompt marks (jump to the previous prompt). Termoil records them; nothing in Unluminous asks yet.
+
+**All four were done in `task-2514`**, with overline, color emoji, box drawing as shapes and combining marks placed
+over their letter, which this list did not name. `CLAUDE.md` ("The painter draws everything the emulator knows about a
+cell") says how.

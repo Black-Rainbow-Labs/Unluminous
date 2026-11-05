@@ -25,7 +25,7 @@
 //! subset means a stream written by one version is read by the next.
 
 use crate::palette::Rgb;
-use crate::screen::{Screen, ScreenCell};
+use crate::screen::{Screen, ScreenCell, UnderlineStyle};
 
 /// How many bytes of a terminal's screen are kept.
 ///
@@ -165,8 +165,10 @@ fn is_plain_blank(cell: &ScreenCell, screen: &Screen) -> bool {
     (cell.character == ' ' || cell.character == '\0')
         && cell.marks.is_empty()
         && cell.background == screen.background
-        && !cell.underline
+        && !cell.underline.is_on()
+        && !cell.overline
         && !cell.strikethrough
+        && cell.link.is_none()
 }
 
 /// One row, as runs of cells that share a style.
@@ -179,6 +181,7 @@ fn write_a_row(screen: &Screen, row: usize, out: &mut Vec<u8>) {
         .map(|column| column as i64)
         .unwrap_or(-1);
     let mut style: Option<Style> = None;
+    let mut link: Option<u32> = None;
     for column in 0..=last.max(-1) {
         if column < 0 {
             break;
@@ -194,6 +197,14 @@ fn write_a_row(screen: &Screen, row: usize, out: &mut Vec<u8>) {
             out.extend_from_slice(wanted.sequence().as_bytes());
             style = Some(wanted);
         }
+        // **A link is written back as the `OSC 8` that made it**, so a restored terminal's links still go
+        // where they went. A row always closes the link it opened, because a link left open would run on into
+        // everything the shell prints after the restore.
+        if cell.link != link {
+            let address = cell.link.and_then(|index| screen.links.get(index as usize));
+            out.extend_from_slice(link_sequence(address.map(String::as_str)).as_bytes());
+            link = cell.link;
+        }
         let character = match cell.character {
             '\0' => ' ',
             other => other,
@@ -204,6 +215,14 @@ fn write_a_row(screen: &Screen, row: usize, out: &mut Vec<u8>) {
             out.extend_from_slice(mark.encode_utf8(&mut buffer).as_bytes());
         }
     }
+    if link.is_some() {
+        out.extend_from_slice(link_sequence(None).as_bytes());
+    }
+}
+
+/// The `OSC 8` sequence that starts a link to `address`, or ends one when there is none.
+fn link_sequence(address: Option<&str>) -> String {
+    format!("\x1b]8;;{}\x1b\\", address.unwrap_or(""))
 }
 
 /// Everything about a cell that an `SGR` sequence carries.
@@ -216,7 +235,9 @@ struct Style {
     background: Rgb,
     bold: bool,
     italic: bool,
-    underline: bool,
+    underline: UnderlineStyle,
+    underline_color: Option<Rgb>,
+    overline: bool,
     strikethrough: bool,
     hidden: bool,
 }
@@ -229,6 +250,8 @@ impl Style {
             bold: cell.bold,
             italic: cell.italic,
             underline: cell.underline,
+            underline_color: cell.underline_color,
+            overline: cell.overline,
             strikethrough: cell.strikethrough,
             hidden: cell.hidden,
         }
@@ -251,14 +274,24 @@ impl Style {
         if self.italic {
             parts.push("3".to_owned());
         }
-        if self.underline {
-            parts.push("4".to_owned());
+        // The style as a colon sub parameter, `4:3` for a curly line, which is the form every terminal that knows
+        // the five styles reads. A plain `4` for a single line, which every terminal reads.
+        match self.underline {
+            UnderlineStyle::None => {}
+            UnderlineStyle::Single => parts.push("4".to_owned()),
+            other => parts.push(format!("4:{}", other.sub_parameter())),
         }
         if self.hidden {
             parts.push("8".to_owned());
         }
         if self.strikethrough {
             parts.push("9".to_owned());
+        }
+        if self.overline {
+            parts.push("53".to_owned());
+        }
+        if let Some(color) = self.underline_color {
+            parts.push(format!("58;2;{};{};{}", color.r, color.g, color.b));
         }
         let foreground = self.foreground;
         parts.push(format!("38;2;{};{};{}", foreground.r, foreground.g, foreground.b));
@@ -636,5 +669,26 @@ mod tests {
         let whole = bytes_of(&screen);
         assert_eq!(bytes_within(&screen, whole.len()), whole, "at exactly its own length");
         assert_eq!(bytes_within(&screen, whole.len() * 4), whole, "and with room to spare");
+    }
+
+    /// `task-2514`: a restored terminal keeps the underline styles, the underline color, the overline and the
+    /// links the screen had, because a restore that drew them plain would be a different screen.
+    #[test]
+    fn underline_styles_overlines_and_links_come_back_from_a_restore() {
+        let mut session = Session::detached(Size::new(4, 40));
+        session.feed(b"\x1b[4:3;58;2;255;0;0mbad\x1b[0m \x1b[53mtop\x1b[0m ");
+        session.feed(b"\x1b]8;;https://example.com/\x1b\\link\x1b]8;;\x1b\\ after");
+        let before = session.snapshot();
+        let mut back = Session::detached(Size::new(4, 40));
+        back.feed(&bytes_of(&before));
+        let after = back.snapshot();
+        let first = after.cell(0, 0).expect("b");
+        assert_eq!(first.underline, UnderlineStyle::Curly);
+        assert_eq!(first.underline_color, Some(Rgb::new(255, 0, 0)));
+        assert!(after.cell(0, 4).expect("t").overline);
+        assert_eq!(after.links, vec!["https://example.com/".to_owned()]);
+        assert_eq!(after.cell(0, 8).expect("l").link, Some(0));
+        assert_eq!(after.cell(0, 13).expect("a").link, None, "the link ends where it ended");
+        assert_eq!(after.row_text(0), before.row_text(0));
     }
 }

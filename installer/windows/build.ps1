@@ -306,6 +306,15 @@ foreach ($needed in @('models\moonshine-base\encoder_model.onnx', 'models\moonsh
     if (-not (Test-Path (Join-Path $VoiceDir $needed))) { throw "The speech model package has no $needed." }
 }
 
+# `task-2514`. Microsoft's own pseudoconsole ships beside unluminous.exe, because the one built into Windows
+# removes the kitty and sixel picture sequences before the terminal sees them. `termoil-pty` loads conpty.dll
+# from the executable's folder when it is there, and the built in one otherwise. Fetched once a machine into
+# the local application data and checked against the SHA-256 hashes in installer/windows/conpty.version.
+Write-Step 'Packaging the pseudoconsole'
+$ConptyDir = Join-Path $env:LOCALAPPDATA 'Unluminous\package\conpty-windows'
+& pwsh -NoProfile -File (Join-Path $Repo 'tools\fetch-conpty.ps1') -Destination $ConptyDir
+if ($LASTEXITCODE -ne 0) { throw 'Fetching the pseudoconsole failed.' }
+
 # **The binaries first, then the installer.** An installer is signed as one file, and what it holds
 # is signed separately or not at all -- so a person who runs `unluminous.exe` from the install folder
 # would meet the warning the signed installer just took away.
@@ -318,6 +327,7 @@ $compilerArguments = @(
     "/DAppVersion=$version",
     "/DBinaryDir=$BinaryDir",
     "/DVoiceDir=$VoiceDir",
+    "/DConptyDir=$ConptyDir",
     "/DOutputDir=$Dist"
 )
 $uninstallerSigning = Get-UninstallerSignCommand

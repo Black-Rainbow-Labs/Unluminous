@@ -638,6 +638,9 @@ pub struct TextRenderer {
     /// every run of every line, and nearly every run in a file is in the same face at the same size.
     last_metrics: std::cell::Cell<Option<(FaceId, u32, LineMetrics)>>,
     atlas: RefCell<Atlas>,
+    /// Color emoji, in an atlas of their own because this one holds coverage only. See
+    /// [`crate::services::color_glyphs`].
+    colors: RefCell<crate::services::color_glyphs::ColorGlyphs>,
     /// How many pixels a point is worth where whatever is being drawn right now will be composited.
     ///
     /// **Ambient rather than an argument, and that is a decision worth reading before changing it.**
@@ -686,6 +689,7 @@ impl TextRenderer {
             advances: RefCell::new(AdvanceTables::default()),
             last_metrics: std::cell::Cell::new(None),
             atlas: RefCell::new(Atlas::new()),
+            colors: RefCell::new(crate::services::color_glyphs::ColorGlyphs::new()),
             compositing: RefCell::new(Compositing::DIRECT),
             pixels_per_point: std::cell::Cell::new(1.0),
             interface_zoom: std::cell::Cell::new(1.0),
@@ -1141,6 +1145,57 @@ impl TextRenderer {
             italic,
             ..CharStyle::default()
         }
+    }
+
+    /// A box drawing, block, shade, braille or Powerline character drawn as shapes that fill a cell of `width` by
+    /// `height` **pixels**, in the same atlas as the letters, so it is tinted by the cell's color the same way.
+    ///
+    /// `task-2514`: the font's own glyphs for these do not reach the top and the bottom of the cell, so the rows of
+    /// a box drawn by `claude` or `htop` had gaps between them. The shapes are `unluminous_terminal::sprite`'s, which
+    /// are Termoil's. The caller draws the answer stretched over the whole cell rectangle, so its `size` and
+    /// `offset` are left at the cell's size and zero. `None` when `character` is not one of these.
+    ///
+    /// @param character - the character in the cell
+    /// @param width - the cell's width in pixels where it will be composited
+    /// @param height - the cell's height in pixels
+    pub fn sprite_glyph(&self, character: char, width: u32, height: u32) -> Option<AtlasGlyph> {
+        if !unluminous_terminal::sprite::is_sprite(character) {
+            return None;
+        }
+        let (width, height) = (width.clamp(1, 512), height.clamp(1, 512));
+        // A face number no font is given, and the cell's two sizes packed where a glyph keeps its point size.
+        let key =
+            GlyphKey { face: FaceId(u32::MAX), character, sixty_fourths: width << 16 | height };
+        if let Some(found) = self.atlas.borrow().entries.get(&key) {
+            return *found;
+        }
+        let coverage = unluminous_terminal::sprite::coverage(character, width, height)?;
+        let coverage: Vec<f32> = coverage.iter().map(|&value| value as f32 / 255.0).collect();
+        let size = (width as usize, height as usize);
+        let mut kept = self.keep_in_atlas(&coverage, size.0, size.1, egui::Vec2::ZERO);
+        if kept.is_none_full() {
+            self.atlas.borrow_mut().clear();
+            kept = self.keep_in_atlas(&coverage, size.0, size.1, egui::Vec2::ZERO);
+        }
+        self.atlas.borrow_mut().entries.insert(key, kept.glyph());
+        kept.glyph()
+    }
+
+    /// Where the color emoji `text` drawn into a box of `width` by `height` pixels is in the color atlas, drawing it
+    /// the first time. `None` when no font draws it in color, and the caller falls back to [`Self::glyph`].
+    pub fn color_glyph(&self, text: &str, width: u32, height: u32) -> Option<egui::Rect> {
+        self.colors.borrow_mut().glyph(text, width, height)
+    }
+
+    /// How many times the color atlas has been cleared, which a painter checks the way it checks
+    /// [`Self::generation`].
+    pub fn color_generation(&self) -> u64 {
+        self.colors.borrow().generation()
+    }
+
+    /// The color atlas's texture. Every emoji to be drawn is asked for through [`Self::color_glyph`] first.
+    pub fn color_texture(&self, ctx: &egui::Context) -> egui::TextureId {
+        self.colors.borrow_mut().texture(ctx)
     }
 
     /// The atlas as an image, which a test uses to look at the pixels of one glyph.
