@@ -22,6 +22,9 @@ use unluminous_terminal::screen::{ImagePixels, Screen, ScreenCell, UnderlineStyl
 use crate::services::color_glyphs::is_emoji;
 use crate::services::text_renderer::{CellMetrics, TextRenderer};
 
+/// The tint that leaves a texture's own colors alone, for an emoji and a picture.
+const UNTINTED: Color32 = Color32::WHITE; // any ground: it multiplies the texture's colors by one
+
 /// Where the grid's first cell is and how large a cell is, which every pass measures from.
 #[derive(Clone, Copy)]
 pub(crate) struct Grid {
@@ -131,7 +134,7 @@ fn draw_quads(ui: &egui::Ui, renderer: &TextRenderer, quads: Quads) {
     if !quads.colored.is_empty() {
         let mut mesh = Mesh::with_texture(renderer.color_texture(ui.ctx()));
         for (rect, uv) in quads.colored {
-            mesh.add_rect_with_uv(rect, uv, Color32::WHITE);
+            mesh.add_rect_with_uv(rect, uv, UNTINTED);
         }
         ui.painter().add(Shape::mesh(mesh));
     }
@@ -404,7 +407,7 @@ pub(crate) fn paint_images(ui: &egui::Ui, screen: &Screen, grid: Grid, layer: Im
             Pos2::new((left + shown_width) as f32 / width, (top + shown_height) as f32 / height),
         );
         let texture = image_texture(ui.ctx(), &image.pixels);
-        ui.painter().image(texture, Rect::from_min_size(corner, size), uv, Color32::WHITE);
+        ui.painter().image(texture, Rect::from_min_size(corner, size), uv, UNTINTED);
     }
 }
 
@@ -417,7 +420,10 @@ const IMAGE_KEPT_FRAMES: u64 = 600;
 
 /// The textures of the pictures drawn recently, by the address of their pixels, which no two live pictures share.
 #[derive(Clone, Default)]
-struct ImageTextures(Arc<std::sync::Mutex<HashMap<(usize, u32, u32), (egui::TextureHandle, u64)>>>);
+struct ImageTextures(Arc<std::sync::Mutex<TexturesByPixels>>);
+
+/// A picture's texture and the frame it was last drawn on, by the address and the size of its pixels.
+type TexturesByPixels = HashMap<(usize, u32, u32), (egui::TextureHandle, u64)>;
 
 /// The texture for one picture, uploaded the first time it is drawn and kept while it is still being drawn.
 fn image_texture(ctx: &egui::Context, pixels: &ImagePixels) -> egui::TextureId {

@@ -21,6 +21,7 @@ use unluminous_terminal::session::{SelectionKind, SessionSettings, Size};
 use unluminous_terminal::Tabs;
 
 use crate::components::controls;
+use crate::components::controls::WithHint;
 use crate::components::file_tabs;
 use crate::components::splitter;
 use crate::components::terminal_paint;
@@ -692,7 +693,7 @@ fn handle_input(
         let index = screen.cell(row, column)?.link?;
         screen.links.get(index as usize).cloned()
     }) {
-        response.clone().on_hover_text(&address);
+        response.clone().with_hint(&address);
         if modifiers.command {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             if response.clicked() {

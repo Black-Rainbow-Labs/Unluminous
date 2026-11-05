@@ -185,7 +185,7 @@ fn box_drawing(cp: u32, w: u32, h: u32, light: u32) -> Vec<SpriteShape> {
     match cp {
         0x2504..=0x250B => dashes(
             &mut out,
-            ((cp - 0x2504) / 2).is_multiple_of(2),
+            ((cp - 0x2504) / 2) % 2 == 0,
             (3 + (cp - 0x2504) / 4, cp % 2 == 1),
             (w, h),
             light,
