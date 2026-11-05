@@ -115,7 +115,7 @@ impl Session {
     }
 
     /// The filter a table keeps in its definition.
-    fn table_filter(&self, index: usize) -> Option<AutoFilter> {
+    pub fn table_filter(&self, index: usize) -> Option<AutoFilter> {
         let table = &self.book.tables[index];
         let doc = roxmltree::Document::parse(&table.xml).ok()?;
         let node = doc.root_element().children().find(|n| n.tag_name().name() == "autoFilter")?;

@@ -912,7 +912,11 @@ fn filter_verb(sheet: &mut Spreadsheet, args: &[String]) -> Result<Answer, Strin
                     blank,
                 })
             };
-            if book.session.book.sheets[book.view.sheet].filter.is_none() {
+            let at = book.view.sheet;
+            let row = book.view.cursor.row;
+            let table =
+                unluminous_sheet::table_look::filter_table_at(&book.session.book, at, col, row);
+            if book.session.book.sheets[at].filter.is_none() && table.is_none() {
                 act(sheet, Act::Filter)?;
             }
             return act(sheet, Act::FilterColumn { col, criteria });

@@ -14,7 +14,8 @@ use crate::pivot::cache::CacheValue;
 use crate::pivot::table::{Filter, FilterKind};
 use crate::xlsx::xmltree;
 
-const SLICER_SIZE: (i64, i64) = (1_828_800, 2_286_000);
+/// The size Excel 365 gives a new slicer: 144 by 198.75 points, asked of Excel through COM (task-2513).
+const SLICER_SIZE: (i64, i64) = (1_828_800, 2_524_125);
 const TIMELINE_SIZE: (i64, i64) = (3_810_000, 1_270_000);
 
 /// The text an item of a pivot field shows.

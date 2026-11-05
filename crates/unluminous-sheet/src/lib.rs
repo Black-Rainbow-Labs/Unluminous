@@ -55,6 +55,7 @@ pub mod protect;
 pub mod refshift;
 pub mod slicers;
 pub mod styles;
+pub mod table_look;
 pub mod theme;
 pub mod value;
 pub mod whatif;

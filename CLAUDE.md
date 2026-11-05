@@ -7772,6 +7772,28 @@ tests, and the agent study's `s37-spreadsheet` watches a model add a column to a
   Escape and Enter reach nothing.
 - `where <cell>` says where a cell was drawn (egui points), which is how a window test aims the pointer.
 
+### Table, PivotTable and slicer styles are drawn from Excel's own definitions (`task-2513`)
+
+- **Excel keeps its built-in styles inside the program**, so `tools/excel-oracle/table-styles.ps1` asks it for every
+  table, PivotTable and slicer style (158) and writes `crates/unluminous-sheet/src/table_styles.json`: each part's
+  fill, font color, bold and borders, with colors as a theme index and tint so a style follows the workbook's theme.
+  Excel's COM `ThemeColor` is the file's theme index plus one (1 is lt1, white), whatever its enum names say. Run the
+  script again rather than editing the file.
+- **`unluminous_sheet::table_look::dress_sheet`** lays a table style's parts over the table in Excel's order (whole
+  table, stripes, last and first column, header, total, corner cells) and a PivotTable style over the roles
+  `pivot::layout` gives its cells. The grid prepares it with the conditional formats (`conditional::Rules`) and draws
+  it under a cell's own formatting: a fill, a font color or a border the cell sets wins, and conditional formatting
+  wins over both.
+- **A table's filter buttons** are drawn from `filter_button_cells` and filter the table, not the sheet
+  (`filter_table_at`, `Session::table_filter_column`).
+- **AutoFit** measures a header the style makes bold in bold and adds 16 pixels for a filter button, sheet filter or
+  table, as Excel does. **A PivotTable with `useAutoFormatting` fits its columns** after every pivot or slicer verb.
+- **A slicer on white paper is drawn as Excel draws it**, from `slicer_look`, at its drawing object's size; a new
+  slicer is Excel's 144 by 198.75 points. On the theme's paper it is still a card.
+- **Insert Chart plots by rows when the figures are no taller than they are wide**, whatever is in the corner: 27
+  shapes measured. `tests/fixtures/charts/shapes.xlsx` is made from a selection, as Insert Chart is; made with
+  `SetSourceData` on an empty chart, Excel keeps the direction of a chart it first made from the active cell's block.
+
 ## A notebook is one document of percent cells, and the kernel is spoken to through Python
 
 Opening a `.ipynb` file opens a notebook tab: code, Markdown and raw cells, run against a Jupyter

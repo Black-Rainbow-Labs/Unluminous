@@ -22,14 +22,61 @@ fn said(text: impl Into<String>) -> Answer {
 
 /// Run a pivot verb, or answer `None` for a verb this file does not own.
 pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Option<Out> {
-    Some(match verb {
+    let out = match verb {
         "pivots" => pivots(sheet),
         "pivot" => pivot(sheet, args),
         "slicer" | "timeline" | "getpivotdata" => {
-            return super::verbs_b_pivot_more::run(sheet, verb, args)
+            super::verbs_b_pivot_more::run(sheet, verb, args)?
         }
         _ => return None,
-    })
+    };
+    let reads = matches!(
+        args.first().map(String::as_str),
+        None | Some("list" | "fields" | "read" | "show" | "pane")
+    );
+    if out.is_ok() && matches!(verb, "pivot" | "slicer" | "timeline") && !reads {
+        fit_pivot_columns(sheet);
+    }
+    Some(out)
+}
+
+/// Fit the columns of every PivotTable on the sheet showing to the PivotTable's own cells, as Excel does
+/// after each change to a PivotTable whose Autofit column widths on update is on (`useAutoFormatting`, on
+/// for every new one). The widths change inside the change that caused them, so one undo takes both back.
+fn fit_pivot_columns(sheet: &mut Spreadsheet) {
+    let Ok(book) = sheet.current_book() else { return };
+    let index = book.view.sheet;
+    let workbook = &book.session.book;
+    let autofit =
+        |t: &PivotTable| t.options.attrs.iter().any(|(k, v)| k == "useAutoFormatting" && v == "1");
+    let tables: Vec<Range> = workbook
+        .pivots
+        .tables
+        .iter()
+        .filter(|t| t.sheet == index && t.has_cells && autofit(t))
+        .map(|t| t.full_range())
+        .collect();
+    if tables.is_empty() {
+        return;
+    }
+    let dress = unluminous_sheet::table_look::dress_sheet(workbook, index);
+    let mut widths = Vec::new();
+    for r in tables {
+        for col in r.first.col..=r.last.col {
+            let rows = Some((r.first.row, r.last.row));
+            if let Some(width) = super::actions::fitted_width(workbook, index, col, rows, &dress) {
+                widths.push((col, width));
+            }
+        }
+    }
+    for (col, width) in widths {
+        book.session.book.sheets[index].edit_column(col, |c| {
+            c.width = Some(width);
+            c.custom_width = true;
+        });
+    }
+    book.view.axes = None;
+    book.changed();
 }
 
 /// `pivot <what> ...`.

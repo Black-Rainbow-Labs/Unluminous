@@ -1,5 +1,9 @@
 # Make a workbook of small blocks of data of different shapes, each with a column chart made by Excel from
-# the block with SetSourceData, named by the range it was made from. tests/charts.rs reads the workbook and
+# the block the way Insert Chart makes one, from the block selected, named by the range it was made from.
+# Before task-2513 the charts were added with nothing selected in the block and then given it with
+# SetSourceData; Excel then kept the direction of the chart it first made from the active cell's region,
+# which plotted a square block and a wide block of bare numbers by columns where Insert Chart plots them by
+# rows. tests/charts.rs reads the workbook and
 # checks that insert_chart lays the same range out into the same series as Excel did.
 #
 #   pwsh tools/excel-oracle/charts-shapes.ps1 -Out crates/unluminous-sheet/tests/fixtures/charts/shapes.xlsx
@@ -48,8 +52,11 @@ try {
             }
         }
         $range = $ws.Range($origin, $origin.Offset($rowsN - 1, $colsN - 1))
+        $excel.Visible = $true
+        [void]$ws.Activate()
+        [void]$range.Select()
         $shape = $ws.Shapes.AddChart2(-1, 51, 20, 400, 200, 120)
-        $shape.Chart.SetSourceData($range)
+        $excel.Visible = $false
         $shape.Name = $range.Address($false, $false)
     }
     $book.SaveAs($Out, 51)

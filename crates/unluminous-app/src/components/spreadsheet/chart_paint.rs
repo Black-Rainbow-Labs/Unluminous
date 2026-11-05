@@ -1890,6 +1890,56 @@ impl PieGeometry {
         Pos2::new(p.x, self.centre.y + (p.y - self.centre.y) * self.squash)
     }
 
+    /// The edge of one whole slice, moved out by `offset`: its arc, and the two edges to the center or the
+    /// hole. A slice is filled in pieces of at most a quarter turn, and the white line between slices is
+    /// drawn round the slice, not round each piece, or a slice of more than a quarter reads as two slices.
+    fn outline(&self, from: f64, to: f64, offset: Vec2) -> Vec<Pos2> {
+        let steps = ((((to - from) / std::f64::consts::FRAC_PI_2) * 20.0).ceil() as usize).max(2);
+        let arc = |radius: f32| -> Vec<Pos2> {
+            (0..=steps)
+                .map(|s| {
+                    let a = from + (to - from) * s as f64 / steps as f64;
+                    self.place(geo::on_circle(self.centre, radius, a) + offset)
+                })
+                .collect()
+        };
+        let mut ring = arc(self.radius);
+        if self.hole > 0.0 {
+            ring.extend(arc(self.radius * self.hole).into_iter().rev());
+        } else {
+            ring.push(self.place(self.centre + offset));
+        }
+        ring
+    }
+
+    /// One slice filled as triangles that share their vertices, from the center (or the hole) to the arc.
+    fn slice_mesh(&self, from: f64, to: f64, offset: Vec2, colour: Color32) -> egui::epaint::Mesh {
+        let outline = self.outline(from, to, offset);
+        let mut mesh = egui::epaint::Mesh::default();
+        if self.hole > 0.0 {
+            // The outer arc and then the inner arc backwards: pair point i of one with its partner.
+            let n = outline.len() / 2;
+            for p in &outline {
+                mesh.colored_vertex(*p, colour);
+            }
+            for i in 0..n.saturating_sub(1) {
+                let (a, b) = (i as u32, (i + 1) as u32);
+                let (c, d) = ((2 * n - 1 - i) as u32, (2 * n - 2 - i) as u32);
+                mesh.add_triangle(a, b, c);
+                mesh.add_triangle(b, d, c);
+            }
+        } else {
+            let centre = outline.len() as u32 - 1;
+            for p in &outline {
+                mesh.colored_vertex(*p, colour);
+            }
+            for i in 0..centre.saturating_sub(1) {
+                mesh.add_triangle(centre, i, i + 1);
+            }
+        }
+        mesh
+    }
+
     /// The convex pieces of one slice, each at most a quarter turn, moved out by `offset`.
     fn slice(&self, from: f64, to: f64, offset: Vec2) -> Vec<Vec<Pos2>> {
         let pieces = (((to - from) / std::f64::consts::FRAC_PI_2).ceil() as usize).max(1);
@@ -1961,14 +2011,18 @@ fn pie(
             let offset =
                 geo::on_circle(Pos2::ZERO, g.radius * shift as f32 / 100.0, (a0 + a1) / 2.0)
                     .to_vec2();
+            if solid {
+                // One mesh for the whole slice: pieces filled one by one leave a faint anti-aliased seam
+                // between them, and the white outline drawn next covers the mesh's outer edge.
+                painter.add(Shape::mesh(g.slice_mesh(*a0, *a1, offset, colour)));
+                painter.add(Shape::closed_line(
+                    g.outline(*a0, *a1, offset),
+                    Stroke::new(1.0, colours.paper),
+                ));
+                continue;
+            }
             for ring in g.slice(*a0, *a1, offset) {
-                if solid {
-                    painter.add(Shape::convex_polygon(
-                        ring,
-                        colour,
-                        Stroke::new(1.0, colours.paper),
-                    ));
-                } else if g.three_d {
+                if g.three_d {
                     let down: Vec<Pos2> =
                         ring.iter().map(|q| *q + Vec2::new(0.0, thickness)).collect();
                     painter.add(Shape::convex_polygon(down, shade(colour, 0.65), Stroke::NONE));

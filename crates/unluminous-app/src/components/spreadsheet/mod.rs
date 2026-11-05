@@ -380,7 +380,19 @@ fn after_the_grid(
 /// The values in a filtered column, each ticked when the filter keeps it.
 fn filter_values(book: &Book, col: u32) -> Vec<(String, bool)> {
     let s = &book.session.book.sheets[book.view.sheet];
-    let Some(filter) = &s.filter else { return Vec::new() };
+    // The sheet's filter when the column is under it, otherwise the filter of the table whose header
+    // button was pressed.
+    let filter = match &s.filter {
+        Some(f) if col >= f.range.first.col && col <= f.range.last.col => Some(f.clone()),
+        _ => unluminous_sheet::table_look::filter_table_at(
+            &book.session.book,
+            book.view.sheet,
+            col,
+            book.view.cursor.row,
+        )
+        .and_then(|t| book.session.table_filter(t)),
+    };
+    let Some(filter) = filter.as_ref() else { return Vec::new() };
     let criteria = filter.columns.get(&(col - filter.range.first.col));
     let mut values: Vec<String> = Vec::new();
     for row in filter.range.first.row + 1..=filter.range.last.row {

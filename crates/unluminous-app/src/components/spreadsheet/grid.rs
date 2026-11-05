@@ -1336,10 +1336,29 @@ fn scroll_by(book: &mut Book, by: Vec2) {
 
 /// The filter button under a point, by its column.
 fn filter_button_at(book: &Book, frame: Frame, p: Pos2) -> Option<u32> {
-    let filter = book.session.book.sheets[book.view.sheet].filter.as_ref()?;
-    let row = filter.range.first.row;
-    (filter.range.first.col..=filter.range.last.col)
-        .find(|col| filter_button(book, frame, CellRef::new(row, *col)).contains(p))
+    let workbook = &book.session.book;
+    let mut cells: Vec<CellRef> = Vec::new();
+    if let Some(filter) = workbook.sheets[book.view.sheet].filter.as_ref() {
+        let row = filter.range.first.row;
+        cells
+            .extend((filter.range.first.col..=filter.range.last.col).map(|c| CellRef::new(row, c)));
+    }
+    // A table made with Format as Table has a filter of its own, with its buttons in its header row.
+    cells.extend(unluminous_sheet::table_look::filter_button_cells(workbook, book.view.sheet));
+    cells.into_iter().find(|at| filter_button(book, frame, *at).contains(p)).map(|at| at.col)
+}
+
+/// Whether the filter a button belongs to keeps only some values of its column, which Excel shows by
+/// drawing a funnel on the button: the sheet's filter, or the filter of the table whose header it is in.
+fn filter_is_active(book: &Book, at: CellRef) -> bool {
+    let workbook = &book.session.book;
+    let sheet = &workbook.sheets[book.view.sheet];
+    if let Some(f) = sheet.filter.as_ref().filter(|f| f.range.first.row == at.row) {
+        return f.columns.contains_key(&(at.col - f.range.first.col));
+    }
+    unluminous_sheet::table_look::filter_table_at(workbook, book.view.sheet, at.col, at.row)
+        .and_then(|t| book.session.table_filter(t))
+        .is_some_and(|f| f.columns.contains_key(&(at.col - f.range.first.col)))
 }
 
 /// Where a filter button sits in its cell.
@@ -1427,6 +1446,8 @@ fn draw_cells(
             filter_cells.push(CellRef::new(filter.range.first.row, col));
         }
     }
+    filter_cells
+        .extend(unluminous_sheet::table_look::filter_button_cells(workbook, book.view.sheet));
     // The cells to draw: every visible cell that has something, and the top left of each merge.
     let mut drawn_merges: Vec<Range> = Vec::new();
     let mut wanted: Vec<(CellRef, Rect)> = Vec::new();
@@ -1455,10 +1476,12 @@ fn draw_cells(
         let value = sheet.value_at(at);
         let effect =
             if rules.is_empty() { Effect::default() } else { rules.effect(workbook, now, at) };
+        let dress = rules.dress(at);
         let merged = in_merge(at).is_some();
         if style == 0
             && value.is_empty()
             && effect.is_none()
+            && dress.is_none()
             && !merged
             && !sheet.notes.contains_key(&(at.row, at.col))
         {
@@ -1475,6 +1498,9 @@ fn draw_cells(
         };
         let mut shown: Shown = display::shown_in(workbook, style, &value, chars, &format);
         display::adjust_for_the_view(workbook, sheet, at, &value, &mut shown);
+        if let Some(dress) = dress {
+            apply_dress(&mut shown, dress, &workbook.styles.theme);
+        }
         apply_effect(&mut shown, &effect);
         // The fill, over the gridlines. A merged cell with no fill is painted with the paper, which hides
         // the gridlines inside it.
@@ -1779,10 +1805,7 @@ fn draw_cells(
             continue;
         }
         let button = filter_button(book, frame, at);
-        let active = sheet
-            .filter
-            .as_ref()
-            .is_some_and(|f| f.columns.contains_key(&(at.col - f.range.first.col)));
+        let active = filter_is_active(book, at);
         // On white paper the button is Excel's: white, a grey edge and a dark arrow. On the theme's paper it
         // is one of the window's own controls.
         let (fill, edge, arrow) = match ink.dark {
@@ -1816,6 +1839,36 @@ fn draw_cells(
     }
 }
 
+/// Lay a table style's or a PivotTable style's look under the cell's own, as Excel does: a fill, a font
+/// color or a border the cell sets itself wins, and bold or italic from either shows.
+fn apply_dress(shown: &mut Shown, dress: &unluminous_sheet::table_look::Dress, theme: &[u32]) {
+    if shown.fill.is_none() {
+        shown.fill = dress.fill.and_then(|c| c.resolve(theme));
+    }
+    if shown.color.is_none() {
+        shown.color = dress.color.and_then(|c| c.resolve(theme));
+    }
+    shown.bold |= dress.bold;
+    shown.italic |= dress.italic;
+    let line = |l: &Option<unluminous_sheet::table_look::Line>| {
+        l.as_ref().and_then(|l| {
+            display::Line::of(&unluminous_sheet::styles::Edge::line(&l.style, l.color), theme)
+        })
+    };
+    if shown.left.is_none() {
+        shown.left = line(&dress.left);
+    }
+    if shown.right.is_none() {
+        shown.right = line(&dress.right);
+    }
+    if shown.top.is_none() {
+        shown.top = line(&dress.top);
+    }
+    if shown.bottom.is_none() {
+        shown.bottom = line(&dress.bottom);
+    }
+}
+
 /// Lay the conditional format's look over the cell's own.
 fn apply_effect(shown: &mut Shown, effect: &Effect) {
     if let Some(fill) = effect.fill {
@@ -1836,6 +1889,44 @@ fn apply_effect(shown: &mut Shown, effect: &Effect) {
     if let Some(u) = effect.underline {
         shown.underline = u;
     }
+}
+
+/// One line of text set the way a cell's text is, in a workbook's face at a point size, centered on `middle`
+/// down and starting at `left`, cut to `clip`. For the parts of a sheet that are not cells but are set in the
+/// workbook's font in Excel, such as a slicer's header and items. Answers the width it took.
+#[allow(clippy::too_many_arguments)]
+pub fn paint_label(
+    ui: &egui::Ui,
+    look: &Look<'_>,
+    painter: &egui::Painter,
+    text: &str,
+    family: std::sync::Arc<str>,
+    points: f32,
+    bold: bool,
+    zoom: f32,
+    color: Color32,
+    left: f32,
+    middle: f32,
+    clip: Rect,
+) -> f32 {
+    let mut style =
+        CharStyle { family, size: points * 4.0 / 3.0 * zoom, bold, ..CharStyle::default() };
+    style.size *= look.renderer.em_ratio(&style) * look.renderer.interface_zoom();
+    let metrics = look.renderer.line_metrics(&style);
+    let baseline = middle + (metrics.ascent - metrics.descent) / 2.0;
+    let width = width_of(look, text, &style);
+    let item = TextItem {
+        lines: vec![text.to_owned()],
+        style,
+        color,
+        clip,
+        at: vec![Pos2::new(left, baseline)],
+        underline: false,
+        strike: false,
+        widths: vec![width],
+    };
+    paint_texts(ui, look, painter, &[item]);
+    width
 }
 
 /// Every cell's text as one mesh of glyphs from the renderer's atlas, each quad cut to its cell's clip.

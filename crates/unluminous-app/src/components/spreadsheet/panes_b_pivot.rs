@@ -353,6 +353,14 @@ fn slicers(ui: &egui::Ui, book: &mut Book, frame: Frame, look: &Look<'_>, words:
             .unwrap_or_default();
         let id = egui::Id::new(("spreadsheet-slicer", &book.key, &name));
         let ctrl = ui.input(|i| i.modifiers.command);
+        // On white paper the slicer is Excel's: drawn on the sheet in its slicer style, the size of its
+        // drawing object (task-2513). On the theme's paper it is one of the window's own cards.
+        if !super::grid::Ink::of(look, book.view.paper).dark {
+            if let Some(chosen) = excel_slicer(ui, book, frame, look, &name, &items, ctrl) {
+                words.push(vec!["slicer".into(), "select".into(), name.clone(), chosen]);
+            }
+            continue;
+        }
         card(ui, look, id, spot.min, |ui| {
             ui.set_width(150.0);
             ui.horizontal(|ui| {
@@ -375,6 +383,163 @@ fn slicers(ui: &egui::Ui, book: &mut Book, frame: Frame, look: &Look<'_>, words:
                 }
             }
         });
+    }
+}
+
+/// A slicer drawn as Excel draws it on white paper: a frame in its style's color, its caption in bold over a
+/// line, a button for each item filled when the item is kept, and a Clear Filter button in the header.
+/// Sizes are Excel's at 100%, measured off Excel 365's own slicer: a 27 pixel header, items the slicer's
+/// `rowHeight` tall (25 pixels unless it says otherwise) every 28.7 pixels, inset 9 pixels, with their text
+/// a further 9 pixels in. Answers the `slicer select` choice a click made.
+#[allow(clippy::too_many_arguments)]
+fn excel_slicer(
+    ui: &egui::Ui,
+    book: &Book,
+    frame: Frame,
+    look: &Look<'_>,
+    name: &str,
+    items: &[(String, bool)],
+    ctrl: bool,
+) -> Option<String> {
+    use egui::{Color32, CornerRadius, Sense, Stroke, StrokeKind};
+    let workbook = &book.session.book;
+    let slicer = workbook.slicers.slicers.iter().find(|s| s.name == name)?;
+    let attr = |key: &str| slicer.attrs.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone());
+    let style_name = attr("style").unwrap_or_else(|| "SlicerStyleLight1".to_owned());
+    let style = unluminous_sheet::table_look::slicer_look(&style_name)
+        .or_else(|| unluminous_sheet::table_look::slicer_look("SlicerStyleLight1"))?;
+    let (sheet, _) = verbs_b_slicers::frame_at(book, "slicer", name)?;
+    let object = workbook.sheets[sheet]
+        .drawing
+        .objects
+        .iter()
+        .find(|o| o.tree.find("slicer").is_some_and(|e| e.attr("name") == Some(name)))?;
+    let rect = super::objects::screen_rect(&frame, book, &object.anchor);
+    let clip = rect.intersect(frame.cells);
+    if clip.width() <= 0.0 || clip.height() <= 0.0 {
+        return None;
+    }
+    let theme = &workbook.styles.theme;
+    let paint = |c: Option<unluminous_sheet::styles::Color>, or: Color32| {
+        c.and_then(|c| c.resolve(theme)).map_or(or, super::grid::rgb)
+    };
+    let z = frame.zoom;
+    let painter = ui.painter_at(clip);
+    let family: std::sync::Arc<str> = workbook.styles.font_of(0).name.as_str().into();
+    painter.rect_filled(rect, 0, Color32::WHITE);
+    if let Some(line) = &style.frame {
+        painter.rect_stroke(
+            rect,
+            0,
+            Stroke::new(1.0, paint(Some(line.color), Color32::GRAY)),
+            StrokeKind::Inside,
+        );
+    }
+    // The header: the caption in bold, the Clear Filter button at the right, and the line under it.
+    let header = Rect::from_min_size(rect.min, Vec2::new(rect.width(), 27.0 * z));
+    let caption = slicer.caption.clone().unwrap_or_else(|| name.to_owned());
+    let text = paint(style.header.color, Color32::BLACK);
+    super::grid::paint_label(
+        ui,
+        look,
+        &painter,
+        &caption,
+        family.clone(),
+        11.0,
+        style.header.bold,
+        z,
+        text,
+        header.left() + 10.0 * z,
+        header.center().y,
+        clip,
+    );
+    if let Some(line) = &style.header.line {
+        let y = header.bottom();
+        painter.line_segment(
+            [Pos2::new(rect.left() + 4.0 * z, y), Pos2::new(rect.right() - 4.0 * z, y)],
+            Stroke::new(1.0, paint(Some(line.color), Color32::GRAY)),
+        );
+    }
+    let filtered = items.iter().any(|(_, on)| !*on);
+    let clear = Rect::from_center_size(
+        Pos2::new(header.right() - 16.0 * z, header.center().y),
+        Vec2::splat(18.0 * z),
+    );
+    funnel(&painter, clear, filtered, z);
+    let mut chosen = None;
+    let clicked =
+        ui.interact(clear, egui::Id::new(("slicer-clear", &book.key, name)), Sense::click());
+    if filtered && clicked.clicked() {
+        chosen = Some("all".to_owned());
+    }
+    // The items, one column of buttons.
+    let row =
+        attr("rowHeight").and_then(|h| h.parse::<f32>().ok()).map_or(25.33, |emu| emu / 9_525.0);
+    let mut top = header.bottom() + 5.33 * z;
+    for (i, (item, on)) in items.iter().enumerate() {
+        let button = Rect::from_min_size(
+            Pos2::new(rect.left() + 9.0 * z, top),
+            Vec2::new(rect.width() - 18.0 * z, row * z),
+        );
+        if button.top() > rect.bottom() - 4.0 * z {
+            break;
+        }
+        let part = if *on { &style.selected } else { &style.unselected };
+        painter.rect_filled(
+            button,
+            CornerRadius::same((2.0 * z) as u8),
+            paint(part.fill, Color32::WHITE),
+        );
+        if let Some(line) = &part.line {
+            painter.rect_stroke(
+                button,
+                CornerRadius::same((2.0 * z) as u8),
+                Stroke::new(1.0, paint(Some(line.color), Color32::GRAY)),
+                StrokeKind::Inside,
+            );
+        }
+        let ink = paint(part.color, Color32::BLACK);
+        super::grid::paint_label(
+            ui,
+            look,
+            &painter,
+            item,
+            family.clone(),
+            11.0,
+            part.bold,
+            z,
+            ink,
+            button.left() + 9.0 * z,
+            button.center().y,
+            button.intersect(clip),
+        );
+        let response = ui.interact(
+            button.intersect(clip),
+            egui::Id::new(("slicer-item", &book.key, name, i)),
+            Sense::click(),
+        );
+        if response.clicked() {
+            chosen = Some(chosen_after_click(items, item, ctrl));
+        }
+        top += row * z + 3.33 * z;
+    }
+    chosen
+}
+
+/// Excel's Clear Filter mark: a funnel, with a red cross when the slicer keeps only some items and grey when
+/// it keeps them all and there is nothing to clear.
+fn funnel(painter: &egui::Painter, at: Rect, active: bool, z: f32) {
+    use egui::{Color32, Stroke};
+    let ink = if active { Color32::from_gray(64) } else { Color32::from_gray(170) };
+    let w = at.width();
+    let p = |x: f32, y: f32| Pos2::new(at.left() + x * w, at.top() + y * w);
+    let outline =
+        vec![p(0.1, 0.15), p(0.75, 0.15), p(0.5, 0.5), p(0.5, 0.85), p(0.35, 0.75), p(0.35, 0.5)];
+    painter.add(egui::Shape::closed_line(outline, Stroke::new(1.0 * z.max(1.0), ink)));
+    if active {
+        let red = Stroke::new(1.5 * z.max(1.0), Color32::from_rgb(0xD1, 0x34, 0x38));
+        painter.line_segment([p(0.62, 0.55), p(0.92, 0.85)], red);
+        painter.line_segment([p(0.92, 0.55), p(0.62, 0.85)], red);
     }
 }
 

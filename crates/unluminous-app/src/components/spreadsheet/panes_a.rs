@@ -491,17 +491,20 @@ fn calculated_column_button(
 ) {
     let id = egui::Id::new(("spreadsheet-calculated", &book.key));
     let now = formula_columns(book);
-    type Remembered = (Vec<(String, usize)>, u64, Option<(String, usize)>);
-    let (before, seen, offer): Remembered = ui.data(|d| d.get_temp(id)).unwrap_or_default();
-    let mut offer = offer;
-    if seen != book.revision {
-        offer =
-            now.iter().find(|c| !before.contains(c)).cloned().or(offer.filter(|o| now.contains(o)));
-        if now.iter().all(|c| before.contains(c)) && before.len() == now.len() {
-            // Nothing new: keep any offer still showing.
+    let tables: Vec<String> = book.session.book.tables.iter().map(|t| t.name.clone()).collect();
+    // What was seen at the last revision: the formula columns, the tables, and the offer showing.
+    type Remembered = (Vec<(String, usize)>, Vec<String>, u64, Option<(String, usize)>);
+    let remembered: Option<Remembered> = ui.data(|d| d.get_temp(id));
+    let mut offer = remembered.as_ref().and_then(|r| r.3.clone());
+    if let Some((before, known, seen, _)) = &remembered {
+        if *seen != book.revision {
+            // Excel offers the button when a formula fills a column of a table that was already there, and
+            // takes it away at the next change. A table made over columns that already held formulas, or a
+            // workbook just opened, is not a formula filling a column, so neither offers it (task-2513).
+            offer = now.iter().find(|c| !before.contains(c) && known.contains(&c.0)).cloned();
         }
     }
-    ui.data_mut(|d| d.insert_temp(id, (now, book.revision, offer.clone())));
+    ui.data_mut(|d| d.insert_temp(id, (now, tables, book.revision, offer.clone())));
     let Some((name, column)) = offer else { return };
     let Some(t) = book.session.book.tables.iter().find(|t| t.name == name) else { return };
     let Some(data) = t.data_range() else { return };

@@ -73,7 +73,7 @@ pub struct Line {
 }
 
 impl Line {
-    fn of(edge: &Edge, theme: &[u32]) -> Option<Line> {
+    pub fn of(edge: &Edge, theme: &[u32]) -> Option<Line> {
         if edge.is_none() {
             return None;
         }

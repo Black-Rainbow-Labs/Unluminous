@@ -40,12 +40,25 @@ pub struct Rules {
     pub revision: u64,
     pub sheet: usize,
     set: RuleSet,
+    /// What the sheet's table styles and PivotTable styles give each cell, worked out with the rules
+    /// because both change only when the workbook does.
+    dress: std::collections::HashMap<(u32, u32), unluminous_sheet::table_look::Dress>,
 }
 
 impl Rules {
     /// Prepare the rules of one sheet.
     pub fn prepare(book: &Workbook, sheet: usize, revision: u64) -> Rules {
-        Rules { revision, sheet, set: RuleSet::prepare(book, sheet) }
+        Rules {
+            revision,
+            sheet,
+            set: RuleSet::prepare(book, sheet),
+            dress: unluminous_sheet::table_look::dress_sheet(book, sheet),
+        }
+    }
+
+    /// What a table style or a PivotTable style gives one cell, if the cell is in one.
+    pub fn dress(&self, at: CellRef) -> Option<&unluminous_sheet::table_look::Dress> {
+        self.dress.get(&(at.row, at.col))
     }
 
     pub fn is_empty(&self) -> bool {

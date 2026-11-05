@@ -627,6 +627,22 @@ fn apply_inner(book: &mut Book, copied: &mut Option<Copied>, act: Act) -> Said {
             Ok(format!("Filter on {}", region.a1()))
         }
         Act::FilterColumn { col, criteria } => {
+            // A column under a table's own filter button filters that table, as Excel does; the sheet's
+            // filter is for a range that is not a table.
+            let on_sheet_filter = s.book.sheets[sheet]
+                .filter
+                .as_ref()
+                .is_some_and(|f| col >= f.range.first.col && col <= f.range.last.col);
+            if !on_sheet_filter {
+                if let Some(t) =
+                    unluminous_sheet::table_look::filter_table_at(&s.book, sheet, col, cursor.row)
+                {
+                    let name = s.book.tables[t].name.clone();
+                    let first = s.book.tables[t].range.first.col;
+                    s.table_filter_column(&name, col - first, criteria)?;
+                    return Ok(String::new());
+                }
+            }
             s.filter_column(sheet, col, criteria)?;
             Ok(String::new())
         }
@@ -676,8 +692,9 @@ fn apply_inner(book: &mut Book, copied: &mut Option<Copied>, act: Act) -> Said {
                 // Excel's AutoFit Column Width does, so a long title above a table leaves it alone.
                 let rows = (r.first.row > 0 || r.last.row < MAX_ROWS - 1)
                     .then_some((r.first.row, r.last.row));
+                let dress = unluminous_sheet::table_look::dress_sheet(&s.book, sheet);
                 for col in r.first.col..=r.last.col.min(r.first.col + 512) {
-                    let width = fitted_width(&s.book, sheet, col, rows);
+                    let width = fitted_width(&s.book, sheet, col, rows, &dress);
                     s.set_column_width(sheet, col, col, width)?;
                 }
             }
@@ -947,14 +964,22 @@ fn typed_value(
 
 /// The width that fits a column's widest shown value, in the file's characters: seven points a character,
 /// which is the default font's digit, plus the cell's padding. With `rows`, only the cells in those rows
-/// are measured.
+/// are measured. `dress` is what the sheet's table styles give each cell: a header a table style makes
+/// bold is measured bold, and a header with a filter button gets the button's sixteen pixels, which is what
+/// Excel's AutoFit gives a table header (measured in task-2513).
 pub fn fitted_width(
     book: &unluminous_sheet::Workbook,
     sheet: usize,
     col: u32,
     rows: Option<(u32, u32)>,
+    dress: &std::collections::HashMap<(u32, u32), unluminous_sheet::table_look::Dress>,
 ) -> Option<f64> {
     let s = &book.sheets[sheet];
+    let sheet_filter_row = s
+        .filter
+        .as_ref()
+        .filter(|f| col >= f.range.first.col && col <= f.range.last.col)
+        .map(|f| f.range.first.row);
     let mut widest: f64 = 0.0;
     for (&(row, c), cell) in &s.cells {
         if c != col || cell.value.is_empty() || rows.is_some_and(|(a, b)| row < a || row > b) {
@@ -965,17 +990,25 @@ pub fn fitted_width(
             .render(&cell.value, book.date1904, 255)
             .text;
         let font = book.styles.font_of(cell.style);
+        let dressed = dress.get(&(row, c));
+        let bold = font.bold || dressed.is_some_and(|d| d.bold);
+        let italic = font.italic || dressed.is_some_and(|d| d.italic);
+        let button = if dressed.is_some_and(|d| d.filter_button) || sheet_filter_row == Some(row) {
+            16.0
+        } else {
+            0.0
+        };
         // Measured in the face the grid drew it in, plus the eight pixels Excel's AutoFit leaves, when the
         // grid has drawn that face; counted at seven pixels a character otherwise.
         let measured = text
             .lines()
-            .map(|line| super::measure::width(&font.name, font.bold, font.italic, font.size, line))
+            .map(|line| super::measure::width(&font.name, bold, italic, font.size, line))
             .collect::<Option<Vec<f64>>>()
-            .map(|widths| widths.into_iter().fold(0.0, f64::max) + 8.0);
+            .map(|widths| widths.into_iter().fold(0.0, f64::max) + 8.0 + button);
         let counted = || {
-            let scale = font.size / 11.0 * if font.bold { 1.1 } else { 1.0 };
+            let scale = font.size / 11.0 * if bold { 1.1 } else { 1.0 };
             let longest = text.lines().map(|line| line.chars().count()).max().unwrap_or(0);
-            (longest as f64 * scale).ceil() * 7.0 + 12.0
+            (longest as f64 * scale).ceil() * 7.0 + 12.0 + button
         };
         if !text.is_empty() {
             widest = widest.max(measured.unwrap_or_else(counted));
