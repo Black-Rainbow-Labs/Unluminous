@@ -6,7 +6,15 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.26.0 — 2026-11-06
+## 1.26.1 — 2026-11-06
+
+- Page spell check accepts places, brands and recent words (`task-2517`)
+- Format the spelling tests (`task-2517`)
+- Accept the kitchen sink page with one spelling error counted, not two (`task-2517`)
+- The macOS zip's Unix modes are written by walking the central directory (`task-2517`)
+- A release writes the workspace versions into Cargo.lock itself (`task-2517`)
+
+## 1.26.0 — 2026-11-05
 
 - Draw table, PivotTable and slicer styles as Excel does, and four Excel differences the Excel video found (`task-2513`)
 - The slicer's colors are named in excel_ink, as the closed palette asks (`task-2513`)
