@@ -6,7 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.25.0 — 2026-11-06
+## 1.26.0 — 2026-11-06
+
+- Draw table, PivotTable and slicer styles as Excel does, and four Excel differences the Excel video found (`task-2513`)
+- The slicer's colors are named in excel_ink, as the closed palette asks (`task-2513`)
+- Accept the workbook picture with its table drawn in TableStyleMedium2 (`task-2513`)
+
+## 1.25.0 — 2026-11-05
 
 - American English spelling in CLAUDE.md (`task-2510`)
 - The terminal draws what Termoil's emulator knows about each cell (`task-2514`)
