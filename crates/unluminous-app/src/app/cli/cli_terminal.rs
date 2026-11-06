@@ -237,6 +237,7 @@ impl UnluminousApp {
             // no screen to read and the honest answer is the one `close` gives for the same state.
             return no(request, code::NOT_FOUND, format!("There is no terminal tab {tab}."));
         };
+        let links = self.terminal_links(tab);
         match request.text("wait-for") {
             Some(needle) if !text.contains(&needle) => Outcome::Hold(Waiting::TerminalText {
                 tab,
@@ -247,9 +248,9 @@ impl UnluminousApp {
             Some(needle) => ok(
                 request,
                 String::new(),
-                json!({ "text": text, "tab": tab, "waitedFor": needle, "found": true }),
+                json!({ "text": text, "tab": tab, "waitedFor": needle, "found": true, "links": links }),
             ),
-            None => ok(request, String::new(), json!({ "text": text, "tab": tab })),
+            None => ok(request, String::new(), json!({ "text": text, "tab": tab, "links": links })),
         }
     }
 
@@ -263,6 +264,20 @@ impl UnluminousApp {
             format!("The terminal is {} points tall", self.panes.terminal_height),
             json!({ "height": self.panes.terminal_height }),
         )
+    }
+
+    /// The `OSC 8` links on the screen of the tab at `tab`, as the words and the address of each (`task-2514`).
+    ///
+    /// A program that writes a link shows its words and hides its address, so the text of the screen alone does not
+    /// say where a link goes. Empty when the tab is not there or has no links.
+    pub(crate) fn terminal_links(&self, tab: usize) -> Vec<serde_json::Value> {
+        let Some(session) = self.terminal.tabs.at(tab) else { return Vec::new() };
+        session
+            .snapshot()
+            .link_runs()
+            .into_iter()
+            .map(|(text, address)| json!({ "text": text, "address": address }))
+            .collect()
     }
 
     /// What the tab at `tab` has on its screen, with the blank lines under it trimmed away and at

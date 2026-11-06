@@ -6,7 +6,7 @@ members = ["crates/unluminous-core", "crates/unluminous-chat", "crates/unluminou
 exclude = ["vendor"]
 
 [workspace.package]
-version = "1.24.0"
+version = "1.25.0"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
@@ -50,7 +50,10 @@ emf-core = { version = "0.1.1", default-features = false, features = ["svg"] }
 aes = "0.8.4"
 cbc = "0.1.2"
 cfb = "0.10.0"
-resvg = { version = "0.45.1", default-features = false, features = ["text", "system-fonts", "memmap-fonts"] }
+# `raster-images` because a color emoji in Apple Color Emoji and Noto Color Emoji is a PNG inside the font, and
+# the terminal draws emoji through resvg (`services::color_glyphs`, `task-2514`). Its decoders are already in the build
+# through `image`.
+resvg = { version = "0.45.1", default-features = false, features = ["text", "system-fonts", "memmap-fonts", "raster-images"] }
 # Speech to text for the Agent-Chat prompt: the microphone, the "Sable" wake word, the local Moonshine model
 # and an OpenAI compatible endpoint. `task-2290`.
 unluminous-voice = { path = "crates/unluminous-voice" }
@@ -186,6 +189,11 @@ muda = "0.19"
 termoil-vt = { git = "https://github.com/Black-Rainbow-Labs/Termoil.git", rev = "9b995aef1bf1a0cb3095ff4b1d7e5898d4c1a471" }
 termoil-pty = { git = "https://github.com/Black-Rainbow-Labs/Termoil.git", rev = "9b995aef1bf1a0cb3095ff4b1d7e5898d4c1a471" }
 termoil-input = { git = "https://github.com/Black-Rainbow-Labs/Termoil.git", rev = "9b995aef1bf1a0cb3095ff4b1d7e5898d4c1a471" }
+# The geometry of the box drawing and block characters the terminal draws itself, and the rasterizer that turns it
+# into coverage (`unluminous_terminal::sprite`, `task-2514`). Both are already in the build, through `vello_cpu` and
+# `ab_glyph`.
+kurbo = "0.13"
+ab_glyph_rasterizer = "0.1"
 unicode-width = "0.2"
 winresource = "0.1"
 windows-sys = { version = "0.61", features = [

@@ -61,6 +61,61 @@ fn the_terminal_draws_colour_bold_and_the_other_attributes() {
     harness.snapshot(shot("terminal_colours"));
 }
 
+/// `task-2514`: everything Termoil's emulator knows about a cell that the painter used to drop. The five underline
+/// styles and a colored underline, an overline, a box drawn with line characters whose rows join, block and shade
+/// characters, braille, accents over their letters, emoji in color, an `OSC 8` link and a picture sent with the
+/// kitty protocol.
+#[test]
+fn the_terminal_draws_what_the_emulator_knows_about_each_cell() {
+    let mut harness = with_terminal("", 14, 80);
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(
+        b"\x1b[4:1msingle\x1b[0m \x1b[4:2mdouble\x1b[0m \x1b[4:3mcurly\x1b[0m \x1b[4:4mdotted\x1b[0m \x1b[4:5mdashed\x1b[0m ",
+    );
+    bytes.extend_from_slice(b"\x1b[4:3;58;2;255;60;60mred curl\x1b[0m \x1b[53moverline\x1b[0m\r\n");
+    bytes.extend_from_slice("\u{256D}\u{2500}\u{2500}\u{2500}\u{2500}\u{256E} \u{2588}\u{2593}\u{2592}\u{2591} \u{2580}\u{2584}\u{258C}\u{2590} \u{28FF}\u{2847}\u{28B8}\r\n".as_bytes());
+    bytes.extend_from_slice("\u{2502}box \u{2502} n\u{0303} a\u{0302} e\u{0301} \u{1F600}\u{2705}\u{1F680} \u{2764}\u{FE0F}\r\n".as_bytes());
+    bytes.extend_from_slice("\u{2570}\u{2500}\u{2500}\u{2500}\u{2500}\u{256F} ".as_bytes());
+    bytes.extend_from_slice(
+        b"\x1b]8;;https://unluminous.com/\x1b\\a link\x1b]8;;\x1b\\ after it\r\n",
+    );
+    // Four by two pixels, red over blue, placed over three columns and one row.
+    bytes.extend_from_slice(b"\x1b_Ga=T,f=32,s=4,v=2,c=6,r=2,q=2;");
+    let mut pixels = Vec::new();
+    for row in 0..2 {
+        for _ in 0..4 {
+            pixels.extend_from_slice(if row == 0 { &[255, 0, 0, 255] } else { &[0, 0, 255, 255] });
+        }
+    }
+    bytes.extend_from_slice(base64_of(&pixels).as_bytes());
+    bytes.extend_from_slice(b"\x1b\\\r\n\r\nafter the picture\r\n");
+    feed(&mut harness, &bytes);
+    let screen = harness.state().terminal.tabs.active().expect("a tab").snapshot();
+    assert_eq!(screen.images.len(), 1, "the picture is on the screen");
+    assert_eq!(screen.links, vec!["https://unluminous.com/".to_owned()]);
+    harness.snapshot(shot("terminal_emulator_cells"));
+}
+
+/// Standard base64, which the kitty protocol carries its pixels in.
+fn base64_of(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for chunk in bytes.chunks(3) {
+        let value = chunk
+            .iter()
+            .enumerate()
+            .fold(0_u32, |acc, (index, byte)| acc | (*byte as u32) << (16 - 8 * index));
+        for index in 0..4 {
+            if index <= chunk.len() {
+                out.push(ALPHABET[(value >> (18 - 6 * index) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
+}
+
 #[test]
 fn the_terminal_draws_a_program_that_takes_over_the_screen() {
     let mut harness = with_terminal("", 14, 80);

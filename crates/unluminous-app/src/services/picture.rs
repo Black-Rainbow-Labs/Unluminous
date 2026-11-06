@@ -391,7 +391,7 @@ pub fn decode_any(bytes: &[u8]) -> Result<egui::ColorImage, String> {
 }
 
 /// The machine's fonts, read once, for the words in a vector picture.
-fn system_fonts() -> std::sync::Arc<resvg::usvg::fontdb::Database> {
+pub(crate) fn system_fonts() -> std::sync::Arc<resvg::usvg::fontdb::Database> {
     static FONTS: std::sync::OnceLock<std::sync::Arc<resvg::usvg::fontdb::Database>> =
         std::sync::OnceLock::new();
     FONTS

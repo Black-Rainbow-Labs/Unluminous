@@ -6,6 +6,14 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.25.0 — 2026-11-06
+
+- American English spelling in CLAUDE.md (`task-2510`)
+- The terminal draws what Termoil's emulator knows about each cell (`task-2514`)
+- Dots and dashes on whole pixels in one mesh, links in every terminal read answer, the new pictures (`task-2514`)
+- The release gate's rules: Rust 1.85, tooltips at the hint size, untinted textures named (`task-2514`)
+- The Skills page picture waits for the explorer to show the folder the install made (`task-2514`)
+
 ## 1.24.0 — 2026-11-03
 
 - Every terminal runs on Termoil instead of alacritty_terminal (`task-2489`)

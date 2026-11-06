@@ -50,7 +50,9 @@ use crate::keys::Mode;
 pub const FOLDER_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
 use crate::mouse::MouseMode;
 use crate::palette::{Palette, Rgb};
-use crate::screen::{Cursor, CursorShape, Screen, ScreenCell};
+use crate::screen::{
+    Cursor, CursorShape, ImagePixels, Screen, ScreenCell, ScreenImage, UnderlineStyle,
+};
 
 /// How many lines of output are kept above the top of the screen.
 pub const SCROLLBACK: usize = 10_000;
@@ -263,6 +265,64 @@ pub struct Session {
     /// `title` rather than written into it: `claude` sets a title on every prompt, and a rename
     /// written into `title` would last until the next one.
     given: String,
+    /// The pixels of every picture the program has sent, shared with the snapshots, and the generation each
+    /// was given. See [`Session::images_on_screen`].
+    images: std::cell::RefCell<ImageTracker>,
+}
+
+/// Remembers the pixels handed to the painter for each picture, so an unchanged picture keeps its generation and
+/// the painter uploads it once.
+#[derive(Default)]
+struct ImageTracker {
+    seen: std::collections::HashMap<u32, Arc<ImagePixels>>,
+    next_generation: u64,
+}
+
+impl ImageTracker {
+    /// The shared pixels for a picture in the emulator's store, reusing the last copy while they are the same.
+    fn pixels_of(&mut self, image: &termoil_vt::graphics::Image) -> Arc<ImagePixels> {
+        let rgba = image.current_rgba();
+        if let Some(old) = self.seen.get(&image.id) {
+            if Arc::ptr_eq(&old.rgba, rgba)
+                && old.width == image.width
+                && old.height == image.height
+            {
+                return Arc::clone(old);
+            }
+        }
+        self.next_generation += 1;
+        let pixels = Arc::new(ImagePixels {
+            id: image.id,
+            generation: self.next_generation,
+            width: image.width,
+            height: image.height,
+            rgba: Arc::clone(rgba),
+        });
+        self.seen.insert(image.id, Arc::clone(&pixels));
+        pixels
+    }
+}
+
+/// The `OSC 8` links met while copying rows, numbered in the order they were met.
+#[derive(Default)]
+struct Links {
+    /// The emulator's link id, and the index it was given in [`Screen::links`].
+    numbered: std::collections::HashMap<u32, u32>,
+    addresses: Vec<String>,
+}
+
+impl Links {
+    /// The index of the emulator's link `id` in this screen's list, adding it the first time it is met.
+    fn index_of(&mut self, term: &Terminal, id: u32) -> Option<u32> {
+        if let Some(index) = self.numbered.get(&id) {
+            return Some(*index);
+        }
+        let address = term.hyperlink(id)?.uri.clone();
+        let index = self.addresses.len() as u32;
+        self.addresses.push(address);
+        self.numbered.insert(id, index);
+        Some(index)
+    }
 }
 
 /// A selection, with the screen it was made on.
@@ -344,6 +404,7 @@ impl Session {
             reported,
             process_folder_asked: std::cell::RefCell::new(None),
             given: String::new(),
+            images: std::cell::RefCell::new(ImageTracker::default()),
         })
     }
 
@@ -380,6 +441,7 @@ impl Session {
             reported: crate::reported::Reported::new(),
             process_folder_asked: std::cell::RefCell::new(None),
             given: String::new(),
+            images: std::cell::RefCell::new(ImageTracker::default()),
         }
     }
 
@@ -916,7 +978,9 @@ impl Session {
         let first = total.saturating_sub(rows);
         let mut screen =
             Screen::empty(total - first, columns, colours.foreground, colours.background);
-        copy_rows(pages, first..total, &colours, &mut screen);
+        let mut links = Links::default();
+        copy_rows(&term, pages, first..total, &colours, &mut links, &mut screen);
+        screen.links = links.addresses;
         screen
     }
 
@@ -962,7 +1026,10 @@ impl Session {
         let mut screen = Screen::empty(rows, columns, colours.foreground, colours.background);
         screen.history = pages.history_rows();
         screen.scrollback = offset;
-        copy_rows(pages, top..top + rows, &colours, &mut screen);
+        let mut links = Links::default();
+        copy_rows(&term, pages, top..top + rows, &colours, &mut links, &mut screen);
+        screen.links = links.addresses;
+        screen.images = self.images_on_screen(&term, top, rows);
         screen.cursor = cursor_of(&term, offset);
         screen.selection = self.live_selection(&term).and_then(|picked| {
             let range = picked.selection.range(pages, DEFAULT_WORD_SEPARATORS)?;
@@ -971,6 +1038,115 @@ impl Session {
         screen.title = self.name().to_owned();
         screen
     }
+
+    /// The pictures that touch the rows `top..top + rows` of the page list, measured in cells from the top of
+    /// the view, lowest `z` first.
+    ///
+    /// The kitty, sixel and iTerm2 protocols all end up in Termoil's one graphics store, which keeps a picture by
+    /// the serial of the row it was placed on. The pixels are shared with the store rather than copied, and an
+    /// unchanged picture keeps its generation, so the painter uploads each picture once.
+    fn images_on_screen(&self, term: &Terminal, top: usize, rows: usize) -> Vec<ScreenImage> {
+        let store = term.graphics();
+        let mut tracker = self.images.borrow_mut();
+        let live: std::collections::HashSet<u32> = store.images().map(|image| image.id).collect();
+        tracker.seen.retain(|id, _| live.contains(id));
+        if live.is_empty() || rows == 0 {
+            return Vec::new();
+        }
+        let pages = &term.screen().pages;
+        let first = pages.serial_of(top);
+        let last = first + rows as u64 - 1;
+        let cell = term.cell_pixels();
+        let mut shown: Vec<ScreenImage> = store
+            .placements_in_rows(first, last)
+            .into_iter()
+            .filter_map(|placement| {
+                let image = store.image(placement.image_id)?;
+                Some(ScreenImage {
+                    pixels: tracker.pixels_of(image),
+                    row: placement.serial as i64 - first as i64,
+                    column: placement.col as i64,
+                    offset: (placement.x_offset, placement.y_offset),
+                    size: drawn_size(placement, cell),
+                    cell,
+                    source: placement.src,
+                    z: placement.z,
+                })
+            })
+            .collect();
+        shown.sort_by_key(|image| (image.z, image.pixels.id));
+        shown
+    }
+
+    /// Scroll so the previous or the next prompt the shell marked with `OSC 133` is at the top of the view.
+    ///
+    /// Answers whether there was one to go to. Going forward past the last prompt goes back to the newest output,
+    /// which is where the prompt being typed at is. A shell that does not mark its prompts has none, and nothing
+    /// moves. The alternate screen has no history and no prompts.
+    pub fn jump_to_prompt(&mut self, forward: bool) -> bool {
+        let term = lock(&self.term);
+        if term.is_alt_screen() {
+            return false;
+        }
+        let pages = &term.screen().pages;
+        let mut prompts: Vec<usize> = term
+            .marks()
+            .iter()
+            .filter(|mark| mark.kind == termoil_vt::terminal::MarkKind::PromptStart)
+            .filter_map(|mark| pages.pin_get(mark.pin))
+            .map(|(y, _)| y)
+            .collect();
+        prompts.dedup();
+        let bottom = pages.active_y(0);
+        let top = bottom - self.display_offset(&term);
+        let target = match forward {
+            // A prompt below the top of the newest screen cannot be scrolled to the top; past it is the bottom.
+            true => prompts.iter().copied().find(|&y| y > top && y <= bottom),
+            false => prompts.iter().rev().copied().find(|&y| y < top),
+        };
+        let wanted = match target {
+            Some(y) => bottom.saturating_sub(y).min(pages.history_rows()),
+            None if forward && top < bottom => 0,
+            None => return false,
+        };
+        self.scroll_anchor = (wanted > 0).then(|| pages.serial_of(bottom - wanted));
+        true
+    }
+
+    /// How many prompts the shell has marked with `OSC 133`, which says whether prompt jumping can do anything.
+    pub fn prompt_count(&self) -> usize {
+        let term = lock(&self.term);
+        term.marks()
+            .iter()
+            .filter(|mark| mark.kind == termoil_vt::terminal::MarkKind::PromptStart)
+            .count()
+    }
+}
+
+/// The size in pixels a picture is drawn at for a placement, in the pixels of the cell size `cell`.
+///
+/// Termoil's own rule (`termoil-render`'s `drawn_size`): a picture whose cell counts are what its own size needs is
+/// drawn at its own size, otherwise it is scaled to fit the cells it was given with its proportions kept, or
+/// stretched to fill them when the placement says so.
+fn drawn_size(placement: &termoil_vt::graphics::Placement, cell: (u16, u16)) -> (u32, u32) {
+    let ceil_div = |a: i64, b: i64| (a + b - 1) / b.max(1);
+    let cell = (cell.0.max(1) as i64, cell.1.max(1) as i64);
+    let (width, height) = (placement.src.2.max(1) as i64, placement.src.3.max(1) as i64);
+    let (x_offset, y_offset) = (placement.x_offset as i64, placement.y_offset as i64);
+    let natural = (ceil_div(width + x_offset, cell.0), ceil_div(height + y_offset, cell.1));
+    if (placement.cols as i64, placement.rows as i64) == natural && !placement.stretch {
+        return (width as u32, height as u32);
+    }
+    let box_width = (placement.cols as i64 * cell.0 - x_offset).max(1);
+    let box_height = (placement.rows as i64 * cell.1 - y_offset).max(1);
+    if placement.stretch {
+        return (box_width as u32, box_height as u32);
+    }
+    let scale = (box_width as f64 / width as f64).min(box_height as f64 / height as f64);
+    (
+        ((width as f64 * scale).round() as u32).max(1),
+        ((height as f64 * scale).round() as u32).max(1),
+    )
 }
 
 impl Drop for Session {
@@ -1075,13 +1251,20 @@ fn environment(caller: &[(String, String)]) -> Vec<(String, String)> {
     env
 }
 
-/// The Windows pseudoconsole to use: the one built into Windows.
+/// The Windows pseudoconsole to use: Microsoft's own `conpty.dll` when it is beside the executable, and the one built
+/// into Windows otherwise.
 ///
-/// Termoil ships a newer `conpty.dll` and `OpenConsole.exe` so that kitty and sixel images reach its own window.
-/// Unluminous's painter does not draw images, and `unluminous_cli::restore` was measured against the console
-/// host built into Windows, so that is the one asked for. Ignored on Unix.
+/// **`task-2514`.** The pseudoconsole built into Windows removes the kitty graphics (APC) and sixel (DCS) sequences
+/// before the terminal sees them, so a picture a program sent never arrived, however well the painter could draw
+/// it. The newer one Microsoft publishes passes them through byte for byte, and also leaves an `OSC 8` link as it
+/// was written rather than adding an id to it. The Windows installer puts `conpty.dll` and `OpenConsole.exe` beside
+/// `unluminous.exe` (`tools/fetch-conpty.ps1`), which is where `ConptyChoice::Auto` looks, as Termoil's own window
+/// does. A build run from `target`, which every test is, has no `conpty.dll` beside it and keeps the built in one.
+///
+/// `unluminous_cli::restore` prints a remembered screen from inside the console, so it works the same way through
+/// either host. Ignored on Unix.
 fn conpty() -> termoil_pty::ConptyConfig {
-    termoil_pty::ConptyConfig { choice: termoil_pty::ConptyChoice::Inbox, ..Default::default() }
+    termoil_pty::ConptyConfig { choice: termoil_pty::ConptyChoice::Auto, ..Default::default() }
 }
 
 /// Drop a pseudoterminal on a thread of its own.
@@ -1244,13 +1427,24 @@ impl Colours {
         }
         (foreground, background)
     }
+
+    /// The color the program gave a cell's underline with `SGR 58`, or `None` when it is drawn in the foreground.
+    fn underline(&self, style: &Style) -> Option<Rgb> {
+        match style.underline_color {
+            Color::Default => None,
+            Color::Palette(index) => Some(rgb(self.table[index as usize])),
+            Color::Rgb(r, g, b) => Some(Rgb::new(r, g, b)),
+        }
+    }
 }
 
-/// Copy the rows in `range` of `pages` into `screen`, from its first row down.
+/// Copy the rows in `range` of `pages` into `screen`, from its first row down, numbering the links met in `links`.
 fn copy_rows(
+    term: &Terminal,
     pages: &PageList,
     range: std::ops::Range<usize>,
     colours: &Colours,
+    links: &mut Links,
     screen: &mut Screen,
 ) {
     let first = range.start;
@@ -1258,9 +1452,28 @@ fn copy_rows(
     pages.for_rows(range, |y, page, row| {
         let into = y - first;
         for (column, cell) in page.cells(row).iter().enumerate().take(columns) {
-            screen.cells[into * columns + column] = cell_of(page, row, column, *cell, colours);
+            let mut copied = cell_of(page, row, column, *cell, colours);
+            if cell.has_hyperlink() {
+                copied.link = page
+                    .hyperlink(page.cell_index(row, column))
+                    .and_then(|id| links.index_of(term, id));
+            }
+            screen.cells[into * columns + column] = copied;
         }
     });
+}
+
+/// The underline style a Termoil style asks for.
+fn underline_of(style: &Style) -> UnderlineStyle {
+    use termoil_vt::style::Underline;
+    match style.underline {
+        Underline::None => UnderlineStyle::None,
+        Underline::Single => UnderlineStyle::Single,
+        Underline::Double => UnderlineStyle::Double,
+        Underline::Curly => UnderlineStyle::Curly,
+        Underline::Dotted => UnderlineStyle::Dotted,
+        Underline::Dashed => UnderlineStyle::Dashed,
+    }
 }
 
 /// One cell of a page, with its colours resolved.
@@ -1294,8 +1507,11 @@ fn cell_of(
         background,
         bold: style.has(attr::BOLD),
         italic: style.has(attr::ITALIC),
-        underline: style.underline != termoil_vt::style::Underline::None,
+        underline: underline_of(&style),
+        underline_color: colours.underline(&style),
+        overline: style.has(attr::OVERLINE),
         strikethrough: style.has(attr::STRIKE),
+        link: None,
         wide: wide == Wide::Wide,
         spacer: matches!(wide, Wide::SpacerTail | Wide::SpacerHead),
         hidden: style.has(attr::INVISIBLE),
@@ -1565,8 +1781,98 @@ mod tests {
         let screen = session.snapshot();
         assert!(screen.cell(0, 0).expect("B").bold);
         assert!(screen.cell(0, 1).expect("I").italic);
-        assert!(screen.cell(0, 2).expect("U").underline);
+        assert!(screen.cell(0, 2).expect("U").underline.is_on());
         assert!(screen.cell(0, 3).expect("S").strikethrough);
+    }
+
+    /// `task-2514`: the five underline styles, an underline color and an overline reach the screen as themselves,
+    /// where before every underline came out as one plain line and an overline as nothing.
+    #[test]
+    fn the_five_underline_styles_their_color_and_an_overline_all_arrive() {
+        let mut session = detached();
+        session.feed(b"\x1b[4:1mA\x1b[4:2mB\x1b[4:3mC\x1b[4:4mD\x1b[4:5mE\x1b[0m");
+        session.feed(b"\x1b[4;58;2;255;0;0mF\x1b[0m\x1b[53mG\x1b[0mH");
+        let screen = session.snapshot();
+        let styles: Vec<UnderlineStyle> =
+            (0..5).map(|column| screen.cell(0, column).expect("a cell").underline).collect();
+        assert_eq!(
+            styles,
+            vec![
+                UnderlineStyle::Single,
+                UnderlineStyle::Double,
+                UnderlineStyle::Curly,
+                UnderlineStyle::Dotted,
+                UnderlineStyle::Dashed
+            ]
+        );
+        assert_eq!(screen.cell(0, 5).expect("F").underline_color, Some(Rgb::new(255, 0, 0)));
+        assert_eq!(
+            screen.cell(0, 0).expect("A").underline_color,
+            None,
+            "no SGR 58, no color of its own"
+        );
+        assert!(screen.cell(0, 6).expect("G").overline);
+        assert!(!screen.cell(0, 7).expect("H").overline);
+    }
+
+    /// `task-2514`: an `OSC 8` link reaches the cells it covers with its address, and the cells around it have none.
+    #[test]
+    fn a_link_reaches_the_cells_it_covers_with_its_address() {
+        let mut session = detached();
+        session.feed(b"see \x1b]8;;https://example.com/a\x1b\\here\x1b]8;;\x1b\\ now");
+        let screen = session.snapshot();
+        assert_eq!(screen.links, vec!["https://example.com/a".to_owned()]);
+        assert_eq!(screen.cell(0, 3).expect("space").link, None);
+        for column in 4..8 {
+            assert_eq!(screen.cell(0, column).expect("here").link, Some(0), "column {column}");
+        }
+        assert_eq!(screen.cell(0, 8).expect("space").link, None);
+    }
+
+    /// `task-2514`: a picture sent with the kitty protocol is on the screen where it was placed, with its pixels.
+    #[test]
+    fn a_kitty_picture_is_on_the_screen_where_it_was_placed() {
+        let mut session = Session::detached(Size::new(10, 40).with_cell(8.0, 16.0));
+        // Two by two red pixels, placed at row 2 column 3.
+        session.feed(b"\x1b[3;4H");
+        session.feed(b"\x1b_Ga=T,f=32,s=2,v=2,q=2;/wAA//8AAP//AAD//wAA/w==\x1b\\");
+        let screen = session.snapshot();
+        assert_eq!(screen.images.len(), 1, "one picture: {:?}", screen.images);
+        let image = &screen.images[0];
+        assert_eq!((image.row, image.column), (2, 3));
+        assert_eq!((image.pixels.width, image.pixels.height), (2, 2));
+        assert_eq!(&image.pixels.rgba[..4], &[255, 0, 0, 255]);
+        assert_eq!(image.size, (2, 2), "a picture that fits its cells is drawn at its own size");
+        assert_eq!(image.cell, (8, 16));
+        let again = session.snapshot();
+        assert_eq!(
+            again.images[0].pixels.generation, image.pixels.generation,
+            "unchanged pixels keep their generation"
+        );
+    }
+
+    /// `task-2514`: the prompts a shell marks with `OSC 133` can be jumped between, and past the last one is the
+    /// newest output.
+    #[test]
+    fn the_view_jumps_between_the_prompts_the_shell_marked() {
+        let mut session = Session::detached(Size::new(4, 20));
+        for command in ["one", "two", "three"] {
+            session.feed(format!("\x1b]133;A\x07$ {command}\r\n").as_bytes());
+            for line in 0..6 {
+                session.feed(format!("{command} {line}\r\n").as_bytes());
+            }
+        }
+        session.feed(b"\x1b]133;A\x07$ ");
+        assert_eq!(session.prompt_count(), 4);
+        assert!(session.jump_to_prompt(false));
+        assert_eq!(session.snapshot().row_text(0), "$ three");
+        assert!(session.jump_to_prompt(false));
+        assert_eq!(session.snapshot().row_text(0), "$ two");
+        assert!(session.jump_to_prompt(true));
+        assert_eq!(session.snapshot().row_text(0), "$ three");
+        assert!(session.jump_to_prompt(true), "the prompt being typed at is on the newest screen");
+        assert_eq!(session.snapshot().scrollback, 0, "past the last prompt is the newest output");
+        assert!(!session.jump_to_prompt(true), "and there is nowhere further to go");
     }
 
     #[test]

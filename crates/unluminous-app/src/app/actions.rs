@@ -292,6 +292,12 @@ pub enum Action {
     /// sets a title on every prompt, so a rename a program could overwrite would last seconds. An
     /// empty name puts the tab back to being named after its program.
     RenameTerminalTab,
+    /// Scroll the terminal tab that is showing so the prompt before the top of its view is at the top. The shell
+    /// marks its prompts with `OSC 133`; one that does not has none to go to. `task-2514`.
+    PreviousTerminalPrompt,
+    /// Scroll the terminal tab that is showing to the next prompt the shell marked, or to the newest output after
+    /// the last one. `task-2514`.
+    NextTerminalPrompt,
     /// Make an empty file in this folder. The name is asked for first.
     NewFile(PathBuf),
     /// Make a file in this folder from the template with this name, a built in type or one of a person's
@@ -2589,6 +2595,12 @@ fn view_menu(state: &MenuState) -> Menu {
             Entry::item("Close Terminal Tab", Action::CloseTerminalTab)
                 .enabled(state.terminal_tabs > 0),
             Entry::item("Rename Terminal Tab...", Action::RenameTerminalTab)
+                .enabled(state.terminal_tabs > 0),
+            // Termoil's `previous-prompt` and `next-prompt`. The keys are `Ctrl+Shift+Up` and `Down`, or `Cmd+Up` and
+            // `Down` on macOS, read by the grid itself while it has the keyboard, so they are not on these rows.
+            Entry::item("Previous Terminal Prompt", Action::PreviousTerminalPrompt)
+                .enabled(state.terminal_tabs > 0),
+            Entry::item("Next Terminal Prompt", Action::NextTerminalPrompt)
                 .enabled(state.terminal_tabs > 0),
         ]
         .into_iter()

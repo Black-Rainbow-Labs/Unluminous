@@ -150,6 +150,8 @@ impl Action {
             Action::NewTerminalTab => "new-terminal-tab".to_owned(),
             Action::CloseTerminalTab => "close-terminal-tab".to_owned(),
             Action::RenameTerminalTab => "rename-terminal-tab".to_owned(),
+            Action::PreviousTerminalPrompt => "previous-terminal-prompt".to_owned(),
+            Action::NextTerminalPrompt => "next-terminal-prompt".to_owned(),
             Action::NewFile(_) => "new-file".to_owned(),
             // The template is in the name, as a slug, and the folder goes down the path channel. `task-2336`.
             Action::NewFileFromTemplate { template, .. } => {
@@ -368,6 +370,8 @@ impl Action {
             "new-terminal-tab" => Action::NewTerminalTab,
             "close-terminal-tab" => Action::CloseTerminalTab,
             "rename-terminal-tab" => Action::RenameTerminalTab,
+            "previous-terminal-prompt" => Action::PreviousTerminalPrompt,
+            "next-terminal-prompt" => Action::NextTerminalPrompt,
             "new-file" => Action::NewFile(with_path()),
             "save-as-template" => Action::SaveAsTemplate(with_path()),
             "manage-templates" => Action::ManageTemplates,

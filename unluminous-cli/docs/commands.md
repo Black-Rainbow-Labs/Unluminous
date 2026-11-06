@@ -3097,7 +3097,7 @@ unluminous-cli terminal send --no-enter cd ..
 unluminous-cli terminal read [--tab <index>] [--lines <number>] [--wait-for <text>] [--timeout <milliseconds>]
 ```
 
-Read what a terminal tab has on its screen, the one that is showing when --tab is left out. Reading a tab does not show it.
+Read what a terminal tab has on its screen, the one that is showing when --tab is left out, with the words and the address of every OSC 8 link on it, which the text alone hides. Reading a tab does not show it.
 
 - `--tab <index>` — Which tab to read, counting from 0. The one that is showing when it is left out.
 - `--lines <number>` — Only the last so many lines.

@@ -5839,6 +5839,42 @@ itself. Five rules:
   `modifyOtherKeys` level, so `Shift+Enter` reaches `claude` and `codex` as its own key. Typed text goes through
   `keys::text`, which sends codes only when the program asked the kitty protocol for every key.
 
+### The painter draws everything the emulator knows about a cell (`task-2514`)
+
+`task-2489` took Termoil's emulator and kept Unluminous's painter, and the painter drew less than the emulator
+knew. Side by side with Termoil's own window on macOS: every underline was one plain line, an overline was
+nothing, a picture left an empty space, an emoji was an empty box, a combining accent sat beside its letter, a box
+drawn with line characters had gaps between its rows, and `OSC 8` links and `OSC 133` prompts went unused. What
+each one is now, and where:
+
+- **`ScreenCell` carries it all.** `underline: UnderlineStyle` (the five styles), `underline_color` (`SGR 58`),
+  `overline` (`SGR 53`) and `link` (an index into `Screen::links`). `Screen::images` holds the pictures. `cell_of`
+  in `session.rs` fills them in, and `replay.rs` writes all of them back, so a restored terminal keeps them.
+- **`components::terminal_paint` draws them**: the glyph pass, the line pass and the picture layers. A picture's
+  `z` decides whether it goes under the backgrounds, between the backgrounds and the text, or over the text.
+  A picture is uploaded once per set of pixels, and one larger than 2 MB is scaled down first (`task-2279`).
+- **Box drawing, blocks, shades, braille, sextants and the Powerline separators are shapes, not glyphs.**
+  `unluminous_terminal::sprite` is a copy of `termoil-font`'s `sprite.rs`, because `termoil-font` itself cannot be
+  a dependency: it brings `fontique`, whose `objc2` requirement conflicts with the one `unluminous-app` is locked
+  to. A fix to that geometry is made in Termoil and copied. `TextRenderer::sprite_glyph` puts the coverage in the
+  ordinary atlas, and the painter stretches it over the whole cell, snapped corner by corner, so neighbors share an
+  edge.
+- **An emoji is drawn by `resvg`** into a full color atlas of its own (`services::color_glyphs`), as one line of
+  SVG text in the system's emoji family. That one route reads COLR (Segoe UI Emoji), `sbix` (Apple Color Emoji)
+  and `CBDT` (Noto Color Emoji), and shapes a joined sequence into the one picture it names. `resvg`'s
+  `raster-images` feature is on for the PNG inside `sbix` and `CBDT`. The atlas is allocated on the first emoji.
+- **A combining mark is centered over its letter's cells**, keeping the font's own height for it.
+- **An `OSC 8` link** is underlined while the pointer is over it, shows its address in a tooltip, and is followed
+  with `Ctrl`/`Cmd` and a click. `terminal read` answers with the words and the address of every link.
+- **`OSC 133` prompts**: `Ctrl+Shift+Up` and `Down` (`Cmd+Up` and `Down` on macOS) while the grid has the keyboard,
+  and `View -> Previous Terminal Prompt` and `Next Terminal Prompt`, which `action run previous-terminal-prompt`
+  reaches. Not on a program's own screen, which has no prompts.
+- **Windows ships Microsoft's own pseudoconsole.** The one built into Windows removes the kitty and sixel sequences
+  before the terminal sees them. `tools/fetch-conpty.ps1` puts `conpty.dll` and `OpenConsole.exe` from the NuGet
+  package named in `installer/windows/conpty.version`, checked against the SHA-256 recorded there, into the
+  installer, and `ConptyChoice::Auto` loads it from beside `unluminous.exe`. A build run from `target`, which every
+  test is, has none beside it and uses the built in one, which is what the tests were measured against.
+
 ## The code index answers what ripgrep would, from memory, and it is measured rather than assumed
 
 **The index is Atrius now (`task-2172`).** It moved to its own private repository,

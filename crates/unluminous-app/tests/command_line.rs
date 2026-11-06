@@ -633,6 +633,37 @@ fn the_terminal_is_opened_and_put_away_from_the_command_line() {
 /// A detached tab has no shell, so `send` has no bytes to deliver here — what is under test is the
 /// addressing, which is the new logic, and the reply says which tab it went to. That a `send`
 /// reaches the shell it names is what the live verification does with two real shells.
+/// `task-2514`: an `OSC 8` link shows its words and hides its address, so `terminal read` answers with both, whether
+/// it answers at once or after `--wait-for`. And the prompt actions are reached by name.
+#[test]
+fn reading_a_terminal_tells_where_its_links_go_and_the_prompt_actions_run_by_name() {
+    let mut harness = harness_in(&sample_folder());
+    harness.state_mut().new_detached_terminal_tab(8, 60);
+    steady(&mut harness);
+    harness
+        .state_mut()
+        .terminal
+        .tabs
+        .at_mut(0)
+        .expect("the tab")
+        .feed(b"see \x1b]8;;https://unluminous.com/docs\x1b\\the docs\x1b]8;;\x1b\\ here\r\n");
+    steady(&mut harness);
+    let expected =
+        serde_json::json!([{ "text": "the docs", "address": "https://unluminous.com/docs" }]);
+    let read = did(&mut harness, "terminal read");
+    assert_eq!(read["links"], expected);
+    let found = did(&mut harness, "terminal read --wait-for docs");
+    assert_eq!(found["links"], expected);
+
+    let jumped = did(&mut harness, "action run previous-terminal-prompt");
+    assert!(jumped.is_object(), "the action is run by name: {jumped:?}");
+    assert_eq!(
+        harness.state().message.as_deref(),
+        Some("The shell in this terminal tab marks no prompts (OSC 133)"),
+        "a shell with no marks says so rather than doing nothing"
+    );
+}
+
 #[test]
 fn the_command_line_speaks_to_a_terminal_tab_that_is_not_showing() {
     let mut harness = harness_in(&sample_folder());

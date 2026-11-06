@@ -138,6 +138,10 @@ Source: "{#BinaryDir}\{#CliName}"; DestDir: "{app}"; Flags: ignoreversion
 ; `task-2306`. `unluminous_voice::install::packaged_beside` looks for exactly these two places.
 Source: "{#VoiceDir}\models\moonshine-base\*"; DestDir: "{app}\voice\models\moonshine-base"; Flags: ignoreversion
 Source: "{#VoiceDir}\runtime\onnxruntime.dll"; DestDir: "{app}\voice\runtime"; Flags: ignoreversion
+; `task-2514`. Microsoft's own pseudoconsole, which passes the kitty and sixel picture sequences that the one built
+; into Windows removes. `termoil-pty` loads conpty.dll from the folder unluminous.exe is in.
+Source: "{#ConptyDir}\conpty.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#ConptyDir}\OpenConsole.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#ExeName}"

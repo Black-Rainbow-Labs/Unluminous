@@ -187,6 +187,26 @@ impl UnluminousApp {
 
     /// A terminal with no shell behind it, which is what the tests and the screenshot tests use so that what
     /// is drawn is the same on every run.
+    /// Scroll the terminal tab that is showing to the previous or the next prompt its shell marked with `OSC 133`,
+    /// and answer with what the status bar says about it (`task-2514`).
+    ///
+    /// The menu rows and `action run previous-terminal-prompt` come here. The grid's own keys call
+    /// `Session::jump_to_prompt` directly, because the grid is drawn with the session already in hand.
+    pub fn jump_to_a_terminal_prompt(&mut self, forward: bool) -> &'static str {
+        let Some(session) = self.terminal.tabs.active_mut() else {
+            return "There is no terminal tab";
+        };
+        if session.prompt_count() == 0 {
+            return "The shell in this terminal tab marks no prompts (OSC 133)";
+        }
+        match (session.jump_to_prompt(forward), forward) {
+            (true, false) => "Scrolled to the previous prompt",
+            (true, true) => "Scrolled to the next prompt",
+            (false, false) => "There is no earlier prompt",
+            (false, true) => "Already at the newest output",
+        }
+    }
+
     pub fn new_detached_terminal_tab(&mut self, rows: usize, columns: usize) {
         let cell = self.renderer.cell_metrics(self.settings.terminal_font_size);
         let size = unluminous_terminal::session::Size::new(rows, columns)
