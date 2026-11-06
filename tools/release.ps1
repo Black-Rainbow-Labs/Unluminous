@@ -285,9 +285,13 @@ function Set-Version([string] $New) {
     if ($replaced -eq $text) { throw "Could not write the version into $Manifest." }
     # -NoNewline because the file already ends with one, and Set-Content would add a second.
     Set-Content -Path $Manifest -Value $replaced -NoNewline -Encoding utf8
-    # Cargo.lock names every workspace member's version, so it has to move with the manifest. A
-    # metadata read is the cheapest thing that rewrites it, and it fails loudly if the edit was wrong.
-    Invoke-Checked 'cargo metadata' { & cargo metadata --no-deps --format-version 1 --manifest-path $Manifest | Out-Null }
+    # Cargo.lock names every workspace member's version, so it has to move with the manifest.
+    # `cargo update --workspace --offline` moves the members' versions and nothing else, and fails loudly
+    # if the edit was wrong. It was `cargo metadata --no-deps`, which reads the manifest and does not write
+    # the lock: the Windows build, which is not run `--locked`, wrote it a moment later, so nothing noticed
+    # until a restarted release reused its Windows installer and the macOS build, which is `--locked`,
+    # refused the stale lock (task-2517).
+    Invoke-Checked 'cargo update' { & cargo update --workspace --offline --manifest-path $Manifest 2>&1 | Out-Null }
 }
 
 # `Get-GitHubCli` and `Get-GitHubToken` are in `release-steps.ps1`, which `tools/promote.ps1` loads too.
