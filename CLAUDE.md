@@ -5827,8 +5827,10 @@ itself. Five rules:
 
 - **`unluminous-terminal` is the only crate that names Termoil.** The app reads a `Screen` and calls `Session`;
   a change to Termoil's interface is a change to `session.rs`, `keys.rs`, `mouse.rs` and `foreground.rs`.
-- **A change Termoil needs is made in Termoil**, released there, and taken here by moving the `rev` on all three
-  crates together. `task-2489` added `Pty::clone_controller` (for `foreground` on Unix) and made `OSC 104` and `RIS`
+- **A change Termoil needs is made in Termoil**, released there, and taken here by the next release: the three
+  crates follow Termoil's `main` branch, and `tools/release.ps1` and `tools/release.sh` run `cargo update -p termoil-vt
+  -p termoil-pty -p termoil-input` before the suite (`task-2524`). A change that must land between releases is
+  `cargo update` on the same three crates, committed with Cargo.lock. `task-2489` added `Pty::clone_controller` (for `foreground` on Unix) and made `OSC 104` and `RIS`
   put back the host's palette.
 - **Three threads a session**: the reader applies output in 64 KiB slices and runs `reported::Scanner`, the writer
   writes what the window sends, and the exit watcher records the end. Nothing writes to the program on the

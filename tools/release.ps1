@@ -633,6 +633,13 @@ if ($carryingOn) {
     # the manifest, made by hand.
     Invoke-WithRetry 'cargo update' 3 { & cargo update --manifest-path $Manifest -p inillucent-driver }
 
+    Write-Step 'Taking the newest Termoil'
+    # `task-2524`: *"We also want to ensure Unluminous always pulls in the latest during its builds."* The three Termoil
+    # crates follow Termoil's `main` branch in the manifest, and Cargo.lock holds the commit they were last taken at.
+    # Moving the lock here, before the suite, makes every release build and test against the newest Termoil, and
+    # Cargo.lock goes into the version commit with the manifest.
+    Invoke-WithRetry 'cargo update' 3 { & cargo update --manifest-path $Manifest -p termoil-vt -p termoil-pty -p termoil-input }
+
     Write-Step 'Running the suite'
     # `task-1922`: a release was tagged, installed and published before anything had run the tests. It is
     # the whole gate now rather than a second opinion -- `task-1928` took the continuous integration out,

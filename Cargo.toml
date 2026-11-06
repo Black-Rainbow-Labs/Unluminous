@@ -184,11 +184,13 @@ rfd = "0.17"
 muda = "0.19"
 # The terminal emulator, the pseudoterminal and the key and mouse encoding, from Termoil (`task-2489`).
 # Black Rainbow Labs' own terminal, split so another program can embed it; `unluminous-terminal` is the one
-# crate that names these. A git dependency pinned to a commit for the reason `rux` is: a release must not
-# depend on a folder on one machine. `tasks/task-2489-termoil-tdd.md` is the design.
-termoil-vt = { git = "https://github.com/Black-Rainbow-Labs/Termoil.git", rev = "9b995aef1bf1a0cb3095ff4b1d7e5898d4c1a471" }
-termoil-pty = { git = "https://github.com/Black-Rainbow-Labs/Termoil.git", rev = "9b995aef1bf1a0cb3095ff4b1d7e5898d4c1a471" }
-termoil-input = { git = "https://github.com/Black-Rainbow-Labs/Termoil.git", rev = "9b995aef1bf1a0cb3095ff4b1d7e5898d4c1a471" }
+# crate that names these. A git dependency for the reason `rux` is: a release must not depend on a folder on one
+# machine. `tasks/task-2489-termoil-tdd.md` is the design. They follow Termoil's `main` branch (`task-2524`):
+# Cargo.lock holds the exact commit, and both release scripts run `cargo update` on all three before the suite,
+# so every release builds against the newest Termoil.
+termoil-vt = { git = "https://github.com/Black-Rainbow-Labs/Termoil.git", branch = "main" }
+termoil-pty = { git = "https://github.com/Black-Rainbow-Labs/Termoil.git", branch = "main" }
+termoil-input = { git = "https://github.com/Black-Rainbow-Labs/Termoil.git", branch = "main" }
 # The geometry of the box drawing and block characters the terminal draws itself, and the rasterizer that turns it
 # into coverage (`unluminous_terminal::sprite`, `task-2514`). Both are already in the build, through `vello_cpu` and
 # `ab_glyph`.
