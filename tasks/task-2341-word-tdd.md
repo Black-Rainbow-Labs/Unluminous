@@ -359,7 +359,9 @@ Added after the first build was tried, at Jason's request: "we need spell check"
 Hunspell dictionaries (MPL-2.0, used unmodified), with SCOWL's en_US dictionary. The word list is kept
 deflated in `crates/unluminous-word/dictionaries/` (551,762 bytes become 193,124), with its licence beside
 it, and it is inflated only when something first asks to check a document. A window with the plugin
-switched off, or with no Word document open, never reads it.
+switched off, or with no Word document open, never reads it. Since `task-2517` the base is SCOWL
+2026.02.25 and 56,542 more words are added to it, chosen from Wiktionary and Wikipedia titles; see
+`tasks/task-2517-spell-check-tdd.md`.
 
 What is checked follows Word's defaults:
 

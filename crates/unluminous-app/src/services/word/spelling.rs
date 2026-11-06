@@ -1,8 +1,8 @@
 //! Spell check for the Word tab: the dictionary, the words a person added, and what each paragraph has
 //! underlined.
 //!
-//! **Nothing is read until a document is first checked.** The dictionary is about 50,000 stems and a few
-//! megabytes once read, so a window with the Word plugin switched off, or with no Word document open,
+//! **Nothing is read until a document is first checked.** The dictionary is SCOWL's 47,000 stems and the
+//! 56,000 words added to them (task-2517), a few megabytes once read, so a window with the Word plugin switched off, or with no Word document open,
 //! never reads it. It is kept for the rest of the session once read, because the next document will
 //! want it too.
 //!

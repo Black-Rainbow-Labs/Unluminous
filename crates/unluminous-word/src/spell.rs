@@ -3,9 +3,17 @@
 //! are left alone, as are runs marked `w:noProof` and runs in a language other than English, because the
 //! only dictionary is English.
 //!
-//! The dictionary is SCOWL's en_US Hunspell dictionary (`dictionaries/`, licence beside it), read by
-//! `spellbook`. It is about 50,000 stems and costs a few megabytes once read, so it is read the first
-//! time something asks to check a document, never when the plugin is only installed.
+//! The dictionary is SCOWL's en_US Hunspell dictionary (`dictionaries/`, license beside it), read by
+//! `spellbook`, with about 56,000 more words added to it (`en_US-extra.dic.deflate`, task-2517). SCOWL's
+//! size 60 list leaves out most places, brands and recent words, so it underlined the Dolomites, Phuket,
+//! kombucha and Spotify. The added words are the ones Wiktionary or an English Wikipedia title has, that
+//! are common in wordfreq's counts, that are not one typo away from a much more common word, and that are
+//! neither a British spelling nor on Wikipedia's list of common misspellings. `tools/spell-dictionary`
+//! builds the list again and `tasks/task-2517-spell-check-tdd.md` has the measurements. A capitalized
+//! word is only accepted capitalized, so a place name cannot hide a typo of an ordinary word.
+//!
+//! Both lists cost a few megabytes once read, so they are read the first time something asks to check a
+//! document, never when the plugin is only installed.
 
 use std::collections::HashSet;
 use std::io::Read;
@@ -18,6 +26,8 @@ use crate::position::{self, Path, StoryId};
 
 const AFFIXES: &str = include_str!("../dictionaries/en_US.aff");
 const WORDS_DEFLATED: &[u8] = include_bytes!("../dictionaries/en_US.dic.deflate");
+/// The words added to SCOWL's list, one a line with no affix flags.
+const EXTRA_DEFLATED: &[u8] = include_bytes!("../dictionaries/en_US-extra.dic.deflate");
 
 /// Why a word is underlined.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,13 +56,23 @@ pub struct Speller {
 }
 
 impl Speller {
-    /// The English dictionary that ships with the crate.
+    /// The English dictionary that ships with the crate: SCOWL's en_US and the words added to it.
     pub fn english() -> Result<Speller, String> {
         let mut words = String::new();
-        flate2::read::DeflateDecoder::new(WORDS_DEFLATED)
-            .read_to_string(&mut words)
-            .map_err(|e| format!("the dictionary: {e}"))?;
-        let dictionary = spellbook::Dictionary::new(AFFIXES, &words)
+        for deflated in [WORDS_DEFLATED, EXTRA_DEFLATED] {
+            flate2::read::DeflateDecoder::new(deflated)
+                .read_to_string(&mut words)
+                .map_err(|e| format!("the dictionary: {e}"))?;
+            if !words.ends_with('\n') {
+                words.push('\n');
+            }
+        }
+        Speller::from_hunspell(AFFIXES, &words)
+    }
+
+    /// A speller over any Hunspell dictionary, given the text of its `.aff` and `.dic` files.
+    pub fn from_hunspell(affixes: &str, words: &str) -> Result<Speller, String> {
+        let dictionary = spellbook::Dictionary::new(affixes, words)
             .map_err(|e| format!("the dictionary: {e}"))?;
         Ok(Speller { dictionary, ignored: HashSet::new() })
     }
@@ -70,8 +90,21 @@ impl Speller {
         self.ignored.insert(word.to_owned());
     }
 
-    /// Whether a word is spelled as the dictionary has it, or was added or ignored.
+    /// Whether a word is spelled as the dictionary has it, or was added or ignored. A possessive, `word's`,
+    /// is correct when `word` is: SCOWL's own entries carry the possessive as an affix, and the added words
+    /// and a person's own words carry none.
     pub fn is_correct(&self, word: &str) -> bool {
+        if self.knows(word) {
+            return true;
+        }
+        ["'s", "\u{2019}s"]
+            .iter()
+            .filter_map(|ending| word.strip_suffix(ending))
+            .any(|stem| !stem.is_empty() && self.knows(stem))
+    }
+
+    /// Whether the dictionary has a word as written, or it was added or ignored.
+    fn knows(&self, word: &str) -> bool {
         self.ignored.contains(word) || self.dictionary.check(word)
     }
 
@@ -130,10 +163,25 @@ pub fn check_paragraph(paragraph: &Paragraph, speller: &Speller) -> Vec<(Range<u
 }
 
 /// The underlined words in text that has already had what is not checked blanked out.
+///
+/// A hyphenated word the dictionary has whole, such as `Wi-Fi` or `T-shirt`, is one word. Any other
+/// hyphenated word is its parts, each checked on its own, which is what Word does with `well-known`.
 pub fn check_text(text: &str, speller: &Speller) -> Vec<(Range<usize>, Kind)> {
     let mut out = Vec::new();
     let mut previous: Option<(Range<usize>, String)> = None;
-    for (start, token) in text.split_word_bound_indices() {
+    let tokens: Vec<(usize, &str)> = text.split_word_bound_indices().collect();
+    let mut skip_to = 0;
+    for (index, &(start, token)) in tokens.iter().enumerate() {
+        if index < skip_to {
+            continue;
+        }
+        if let Some((last, whole)) = hyphenated(&tokens, index) {
+            if speller.is_correct(&text[whole.clone()]) {
+                previous = Some((whole.clone(), text[whole].to_lowercase()));
+                skip_to = last + 1;
+                continue;
+            }
+        }
         if !token.chars().any(char::is_alphabetic) {
             // Only spaces between two words keep them a repeated pair; a comma or a full stop does not.
             if !token.chars().all(|c| c == ' ') {
@@ -157,6 +205,32 @@ pub fn check_text(text: &str, speller: &Speller) -> Vec<(Range<usize>, Kind)> {
         previous = Some((range, lower));
     }
     out
+}
+
+/// When the token at `index` is a word joined by hyphens to the words after it, the index of the last
+/// of them and the byte range of the whole hyphenated word. A hyphen is `-` or U+2011, the non-breaking
+/// hyphen Word inserts with Ctrl+Shift+Minus.
+fn hyphenated(tokens: &[(usize, &str)], index: usize) -> Option<(usize, Range<usize>)> {
+    let is_word = |at: usize| {
+        tokens.get(at).is_some_and(|(_, t)| {
+            t.chars().all(|c| c.is_alphabetic() || c == '\'' || c == '\u{2019}')
+        }) && tokens[at].1.chars().any(char::is_alphabetic)
+    };
+    if !is_word(index) {
+        return None;
+    }
+    let mut last = index;
+    while tokens.get(last + 1).is_some_and(|(_, t)| *t == "-" || *t == "\u{2011}")
+        && is_word(last + 2)
+    {
+        last += 2;
+    }
+    if last == index {
+        return None;
+    }
+    let (end_start, end_token) = tokens[last];
+    let whole = tokens[index].0..end_start + end_token.len();
+    Some((last, whole))
 }
 
 /// Word's default exceptions: capitals, digits, and anything that is part of an address.

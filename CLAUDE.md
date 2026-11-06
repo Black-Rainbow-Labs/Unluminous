@@ -8051,6 +8051,11 @@ is `overlays::remember_popup` and `overlays::a_popup_covers`; a new popup calls 
 
 Spell check is `unluminous_word::spell` (SCOWL en_US through `spellbook`, inflated only on first use) and
 `services::word::spelling`, which caches each paragraph's result by its checked text. TDD section 13 has the rules.
+Since `task-2517` SCOWL's list has 56,542 words added to it (`dictionaries/en_US-extra.dic.deflate`): places, brands
+and recent words chosen from Wiktionary and Wikipedia titles, and measured against three misspelling corpora so it
+hides almost none of them. Change it only through `tools/spell-dictionary/build.sh`, and measure a change with
+`cargo run --release -p unluminous-word --example spell_probe`; `tasks/task-2517-spell-check-tdd.md` has the rules
+and the numbers.
 
 ### Word on a Mac, the caret after a bullet, and the right click menu (`task-2383`)
 

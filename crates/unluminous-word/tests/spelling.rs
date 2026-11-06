@@ -94,3 +94,68 @@ fn a_non_breaking_space_before_a_word_does_not_stop_the_check() {
         assert_eq!(words, ["Sylloge", "internall"], "with {space:?} between the words");
     }
 }
+
+/// The words of `text` the checker underlines, as written.
+fn flagged(text: &str, speller: &Speller) -> Vec<String> {
+    spell::check_text(text, speller).into_iter().map(|(range, _)| text[range].to_owned()).collect()
+}
+
+#[test]
+fn places_brands_and_recent_words_are_not_underlined() {
+    // task-2517: SCOWL's size 60 list underlined every one of these.
+    let speller = Speller::english().unwrap();
+    let text = "After pilates we flew to the Dolomites, then Phuket, Mykonos, Santorini, Positano and the \
+                Amalfi coast. Machu Picchu was next. I drank kombucha, did burpees with a kettlebell at \
+                CrossFit, booked an Airbnb, played Spotify over the Wi-Fi, and tried Zumba and a T-shirt.";
+    assert_eq!(flagged(text, &speller), Vec::<String>::new());
+}
+
+#[test]
+fn common_misspellings_are_still_underlined() {
+    // task-2517: the added words were chosen so that these stay underlined. A word one typo away from a
+    // much more common word, a contraction written without its apostrophe, and anything on Wikipedia's list
+    // of common misspellings were left out.
+    let speller = Speller::english().unwrap();
+    let wrong = [
+        "recieve", "definately", "seperate", "occured", "untill", "wierd", "accomodate", "goverment",
+        "beleive", "tommorow", "begining", "neccessary", "acheive", "embarass", "existance", "foriegn",
+        "freind", "grammer", "harrass", "independant", "liason", "millenium", "noticable", "occassion",
+        "persistant", "posession", "publically", "realy", "reccomend", "relevent", "sieze", "succesful",
+        "supercede", "threshhold", "truely", "alot", "teh", "theres", "becuase", "thier", "wich",
+    ];
+    let accepted: Vec<&str> = wrong.iter().copied().filter(|w| speller.is_correct(w)).collect();
+    assert_eq!(accepted, Vec::<&str>::new());
+}
+
+#[test]
+fn an_added_name_is_only_accepted_capitalized() {
+    // A capitalized entry is accepted as written and in capitals, never in lowercase, so a place name cannot
+    // hide a typo of an ordinary word.
+    let speller = Speller::english().unwrap();
+    assert!(speller.is_correct("Phuket"));
+    assert!(speller.is_correct("PHUKET"));
+    assert!(!speller.is_correct("phuket"));
+    assert!(!speller.is_correct("spotify"));
+}
+
+#[test]
+fn a_possessive_is_correct_when_its_word_is() {
+    let mut speller = Speller::english().unwrap();
+    assert_eq!(
+        flagged("Spotify's app, the Dolomites' peaks and Phuket’s beaches.", &speller),
+        Vec::<String>::new()
+    );
+    assert_eq!(flagged("Frobnicator's output.", &speller), ["Frobnicator's"]);
+    speller.add_word("Frobnicator");
+    assert_eq!(flagged("Frobnicator's output.", &speller), Vec::<String>::new());
+}
+
+#[test]
+fn a_hyphenated_word_is_read_whole_when_the_dictionary_has_it_and_by_its_parts_otherwise() {
+    let speller = Speller::english().unwrap();
+    assert_eq!(flagged("Wi-Fi and a T-shirt.", &speller), Vec::<String>::new());
+    assert_eq!(flagged("A well-knwon fact.", &speller), ["knwon"]);
+    assert_eq!(flagged("A Wi-Fii network.", &speller), ["Fii"]);
+    // Word's non-breaking hyphen joins a word the same way.
+    assert_eq!(flagged("Wi\u{2011}Fi works.", &speller), Vec::<String>::new());
+}
