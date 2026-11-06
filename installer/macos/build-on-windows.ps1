@@ -623,6 +623,18 @@ function Set-ZipUnixModes {
         host system, and the external attributes at +38 hold the mode in their
         top sixteen bits.
 
+        **The records are found by walking the central directory, never by
+        searching the file for their signature** (`task-2517`). The search read
+        every `PK 01 02` in the archive, and compressed data holds those four
+        bytes by chance: in 1.26.1 the compressed `unluminous` held them, the
+        patch wrote into the program's data, its CRC no longer matched, and
+        Apple refused the notarisation with "The signature does not include a
+        secure timestamp" and "The executable does not have the hardened
+        runtime enabled", because it could not read the signature at all. The
+        end of central directory record, read from the end of the file, says
+        where the directory starts and how many records it holds, and each
+        record says how long it is.
+
     .PARAMETER Path
         The zip to patch.
 
@@ -632,11 +644,25 @@ function Set-ZipUnixModes {
     param([string] $Path, [string] $ExecutablePrefix)
 
     $bytes = [System.IO.File]::ReadAllBytes($Path)
-    $signature = [byte[]] @(0x50, 0x4B, 0x01, 0x02)
-    for ($at = 0; $at -lt $bytes.Length - 46; $at++) {
-        if ($bytes[$at] -ne $signature[0] -or $bytes[$at + 1] -ne $signature[1] `
-                -or $bytes[$at + 2] -ne $signature[2] -or $bytes[$at + 3] -ne $signature[3]) {
-            continue
+    # The end of central directory record is the last 22 bytes, unless a comment follows it, so it is
+    # looked for backwards from there and must end exactly where its comment says. A comment is at most
+    # 65,535 bytes.
+    $end = -1
+    for ($at = $bytes.Length - 22; $at -ge [Math]::Max(0, $bytes.Length - 22 - 65535); $at--) {
+        if ($bytes[$at] -eq 0x50 -and $bytes[$at + 1] -eq 0x4B -and $bytes[$at + 2] -eq 0x05 -and $bytes[$at + 3] -eq 0x06 `
+                -and ($at + 22 + [BitConverter]::ToUInt16($bytes, $at + 20)) -eq $bytes.Length) {
+            $end = $at
+            break
+        }
+    }
+    if ($end -lt 0) { throw "$Path has no end of central directory record" }
+    $count = [BitConverter]::ToUInt16($bytes, $end + 10)
+    $start = [BitConverter]::ToUInt32($bytes, $end + 16)
+    if ($count -eq 0xFFFF -or $start -eq 0xFFFFFFFF) { throw "$Path is a Zip64 archive, which this patch does not read" }
+    $at = [int64] $start
+    for ($record = 0; $record -lt $count; $record++) {
+        if ($bytes[$at] -ne 0x50 -or $bytes[$at + 1] -ne 0x4B -or $bytes[$at + 2] -ne 0x01 -or $bytes[$at + 3] -ne 0x02) {
+            throw "$Path has no central directory record where record $record should be"
         }
         $nameLength = [BitConverter]::ToUInt16($bytes, $at + 28)
         $name = [System.Text.Encoding]::UTF8.GetString($bytes, $at + 46, $nameLength)
@@ -649,6 +675,7 @@ function Set-ZipUnixModes {
         # Multiplied rather than shifted: PowerShell's -shl works on a signed
         # 32-bit integer, and 0100755 shifted sixteen places overflows it.
         [Array]::Copy([BitConverter]::GetBytes([uint32] ([int64] $mode * 65536)), 0, $bytes, $at + 38, 4)
+        $at += 46 + $nameLength + [BitConverter]::ToUInt16($bytes, $at + 30) + [BitConverter]::ToUInt16($bytes, $at + 32)
     }
     [System.IO.File]::WriteAllBytes($Path, $bytes)
 }
