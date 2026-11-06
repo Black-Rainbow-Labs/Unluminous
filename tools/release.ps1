@@ -640,7 +640,7 @@ if ($carryingOn) {
     # Cargo.lock goes into the version commit with the manifest. Not `cargo update -p termoil-*`: that also moved
     # `windows` under `gpu-allocator` and the vendored `wgpu-hal` stopped compiling. tools/take-newest-termoil.mjs
     # rewrites only the Termoil lines and checks them with `cargo metadata --locked`.
-    Invoke-WithRetry 'take-newest-termoil' 3 { & node (Join-Path $Repo 'tools	ake-newest-termoil.mjs') }
+    Invoke-WithRetry 'take-newest-termoil' 3 { & node (Join-Path $Repo 'tools/take-newest-termoil.mjs') }
 
     Write-Step 'Running the suite'
     # `task-1922`: a release was tagged, installed and published before anything had run the tests. It is
