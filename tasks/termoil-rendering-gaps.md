@@ -2,6 +2,16 @@
 
 2026-11-05. Unluminous at `1c35eb98` (task-2510), Termoil pinned at `9b995ae`.
 
+## Update: fixed in 1.25.0
+
+Checked on 2026-11-05 against Unluminous 1.25.0 (built 5:26pm) with the same `demo.sh` and `kitty.py`. Every gap
+below now draws in the terminal tab: overline, all five underline styles in colour, colour emoji, accents over their
+letters, box and block characters drawn to fit the cell, and the kitty image. OSC 8 links still look like plain text,
+which is also true in Termoil.app. One difference remains: the 96 by 96 pixel kitty image is drawn about 1.8 times
+larger than in Termoil.app.
+
+![Unluminous 1.25.0](termoil-rendering-gaps/unluminous-1.25.0.png)
+
 ## The short answer
 
 Yes. These are features of the **Termoil app** that the **Unluminous terminal** does not show.
