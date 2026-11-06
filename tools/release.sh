@@ -194,8 +194,8 @@ cargo update --manifest-path "$manifest" -p inillucent-driver
 
 step 'Taking the newest Termoil'
 # `task-2524`: the three Termoil crates follow its `main` branch; the newest commit is taken before the suite, so
-# every release builds against the newest Termoil. See release.ps1.
-cargo update --manifest-path "$manifest" -p termoil-vt -p termoil-pty -p termoil-input
+# every release builds against the newest Termoil. See release.ps1 and tools/take-newest-termoil.mjs.
+node "$repo/tools/take-newest-termoil.mjs"
 
 step 'Running the suite'
 # `task-1922`: a release was tagged, installed and published before anything had run the tests. It is

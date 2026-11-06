@@ -186,7 +186,7 @@ muda = "0.19"
 # Black Rainbow Labs' own terminal, split so another program can embed it; `unluminous-terminal` is the one
 # crate that names these. A git dependency for the reason `rux` is: a release must not depend on a folder on one
 # machine. `tasks/task-2489-termoil-tdd.md` is the design. They follow Termoil's `main` branch (`task-2524`):
-# Cargo.lock holds the exact commit, and both release scripts run `cargo update` on all three before the suite,
+# Cargo.lock holds the exact commit, and both release scripts run tools/take-newest-termoil.mjs before the suite,
 # so every release builds against the newest Termoil.
 termoil-vt = { git = "https://github.com/Black-Rainbow-Labs/Termoil.git", branch = "main" }
 termoil-pty = { git = "https://github.com/Black-Rainbow-Labs/Termoil.git", branch = "main" }
