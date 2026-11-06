@@ -239,6 +239,19 @@ fn skills_page() {
     did(&mut harness, "plugins run skills install unluminous-task claude --project");
     did(&mut harness, "plugins run skills view unluminous-task");
     steady(&mut harness);
+    // **The install makes `.claude` in the project, and the picture waits for the explorer to show it**
+    // (`task-2514`). The watcher reports the new folder on a thread of its own, so a picture taken straight away
+    // showed the explorer before or after it depending on how busy the machine was, and failed whenever another
+    // build was running beside the suite.
+    for _ in 0..100 {
+        let tree = did(&mut harness, "explorer tree --limit 20");
+        if tree.to_string().contains(".claude") {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        steady(&mut harness);
+    }
+    steady(&mut harness);
     harness.snapshot(shot("skills_page").as_str());
 }
 
