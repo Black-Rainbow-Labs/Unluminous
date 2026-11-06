@@ -6,7 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.26.1 — 2026-11-06
+## 1.26.2 — 2026-11-06
+
+- Every Unluminous release builds against the newest Termoil (`task-2524`)
+- Take the newest Termoil by moving only its lock entries (`task-2524`)
+- Release.ps1 names tools/take-newest-termoil.mjs with a forward slash (`task-2524`)
+
+## 1.26.1 — 2026-11-05
 
 - Page spell check accepts places, brands and recent words (`task-2517`)
 - Format the spelling tests (`task-2517`)
