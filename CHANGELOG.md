@@ -6,6 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.26.3 — 2026-11-07
+
+- Create a project from the project tabs plus, and stop ends the tool spinner (`task-2529`)
+- Cargo fmt (`task-2529`)
+
 ## 1.26.2 — 2026-11-06
 
 - Every Unluminous release builds against the newest Termoil (`task-2524`)
