@@ -7,7 +7,8 @@
 //!
 //! The plus opens [`show_the_dropdown`], which is the Realm bar's folder dropdown made for projects: the recent
 //! projects newest first, a search well, and a folder chip beside the well that opens the platform's folder
-//! picker. A press on a project opens it in a new tab.
+//! picker. A press on a project opens it in a new tab. Under the list, a raised row offers to create a new project,
+//! which opens `File -> Create Project...` and puts what it makes in a new tab (`task-2529`).
 //!
 //! Nothing here opens, shows or closes a tab. Each function reports what was asked for and the window does it.
 
@@ -321,6 +322,8 @@ pub struct DropdownOutcome {
     pub open: Option<PathBuf>,
     /// The folder chip was pressed: ask the platform's folder picker for a folder.
     pub choose_a_folder: bool,
+    /// The create row was pressed: open the Create Project dialog, and open what it makes in a new tab.
+    pub create_a_project: bool,
     /// Escape, a press outside it, or a choice.
     pub closed: bool,
 }
@@ -334,6 +337,8 @@ const HEADING: f32 = 24.0;
 const SEARCH: f32 = 38.0;
 const GAP: f32 = 12.0;
 const RADIUS: f32 = 24.0;
+/// The create row under the list.
+const CREATE: f32 = 52.0;
 
 /// Which rows the filter leaves: the name or the folder holds what was typed.
 pub fn matching(rows: &[Row], filter: &str) -> Vec<Row> {
@@ -351,7 +356,7 @@ pub fn matching(rows: &[Row], filter: &str) -> Vec<Row> {
 /// How tall the card is for this many rows.
 fn card_height(rows: usize) -> f32 {
     let list = (rows.max(1) as f32 * ROW + 12.0).min(LIST_MOST);
-    PAD + HEADING + GAP + SEARCH + GAP + list + PAD
+    PAD + HEADING + GAP + SEARCH + GAP + list + GAP + CREATE + PAD
 }
 
 /// Draw the dropdown under `anchor`, the plus, and report what was chosen.
@@ -464,9 +469,16 @@ pub fn show_the_dropdown(
                 }
                 let list = Rect::from_min_max(
                     Pos2::new(inner.left(), well.bottom() + GAP),
-                    Pos2::new(inner.right(), inner.bottom()),
+                    Pos2::new(inner.right(), inner.bottom() - CREATE - GAP),
                 );
                 kit::list_well(rux, list, 18.0);
+                let create = Rect::from_min_max(
+                    Pos2::new(inner.left(), inner.bottom() - CREATE),
+                    inner.max,
+                );
+                if draw_the_create_row(rux, create) {
+                    outcome.create_a_project = true;
+                }
                 list
             });
             show_the_rows(ui, list.shrink(6.0), &found, state, &mut outcome);
@@ -483,10 +495,63 @@ pub fn show_the_dropdown(
                 .interact_pos()
                 .is_some_and(|at| !card.contains(at) && !anchor.contains(at))
     });
-    if escape || pressed_outside || outcome.open.is_some() || outcome.choose_a_folder {
+    if escape
+        || pressed_outside
+        || outcome.open.is_some()
+        || outcome.choose_a_folder
+        || outcome.create_a_project
+    {
         outcome.closed = true;
     }
     outcome
+}
+
+/// The row under the list that creates a new project, and whether it was pressed.
+///
+/// It is a raised chip rather than another row in the well, because it is a thing to do rather than a project to
+/// open, and the well holds only projects. The plus sits in a raised disc, where a project row has a carved one,
+/// for the same reason.
+///
+/// @param rux - the layer it is drawn in
+/// @param rect - where the row goes, the full width of the card's inside
+fn draw_the_create_row(rux: &mut rux::Rux<'_>, rect: Rect) -> bool {
+    const LABEL: &str = "Create a new project";
+    let response = rux.ui.interact(rect, rux.ui.id().with("project-dropdown-create"), Sense::click());
+    let theme = rux.theme();
+    let chat = theme.chat;
+    rux.chrome.surface(rect, 18.0, rux::Fill::gradient(chat.chip, rect), chat.raised_chip());
+    if response.hovered() {
+        rux.wash(rect, 18.0, chat.sky.gamma_multiply(0.08));
+        rux.ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    // Thirty in, where a project row's disc is: the list's rows sit six inside the well and their disc 24 in.
+    let disc =
+        Rect::from_center_size(Pos2::new(rect.left() + 30.0, rect.center().y), Vec2::splat(30.0));
+    rux.chrome.surface(disc, 15.0, chat.well, chat.carved_sm());
+    rux.mark(Mark::new(Icon::Plus, 14.0).stroke(1.9), disc.center(), chat.sky);
+
+    let text_left = disc.right() + 12.0;
+    let room = (rect.right() - 14.0 - text_left).max(40.0);
+    let name_style = Style::sans(13.0).semibold();
+    let galley = rux.elided(name_style, LABEL, theme.ink.i900, room);
+    rux::text::draw_left_capitals(
+        rux.painter(),
+        Pos2::new(text_left, rect.center().y - 8.0),
+        galley,
+        name_style,
+        theme.ink.i900,
+    );
+    let said = "Name it, choose where it goes, and open it in a new tab";
+    let galley = rux.elided(Style::sans(11.0), said, theme.ink.i400, room);
+    rux::text::draw_left_capitals(
+        rux.painter(),
+        Pos2::new(text_left, rect.center().y + 9.0),
+        galley,
+        Style::sans(11.0),
+        theme.ink.i400,
+    );
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, LABEL));
+    response.clicked()
 }
 
 /// The rows, in a scrolling list: a folder mark, the name and where it is, and whether it is open here already.

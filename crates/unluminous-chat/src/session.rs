@@ -356,9 +356,32 @@ impl Session {
         if let Some(message) = self.answering.and_then(|id| self.message_mut(id)) {
             message.finish = Some("stopped".to_owned());
         }
+        self.stop_the_running_tools();
         self.drop_an_empty_answer();
         self.bank_the_turn();
         self.state = State::Finished { reason: "stopped".to_owned() };
+    }
+
+    /// Give every call that never answered an answer that says it was stopped (`task-2529`).
+    ///
+    /// **A call with no answer is drawn as running, and nothing else would ever answer it.** Stopping kills
+    /// a command-line agent before it reports its tool results, and clears the calls Unluminous was running
+    /// for an API agent, so the run in the pane kept its spinner for ever after the button was pressed. The
+    /// call is marked failed, because it did not finish, and is timed from its start like an answered one.
+    fn stop_the_running_tools(&mut self) {
+        let started = std::mem::take(&mut self.calls_started);
+        for message in &mut self.chat.messages {
+            for call in message.tools.iter_mut().filter(|call| call.is_running()) {
+                let took = started
+                    .iter()
+                    .rev()
+                    .find(|(id, _)| *id == call.id)
+                    .map(|(_, at)| at.elapsed().as_millis() as u64);
+                call.answer = Some("Stopped before it answered.".to_owned());
+                call.failed = true;
+                call.took = call.took.or(took);
+            }
+        }
     }
 
     /// Every tool the model is waiting on, with **where it sits** in the message that asked.
@@ -688,6 +711,29 @@ mod tests {
         let answer = session.chat.last().expect("the answer");
         assert_eq!(answer.text(), "As I was say");
         assert_eq!(answer.finish.as_deref(), Some("stopped"));
+        assert!(!session.is_busy());
+    }
+
+    /// `task-2529`: a call that was still running when Stop was pressed is finished by the stop, so the run in
+    /// the pane stops spinning. A call that had already answered keeps its answer.
+    #[test]
+    fn stopping_finishes_every_tool_call_that_was_still_running() {
+        let mut session = a_session();
+        for id in ["t1", "t2"] {
+            session.reply(Reply::ToolCall {
+                id: id.to_owned(),
+                name: "Bash".to_owned(),
+                arguments: r#"{"command":"sleep 100"}"#.to_owned(),
+            });
+        }
+        session.reply(Reply::ToolAnswer { id: "t1".to_owned(), answer: "done".to_owned(), failed: false });
+        session.stop();
+        let answer = session.chat.last().expect("the answer");
+        assert!(answer.tools.iter().all(|tool| !tool.is_running()), "nothing is left running");
+        assert_eq!(answer.tools[0].answer.as_deref(), Some("done"), "the answered call keeps its answer");
+        assert!(!answer.tools[0].failed);
+        assert!(answer.tools[1].failed, "the stopped call did not finish");
+        assert!(session.tools_to_run().is_empty());
         assert!(!session.is_busy());
     }
 

@@ -189,6 +189,25 @@ impl UnluminousApp {
         }
     }
 
+    /// Open the Create Project dialog from the plus's dropdown, starting beside this tab's project, so that what
+    /// it makes opens in a new tab of this window (`task-2529`).
+    pub(crate) fn create_a_project_for_a_project_tab(&mut self) {
+        let mut project = crate::components::new_project_dialog::NewProject::beside(self.tree.root());
+        project.in_a_tab = true;
+        self.new_project = Some(project);
+    }
+
+    /// A project that was just made, opened in a new tab of this window and remembered as a recent project, so
+    /// the plus's dropdown lists it next time the way it lists any project opened in a tab.
+    pub(crate) fn open_a_new_project_in_a_tab(&mut self, folder: &Path) {
+        if let Some(store) = &self.store {
+            store.remember_project(folder);
+            self.recent = store.recent_projects();
+            self.recent_checked = None;
+        }
+        self.ask_the_window(Ask::Open(folder.to_path_buf()));
+    }
+
     /// The project tab's own menu and the plus's dropdown, drawn over the panes.
     pub(crate) fn show_the_project_tab_menus(
         &mut self,
@@ -219,6 +238,9 @@ impl UnluminousApp {
         }
         if outcome.choose_a_folder {
             self.choose_a_folder_for_a_project_tab();
+        }
+        if outcome.create_a_project {
+            self.create_a_project_for_a_project_tab();
         }
         // A press on the plus that opened it is the plus's own, which toggles it on the frame after.
         if !outcome.closed {

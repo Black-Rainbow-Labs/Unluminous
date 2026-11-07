@@ -793,7 +793,7 @@ impl UnluminousApp {
                 return no(request, code::NOT_APPLICABLE, format!("{problem} ({folder})"));
             }
             let folder = project.folder();
-            return match self.make_the_project(&folder, project.git) {
+            return match self.make_the_project(&folder, project.git, project.in_a_tab) {
                 Ok(()) => ok(
                     request,
                     format!("Made {}", folder.display()),

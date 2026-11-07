@@ -1913,7 +1913,7 @@ impl UnluminousApp {
             return;
         }
         if outcome.create {
-            match self.make_the_project(&project.folder(), project.git) {
+            match self.make_the_project(&project.folder(), project.git, project.in_a_tab) {
                 Ok(()) => return,
                 Err(problem) => project.problem = Some(problem),
             }

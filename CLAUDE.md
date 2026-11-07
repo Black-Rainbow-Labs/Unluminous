@@ -1168,6 +1168,13 @@ wrongly.
 A call is **folded until somebody opens it** (`task-2255`). It used to be open while it ran and fold when it
 finished, which moved everything under it twice.
 
+### Stop finishes every tool call that had not answered (`task-2529`)
+
+A call is drawn as running while `ToolCall::answer` is `None`, and Stop kills a command-line agent before it
+reports its results and clears the calls Unluminous was running itself. So `Session::stop` gives each call still
+without an answer the answer `Stopped before it answered.`, marked failed. Before this the run in the pane kept its
+spinner for ever after Stop was pressed.
+
 ### The model selector is `rux`'s `Select`, and zooming a file leaves the chat alone
 
 `task-2096`: *"The model selector at the top right of agent chat is badly formatted when open. Make it a
@@ -2716,6 +2723,9 @@ its own custom layout (same behavior as if they were open in different windows).
   (`components::project_tabs`), shrinking to share the room before any is left out. The branch widget is gone
   from the title bar; the status bar's branch is the button now (`task-2325`). The `+` opens a dropdown of recent projects with a folder
   chip that opens the platform's folder picker (`UnluminousApp::folder_picker`, which a test replaces).
+  Under the list a raised `Create a new project` row opens the Create Project dialog with `NewProject::in_a_tab`
+  set, and `make_the_project` then opens the folder in a new tab rather than a window (`task-2529`).
+  `explorer new-project --tab` is the agent's half.
 - **The first tab is drawn with the ids it always had**; every other is drawn inside `ui.push_id(("project-tab",
   key))`, so its scroll areas and text boxes keep state of their own.
 - **The session file has a line a tab**, `<pid>[*] <folder>`, the `*` on the tab showing. `Store::open_window_groups`

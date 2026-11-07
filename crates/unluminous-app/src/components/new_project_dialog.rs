@@ -35,6 +35,9 @@ pub struct NewProject {
     pub git: bool,
     /// Why the last attempt was refused, drawn under the fields until something is typed.
     pub problem: Option<String>,
+    /// Whether what it makes opens in a new project tab of this window rather than a window of its own. The
+    /// project tabs' plus asks for this (`task-2529`); `File -> Create Project...` does not.
+    pub in_a_tab: bool,
 }
 
 impl NewProject {
@@ -58,7 +61,13 @@ impl NewProject {
                 break;
             }
         }
-        Self { name, location: location.display().to_string(), git: true, problem: None }
+        Self {
+            name,
+            location: location.display().to_string(),
+            git: true,
+            problem: None,
+            in_a_tab: false,
+        }
     }
 
     /// The folder this would make, which is what the line under the fields says.
@@ -122,7 +131,11 @@ pub fn show(ctx: &egui::Context, project: &mut NewProject) -> Outcome {
     let mut outcome = Outcome::default();
     let (inner, closed) = modal::show(ctx, "unluminous-new-project", WIDTH, HEIGHT, |ui, area| {
         let mut outcome = Outcome::default();
-        if modal::header(ui, area, "Create Project") {
+        let title = match project.in_a_tab {
+            true => "Create Project in a New Tab",
+            false => "Create Project",
+        };
+        if modal::header(ui, area, title) {
             outcome.cancelled = true;
         }
         let body = modal::body(area);
@@ -258,6 +271,7 @@ mod tests {
             location: at.clone(),
             git: false,
             problem: None,
+            in_a_tab: false,
         };
         assert!(one("").why_not().is_some(), "an empty name");
         assert!(one("  ").why_not().is_some(), "and one that is only spaces");
@@ -279,6 +293,7 @@ mod tests {
             location: location.to_owned(),
             git: false,
             problem: None,
+            in_a_tab: false,
         };
         assert!(one("anything", "/no/such/folder/here").why_not().is_some());
         assert!(one("taken", &at).why_not().is_some(), "a folder with something in it");
@@ -295,6 +310,7 @@ mod tests {
             location: "  /somewhere  ".to_owned(),
             git: true,
             problem: None,
+            in_a_tab: false,
         };
         assert_eq!(project.folder(), Path::new("/somewhere").join("spaced"));
     }

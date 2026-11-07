@@ -4249,20 +4249,22 @@ unluminous-cli explorer new-folder src/services
 ### explorer new-project
 
 ```
-unluminous-cli explorer new-project <name> [--location <folder>] [--no-git]
+unluminous-cli explorer new-project <name> [--location <folder>] [--no-git] [--tab]
 ```
 
-Make a project folder, start a git repository in it, and open it in a window of its own — which is what `File -> Create Project...` does without the dialog. The folder is `<location>/<name>`; an existing folder with anything in it is refused rather than opened, and a name with a path separator in it is refused because a project name is a folder name.
+Make a project folder, start a git repository in it, and open it in a window of its own — which is what `File -> Create Project...` does without the dialog. `--tab` opens it in a new project tab of this window instead, which is what the project tabs' plus does with `Create a new project`. The folder is `<location>/<name>`; an existing folder with anything in it is refused rather than opened, and a name with a path separator in it is refused because a project name is a folder name.
 
 - `name` — What the project folder is called.
 
 - `--location <folder>` — The folder the project goes in. Beside the project that is open when it is not given, which is where the dialog starts too.
 - `--no-git` — Do not run `git init` in it. A git repository is made otherwise.
+- `--tab` — Open it in a new project tab of this window rather than a window of its own.
 
 ```sh
 unluminous-cli explorer new-project my-thing
 unluminous-cli explorer new-project my-thing --location C:/jason/dev
 unluminous-cli explorer new-project scratch --no-git
+unluminous-cli explorer new-project my-thing --tab
 ```
 
 ### explorer reload

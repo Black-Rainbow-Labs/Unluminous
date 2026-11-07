@@ -223,16 +223,17 @@ impl UnluminousApp {
             location: location.display().to_string(),
             git: !request.switch("no-git"),
             problem: None,
+            in_a_tab: request.switch("tab"),
         };
         if let Some(problem) = wanted.why_not() {
             return no(request, code::NOT_APPLICABLE, problem);
         }
         let folder = wanted.folder();
-        match self.make_the_project(&folder, wanted.git) {
+        match self.make_the_project(&folder, wanted.git, wanted.in_a_tab) {
             Ok(()) => ok(
                 request,
                 format!("Made {}", folder.display()),
-                json!({ "folder": folder.to_string_lossy(), "git": wanted.git }),
+                json!({ "folder": folder.to_string_lossy(), "git": wanted.git, "tab": wanted.in_a_tab }),
             ),
             Err(problem) => no(request, code::REFUSED, problem),
         }

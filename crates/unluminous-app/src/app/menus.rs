@@ -425,10 +425,14 @@ impl UnluminousApp {
     /// git said rather than what Unluminous guessed — and it is **not** fatal: the folder is made either
     /// way, and a project that exists without a repository is better than a refusal that leaves a folder
     /// half made.
+    ///
+    /// `in_a_tab` opens it in a new project tab of this window instead, which is what the project tabs' plus
+    /// asks for (`task-2529`).
     pub(crate) fn make_the_project(
         &mut self,
         folder: &std::path::Path,
         git: bool,
+        in_a_tab: bool,
     ) -> Result<(), String> {
         std::fs::create_dir_all(folder)
             .map_err(|problem| format!("{} could not be made: {problem}", folder.display()))?;
@@ -444,7 +448,10 @@ impl UnluminousApp {
             }
         }
         let folder = unluminous_terminal::paths::plain(folder);
-        self.open_a_project_window(&folder);
+        match in_a_tab {
+            true => self.open_a_new_project_in_a_tab(&folder),
+            false => self.open_a_project_window(&folder),
+        }
         self.new_project = None;
         Ok(())
     }
