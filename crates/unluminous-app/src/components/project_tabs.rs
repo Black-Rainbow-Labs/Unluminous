@@ -472,10 +472,8 @@ pub fn show_the_dropdown(
                     Pos2::new(inner.right(), inner.bottom() - CREATE - GAP),
                 );
                 kit::list_well(rux, list, 18.0);
-                let create = Rect::from_min_max(
-                    Pos2::new(inner.left(), inner.bottom() - CREATE),
-                    inner.max,
-                );
+                let create =
+                    Rect::from_min_max(Pos2::new(inner.left(), inner.bottom() - CREATE), inner.max);
                 if draw_the_create_row(rux, create) {
                     outcome.create_a_project = true;
                 }
@@ -516,7 +514,8 @@ pub fn show_the_dropdown(
 /// @param rect - where the row goes, the full width of the card's inside
 fn draw_the_create_row(rux: &mut rux::Rux<'_>, rect: Rect) -> bool {
     const LABEL: &str = "Create a new project";
-    let response = rux.ui.interact(rect, rux.ui.id().with("project-dropdown-create"), Sense::click());
+    let response =
+        rux.ui.interact(rect, rux.ui.id().with("project-dropdown-create"), Sense::click());
     let theme = rux.theme();
     let chat = theme.chat;
     rux.chrome.surface(rect, 18.0, rux::Fill::gradient(chat.chip, rect), chat.raised_chip());

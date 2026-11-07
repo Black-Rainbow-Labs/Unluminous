@@ -192,7 +192,8 @@ impl UnluminousApp {
     /// Open the Create Project dialog from the plus's dropdown, starting beside this tab's project, so that what
     /// it makes opens in a new tab of this window (`task-2529`).
     pub(crate) fn create_a_project_for_a_project_tab(&mut self) {
-        let mut project = crate::components::new_project_dialog::NewProject::beside(self.tree.root());
+        let mut project =
+            crate::components::new_project_dialog::NewProject::beside(self.tree.root());
         project.in_a_tab = true;
         self.new_project = Some(project);
     }

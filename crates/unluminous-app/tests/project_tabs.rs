@@ -346,7 +346,8 @@ fn the_create_row_makes_a_project_and_opens_it_in_a_new_tab() {
     settle_the_window(&mut harness);
     assert!(harness.state().app().project_dropdown.is_none(), "the dropdown went");
     {
-        let project = harness.state_mut().app_mut().new_project.as_mut().expect("the dialog is open");
+        let project =
+            harness.state_mut().app_mut().new_project.as_mut().expect("the dialog is open");
         assert!(project.in_a_tab, "and it is the one that opens a tab");
         project.name = "made-in-a-tab".to_owned();
         project.location = place.display().to_string();
@@ -370,7 +371,10 @@ fn an_agent_makes_a_project_in_a_new_tab_with_the_tab_switch() {
     let mut harness = window_on(&alpha);
     let said = drive(
         &mut harness,
-        &format!("explorer new-project by-command --location \"{}\" --no-git --tab", place.display()),
+        &format!(
+            "explorer new-project by-command --location \"{}\" --no-git --tab",
+            place.display()
+        ),
     );
     assert_eq!(said["tab"], true);
     settle_the_window(&mut harness);

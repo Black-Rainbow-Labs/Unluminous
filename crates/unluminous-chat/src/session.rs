@@ -726,11 +726,19 @@ mod tests {
                 arguments: r#"{"command":"sleep 100"}"#.to_owned(),
             });
         }
-        session.reply(Reply::ToolAnswer { id: "t1".to_owned(), answer: "done".to_owned(), failed: false });
+        session.reply(Reply::ToolAnswer {
+            id: "t1".to_owned(),
+            answer: "done".to_owned(),
+            failed: false,
+        });
         session.stop();
         let answer = session.chat.last().expect("the answer");
         assert!(answer.tools.iter().all(|tool| !tool.is_running()), "nothing is left running");
-        assert_eq!(answer.tools[0].answer.as_deref(), Some("done"), "the answered call keeps its answer");
+        assert_eq!(
+            answer.tools[0].answer.as_deref(),
+            Some("done"),
+            "the answered call keeps its answer"
+        );
         assert!(!answer.tools[0].failed);
         assert!(answer.tools[1].failed, "the stopped call did not finish");
         assert!(session.tools_to_run().is_empty());
