@@ -363,6 +363,39 @@ fn the_create_row_makes_a_project_and_opens_it_in_a_new_tab() {
     assert_eq!(root_of(harness.state().app()), made, "and that tab is the one showing");
 }
 
+/// `task-2529`: in a short window with a long list of recent projects the list scrolls, and the create row under it
+/// stays inside the window. The card used to be capped at the window's height, not at the room under the plus,
+/// so fifteen recent projects pushed the create row off the bottom.
+#[test]
+fn the_create_row_stays_in_a_short_window_with_many_recent_projects() {
+    let [alpha, beta, gamma] = projects();
+    let mut harness = window_on(&alpha);
+    harness.set_size(vec2(WINDOW[0], 480.0));
+    settle_the_window(&mut harness);
+    let many: Vec<std::path::PathBuf> = (0..15)
+        .map(|n| {
+            fixture(
+                &format!("unluminous-project-tabs-many-{n}"),
+                &[(
+                    "a.md", "# A
+",
+                )],
+            )
+        })
+        .chain([gamma, beta, alpha])
+        .collect();
+    harness.state_mut().app_mut().recent = many;
+    harness.get_by_label("New Project Tab").click();
+    settle_the_window(&mut harness);
+    let create = harness.get_by_label("Create a new project").rect();
+    assert!(
+        create.bottom() <= 480.0,
+        "the create row ends at {} in a window 480 tall",
+        create.bottom()
+    );
+    assert!(create.height() > 40.0, "and it is drawn whole: {create:?}");
+}
+
 /// The agent's half of the create row: `explorer new-project --tab`.
 #[test]
 fn an_agent_makes_a_project_in_a_new_tab_with_the_tab_switch() {

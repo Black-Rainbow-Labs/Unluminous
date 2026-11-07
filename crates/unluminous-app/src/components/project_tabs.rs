@@ -339,6 +339,8 @@ const GAP: f32 = 12.0;
 const RADIUS: f32 = 24.0;
 /// The create row under the list.
 const CREATE: f32 = 52.0;
+/// The shortest the card gets: the heading, the search well, one row of the list and the create row.
+const MOST_SHRUNK: f32 = PAD + HEADING + GAP + SEARCH + GAP + ROW + 12.0 + GAP + CREATE + PAD;
 
 /// Which rows the filter leaves: the name or the folder holds what was typed.
 pub fn matching(rows: &[Row], filter: &str) -> Vec<Row> {
@@ -394,10 +396,12 @@ pub fn show_the_dropdown(
     state.highlighted = state.highlighted.min(found.len().saturating_sub(1));
 
     let screen = ctx.content_rect();
-    let height = card_height(found.len()).min(screen.height() - 24.0).max(180.0);
+    // The card ends 12 points above the window's bottom edge, measured from where it starts under the plus, so in a
+    // short window the list scrolls and the create row under it stays in view (`task-2529`).
+    let top = anchor.bottom() + 8.0;
+    let height = card_height(found.len()).min(screen.bottom() - top - 12.0).max(MOST_SHRUNK);
     let left = anchor.left().min(screen.right() - WIDTH - 12.0).max(screen.left() + 12.0);
-    let card =
-        Rect::from_min_size(Pos2::new(left, anchor.bottom() + 8.0), Vec2::new(WIDTH, height));
+    let card = Rect::from_min_size(Pos2::new(left, top), Vec2::new(WIDTH, height));
     egui::Area::new(egui::Id::new("unluminous-project-tabs-dropdown"))
         .order(egui::Order::Foreground)
         .fixed_pos(card.min)
