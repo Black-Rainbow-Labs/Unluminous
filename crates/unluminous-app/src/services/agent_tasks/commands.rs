@@ -16,7 +16,10 @@ use crate::services::plugin_ui::{self, Answer, UiProvider};
 
 use super::model::{Author, Priority, Status};
 use super::store::{NewTask, TaskEdit};
-use super::{agent, clock, model, split_off_a_name, AgentTasks, View, SWATCHES, TAIL_LINES};
+use super::{
+    agent, clock, model, split_off_a_name, AgentTasks, SkillLayout, SupervisorView, View, SWATCHES,
+    TAIL_LINES,
+};
 
 /// Every command, with the one line `plugins show agent-tasks` prints for each.
 pub const LIST: &[(&str, &str)] = unluminous_cli::plugins::AGENT_TASKS;
@@ -1029,15 +1032,21 @@ fn recolour_epic(tasks: &mut AgentTasks, arguments: &[String]) -> Result<Answer,
     Ok(Answer::said(format!("{} is {colour}", epic.name)))
 }
 
-/// `supervisor`, and what follows it: `start`, `stop`, `send <text>`, `open`, `close`, or nothing for how it is.
+/// `supervisor`, and what follows it: the agent itself (`start`, `stop`, `restart`, `send <text>`), the modal
+/// (`open`, `close`, `view`, `layout`), its skill file (`skill`, `skill-set`, `skill-reset`) and what it is started
+/// on (`endpoint`, `model`, `effort`), or nothing for how it is.
+///
+/// Every control on the supervisor modal is one of these words, reaching the same `AgentTasks` method the control
+/// does (`task-2556`).
 ///
 /// @param tasks - the board
 /// @param verb - what to do, empty for the supervisor's state and its last lines
-/// @param rest - the text to send, for `send`
+/// @param rest - what follows the verb: the text to send or save, a view, a layout, or a setting's value
 fn supervisor(tasks: &mut AgentTasks, verb: &str, rest: &str) -> Result<Answer, String> {
     match verb {
         "start" => tasks.start_the_supervisor(),
         "stop" => Ok(tasks.stop_the_supervisor()),
+        "restart" => tasks.restart_the_supervisor(),
         "send" => tasks.send_to_the_supervisor(rest),
         "open" => {
             tasks.supervisor_open = true;
@@ -1047,18 +1056,105 @@ fn supervisor(tasks: &mut AgentTasks, verb: &str, rest: &str) -> Result<Answer, 
             tasks.supervisor_open = false;
             Ok(Answer::said("the supervisor modal is closed"))
         }
+        "view" => supervisor_view(tasks, rest),
+        "layout" => supervisor_layout(tasks, rest),
+        "skill" => Ok(supervisor_skill(tasks)),
+        "skill-set" => match rest.trim().strip_prefix("--file ") {
+            Some(path) => {
+                let text = std::fs::read_to_string(path.trim())
+                    .map_err(|problem| format!("{} could not be read: {problem}", path.trim()))?;
+                tasks.save_the_supervisor_skill(&text)
+            }
+            None => tasks.save_the_supervisor_skill(rest),
+        },
+        "skill-reset" => tasks.reset_the_supervisor_skill(),
+        "endpoint" | "model" | "effort" => supervisor_setting(tasks, verb, rest),
         "" | "status" => {
             let running = tasks.supervisor_is_running();
             let screen = tasks.supervisor_screen(TAIL_LINES).unwrap_or_default();
+            let mut value = tasks.supervisor_settings_json();
+            value["running"] = json!(running);
+            value["open"] = json!(tasks.supervisor_open);
+            value["view"] = json!(tasks.supervisor_view.name());
+            value["skill"] = json!(tasks.supervisor_skill_path().display().to_string());
+            value["screen"] = json!(screen);
             Ok(Answer::said(match running {
                 true => "the supervisor is running",
                 false => "the supervisor is not running",
             })
-            .with(json!({ "running": running, "open": tasks.supervisor_open, "screen": screen })))
+            .with(value))
         }
         other => Err(format!(
-            "`supervisor {other}` is not something the supervisor does: start, stop, send <text>, open or close"
+            "`supervisor {other}` is not something the supervisor does: start, stop, restart, send <text>, open, \
+             close, view, layout, skill, skill-set <text>, skill-reset, endpoint, model or effort"
         )),
+    }
+}
+
+/// `supervisor view terminal|skill|settings`, which opens the modal on that view, or says which it shows.
+fn supervisor_view(tasks: &mut AgentTasks, rest: &str) -> Result<Answer, String> {
+    if rest.trim().is_empty() {
+        return Ok(Answer::said(format!(
+            "the supervisor modal shows {}",
+            tasks.supervisor_view.name()
+        ))
+        .with(json!({ "view": tasks.supervisor_view.name() })));
+    }
+    let view = SupervisorView::parse(rest).ok_or_else(|| {
+        format!(
+            "`{}` is not a view of the supervisor modal: terminal, skill or settings",
+            rest.trim()
+        )
+    })?;
+    tasks.supervisor_view = view;
+    tasks.supervisor_open = true;
+    if view == SupervisorView::Skill {
+        tasks.load_the_supervisor_skill();
+    }
+    Ok(Answer::said(format!("the supervisor modal shows {}", view.name()))
+        .with(json!({ "view": view.name() })))
+}
+
+/// `supervisor layout edit|split|preview`, how the Skill view lays the file out, or which it is.
+fn supervisor_layout(tasks: &mut AgentTasks, rest: &str) -> Result<Answer, String> {
+    if !rest.trim().is_empty() {
+        tasks.supervisor_skill.layout = SkillLayout::parse(rest)
+            .ok_or_else(|| format!("`{}` is not a layout: edit, split or preview", rest.trim()))?;
+    }
+    let layout = tasks.supervisor_skill.layout.name();
+    Ok(Answer::said(format!("the skill is shown as {layout}")).with(json!({ "layout": layout })))
+}
+
+/// `supervisor skill`: the file, what it says, and whether a draft in the modal has not been saved.
+fn supervisor_skill(tasks: &mut AgentTasks) -> Answer {
+    let path = tasks.supervisor_skill_path();
+    let text = tasks.read_the_supervisor_skill();
+    let default = text == crate::services::agent_tasks::default_skill();
+    let said = match default {
+        true => format!("the supervisor follows the shipped skill, at {}", path.display()),
+        false => format!("the supervisor follows the skill saved at {}", path.display()),
+    };
+    Answer::said(said).with(json!({
+        "path": path.display().to_string(),
+        "exists": path.exists(),
+        "default": default,
+        "unsaved": tasks.supervisor_skill.unsaved(),
+        "text": text,
+    }))
+}
+
+/// `supervisor endpoint|model|effort [value|default]`: sets one, or says all three when given nothing.
+fn supervisor_setting(tasks: &mut AgentTasks, which: &str, rest: &str) -> Result<Answer, String> {
+    let value = rest.trim();
+    if value.is_empty() {
+        let settings = tasks.supervisor_settings_json();
+        let said = settings[which].as_str().unwrap_or("its default").to_owned();
+        return Ok(Answer::said(format!("the supervisor's {which} is {said}")).with(settings));
+    }
+    match which {
+        "endpoint" => tasks.set_the_supervisor_endpoint(Some(value)),
+        "model" => tasks.set_the_supervisor_model(Some(value)),
+        _ => tasks.set_the_supervisor_effort(Some(value)),
     }
 }
 

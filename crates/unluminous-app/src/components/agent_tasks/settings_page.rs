@@ -1,7 +1,7 @@
 //! The Agent-Tasks page in the Settings window.
 //!
-//! Three cards from `components::settings_kit` in the Settings design's layout (`task-2246`): the board, what a
-//! new ticket gets, and how an agent is launched. It scrolls inside the room the Settings window gives a page, as
+//! Four cards from `components::settings_kit` in the Settings design's layout (`task-2246`): the board, what a
+//! new ticket gets, how an agent is launched, and what the supervisor is started on (`task-2556`). It scrolls inside the room the Settings window gives a page, as
 //! every page does.
 //!
 //! **Which agent a ticket goes to is an endpoint** (`task-2247`), chosen from the list in
@@ -25,7 +25,7 @@ pub fn show(board: &mut AgentTasks, ui: &mut egui::Ui, _look: &Look<'_>) -> Vec<
     kit::plugin_page(ui, "agent-tasks-settings", |ui, column| cards(board, ui, column))
 }
 
-/// The page's three cards.
+/// The page's four cards.
 fn cards(board: &mut AgentTasks, ui: &mut egui::Ui, column: &mut Column) -> Vec<Request> {
     let mut requests = Vec::new();
     let configuration = board.configuration().clone();
@@ -190,6 +190,8 @@ fn cards(board: &mut AgentTasks, ui: &mut egui::Ui, column: &mut Column) -> Vec<
         );
     });
 
+    supervisor_card(board, ui, column, &configuration, &mut changed);
+
     // Written once anything above changed, on the same terms the window's own settings are.
     if changed != configuration {
         if let Err(problem) = board.change_the_configuration(changed) {
@@ -198,6 +200,71 @@ fn cards(board: &mut AgentTasks, ui: &mut egui::Ui, column: &mut Column) -> Vec<
     }
     requests
 }
+
+/// The fourth card: what the board's supervisor is started on (`task-2556`). The same three fields the gear in the
+/// supervisor modal shows, written to the same three settings.
+fn supervisor_card(
+    board: &AgentTasks,
+    ui: &mut egui::Ui,
+    column: &mut Column,
+    configuration: &crate::services::agent_tasks::Configuration,
+    changed: &mut crate::services::agent_tasks::Configuration,
+) {
+    kit::card(ui, column, "The supervisor", None, |card| {
+        let mut names = vec![THE_BOARDS_ENDPOINT.to_owned()];
+        names.extend(board.assignee_choices().into_iter().filter(|name| name != "human"));
+        let current = configuration.supervisor_endpoint.clone().unwrap_or_default();
+        let chosen = match current.is_empty() {
+            true => Some(0),
+            false => names.iter().position(|name| *name == current),
+        };
+        let picked = card.row(
+            "Supervisor endpoint",
+            Some(
+                "Which endpoint Chat with supervisor starts the board's supervisor on. How it works the board is the \
+                 skill file in the supervisor's Skill tab.",
+            ),
+            |row| row.select("Supervisor endpoint", &names, chosen, 240.0),
+        );
+        if let Some(index) = picked {
+            let named = match index {
+                0 => None,
+                at => board
+                    .assignee_named(&names[at])
+                    .ok()
+                    .map(|(kind, endpoint)| endpoint.unwrap_or_else(|| kind.name().to_owned())),
+            };
+            if named != changed.supervisor_endpoint {
+                changed.supervisor_endpoint = named;
+                changed.supervisor_model = None;
+            }
+        }
+        if let Some(picked) = choose(
+            card,
+            "Supervisor model",
+            "Passed as --model when the supervisor starts. Empty is the endpoint's own model.",
+            &board.supervisor_models(),
+            configuration.supervisor_model.as_deref().unwrap_or(""),
+        ) {
+            changed.supervisor_model =
+                Some(picked).filter(|value: &String| !value.trim().is_empty());
+        }
+        let efforts: Vec<String> = EFFORTS.iter().map(|level| (*level).to_owned()).collect();
+        if let Some(picked) = choose(
+            card,
+            "Supervisor effort",
+            "Passed as --effort when the supervisor starts.",
+            &efforts,
+            configuration.supervisor_effort.as_deref().unwrap_or(""),
+        ) {
+            changed.supervisor_effort =
+                Some(picked).filter(|value: &String| !value.trim().is_empty());
+        }
+    });
+}
+
+/// What the supervisor's endpoint select says for the endpoint a new ticket is given to.
+const THE_BOARDS_ENDPOINT: &str = "The board's endpoint";
 
 /// A setting chosen from a list that may be left to the agent, which is the list's first row. Answers what was
 /// chosen, empty for the agent's own, when it changed.

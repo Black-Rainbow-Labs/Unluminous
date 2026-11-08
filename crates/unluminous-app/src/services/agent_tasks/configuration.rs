@@ -100,6 +100,13 @@ pub struct Configuration {
     /// The same for a Codex ticket. `codex resume <id>` puts its subcommand first, which Unluminous goes on
     /// doing, so what is written here is the program and the flags that follow the subcommand.
     pub codex_command: Option<String>,
+    /// The endpoint the board's supervisor is started on, by name (`task-2556`). `None` is the endpoint a new ticket
+    /// is given to, which is what the supervisor ran on before it had a setting of its own.
+    pub supervisor_endpoint: Option<String>,
+    /// The model the supervisor is started with. `None` is its endpoint's own model.
+    pub supervisor_model: Option<String>,
+    /// The effort the supervisor is started with. `None` is the agent's own default.
+    pub supervisor_effort: Option<String>,
 }
 
 impl Default for Configuration {
@@ -114,6 +121,9 @@ impl Default for Configuration {
             effort: None,
             claude_command: None,
             codex_command: None,
+            supervisor_endpoint: None,
+            supervisor_model: None,
+            supervisor_effort: None,
         }
     }
 }
@@ -157,6 +167,10 @@ impl Configuration {
             endpoint: said("endpoint"),
             claude_command: said("claude-command"),
             codex_command: said("codex-command"),
+            supervisor_endpoint: said("supervisor-endpoint"),
+            supervisor_model: said("supervisor-model"),
+            supervisor_effort: said("supervisor-effort")
+                .filter(|level| EFFORTS.contains(&level.as_str())),
         }
     }
 
@@ -177,6 +191,9 @@ impl Configuration {
         set("claude-command", self.claude_command.clone());
         set("codex-command", self.codex_command.clone());
         set("endpoint", self.endpoint.clone());
+        set("supervisor-endpoint", self.supervisor_endpoint.clone());
+        set("supervisor-model", self.supervisor_model.clone());
+        set("supervisor-effort", self.supervisor_effort.clone());
         values.set("agent", self.agent.name());
         values.set("lease", self.lease_minutes.to_string());
         std::fs::create_dir_all(folder)
@@ -189,7 +206,9 @@ impl Configuration {
                  `endpoint` names the AI endpoint a new ticket is given to, from `ai-endpoints.conf` in the \
                  settings folder. `claude-command` and `codex-command` are the program and the flags in front of \
                  it a ticket's agent is launched with, and the ticket's own model, effort and session flag are \
-                 added after them; empty means the command Unluminous builds itself.",
+                 added after them; empty means the command Unluminous builds itself. `supervisor-endpoint`, \
+                 `supervisor-model` and `supervisor-effort` are what the board's supervisor is started with; empty \
+                 means the board's endpoint and that endpoint's model.",
                 )
                 .as_bytes(),
         )

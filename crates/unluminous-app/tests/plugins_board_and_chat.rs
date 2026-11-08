@@ -4827,6 +4827,122 @@ fn chat_with_supervisor_opens_a_modal_with_its_terminal_a_message_box_and_send()
     assert!(harness.query_all_by_label_contains("Start supervisor").count() > 0);
 }
 
+/// `task-2556`: *"I want a tab to show an editable supervisor skill file so I can modify just like in file preview
+/// pane, and saving it immediately gets applied as the skill the supervisor uses."* The Skill tab shows the shipped
+/// skill as source and preview, typing makes it unsaved, and `Save & apply` writes the file `supervisor skill`
+/// reads back. `Reset to default` puts the shipped skill back.
+#[test]
+fn the_supervisor_skill_tab_edits_and_saves_the_skill_file() {
+    let mut harness = harness("");
+    did(&mut harness, "plugins pane agent-tasks/board --show");
+    steady(&mut harness);
+    harness.get_by_label("Chat with supervisor").click();
+    steady(&mut harness);
+    for control in ["Terminal tab", "Skill tab", "Supervisor settings"] {
+        assert!(harness.query_all_by_label(control).count() > 0, "the header has `{control}`");
+    }
+    harness.get_by_label("Skill tab").click();
+    steady(&mut harness);
+    assert_eq!(did(&mut harness, "plugins run agent-tasks supervisor")["view"], "skill");
+    for control in [
+        "Supervisor skill",
+        "Supervisor skill preview",
+        "Save & apply",
+        "Revert",
+        "Reset to default",
+        "Open in a tab",
+        "Skill layout",
+    ] {
+        assert!(
+            harness.query_all_by_label_contains(control).count() > 0,
+            "the Skill tab has `{control}`"
+        );
+    }
+    let shipped = did(&mut harness, "plugins run agent-tasks supervisor skill");
+    assert_eq!(shipped["default"], serde_json::json!(true), "{shipped}");
+    assert!(shipped["text"].as_str().unwrap_or_default().contains("unluminous-supervisor"));
+    // The box is taller than its well, because the skill is longer than the well, so its middle is out of sight:
+    // the well's own ground is what a press on the part that shows reaches.
+    harness.get_by_label("Supervisor skill field").click();
+    steady(&mut harness);
+    harness.get_by_label("Supervisor skill").type_text("Work at most 3 tickets at a time.\n");
+    steady(&mut harness);
+    assert!(harness.query_all_by_label("Unsaved").count() > 0, "a typed change is marked unsaved");
+    // `Ctrl`/`Cmd`+`S` in the source saves the skill, and only the skill: the untitled document behind the modal is
+    // not asked to save, which would open the Save dialog.
+    harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::S);
+    steady(&mut harness);
+    assert!(harness.state().save_dialog.is_none(), "the chord was the skill's, not the document's");
+    assert_eq!(
+        did(&mut harness, "plugins run agent-tasks supervisor skill")["unsaved"],
+        serde_json::json!(false)
+    );
+    harness
+        .get_by_label("Supervisor skill")
+        .type_text("Check every agent's work before moving on.\n");
+    steady(&mut harness);
+    harness.get_by_label("Save & apply").click();
+    steady(&mut harness);
+    let saved = did(&mut harness, "plugins run agent-tasks supervisor skill");
+    assert_eq!(saved["default"], serde_json::json!(false), "{saved}");
+    assert_eq!(saved["unsaved"], serde_json::json!(false), "{saved}");
+    let text = saved["text"].as_str().unwrap_or_default().to_owned();
+    assert!(text.contains("Work at most 3 tickets at a time."), "{text}");
+    let path = std::path::PathBuf::from(saved["path"].as_str().unwrap_or_default());
+    assert_eq!(std::fs::read_to_string(&path).unwrap_or_default().replace("\r\n", "\n"), text);
+    // The layouts the file preview pane has.
+    did(&mut harness, "plugins run agent-tasks supervisor layout preview");
+    steady(&mut harness);
+    assert_eq!(
+        harness.query_all_by_label("Supervisor skill").count(),
+        0,
+        "Preview shows no source"
+    );
+    did(&mut harness, "plugins run agent-tasks supervisor layout split");
+    harness.get_by_label("Reset to default").click();
+    steady(&mut harness);
+    assert_eq!(
+        did(&mut harness, "plugins run agent-tasks supervisor skill")["default"],
+        serde_json::json!(true)
+    );
+}
+
+/// `task-2556`: *"We also want the user to be able to configure which model is used for the supervisor (perhaps in
+/// settings or a gear icon in our supervisor modal)."* The gear shows the endpoint, model and effort fields, and the
+/// command line's `supervisor model` and `supervisor effort` are what start reads.
+#[test]
+fn the_supervisor_gear_shows_its_endpoint_model_and_effort() {
+    let mut harness = harness("");
+    did(&mut harness, "plugins run agent-tasks supervisor open");
+    steady(&mut harness);
+    harness.get_by_label("Supervisor settings").click();
+    steady(&mut harness);
+    assert_eq!(did(&mut harness, "plugins run agent-tasks supervisor")["view"], "settings");
+    for control in ["Endpoint", "Model", "Effort", "Edit the skill"] {
+        assert!(
+            harness.query_all_by_label_contains(control).count() > 0,
+            "the settings have `{control}`"
+        );
+    }
+    did(&mut harness, "plugins run agent-tasks supervisor model claude-sonnet-5-5");
+    did(&mut harness, "plugins run agent-tasks supervisor effort high");
+    let state = did(&mut harness, "plugins run agent-tasks supervisor");
+    assert_eq!(state["model"], "claude-sonnet-5-5", "{state}");
+    assert_eq!(state["effort"], "high", "{state}");
+    assert_eq!(
+        refused(&mut harness, "plugins run agent-tasks supervisor effort enormous"),
+        "failed"
+    );
+    did(&mut harness, "plugins run agent-tasks supervisor model default");
+    assert_eq!(
+        did(&mut harness, "plugins run agent-tasks supervisor")["model"],
+        serde_json::Value::Null
+    );
+    harness.get_by_label("Edit the skill").click();
+    steady(&mut harness);
+    assert_eq!(did(&mut harness, "plugins run agent-tasks supervisor")["view"], "skill");
+}
+
 /// Where the Chat tab tests keep Claude Code's folder and the ticket's project: under the temporary folder,
 /// named once for the whole test binary, so no test reads the person's own `~/.claude`.
 fn a_ticket_with_a_transcript(harness: &mut Harness<'static, UnluminousApp>) -> std::path::PathBuf {

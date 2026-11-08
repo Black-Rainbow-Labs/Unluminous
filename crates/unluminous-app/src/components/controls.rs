@@ -568,6 +568,39 @@ pub fn wants_the_keyboard() -> egui::Id {
     egui::Id::new("unluminous-field-wants-the-keyboard")
 }
 
+/// Where [`claim_chords`] keeps the chords claimed, and the frame they were claimed on.
+fn claimed_chords_id() -> egui::Id {
+    egui::Id::new("unluminous-claimed-chords")
+}
+
+/// Say that the box drawn this frame, which has the keyboard, answers these chords itself, so the menus leave them
+/// alone on the next frame (`task-2556`).
+///
+/// The supervisor skill's source box saves with `Ctrl`/`Cmd`+`S`. The menus are asked about a key before anything a
+/// plugin's modal draws, and `File -> Save` is deliberately left reachable from a text box, so without a claim the
+/// chord saved the skill and the document behind the modal both. A claim is good for the frame after the one it was
+/// made on, so a box that loses the keyboard stops claiming without having to say so.
+///
+/// @param ctx - the window's context
+/// @param chords - each key and the modifiers it is pressed with
+pub fn claim_chords(ctx: &egui::Context, chords: &[(egui::Key, egui::Modifiers)]) {
+    let frame = ctx.cumulative_frame_nr();
+    ctx.data_mut(|data| data.insert_temp(claimed_chords_id(), (frame, chords.to_vec())));
+}
+
+/// The chords a box claimed on the frame before this one, or this one, with [`claim_chords`].
+///
+/// @param ctx - the window's context
+pub fn claimed_chords(ctx: &egui::Context) -> Vec<(egui::Key, egui::Modifiers)> {
+    let frame = ctx.cumulative_frame_nr();
+    let held: Option<(u64, Vec<(egui::Key, egui::Modifiers)>)> =
+        ctx.data(|data| data.get_temp(claimed_chords_id()));
+    match held {
+        Some((made, chords)) if frame.saturating_sub(made) <= 1 => chords,
+        _ => Vec::new(),
+    }
+}
+
 /// A box to search in: the field, a magnifier in front of it, and the words to show while it is
 /// empty.
 ///

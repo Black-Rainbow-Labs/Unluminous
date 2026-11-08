@@ -9,7 +9,7 @@
 //! `store.rs` is the SQLite file and every query there is. `model.rs` is what a ticket is. `board.rs`
 //! is the arithmetic a drag and a search need. `watchdog.rs` is the two ways an agent stops.
 //! `agent.rs` builds the command line Claude or Codex is launched with. `clock.rs` is the instant as
-//! text. **None of them draws and none of them reads the window**, so all of it is tested with no
+//! text. `supervisor.rs` is the board's supervisor: starting it, its skill file and what it runs on. **None of them draws and none of them reads the window**, so all of it is tested with no
 //! window, no database and no clock.
 //!
 //! ## Nothing is read once a frame
@@ -20,9 +20,11 @@
 //! no second path that could start reading per frame by accident.
 
 mod configuration;
+mod supervisor;
 mod terminal;
 
 pub use configuration::{Configuration, View};
+pub use supervisor::{default_skill, SkillEditor, SkillLayout, SupervisorView, DEFAULT_SKILL};
 pub use terminal::TicketTerminal;
 use terminal::{AGENT_SESSION_MARKERS, PROMPT_CEILING};
 
@@ -577,6 +579,12 @@ pub struct AgentTasks {
     pub supervisor_open: bool,
     /// What is typed in the supervisor modal's message box.
     pub supervisor_draft: String,
+    /// Which view the supervisor modal shows: its terminal, its skill file, or what it is started on (`task-2556`).
+    pub supervisor_view: SupervisorView,
+    /// The supervisor skill file as the modal's Skill view holds it: the draft, the saved text, the layout.
+    pub supervisor_skill: SkillEditor,
+    /// What the supervisor modal's `rux` controls keep between frames, as `ticket_kit` is for the ticket modal.
+    pub supervisor_kit: Option<TicketKit>,
 }
 
 /// The terminal the supervisor runs in is kept with the tickets' terminals, under an id no ticket has: a ticket's
@@ -1202,112 +1210,6 @@ impl AgentTasks {
             "folder": folder.display().to_string(),
             "command": launch.line(),
         })))
-    }
-
-    /// Start the board's supervisor: one agent that works the tickets in QA Failed and New one at a time.
-    ///
-    /// `task-2253`: *"We are missing a chat with supervisor button on agent tasks. when I click that, a modal should
-    /// open that has the terminal window, along with a message input and send button."* The board being replaced
-    /// has a supervisor that drains its sprint, and this one did not exist: the design left it out as "a second
-    /// protocol". It is the agent the board's endpoint names, started in the board's project folder exactly the way
-    /// a ticket's agent is ([`Self::spawn`]), and told the board's commands by [`agent::supervisor_handoff`].
-    pub fn start_the_supervisor(&mut self) -> Result<Answer, String> {
-        if self.supervisor_is_running() {
-            return Ok(Answer::said("the supervisor is already running"));
-        }
-        let (agent, endpoint) = self.default_assignee();
-        if !agent.is_an_agent() {
-            return Err(
-                "the board's agent is a person, so there is no supervisor to start: choose an AI endpoint in Settings -> Agent-Tasks"
-                    .to_owned(),
-            );
-        }
-        let folder = self
-            .configuration
-            .project
-            .clone()
-            .or_else(|| self.project.clone())
-            .ok_or("there is no project folder to start the supervisor in: open a folder, or set the board's project in Settings -> Agent-Tasks")?;
-        let chosen = self.endpoint_for(agent, endpoint.as_deref());
-        let plan = agent::Plan {
-            agent,
-            session: new_session_id(),
-            model: chosen
-                .as_ref()
-                .map(|one| one.model.trim().to_owned())
-                .filter(|model| !model.is_empty()),
-            effort: None,
-            resuming: false,
-            command: self.configuration.command_for(agent),
-            mode: chosen
-                .as_ref()
-                .map(|one| one.mode.trim().to_owned())
-                .filter(|mode| !mode.is_empty()),
-            extra: chosen.as_ref().map(|one| one.args.clone()).unwrap_or_default(),
-            program: chosen
-                .map(|one| one.command.trim().to_owned())
-                .filter(|program| !program.is_empty()),
-        };
-        let launch = agent::launch(&plan)?;
-        self.terminals.retain(|terminal| terminal.task_id != SUPERVISOR);
-        self.spawn(SUPERVISOR, &plan.session, &launch, &folder, agent::supervisor_handoff(agent))?;
-        self.message = format!("the supervisor is {} in {}", agent.name(), folder.display());
-        Ok(Answer::said(self.message.clone()).with(json!({
-            "agent": agent.name(),
-            "session": plan.session,
-            "folder": folder.display().to_string(),
-            "command": launch.line(),
-        })))
-    }
-
-    /// Whether the supervisor's agent is running.
-    pub fn supervisor_is_running(&self) -> bool {
-        self.terminal_for(SUPERVISOR).is_some_and(|terminal| terminal.session.is_running())
-    }
-
-    /// Type a line into the supervisor, which is what the modal's `Send` does. Queued behind its prompt when it
-    /// has only just started, the way a ticket's handoff is.
-    pub fn send_to_the_supervisor(&mut self, line: &str) -> Result<Answer, String> {
-        let line = line.trim();
-        if line.is_empty() {
-            return Err("there is nothing to send".to_owned());
-        }
-        let terminal = self
-            .terminals
-            .iter_mut()
-            .find(|terminal| terminal.task_id == SUPERVISOR && terminal.session.is_running())
-            .ok_or("the supervisor is not running: start it first")?;
-        let queued = terminal.queue(line);
-        Ok(Answer::said(match queued {
-            true => "sent; the supervisor will read it once its prompt is ready",
-            false => "sent to the supervisor",
-        })
-        .with(json!({ "queued": queued })))
-    }
-
-    /// Close the supervisor's terminal, which ends its agent. The tickets it started keep their own agents.
-    pub fn stop_the_supervisor(&mut self) -> Answer {
-        let had = self.terminals.iter().any(|terminal| terminal.task_id == SUPERVISOR);
-        self.terminals.retain(|terminal| terminal.task_id != SUPERVISOR);
-        Answer::said(match had {
-            true => "the supervisor was stopped",
-            false => "the supervisor was not running",
-        })
-    }
-
-    /// What the supervisor has written, the last `lines` of it, for the command line.
-    pub fn supervisor_screen(&self, lines: usize) -> Option<String> {
-        let terminal = self.terminal_for(SUPERVISOR)?;
-        let text = terminal.session.written_text(Some(lines));
-        Some(text)
-    }
-
-    /// The modal's `Send`: what is in its box goes to the supervisor and the box is emptied.
-    pub fn send_the_supervisor_draft(&mut self) -> Result<String, String> {
-        let draft = self.supervisor_draft.clone();
-        let answer = self.send_to_the_supervisor(&draft)?;
-        self.supervisor_draft.clear();
-        Ok(answer.message)
     }
 
     /// The menu the agent in a ticket's terminal is waiting on, when it is waiting on one.

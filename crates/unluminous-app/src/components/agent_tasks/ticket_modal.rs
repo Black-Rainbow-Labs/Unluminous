@@ -1966,7 +1966,7 @@ fn priority_name(priority: Priority) -> &'static str {
 }
 
 /// A field's caption, `font-size: 11px` in the quiet ink, answering where the control under it goes.
-fn caption(rux: &mut rux::Rux<'_>, pen: f32, left: f32, name: &str) -> f32 {
+pub(super) fn caption(rux: &mut rux::Rux<'_>, pen: f32, left: f32, name: &str) -> f32 {
     let theme = rux.theme();
     let galley = rux.text(Style::sans(11.0), name, theme.ink.i400);
     let tall = galley.size().y;
@@ -1980,7 +1980,7 @@ fn caption(rux: &mut rux::Rux<'_>, pen: f32, left: f32, name: &str) -> f32 {
 /// pairs: the value written to the row and the words a person reads. `empty` is what the list calls holding
 /// nothing, for a field that may, and it is the first row; `None` means the field is required.
 #[allow(clippy::too_many_arguments)]
-fn choice(
+pub(super) fn choice(
     rux: &mut rux::Rux<'_>,
     selects: &mut std::collections::HashMap<&'static str, rux::components::SelectState>,
     pen: &mut f32,

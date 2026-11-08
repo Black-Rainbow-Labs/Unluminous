@@ -468,31 +468,57 @@ pub fn todo_rule(key: &str) -> String {
     )
 }
 
-/// What the board's supervisor is told when it starts (`task-2253`).
+/// What the board's supervisor is told when it starts (`task-2253`, `task-2556`).
 ///
 /// The supervisor is one agent that works the board's tickets the way a person pressing `Start Work` on each in
-/// turn would: QA Failed first, then New, one at a time, watching each until its agent hands it back. It drives
-/// the board through the same commands a ticket's agent does, so it can do nothing a person at the board cannot.
-pub fn supervisor_handoff(agent: Assignee) -> String {
+/// turn would. It drives the board through the same commands a ticket's agent does, so it can do nothing a person
+/// at the board cannot.
+///
+/// **How it works the board is the skill file at `skill`, not this line** (`task-2556`: *"The goal is to be able to
+/// have users customize how the supervisor processes the board. Eg they may want at most 3 tasks worked on at a
+/// time, or to only do one at a time."*). This line used to say "one at a time" itself, so nothing a person wrote
+/// could change it. It now names the commands, the two rules that keep a ticket safe, and the file, and says the
+/// file wins where the two differ. The file is the one the supervisor modal's Skill tab edits.
+///
+/// @param agent - the kind of agent the supervisor runs as
+/// @param skill - the supervisor skill file it is told to read and follow
+pub fn supervisor_handoff(agent: Assignee, skill: &std::path::Path) -> String {
     if matches!(agent, Assignee::Human) {
         return String::new();
     }
     format!(
         "You are the supervisor of Unluminous's own Agent-Tasks board. Do not use the /task or /process-tasks \
-         skills or look for TASKS_API_URL: this board is not that one, and everything you need is in this \
-         message. Drive it by running `${ENV_CLI} --instance ${ENV_INSTANCE} --json plugins run agent-tasks \
-         <command>`, and read the lanes with `${ENV_CLI} --instance ${ENV_INSTANCE} --json plugins view \
-         agent-tasks`. The commands are: `task <key>` to read a ticket with its description, todos and \
-         comments; `start <key>` to launch the agent a ticket is assigned to, which moves it to in_progress; \
-         `terminal <key> 40` to read the last forty lines its agent wrote; `send <key> <text>` to type a line \
-         into its agent; `comment <key> --as {author} <text>` to write on a ticket. Work the tickets in \
-         qa_failed first, then the ones in new, in the order they are in their lane, one at a time: start it, \
-         check on it every few minutes with `task` and `terminal`, answer its agent with `send` when it is \
-         waiting on a question you can answer, and move on when the ticket reaches agent_done. Never start a \
-         ticket assigned to human, and never start a second agent on a ticket that already has one. When no \
-         ticket is left in qa_failed or new, say so here and wait for a message. The person may type to you \
-         in this terminal at any time, and what they say comes before this plan.",
+         skills or look for TASKS_API_URL: this board is not that one. How this board wants to be worked is \
+         written in the supervisor skill file `{skill}`: read it now, before anything else, and follow it. \
+         Where it says something different from this message, the file wins. When you are told the file \
+         changed, read it again and follow the new version from then on. Drive the board by running \
+         `${ENV_CLI} --instance ${ENV_INSTANCE} --json plugins run agent-tasks <command>`, and read the lanes \
+         with `${ENV_CLI} --instance ${ENV_INSTANCE} --json plugins view agent-tasks`; every command the skill \
+         names is one of these. The main ones are: `task <key>` to read a ticket with its description, todos \
+         and comments; `start <key>` to launch the agent a ticket is assigned to, which moves it to \
+         in_progress; `terminal <key> 40` to read the last forty lines its agent wrote; `send <key> <text>` to \
+         type a line into its agent; `comment <key> --as {author} <text>` to write on a ticket. Never start a \
+         ticket assigned to human, and never start a second agent on a ticket that already has one. When there \
+         is nothing left to work, say so here and wait for a message. The person may type to you in this \
+         terminal at any time, and what they say comes before the skill and this message.",
+        skill = skill.display(),
         author = agent.name()
+    )
+}
+
+/// What is typed into a running supervisor when its skill file was saved (`task-2556`).
+///
+/// *"saving it immediately gets applied as the skill the supervisor uses."* The supervisor read the file when it
+/// started and has it in its conversation, so a saved file changes nothing until it is told to read it again.
+/// One line, because it is typed at a prompt.
+///
+/// @param skill - the supervisor skill file that was saved
+pub fn skill_changed(skill: &std::path::Path) -> String {
+    format!(
+        "The person just changed the supervisor skill file `{}`. Read it again now and follow the new version from \
+         here on; it replaces what the file said before. Say in one line what changed in how you will work the \
+         board, then carry on.",
+        skill.display()
     )
 }
 

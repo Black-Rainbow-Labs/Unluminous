@@ -934,6 +934,10 @@ impl UnluminousApp {
                     }),
                     None => Vec::new(),
                 };
+            // **And a box that has the keyboard may claim a chord too** (`task-2556`): `Ctrl+S` in the supervisor
+            // skill's source saves the skill, not the document behind the modal. Matched logically, because on
+            // Windows `Ctrl` arrives with `command` set as well.
+            let claimed = crate::components::controls::claimed_chords(ui.ctx());
             // **The press an entry acted on is taken out of the frame** (`task-2286`), except while a terminal
             // has the keyboard, where a program has always been sent the chord as well. Left in, a chord
             // the keymap gives to a menu entry would also reach whatever reads that key itself: with the
@@ -949,6 +953,9 @@ impl UnluminousApp {
                         return true;
                     }
                     if claims.iter().any(|(k, m)| k == key && m == modifiers) {
+                        return true;
+                    }
+                    if claimed.iter().any(|(k, m)| k == key && modifiers.matches_logically(*m)) {
                         return true;
                     }
                     let Some(chosen) = actions::action_for_key(menus, *key, modifiers) else {

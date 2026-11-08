@@ -1495,7 +1495,7 @@ before the conversations button, with the Chat settings dialog under the header.
 ### The supervisor, and a board other windows change (`task-2253`)
 
 `Chat with supervisor`, the round button in front of `Add Task`, opens `components::agent_tasks::supervisor_modal`:
-the supervisor's terminal, a message box and `Send`. The supervisor is one agent, the board's endpoint, started in
+the supervisor's terminal, a message box and `Send`, and since `task-2556` its skill file and its settings. The supervisor is one agent, the board's endpoint, started in
 the board's project folder by the same `spawn` a ticket's agent uses, keyed `SUPERVISOR` (0) among the tickets'
 terminals, and told the board's commands by `agent::supervisor_handoff`. `plugins run agent-tasks supervisor
 [start|stop|send <text>|open|close]` is the agent's half.
@@ -1503,6 +1503,35 @@ terminals, and told the board's commands by `agent::supervisor_handoff`. `plugin
 Every window opens the same `board.rdb`, and a window read the board only when it changed something itself, so a
 ticket made in another window was missing from its board. `AgentTasks::notice_another_window` lists the board's
 files once a second and reads the board again when they changed.
+
+### The supervisor follows a skill file a person edits, and runs on a model of its own (`task-2556`)
+
+`tasks/task-2556-supervisor-skill-and-model-tdd.md` is the design. `services::agent_tasks::supervisor` is the service
+and `components::agent_tasks::supervisor_modal` the modal, redrawn in `rux` the way the ticket modal is. Five rules:
+
+- **How the supervisor works the board is `<plugin folder>/supervisor/SKILL.md`, not its handoff line.** The handoff
+  (`agent::supervisor_handoff`) names the board's commands, the two safety rules, and the file, and says the file wins.
+  Do not put "one at a time" or any other rule about how many tickets run back into the handoff: that was the reason a
+  person could not change it.
+- **The baseline is the shipped `skills/unluminous-supervisor/SKILL.md`, compiled in** (`supervisor::DEFAULT_SKILL`),
+  and that file is not changed by this feature: its hash is in `skills/catalogue.json` and on unluminous.com. Read it
+  through `default_skill()`, which drops the `\r` a Windows checkout compiles in.
+- **A save is applied by telling the running supervisor** (`agent::skill_changed`), because it read the old file when it
+  started. One that is not running reads the saved file when it starts; `start_the_supervisor` writes the baseline
+  first when the file is missing, so the handoff always names a file that is there.
+- **The draft is never replaced under a person.** A file changed by another program is read again only while the
+  draft has nothing unsaved, once a second.
+- **`supervisor-endpoint`, `supervisor-model` and `supervisor-effort`** in `settings.conf` are what it starts on, set
+  by the modal's gear and by `Settings -> Agent-Tasks -> The supervisor`. Empty is the board's endpoint and its model.
+  A new endpoint drops the model chosen for the old one.
+
+A test window has no settings folder, so its skill file is under `%TEMP%/unluminous-agent-tasks-<pid>/`, shared by
+every test in one binary. A test that saves a skill resets it before it ends.
+
+**A box that answers a chord itself claims it with `controls::claim_chords`.** The menus read a key before a plugin's
+modal is drawn, and `File -> Save` is left reachable from text boxes on purpose, so `Ctrl+S` in the skill's source
+saved the skill and also asked the untitled document behind the modal to save. A claim made while the box has the
+keyboard holds for the next frame, and `frame.rs` leaves a claimed chord in the input for the box.
 
 ### The board and the ticket are the Agent-Tasks design, drawn with `rux`'s board parts (`task-2241`)
 
