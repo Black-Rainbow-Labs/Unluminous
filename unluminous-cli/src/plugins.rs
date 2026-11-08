@@ -204,15 +204,10 @@ pub const AGENT_TASKS: &[(&str, &str)] = &[
     ("sync", "Not implemented on this board: says so and does nothing. There is no menu entry for it."),
     (
         "supervisor",
-        "The board's supervisor, one agent that works the tickets the way its skill file says: `supervisor` says \
-         whether it is running, what it runs on and its last lines; `supervisor start`, `stop` and `restart`; \
-         `supervisor send <text>` types a line into it; `supervisor open` and `close` show and put away its modal, \
-         and `supervisor view terminal|skill|settings` chooses the modal's view. `supervisor skill` reads the skill \
-         file it follows (its path, its text, and whether it is the shipped one), `supervisor skill-set <text>` or \
-         `skill-set --file <path>` saves a new one and tells a running supervisor to read it again, and \
-         `supervisor skill-reset` puts the shipped skill back. `supervisor layout edit|split|preview` is how the \
-         Skill view lays the file out. `supervisor endpoint`, `model` and `effort`, each with a value or \
-         `default`, are what it is started with.",
+        "The board's supervisor, which works tickets as its skill file says: `supervisor` for its state, then \
+         start|stop|restart, send <text>, open|close, view terminal|skill|settings, layout edit|split|preview, \
+         skill (the file it follows), skill-set <text>|--file <path> (saved and applied at once), skill-reset, \
+         and endpoint|model|effort [value|default].",
     ),
     ("tick", "Read every terminal and run one watchdog tick. The window does this every two minutes."),
     ("watchdog", "The same as `tick`, named for what it is for."),

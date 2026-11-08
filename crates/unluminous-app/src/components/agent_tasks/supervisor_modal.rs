@@ -317,7 +317,7 @@ fn note(rux: &mut rux::Rux<'_>, at: Rect, said: &str) {
         Style::sans(12.5).leading(1.5),
         said,
         theme.ink.i400,
-        (at.max.x - 24.0 - left).max(40.0).min(640.0),
+        (at.max.x - 24.0 - left).clamp(40.0, 640.0),
     );
     let top = at.center().y - galley.size().y / 2.0;
     rux.painter().with_clip_rect(at).galley(Pos2::new(left, top), galley, theme.ink.i400);
@@ -521,7 +521,7 @@ fn skill_toolbar(board: &mut AgentTasks, rux: &mut rux::Rux<'_>, row: Rect) {
         board.supervisor_skill.layout = SkillLayout::ALL[index];
     }
     let mut x = chip.max.x + 12.0;
-    let (state, colour) = skill_state(board, &chat, &theme);
+    let (state, colour) = skill_state(board, &chat, theme);
     let badge = rux.text(Style::sans(11.5).semibold(), state, colour);
     let badge_at = Pos2::new(x, row.center().y - badge.size().y / 2.0);
     x += badge.size().x + 14.0;
