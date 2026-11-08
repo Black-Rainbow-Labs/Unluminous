@@ -6,6 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.27.0 — 2026-11-08
+
+- The supervisor follows a skill file edited in its modal, and runs on a model of its own (`task-2556`)
+- A shorter supervisor description, under the MCP schema ceiling, and two clippy fixes (`task-2556`)
+
 ## 1.26.4 — 2026-11-07
 
 - The project dropdown ends above the window's bottom edge, so the create row stays in view (`task-2529`)
