@@ -169,6 +169,10 @@ pub enum Home {
     Pane(usize),
     /// On the canvas, in the File Editor node with this id.
     Node(u64),
+    /// In the editor a plugin's modal holds: the supervisor's skill file (`task-2556`). There is one at a
+    /// time, because one modal is open at a time. Like a node's tab it is in no pane, so the panes'
+    /// invariants do not count it.
+    Modal,
 }
 
 impl Default for Home {
@@ -182,7 +186,7 @@ impl Home {
     pub fn pane(self) -> Option<usize> {
         match self {
             Home::Pane(pane) => Some(pane),
-            Home::Node(_) => None,
+            Home::Node(_) | Home::Modal => None,
         }
     }
 
@@ -190,7 +194,7 @@ impl Home {
     pub fn node(self) -> Option<u64> {
         match self {
             Home::Node(node) => Some(node),
-            Home::Pane(_) => None,
+            Home::Pane(_) | Home::Modal => None,
         }
     }
 }
@@ -763,6 +767,53 @@ impl OpenFiles {
         self.focus = Home::Node(node);
     }
 
+    /// Put the keyboard in the editor a plugin's modal holds, so `active()` answers with its file.
+    pub fn focus_modal(&mut self) {
+        self.focus = Home::Modal;
+    }
+
+    /// The tab the modal's editor holds, if it holds one.
+    pub fn tab_in_modal(&self) -> Option<usize> {
+        self.showing_at(Home::Modal)
+    }
+
+    /// Move a tab into the modal's editor, taking it out of whatever pane or node it was in.
+    ///
+    /// A tab already in the modal is shown. Any other tab living there goes back to the pane that last had the
+    /// keyboard, because the modal shows one file. The editing area keeps a tab, as [`Self::move_to_node`]
+    /// promises.
+    pub fn move_to_modal(&mut self, index: usize) -> bool {
+        if index >= self.files.len() {
+            return false;
+        }
+        let pane = self.last_pane.min(self.panes.saturating_sub(1));
+        for (at, file) in self.files.iter_mut().enumerate() {
+            if at != index && file.home == Home::Modal {
+                file.home = Home::Pane(pane);
+            }
+        }
+        self.files[index].home = Home::Modal;
+        self.files[index].transient = false;
+        self.stamp(index);
+        if !self.files.iter().any(|file| file.home.pane().is_some()) {
+            self.files.push(OpenFile::new(Document::new()));
+            self.panes = 1;
+            self.last_pane = 0;
+            self.widths = vec![1.0];
+        }
+        self.tidy();
+        true
+    }
+
+    /// Move the modal's tab into the pane that last had the keyboard and show it there. Answers its index.
+    pub fn move_out_of_the_modal(&mut self) -> Option<usize> {
+        let index = self.tab_in_modal()?;
+        let pane = self.last_pane.min(self.panes.saturating_sub(1));
+        let position = self.tabs_in(pane).len();
+        self.drag_tab(index, pane, position);
+        self.showing_in(pane)
+    }
+
     /// Which tab is **showing** in a File Editor node, if it has one.
     ///
     /// `showing_at` rather than `position`, which is the same function `showing_in` answers the same
@@ -1331,6 +1382,7 @@ impl OpenFiles {
         let tabs = match self.focus {
             Home::Node(node) => self.tabs_in_node(node),
             Home::Pane(_) => self.tabs_in(self.last_pane),
+            Home::Modal => self.tab_in_modal().into_iter().collect(),
         };
         if tabs.is_empty() {
             return;

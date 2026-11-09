@@ -206,8 +206,8 @@ pub const AGENT_TASKS: &[(&str, &str)] = &[
         "supervisor",
         "The board's supervisor, which works tickets as its skill file says: `supervisor` for its state, then \
          start|stop|restart, send <text>, open|close, view terminal|skill|settings, layout edit|split|preview, \
-         skill (the file it follows), skill-set <text>|--file <path> (saved and applied at once), skill-reset, \
-         and endpoint|model|effort [value|default].",
+         skill (the file it follows), skill-set <text>|--file <path> (saved and applied at once), \
+         skill-save|revert|open|reset, and endpoint|model|effort [value|default].",
     ),
     ("tick", "Read every terminal and run one watchdog tick. The window does this every two minutes."),
     ("watchdog", "The same as `tick`, named for what it is for."),

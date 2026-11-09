@@ -450,10 +450,36 @@ pub enum Dictation {
 ///
 /// Every variant is something only the window can do. A provider does none of them itself, so there is
 /// one owner of the tab strip, one owner of the status bar and one place a file is opened.
+/// Where a modal wants the window's own editor drawn, and which file (`task-2556`). See
+/// [`UiProvider::take_the_embedded_file`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct EmbeddedFile {
+    pub path: PathBuf,
+    /// The modal's layer and the rectangle in its own points.
+    pub layer: egui::LayerId,
+    pub area: egui::Rect,
+    /// How the file is laid out: the source, the source beside its preview, or the preview.
+    pub view: EmbeddedView,
+}
+
+/// The three views a Markdown file has in the editing area.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EmbeddedView {
+    Source,
+    Split,
+    Preview,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Request {
     /// Open a file in a tab, which is what a provider does when a ticket names one.
     OpenFile(PathBuf),
+    /// Save the tab holding this file, when it has changes. `task-2556`: the editor a modal holds is the window's,
+    /// so its `Save` is the window's too.
+    SaveFile(PathBuf),
+    /// Read this file again into the tab holding it, throwing away changes not saved: the modal's `Revert`, and
+    /// what follows a provider writing the file itself.
+    ReloadFile(PathBuf),
     /// Say something in the status bar, which is where a running commentary belongs.
     ///
     /// The right place for "opening the board in a tab" and for a refusal about a file nobody is waiting
@@ -782,6 +808,23 @@ pub trait UiProvider: std::fmt::Debug {
     /// provider but one.
     fn take_the_modals_canvas(&mut self) -> Option<ChromeSlot> {
         None
+    }
+
+    /// The file the modal drawn this frame wants shown in the window's own editor, and where (`task-2556`).
+    ///
+    /// *"I want the edit skill in the modal to be an actual file editor, with line numbers etc, just like in file
+    /// editor pane."* A provider cannot draw the editor: the documents, the gutter, coloring, folding and undo are
+    /// the window's. So it reserves a rectangle in its modal and names the file, and the window draws the tab
+    /// holding that file there, as it draws a File Editor node's tab on the canvas. Taken once, on the frame the
+    /// modal was drawn; `None` means no editor this frame, and the window puts its editor away.
+    fn take_the_embedded_file(&mut self) -> Option<EmbeddedFile> {
+        None
+    }
+
+    /// What the window's editor said about the file it drew for [`Self::take_the_embedded_file`]: whether it has
+    /// changes not saved.
+    fn embedded_file_shown(&mut self, modified: bool) {
+        let _ = modified;
     }
 
     /// Answer a command from the menu, from a button in the pane, or from the command line.

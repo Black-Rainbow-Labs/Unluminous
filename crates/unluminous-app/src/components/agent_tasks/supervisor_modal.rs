@@ -23,7 +23,7 @@ use crate::components::modal;
 use crate::services::agent_tasks::{
     AgentTasks, SkillLayout, SupervisorView, TicketKit, EFFORTS, SUPERVISOR,
 };
-use crate::services::plugin_ui::{Look, Request};
+use crate::services::plugin_ui::{EmbeddedFile, EmbeddedView, Look, Request};
 
 /// The modal's id, which is also what its place and its zoom are kept against.
 pub const MODAL_ID: &str = "agent-tasks-supervisor";
@@ -63,9 +63,6 @@ fn size(ctx: &egui::Context) -> Vec2 {
 /// @param ctx - the window's context
 /// @param look - how the board is drawn
 pub fn show(board: &mut AgentTasks, ctx: &egui::Context, look: &Look<'_>) -> Outcome {
-    if board.supervisor_view == SupervisorView::Skill {
-        board.notice_the_supervisor_skill_file();
-    }
     let size = size(ctx);
     let look = look.clone().at_a_fixed_size(super::ticket_modal::BODY).flat();
     let mut kit = board.supervisor_kit.take().unwrap_or_default();
@@ -104,7 +101,7 @@ fn contents(
         let body = Rect::from_min_max(Pos2::new(inner.min.x, header.max.y + HEADER_GAP), inner.max);
         outcome.requests = match board.supervisor_view {
             SupervisorView::Terminal => terminal_view(board, rux, body, look),
-            SupervisorView::Skill => skill_view(board, rux, body, look),
+            SupervisorView::Skill => skill_view(board, rux, body),
             SupervisorView::Settings => settings_view(board, rux, selects, body),
         };
         outcome
@@ -141,9 +138,6 @@ fn header_row(board: &mut AgentTasks, rux: &mut rux::Rux<'_>, area: Rect) -> boo
         view_tabs(rux, Pos2::new(gear.min.x - 14.0, area.center().y), board.supervisor_view);
     if let Some(view) = picked {
         board.supervisor_view = view;
-        if view == SupervisorView::Skill {
-            board.load_the_supervisor_skill();
-        }
     }
     let style = Style::sans(20.0).semibold().tracking(-0.015);
     let ink = rux.theme().ink.i900;
@@ -211,7 +205,8 @@ fn view_tabs(
     let theme = rux.theme();
     let chat = theme.chat;
     let style = Style::sans(12.0);
-    let tabs = [(SupervisorView::Terminal, "Terminal"), (SupervisorView::Skill, "Skill")];
+    let tabs =
+        [(SupervisorView::Terminal, "Terminal"), (SupervisorView::Skill, "Supervisor Skill")];
     let widths: Vec<f32> =
         tabs.iter().map(|(_, word)| rux.measure(style, word).x + TAB_PAD * 2.0).collect();
     let width = widths.iter().sum::<f32>() + 3.0 + 8.0;
@@ -452,16 +447,21 @@ fn caption_line(rux: &mut rux::Rux<'_>, at: Pos2, said: &str, right: f32) {
 
 // ---------------------------------------------------------------------------------------------- the skill
 
-/// The Skill view: the file's name, path and state with the layout switch, the source and its preview, and the
-/// row of buttons.
-fn skill_view(
-    board: &mut AgentTasks,
-    rux: &mut rux::Rux<'_>,
-    body: Rect,
-    look: &Look<'_>,
-) -> Vec<Request> {
-    board.load_the_supervisor_skill();
+/// The Supervisor Skill view: the file's name, path and state with the layout switch, the window's own editor on
+/// the file, and the row of buttons.
+///
+/// *"I want the edit skill in the modal to be an actual file editor, with line numbers etc, just like in file editor
+/// pane."* The well is drawn here and the editor inside it is the window's: this reserves the room and names the
+/// file in [`AgentTasks::embedded_file`], and `app::modal_editor` draws the tab holding the file there.
+fn skill_view(board: &mut AgentTasks, rux: &mut rux::Rux<'_>, body: Rect) -> Vec<Request> {
     let mut requests = Vec::new();
+    let path = match board.ensure_the_supervisor_skill_file() {
+        Ok(path) => path,
+        Err(problem) => {
+            note(rux, body, &problem);
+            return requests;
+        }
+    };
     let top = Rect::from_min_size(body.min, Vec2::new(body.width(), ROW));
     skill_toolbar(board, rux, top);
     let foot =
@@ -470,29 +470,18 @@ fn skill_view(
         Pos2::new(body.min.x, top.max.y + GAP),
         Pos2::new(body.max.x, foot.min.y - GAP),
     );
-    let (source, preview) = split(room, board.supervisor_skill.layout);
-    if let Some(at) = source {
-        requests.extend(skill_source(board, rux, at));
-    }
-    if let Some(at) = preview {
-        skill_preview(board, rux, at, look);
-    }
+    let chat = rux.theme().chat;
+    rux.chrome.surface(room, 20.0, chat.well, chat.carved_sm());
+    let view = match board.supervisor_skill.layout {
+        SkillLayout::Edit => EmbeddedView::Source,
+        SkillLayout::Split => EmbeddedView::Split,
+        SkillLayout::Preview => EmbeddedView::Preview,
+    };
+    let area = room.shrink2(Vec2::new(8.0, 10.0));
+    board.supervisor_editor_area = Some(area);
+    board.embedded_file = Some(EmbeddedFile { path, layer: rux.ui.layer_id(), area, view });
     requests.extend(skill_buttons(board, rux, foot));
     requests
-}
-
-/// Where the source and the preview go for a layout: one or the other filling `room`, or the two side by side.
-fn split(room: Rect, layout: SkillLayout) -> (Option<Rect>, Option<Rect>) {
-    match layout {
-        SkillLayout::Edit => (Some(room), None),
-        SkillLayout::Preview => (None, Some(room)),
-        SkillLayout::Split => {
-            let middle = room.center().x;
-            let left = Rect::from_min_max(room.min, Pos2::new(middle - GAP / 2.0, room.max.y));
-            let right = Rect::from_min_max(Pos2::new(middle + GAP / 2.0, room.min.y), room.max);
-            (Some(left), Some(right))
-        }
-    }
 }
 
 /// `SKILL.md` in a carved chip, its path, whether it is saved, and the layout switch at the right.
@@ -546,128 +535,25 @@ fn skill_state(
     theme: &rux::Theme,
 ) -> (&'static str, egui::Color32) {
     let editor = &board.supervisor_skill;
-    match (editor.unsaved(), editor.saved == crate::services::agent_tasks::default_skill()) {
+    match (editor.unsaved(), editor.is_default) {
         (true, _) => ("Unsaved", chat.sky),
         (false, true) => ("Shipped skill", theme.ink.i400),
         (false, false) => ("Saved", chat.faster),
     }
 }
 
-/// The source, in the code face, in a carved well that scrolls. `Ctrl`/`Cmd`+`S` in it saves and applies.
-fn skill_source(board: &mut AgentTasks, rux: &mut rux::Rux<'_>, at: Rect) -> Vec<Request> {
-    let mut requests = Vec::new();
-    let chat = rux.theme().chat;
-    let ink = rux.theme().ink;
-    rux.chrome.surface(at, 20.0, chat.well, chat.carved_sm());
-    let id = rux.ui.id().with("agent-tasks-supervisor-skill-source");
-    crate::components::controls::claim_the_field(rux.ui, at, id, "Supervisor skill field");
-    let inside = at.shrink2(Vec2::new(16.0, 14.0));
-    let mut child = rux.ui.new_child(egui::UiBuilder::new().max_rect(at));
-    child.set_clip_rect(at.shrink(2.0).intersect(rux.ui.clip_rect()));
-    let margin = crate::components::controls::margin_between(at, inside);
-    let font = egui::FontId::monospace(12.5);
-    let row = rux.ui.ctx().fonts_mut(|fonts| fonts.row_height(&font));
-    let draft = &mut board.supervisor_skill.draft;
-    let focused = egui::ScrollArea::vertical()
-        .id_salt("agent-tasks-supervisor-skill-scroll")
-        .auto_shrink([false, false])
-        .max_height(at.height())
-        .show(&mut child, |ui| {
-            let response = ui.text_box(
-                egui::TextEdit::multiline(draft)
-                    .id(id)
-                    .code_editor()
-                    .font(font.clone())
-                    .frame(egui::Frame::NONE.inner_margin(margin))
-                    .desired_width(at.width())
-                    .desired_rows(((inside.height() / row.max(1.0)) as usize).max(1))
-                    .text_color(ink.i900),
-            );
-            response.widget_info(|| {
-                egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Supervisor skill")
-            });
-            response.has_focus()
-        })
-        .inner;
-    // The menus are asked about a key before this box is drawn, so the chord is claimed for the next frame while
-    // the box has the keyboard, or `File -> Save` would save the document behind the modal as well.
-    if focused {
-        let chord = [(egui::Key::S, egui::Modifiers::COMMAND)];
-        crate::components::controls::claim_chords(rux.ui.ctx(), &chord);
-    }
-    let save = focused
-        && rux.ui.input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::S));
-    if save && board.supervisor_skill.unsaved() {
-        requests.push(saved(board.save_the_supervisor_skill_draft()));
-    }
-    requests
-}
-
-/// The file as rendered Markdown, the same renderer the description and every `.md` preview use, scrolled with
-/// the wheel and selectable.
-fn skill_preview(board: &mut AgentTasks, rux: &mut rux::Rux<'_>, at: Rect, look: &Look<'_>) {
-    use crate::components::markdown_text;
-    let chat = rux.theme().chat;
-    rux.chrome.surface(at, 20.0, chat.well, chat.carved_sm());
-    let inside = at.shrink2(Vec2::new(20.0, 16.0));
-    let colors = markdown_text::Colors {
-        text: look.palette.text,
-        strong: look.palette.text_strong,
-        code: look.palette.added,
-        link: look.palette.accent,
-        quiet: look.palette.text_dim,
-        rule: look.palette.divider,
-    };
-    let source = board.supervisor_skill.draft.clone();
-    let scroll = board.supervisor_skill.preview_scroll;
-    let made = board.markdown.rendered(
-        "supervisor-skill",
-        &source,
-        look.renderer,
-        &look.font_family,
-        look.font_size,
-        colors,
-        inside.width(),
-        None,
-    );
-    let height = made.height();
-    let words = egui::Id::new("agent-tasks-supervisor-skill-preview");
-    let mut child = rux.ui.new_child(egui::UiBuilder::new().max_rect(at));
-    child.set_clip_rect(inside.intersect(rux.ui.clip_rect()));
-    markdown_text::show_selectable_from(
-        &mut child,
-        inside,
-        at,
-        made,
-        look.renderer,
-        scroll,
-        None,
-        words,
-    );
-    let most = (height - inside.height()).max(0.0);
-    let over =
-        crate::components::controls::pointer_in(rux.ui).is_some_and(|point| at.contains(point));
-    let wheel = match over {
-        true => rux.ui.ctx().input(|input| input.smooth_scroll_delta.y),
-        false => 0.0,
-    };
-    board.supervisor_skill.preview_scroll = (scroll - wheel).clamp(0.0, most);
-    let response = rux.ui.interact(at, words.with("named"), egui::Sense::hover());
-    response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Label, true, "Supervisor skill preview")
-    });
-}
-
 /// `Open in a tab` and `Reset to default` on the left, what the last save did in the middle, and `Revert` and
-/// `Save & apply` on the right.
+/// `Save & apply` on the right. `Ctrl`/`Cmd`+`S` in the editor is the window's own `Save`, and applies the same way.
 fn skill_buttons(board: &mut AgentTasks, rux: &mut rux::Rux<'_>, row: Rect) -> Vec<Request> {
     let mut requests = Vec::new();
     let unsaved = board.supervisor_skill.unsaved();
-    let shipped =
-        !unsaved && board.supervisor_skill.saved == crate::services::agent_tasks::default_skill();
+    let shipped = !unsaved && board.supervisor_skill.is_default;
     let mut left = row.min.x;
     if pill(rux, &mut left, row, PillButton::new("Open in a tab").mark(Icon::File), true) {
-        requests.push(open_in_a_tab(board));
+        // *"If I click open in tab, it should close the modal and ensure the file editor pane is open with the
+        // file."* The window moves the tab out of the modal into a pane and shows the editing area.
+        requests.push(Request::OpenFile(board.supervisor_skill_path()));
+        board.supervisor_open = false;
     }
     if pill(
         rux,
@@ -685,7 +571,7 @@ fn skill_buttons(board: &mut AgentTasks, rux: &mut rux::Rux<'_>, row: Rect) -> V
         Vec2::new(save_width, ROW),
     );
     if save.enabled(unsaved).show(rux, save_at).clicked() {
-        requests.push(saved(board.save_the_supervisor_skill_draft()));
+        requests.push(board.save_the_supervisor_skill_in_the_editor());
     }
     let revert = PillButton::new("Revert").ghost();
     let revert_width = revert.measure(rux).x;
@@ -694,7 +580,7 @@ fn skill_buttons(board: &mut AgentTasks, rux: &mut rux::Rux<'_>, row: Rect) -> V
         Vec2::new(revert_width, ROW),
     );
     if revert.enabled(unsaved).show(rux, revert_at).clicked() {
-        board.revert_the_supervisor_skill_draft();
+        requests.push(board.revert_the_supervisor_skill());
     }
     if let Some((said, worked)) = board.supervisor_skill.said.clone() {
         let colour = match worked {
@@ -724,15 +610,7 @@ fn pill(
     button.enabled(usable).show(rux, at).clicked()
 }
 
-/// The skill file in an editor tab, written with the shipped skill first if nobody has saved one.
-fn open_in_a_tab(board: &mut AgentTasks) -> Request {
-    match board.ensure_the_supervisor_skill_file() {
-        Ok(path) => Request::OpenFile(path),
-        Err(problem) => Request::Message(problem),
-    }
-}
-
-/// What a save, a reset or a failure says, for the status bar.
+/// What a reset, a restart or a failure says, for the status bar.
 fn saved(answer: Result<crate::services::plugin_ui::Answer, String>) -> Request {
     Request::Message(match answer {
         Ok(answer) => answer.message,
@@ -879,25 +757,23 @@ fn effort_field(
     }
 }
 
-/// What a change does, `Restart supervisor` while one runs, and `Edit the skill`, on a raised card.
+/// What a change does, and `Restart supervisor` while one runs, on a carved card. It says nothing about the skill:
+/// the Supervisor Skill tab is beside the gear (`task-2556`).
 fn settings_aside(board: &mut AgentTasks, rux: &mut rux::Rux<'_>, area: Rect) -> Vec<Request> {
     let mut requests = Vec::new();
     let chat = rux.theme().chat;
     let theme = rux.theme();
     let card = Rect::from_min_size(
         area.min,
-        Vec2::new(area.width().min(460.0), 214.0_f32.min(area.height())),
+        Vec2::new(area.width().min(460.0), 150.0_f32.min(area.height())),
     );
     rux.chrome.surface(card, 22.0, chat.well, chat.carved_sm());
     let inside = card.shrink(20.0);
     let running = board.supervisor_is_running();
     let words = match running {
         true => "A change here is used the next time the supervisor starts. It is running now, so Restart \
-                 supervisor starts it again on these settings. How it works the board is the skill file, in \
-                 the Skill tab, and a saved skill is applied at once.",
-        false => "A change here is used the next time the supervisor starts. How it works the board, such as \
-                  how many tickets it runs at once and whether it checks each agent's work, is the skill file \
-                  in the Skill tab.",
+                 supervisor starts it again on these settings.",
+        false => "A change here is used the next time the supervisor starts.",
     };
     let galley = rux::text::wrapped(
         rux.painter(),
@@ -923,10 +799,6 @@ fn settings_aside(board: &mut AgentTasks, rux: &mut rux::Rux<'_>, area: Rect) ->
         )
     {
         requests.push(saved(board.restart_the_supervisor()));
-    }
-    if pill(rux, &mut left, row, PillButton::new("Edit the skill").mark(Icon::Edit), true) {
-        board.supervisor_view = SupervisorView::Skill;
-        board.load_the_supervisor_skill();
     }
     requests
 }

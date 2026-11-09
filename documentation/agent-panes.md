@@ -275,23 +275,25 @@ answers it.
 
 ### The supervisor
 
-The round button in front of `Add Task` opens a modal with the supervisor: one agent, started in the board's
+The round button at the left of the board's header opens a modal with the supervisor: one agent, started in the board's
 project folder and told the board's commands. The modal has two tabs and a gear:
 
 - **Terminal**: the supervisor's terminal, a message box with `Send`, and `Start supervisor` or `Stop supervisor`.
-- **Skill**: the supervisor skill file, `plugins/agent-tasks/supervisor/SKILL.md` in the settings folder. It says
-  how the supervisor works the board: how many tickets at once, which lanes first, whether it checks each agent's
-  work. Until somebody saves one it is the `unluminous-supervisor` skill Unluminous ships. The source and its
-  rendered preview sit side by side (`Edit`, `Split`, `Preview`). `Save & apply` (or `Ctrl`/`Cmd`+`S` in the
-  source) writes the file and tells a running supervisor to read it again at once. `Revert` throws the unsaved
-  changes away, `Reset to default` puts the shipped skill back, and `Open in a tab` opens the file in an editor
-  tab; a file saved there is read again by the modal.
+- **Supervisor Skill**: the supervisor skill file, `plugins/agent-tasks/supervisor/SKILL.md` in the settings
+  folder, in the window's own editor: line numbers, coloring, folding, find and undo, as in the editing area. It
+  says how the supervisor works the board: how many tickets at once, which lanes first, whether it checks each
+  agent's work. Until somebody saves one it is the `unluminous-supervisor` skill Unluminous ships. `Edit`, `Split`
+  and `Preview` choose the source, the source beside its preview, or the preview. `Save & apply` (or
+  `Ctrl`/`Cmd`+`S` in the editor) writes the file, and any save of it, from here, from a tab or from another program,
+  tells a running supervisor to read it again within a second. `Revert` throws the unsaved changes away,
+  `Reset to default` puts the shipped skill back, and `Open in a tab` closes the modal and shows the file in the
+  editing area.
 - **The gear**: the endpoint, model and effort the supervisor is started with. Empty means the board's endpoint and
   that endpoint's model. The same three settings are on `Settings -> Agent-Tasks`, in the card `The supervisor`. A
   change is used the next time it starts, and `Restart supervisor` starts it again.
 
 `plugins run agent-tasks supervisor [start|stop|restart|send <text>|open|close|view <view>|layout <layout>|skill|
-skill-set <text>|skill-reset|endpoint [name]|model [name]|effort [level]]` is the command line half.
+skill-set <text>|skill-save|skill-revert|skill-open|skill-reset|endpoint [name]|model [name]|effort [level]]` is the command line half.
 
 Three listings beside the board — Backlog, Completed and Epics — and one rule decides their shape: **a
 card on the board is a hundred points tall and carries a play button and three counts, because a lane

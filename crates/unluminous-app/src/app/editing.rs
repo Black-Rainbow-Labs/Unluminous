@@ -1392,6 +1392,7 @@ impl UnluminousApp {
         let home = match self.files.focus() {
             crate::app::files::Home::Pane(pane) => format!("pane {pane}"),
             crate::app::files::Home::Node(node) => format!("node {node}"),
+            crate::app::files::Home::Modal => "modal".to_owned(),
         };
         let outcome = gutter::show(
             ui,

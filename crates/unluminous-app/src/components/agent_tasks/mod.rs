@@ -312,9 +312,16 @@ fn header_row(
             .measure(rux)
             .x;
         let round = 44.0 * scale;
-        // `Chat with supervisor` is a round button in front of `Add Task` (`task-2253`), always drawn on the board
-        // for the reason `Add Task` is: it is how a person reaches the agent working the board.
-        let chat = round + gap;
+        // **`Chat with supervisor` is the first thing at the left of the header** (`task-2556`: *"Supervisor icon
+        // should get moved to the very left of the pane, to the left of the tab nav for Board, epic, etc."*), in
+        // every view, because the supervisor works the whole board rather than one view of it. Its mark is Font
+        // Awesome's person pointing, after `FaPersonMilitaryPointing`.
+        let chat_rect = Rect::from_min_size(
+            Pos2::new(row.min.x, row.center().y - 22.0 * scale),
+            Vec2::splat(round),
+        );
+        chatting = supervisor_button(rux, chat_rect, supervisor_open, scale);
+        let row = Rect::from_min_max(Pos2::new(chat_rect.max.x + gap, row.min.y), row.max);
         let heading_style = rux::Style::sans(22.0 * scale).semibold().tracking(-0.02);
         let sub_style = rux::Style::sans(11.5 * scale);
         let heading_width = rux.measure(heading_style, &title).x;
@@ -339,13 +346,11 @@ fn header_row(
                 (false, false) => (0.0, 0.0, false),
             },
             false => {
-                if full + gap + sprint_width + gap + 140.0 * scale + gap + chat + pill_width
-                    <= width
-                {
+                if full + gap + sprint_width + gap + 140.0 * scale + gap + pill_width <= width {
                     (full, pill_width, false)
-                } else if marks + gap + 44.0 * scale + gap + chat + pill_width <= width {
+                } else if marks + gap + 44.0 * scale + gap + pill_width <= width {
                     (marks, pill_width, false)
-                } else if marks + gap + chat + round <= width {
+                } else if marks + gap + round <= width {
                     (marks, round, true)
                 } else {
                     (0.0, round, true)
@@ -357,12 +362,7 @@ fn header_row(
             false => row.min.x,
         };
         // The search box takes what is spare up to the design's 260 points, and goes below 140.
-        let chat_width = match listing {
-            true => 0.0,
-            false => chat,
-        };
-        let left_over =
-            row.max.x - add_width - chat_width - gap - after_switch - sprint_width - gap;
+        let left_over = row.max.x - add_width - gap - after_switch - sprint_width - gap;
         let search_width = match listing {
             true => 0.0,
             false => left_over.min(260.0 * scale),
@@ -377,7 +377,6 @@ fn header_row(
         // shorter instead of taller, and drawn only into the room the controls on the right leave.
         let right_edge = row.max.x
             - add_width
-            - chat_width
             - match (show_search, add_width > 0.0) {
                 (true, _) => search_width + gap * 2.0,
                 (false, true) => gap,
@@ -439,19 +438,9 @@ fn header_row(
                     .show(rux, add_rect)
                     .clicked(),
             };
-            let chat_rect = Rect::from_min_size(
-                Pos2::new(add_rect.min.x - chat, row.center().y - 22.0 * scale),
-                Vec2::splat(round),
-            );
-            chatting =
-                rux::components::RoundButton::mark(rux::Icon::Bubble, 16.0, "Chat with supervisor")
-                    .size(rux::components::RoundSize::Send)
-                    .on(supervisor_open)
-                    .show(rux, chat_rect)
-                    .clicked();
             if show_search {
                 let well = Rect::from_min_size(
-                    Pos2::new(chat_rect.min.x - gap - search_width, row.center().y - 21.0 * scale),
+                    Pos2::new(add_rect.min.x - gap - search_width, row.center().y - 21.0 * scale),
                     Vec2::new(search_width, 42.0 * scale),
                 );
                 let inside = rux::components::search_well(rux, well);
@@ -871,4 +860,28 @@ mod tests {
             "a second line holds more of it: {one_line:?} against {two_lines:?}"
         );
     }
+}
+
+/// The round button that opens the supervisor's modal, carved in while the modal is open, with Font Awesome's
+/// person pointing in it (`task-2556`). Answers whether it was pressed.
+fn supervisor_button(rux: &mut rux::Rux<'_>, at: Rect, open: bool, scale: f32) -> bool {
+    // An empty mark: the button draws its surface and takes the press, and the filled figure is painted over it.
+    let response = rux::components::RoundButton::mark(rux::Icon::User, 0.0, "Chat with supervisor")
+        .size(rux::components::RoundSize::Send)
+        .on(open)
+        .show(rux, at);
+    let theme = rux.theme();
+    let ink = match (open, response.hovered()) {
+        (true, _) => theme.ink.i900,
+        (false, true) => theme.chat.sky,
+        (false, false) => theme.ink.i500,
+    };
+    crate::theme::svg_icon::paint_filled(
+        rux.painter(),
+        at.center(),
+        20.0 * scale,
+        &crate::theme::svg_icon::PERSON_MILITARY_POINTING,
+        ink,
+    );
+    response.clicked()
 }

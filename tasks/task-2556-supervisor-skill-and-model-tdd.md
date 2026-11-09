@@ -148,3 +148,36 @@ New words after `plugins run agent-tasks supervisor`, all in `commands::supervis
   `chat_with_supervisor_opens_a_modal_with_its_terminal_a_message_box_and_send` keeps passing.
 - In a real window: start the supervisor, change the skill to "at most 3 tickets at a time", save, and read the
   supervisor's terminal for the line telling it to read the file again and for it reading the file.
+
+## QA pass
+
+Jason's comment after 1.27.0:
+
+> I want the edit skill in the modal to be an actual file editor, with line numbers etc, just like in file editor
+> pane. If I click open in tab, it should close the modal and ensure the file editor pane is open with the file.
+> The icon for supervisor should be changed to look like FaPersonMilitaryPointing. Skill tab should be renamed
+> Supervisor Skill. Settings for the supervisor modal shouldn't have an edit the skill button/section. Supervisor
+> icon should get moved to the very left of the pane, to the left of the tab nav for Board, epic, etc.
+
+What changed:
+
+- **The editor is the window's.** A plugin cannot draw the editing area: the documents, the gutter, coloring, folding
+  and undo belong to `UnluminousApp`. So the plugin contract gained `UiProvider::take_the_embedded_file`, which names a
+  file, the modal's layer and a rectangle, and `embedded_file_shown`, which the window answers with whether the file
+  has unsaved changes. `app::modal_editor` draws the tab there with `show_a_document_in`. The tab lives in a new home,
+  `files::Home::Modal`, beside `Pane` and `Node`. The egui text box, the hand drawn preview and the draft the modal
+  used to keep are gone.
+- **Save, Revert and Reset** are `Request::SaveFile`, `Request::ReloadFile`, and a write followed by `ReloadFile`.
+  `Ctrl`/`Cmd`+`S` in the editor is the window's own `Save`, because the focus stays on `Home::Modal` while the editor
+  has the keyboard. `controls::claim_chords`, which the text box needed, was removed.
+- **Applying a save** is one watch of the file's modified time, run from the board's `catch_up` once a second, so a save
+  from the modal, from a tab, from `supervisor skill-set` or from another program all reach a running supervisor.
+- **`Open in a tab`** closes the modal and moves the tab into the pane that last had the keyboard, with the editing area
+  shown. Opening the file from the explorer while it lives in the modal does the same.
+- **The supervisor button** is the first control in the board's header, before the view switch, in every view. Its mark
+  is Font Awesome 6 `person-military-pointing`, drawn by `theme::svg_icon::paint_filled`.
+- **The tab is `Supervisor Skill`**, and the gear's card no longer mentions or links to the skill.
+- New agent verbs: `supervisor skill-save`, `skill-revert` and `skill-open`, the three buttons.
+- Tests: `the_supervisor_skill_tab_is_the_windows_editor_on_the_skill_file` types into the editor, saves with
+  `Ctrl`/`Cmd`+`S`, reverts and opens the file in a tab; `the_supervisor_button_is_at_the_left_of_the_boards_header`;
+  and unit tests for the watch and the two requests.

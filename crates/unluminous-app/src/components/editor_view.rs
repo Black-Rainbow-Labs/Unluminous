@@ -143,8 +143,10 @@ pub fn handle_input(
     }
     // A modal is open. Most of them have no field in them at all, so the question above says
     // nothing about them, and a document that went on reading the keyboard behind a dialog would
-    // take the `Enter` that answers it as a new line in the file.
-    if crate::app::a_modal_has_the_keyboard(ui.ctx()) {
+    // take the `Enter` that answers it as a new line in the file. A document drawn **inside** the top modal, the
+    // supervisor skill's editor (`task-2556`), is that modal's own control and reads the keys, which is the rule the
+    // ticket modal's terminal keeps.
+    if crate::app::another_modal_has_the_keyboard(ui.ctx(), ui.layer_id()) {
         return outcome;
     }
     // Words in a chat message, the preview or a comment were selected by the last press, so a copy is

@@ -28,7 +28,6 @@ use super::*;
 pub const DEFAULT_SKILL: &str = include_str!("../../../skills/unluminous-supervisor/SKILL.md");
 
 /// How often the skill file's modified time is looked at while the Skill view shows it with nothing unsaved.
-const LOOK_AT_THE_FILE: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// The baseline with the line endings a text box keeps: `\n` only. A checkout made on Windows with
 /// `core.autocrlf` compiles the file in with `\r\n`, and a draft compared against that would always be unsaved.
@@ -101,33 +100,32 @@ impl SkillLayout {
     }
 }
 
-/// What the Skill view holds between frames: the draft being typed, the text last saved, and what the last save
-/// did.
+/// What the Skill view keeps between frames.
 ///
-/// The draft outlives the modal, so a person who closes the modal with a change not yet saved finds it there when
-/// they open it again, with `Unsaved` beside the file's name.
+/// **The text is not here.** Since the QA pass on `task-2556` (*"I want the edit skill in the modal to be an actual
+/// file editor, with line numbers etc, just like in file editor pane"*) the file is edited in the window's own
+/// editor, drawn into the modal ([`crate::services::plugin_ui::UiProvider::take_the_embedded_file`]), so the draft,
+/// its undo history and its unsaved state are the window's tab. What the modal holds is how the file is laid out,
+/// what the window last said about it, and what the last save did.
 #[derive(Debug, Default)]
 pub struct SkillEditor {
-    /// What is in the source box.
-    pub draft: String,
-    /// What the file held when it was last read or written.
-    pub saved: String,
-    /// Whether `draft` and `saved` have been read from the file yet.
-    pub loaded: bool,
     pub layout: SkillLayout,
+    /// Whether the window's tab holding the file has changes not saved, as the window last said.
+    pub modified: bool,
     /// What the last save, revert or reset did, and whether it worked.
     pub said: Option<(String, bool)>,
-    /// How far the rendered Markdown is scrolled.
-    pub preview_scroll: f32,
-    /// The file's modified time when it was last read or written, and when it was last looked at.
-    stamp: Option<std::time::SystemTime>,
+    /// Whether the file on disk is the shipped skill, read again whenever its modified time moves.
+    pub is_default: bool,
+    /// The file's modified time when it was last looked at, and when that was. `None` until the first look,
+    /// which tells nobody anything: a supervisor is only told about a change made after it was watching.
+    watched: Option<Option<std::time::SystemTime>>,
     looked: Option<std::time::Instant>,
 }
 
 impl SkillEditor {
-    /// Whether the draft differs from the file.
+    /// Whether the window's editor holds changes to the file that are not saved.
     pub fn unsaved(&self) -> bool {
-        self.loaded && self.draft != self.saved
+        self.modified
     }
 }
 
@@ -164,54 +162,49 @@ impl AgentTasks {
         self.read_the_supervisor_skill() == default_skill()
     }
 
-    /// Read the skill into the Skill view the first time it is shown.
-    pub fn load_the_supervisor_skill(&mut self) {
-        if self.supervisor_skill.loaded {
-            return;
-        }
-        let text = self.read_the_supervisor_skill();
-        let path = self.supervisor_skill_path();
-        let editor = &mut self.supervisor_skill;
-        editor.draft = text.clone();
-        editor.saved = text;
-        editor.loaded = true;
-        editor.stamp = modified(&path);
-    }
-
-    /// Read the file again when another program changed it and nothing in the draft would be lost.
+    /// Look at the skill file's modified time once a second, and tell a running supervisor to read it again when
+    /// it moved.
     ///
-    /// `Open in a tab` puts the file in an editor tab, and a file saved there is the skill too. The modified time is
-    /// looked at once a second, and only while the draft holds nothing unsaved, so a change typed here is never
-    /// replaced by the file underneath it.
-    pub fn notice_the_supervisor_skill_file(&mut self) {
-        self.load_the_supervisor_skill();
+    /// *"saving it immediately gets applied as the skill the supervisor uses."* A save from the modal's
+    /// `Save & apply`, from `Ctrl`/`Cmd`+`S` in its editor, from the file opened in a tab, from
+    /// `supervisor skill-set` or from another program are all a new modified time, so this one watch applies all
+    /// of them. Called from the board's `catch_up`, so it runs whether or not the modal is open.
+    pub fn watch_the_supervisor_skill(&mut self) {
         let now = std::time::Instant::now();
         let due = self
             .supervisor_skill
             .looked
-            .is_none_or(|looked| now.duration_since(looked) >= LOOK_AT_THE_FILE);
-        if !due || self.supervisor_skill.unsaved() {
+            .is_none_or(|looked| now.duration_since(looked) >= std::time::Duration::from_secs(1));
+        if !due {
             return;
         }
         self.supervisor_skill.looked = Some(now);
         let path = self.supervisor_skill_path();
         let stamp = modified(&path);
-        if stamp == self.supervisor_skill.stamp {
+        let before = self.supervisor_skill.watched.replace(stamp);
+        if before == Some(stamp) {
             return;
         }
-        let text = self.read_the_supervisor_skill();
-        let editor = &mut self.supervisor_skill;
-        editor.draft = text.clone();
-        editor.saved = text;
-        editor.stamp = stamp;
-        editor.said =
-            Some(("read again: the file was changed outside this modal".to_owned(), true));
+        self.supervisor_skill.is_default = self.supervisor_skill_is_the_default();
+        if before.is_none() {
+            return;
+        }
+        let said = match self.tell_the_supervisor_the_skill_changed(&path) {
+            Some(Ok(())) => {
+                ("saved, and the supervisor was told to read it again".to_owned(), true)
+            }
+            Some(Err(problem)) => {
+                (format!("saved, but the supervisor could not be told: {problem}"), false)
+            }
+            None => ("saved; the supervisor reads it when it starts".to_owned(), true),
+        };
+        self.supervisor_skill.said = Some(said);
     }
 
-    /// Write `text` as the supervisor skill and apply it: a running supervisor is told to read it again at once,
-    /// and one that is not running reads it when it starts.
+    /// Write `text` as the supervisor skill, and have the window read it into the tab that holds it. The watch
+    /// applies it to a running supervisor within a second.
     ///
-    /// What `Save & apply`, `Ctrl+S` in the source and `supervisor skill-set` do.
+    /// What `supervisor skill-set` does. The modal's `Save & apply` saves the window's tab instead.
     pub fn save_the_supervisor_skill(&mut self, text: &str) -> Result<Answer, String> {
         let text = text.replace("\r\n", "\n");
         if text.trim().is_empty() {
@@ -222,41 +215,33 @@ impl AgentTasks {
         }
         let path = self.supervisor_skill_path();
         self.write_the_skill(&path, &text)?;
-        let applied = self.tell_the_supervisor_the_skill_changed(&path);
-        let message = match &applied {
-            Some(Ok(())) => "saved, and the supervisor was told to read it again".to_owned(),
-            Some(Err(problem)) => format!("saved, but the supervisor could not be told: {problem}"),
-            None => "saved; the supervisor reads it when it starts".to_owned(),
+        self.asking.push(Request::ReloadFile(path.clone()));
+        let running = self.supervisor_is_running();
+        let message = match running {
+            true => "saved; the supervisor is told to read it again",
+            false => "saved; the supervisor reads it when it starts",
         };
-        let editor = &mut self.supervisor_skill;
-        editor.draft = text.clone();
-        editor.saved = text;
-        editor.loaded = true;
-        editor.stamp = modified(&path);
-        editor.said = Some((message.clone(), !matches!(applied, Some(Err(_)))));
+        self.supervisor_skill.said = Some((message.to_owned(), true));
         Ok(Answer::said(message).with(json!({
             "path": path.display().to_string(),
-            "applied": matches!(applied, Some(Ok(()))),
-            "default": self.supervisor_skill.saved == default_skill(),
+            "running": running,
+            "default": text == default_skill(),
         })))
     }
 
-    /// Save what is in the source box.
-    pub fn save_the_supervisor_skill_draft(&mut self) -> Result<Answer, String> {
-        self.load_the_supervisor_skill();
-        let draft = self.supervisor_skill.draft.clone();
-        self.save_the_supervisor_skill(&draft)
+    /// The modal's `Save & apply`: the window saves its tab holding the file, and the watch applies it.
+    pub fn save_the_supervisor_skill_in_the_editor(&mut self) -> Request {
+        Request::SaveFile(self.supervisor_skill_path())
     }
 
-    /// Put the source box back to what the file holds.
-    pub fn revert_the_supervisor_skill_draft(&mut self) {
-        self.load_the_supervisor_skill();
-        let editor = &mut self.supervisor_skill;
-        editor.draft = editor.saved.clone();
-        editor.said = Some(("the unsaved changes were thrown away".to_owned(), true));
+    /// The modal's `Revert`: the window reads the file again into its tab, throwing the changes away.
+    pub fn revert_the_supervisor_skill(&mut self) -> Request {
+        self.supervisor_skill.said =
+            Some(("the unsaved changes were thrown away".to_owned(), true));
+        Request::ReloadFile(self.supervisor_skill_path())
     }
 
-    /// Put the shipped skill back, saved and applied.
+    /// Put the shipped skill back, saved, read into the window's tab, and applied.
     pub fn reset_the_supervisor_skill(&mut self) -> Result<Answer, String> {
         let answer = self.save_the_supervisor_skill(&default_skill())?;
         let message = answer.message.replacen("saved", "reset to the shipped skill", 1);
@@ -285,8 +270,8 @@ impl AgentTasks {
         Some(self.send_to_the_supervisor(&agent::skill_changed(path)).map(|_| ()))
     }
 
-    /// The skill file the supervisor is told to follow, written with the shipped skill first when nobody has saved
-    /// one, so the path in its handoff always names a file that is there.
+    /// The skill file, written with the shipped skill first when nobody has saved one, so the path the supervisor
+    /// is told and the file the modal's editor opens always name a file that is there.
     pub fn ensure_the_supervisor_skill_file(&self) -> Result<PathBuf, String> {
         let path = self.supervisor_skill_path();
         if !path.exists() {
@@ -417,6 +402,8 @@ impl AgentTasks {
             .or_else(|| self.project.clone())
             .ok_or("there is no project folder to start the supervisor in: open a folder, or set the board's project in Settings -> Agent-Tasks")?;
         let skill = self.ensure_the_supervisor_skill_file()?;
+        // It reads the file as it starts, so a modified time from before now is not a change to tell it about.
+        self.supervisor_skill.watched = Some(modified(&skill));
         let plan = self.supervisor_plan(agent, endpoint.as_deref());
         let launch = agent::launch(&plan)?;
         self.terminals.retain(|terminal| terminal.task_id != SUPERVISOR);
@@ -550,60 +537,60 @@ mod tests_task_2556 {
         assert!(!default_skill().contains('\r'));
     }
 
-    /// A save writes the file, a second board on the same folder reads it, and reset puts the shipped skill back.
+    /// A save writes the file, a second board on the same folder reads it, the window is asked to read it again,
+    /// and reset puts the shipped skill back.
     #[test]
     fn a_saved_skill_is_the_file_and_reset_puts_the_shipped_one_back() {
         let (mut board, folder) = board_in("save");
-        board.load_the_supervisor_skill();
-        board.supervisor_skill.draft = "# Work at most 3 tickets at a time\n".to_owned();
-        assert!(board.supervisor_skill.unsaved());
-        let answer = board.save_the_supervisor_skill_draft().expect("saved");
+        let answer =
+            board.save_the_supervisor_skill("# Work at most 3 tickets at a time\n").expect("saved");
         assert!(answer.message.contains("reads it when it starts"), "{}", answer.message);
-        assert!(!board.supervisor_skill.unsaved());
+        assert!(
+            board.asking.contains(&Request::ReloadFile(board.supervisor_skill_path())),
+            "the window's tab holding the file is read again"
+        );
         let again = AgentTasks { folder: Some(folder.clone()), ..AgentTasks::default() };
         assert_eq!(again.read_the_supervisor_skill(), "# Work at most 3 tickets at a time\n");
         assert!(!again.supervisor_skill_is_the_default());
         board.reset_the_supervisor_skill().expect("reset");
         assert!(board.supervisor_skill_is_the_default());
-        assert_eq!(board.supervisor_skill.draft, default_skill());
         assert!(board.save_the_supervisor_skill("  \n").is_err(), "an empty skill is refused");
     }
 
-    /// Revert throws the draft away and keeps the file.
+    /// Save and Revert in the modal are the window's: they are requests about the file, and write nothing here.
     #[test]
-    fn revert_puts_the_draft_back_to_the_file() {
+    fn save_and_revert_in_the_modal_ask_the_window() {
         let (mut board, _) = board_in("revert");
-        board.load_the_supervisor_skill();
-        board.supervisor_skill.draft.push_str("\nOnly ever one ticket.\n");
-        board.revert_the_supervisor_skill_draft();
-        assert_eq!(board.supervisor_skill.draft, default_skill());
-        assert!(!board.supervisor_skill_path().exists(), "revert writes nothing");
+        let path = board.supervisor_skill_path();
+        assert_eq!(
+            board.save_the_supervisor_skill_in_the_editor(),
+            Request::SaveFile(path.clone())
+        );
+        assert_eq!(board.revert_the_supervisor_skill(), Request::ReloadFile(path.clone()));
+        assert!(!path.exists(), "neither writes the file itself");
     }
 
-    /// A file changed by another program replaces a draft with nothing unsaved in it, and never one that has.
+    /// The watch notices a new modified time and says so; the first look tells nobody anything.
     #[test]
-    fn a_file_changed_elsewhere_is_read_again_unless_the_draft_has_changes() {
-        let (mut board, _) = board_in("elsewhere");
-        board.save_the_supervisor_skill("first\n").expect("saved");
+    fn the_watch_notices_a_save_made_anywhere() {
+        let (mut board, _) = board_in("watch");
+        board.ensure_the_supervisor_skill_file().expect("written");
+        board.watch_the_supervisor_skill();
+        assert_eq!(board.supervisor_skill.said, None, "the first look is not a change");
+        assert!(board.supervisor_skill.is_default);
         let path = board.supervisor_skill_path();
-        std::fs::write(&path, "second\n").expect("written");
-        // A modified time a second later, whatever the file system's resolution.
+        std::fs::write(&path, "changed\n").expect("written");
         let later = std::time::SystemTime::now() + std::time::Duration::from_secs(2);
         std::fs::File::options()
             .write(true)
             .open(&path)
             .and_then(|file| file.set_modified(later))
             .expect("touched");
-        board.notice_the_supervisor_skill_file();
-        assert_eq!(board.supervisor_skill.draft, "second\n");
-        board.supervisor_skill.draft = "typed here\n".to_owned();
-        std::fs::write(&path, "third\n").expect("written");
         board.supervisor_skill.looked = None;
-        board.notice_the_supervisor_skill_file();
-        assert_eq!(
-            board.supervisor_skill.draft, "typed here\n",
-            "an unsaved draft is never replaced"
-        );
+        board.watch_the_supervisor_skill();
+        let said = board.supervisor_skill.said.clone().expect("a change was noticed");
+        assert!(said.0.contains("reads it when it starts"), "{said:?}");
+        assert!(!board.supervisor_skill.is_default);
     }
 
     /// The handoff names the file and says the file wins; the line typed after a save names it too.

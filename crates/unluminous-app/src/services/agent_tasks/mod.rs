@@ -585,6 +585,11 @@ pub struct AgentTasks {
     pub supervisor_skill: SkillEditor,
     /// What the supervisor modal's `rux` controls keep between frames, as `ticket_kit` is for the ticket modal.
     pub supervisor_kit: Option<TicketKit>,
+    /// Where the supervisor modal reserved room for the window's editor on the frame just drawn, and which file
+    /// (`task-2556`). Taken by the window once a frame.
+    pub embedded_file: Option<crate::services::plugin_ui::EmbeddedFile>,
+    /// The same rectangle, kept after the window took the request, so `supervisor` can say where the editor is.
+    pub supervisor_editor_area: Option<egui::Rect>,
 }
 
 /// The terminal the supervisor runs in is kept with the tickets' terminals, under an id no ticket has: a ticket's
@@ -2938,6 +2943,8 @@ impl UiProvider for AgentTasks {
         // the window would paint into on some later frame. It is filled in again below when a modal really
         // is drawn.
         self.modal_canvas = None;
+        self.embedded_file = None;
+        self.supervisor_editor_area = None;
         // The supervisor's modal, when the ticket modal is not in front of it: one modal at a time.
         if self.supervisor_open && !(self.modal_open && self.detail.task.is_some()) {
             let outcome = crate::components::agent_tasks::supervisor_modal::show(self, ctx, look);
@@ -2959,6 +2966,14 @@ impl UiProvider for AgentTasks {
 
     fn take_the_modals_canvas(&mut self) -> Option<crate::services::plugin_ui::ChromeSlot> {
         self.modal_canvas.take()
+    }
+
+    fn take_the_embedded_file(&mut self) -> Option<crate::services::plugin_ui::EmbeddedFile> {
+        self.embedded_file.take()
+    }
+
+    fn embedded_file_shown(&mut self, modified: bool) {
+        self.supervisor_skill.modified = modified;
     }
 
     /// The ticket and the supervisor step aside for a browser tab a link in them opened (`task-2263`). A new
@@ -3019,6 +3034,7 @@ impl UiProvider for AgentTasks {
         // Answers whether something is still **moving**, not whether something is running. A terminal that is
         // alive and quiet needs no frame: its own waker asks for one when it prints. Answering yes for a live
         // terminal kept the window drawing for ever while an agent sat at its prompt.
+        self.watch_the_supervisor_skill();
         self.pump()
     }
 

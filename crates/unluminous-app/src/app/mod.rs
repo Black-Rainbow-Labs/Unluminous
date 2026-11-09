@@ -53,6 +53,7 @@ pub mod gather;
 pub mod git;
 pub mod hover_value;
 mod menus;
+mod modal_editor;
 mod modals;
 pub mod notebook;
 pub mod notebook_actions;
@@ -681,7 +682,11 @@ pub fn hold_the_keyboard(ui: &mut egui::Ui) {
         ui.ctx().input_mut(|input| input.events.extend(sent));
     }
     let id = egui::Id::new(KEYBOARD_HOLDER);
-    if text_box_has_the_keyboard(ui.ctx()) || a_modal_has_the_keyboard(ui.ctx()) {
+    // While the editor drawn inside a modal is being typed into, the holder keeps the focus anyway, so an arrow key
+    // cannot walk egui's focus onto one of the modal's buttons for the next space to press. `task-2556`.
+    let modal_typing = modal_editor::the_modal_editor_holds_the_keyboard(ui.ctx());
+    if text_box_has_the_keyboard(ui.ctx()) || (a_modal_has_the_keyboard(ui.ctx()) && !modal_typing)
+    {
         ui.memory_mut(|memory| memory.surrender_focus(id));
         return;
     }
@@ -1184,6 +1189,8 @@ pub struct UnluminousApp {
     /// says which of the two a copy is about — set by a press in a preview and cleared by a press in
     /// an editing area, which is what "the pane the pointer last pressed in" means.
     reading_preview: bool,
+    /// True while the editor drawn inside a plugin's modal holds the keyboard (`task-2556`). See `app::modal_editor`.
+    modal_editor_has_the_keyboard: bool,
     /// Whether a terminal grid read the keyboard on the last frame, so the Edit menu's `Copy` and `Paste` stay
     /// enabled for it on macOS, where a dimmed entry's key equivalent does nothing (`task-2392`).
     terminal_holds_the_keyboard: bool,
@@ -1736,6 +1743,7 @@ impl UnluminousApp {
             settling_the_maximise: false,
             maximise_wanted: false,
             reading_preview: false,
+            modal_editor_has_the_keyboard: false,
             terminal_holds_the_keyboard: false,
             link_to_open: None,
             preview_images: PreviewImages::new(),

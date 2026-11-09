@@ -179,6 +179,16 @@ impl UnluminousApp {
             match self.files.home_of(self.files.active_index()) {
                 files::Home::Node(node) => self.show_the_node_a_tab_is_on(node),
                 files::Home::Pane(_) => self.show_the_editing_area_for_a_tab(),
+                // A file opened from anywhere else while the supervisor modal's editor holds it leaves the modal for
+                // a pane, because a file is in one place. `task-2556`.
+                files::Home::Modal => {
+                    if let Some(moved) = self.files.move_out_of_the_modal() {
+                        self.files.show(moved);
+                    }
+                    self.modal_editor_has_the_keyboard = false;
+                    self.focus = Focus::Editor;
+                    self.show_the_editing_area_for_a_tab();
+                }
             }
         }
         opened

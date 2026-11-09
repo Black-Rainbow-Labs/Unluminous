@@ -12,7 +12,7 @@
 
 use serde_json::json;
 
-use crate::services::plugin_ui::{self, Answer, UiProvider};
+use crate::services::plugin_ui::{self, Answer, Request, UiProvider};
 
 use super::model::{Author, Priority, Status};
 use super::store::{NewTask, TaskEdit};
@@ -1068,6 +1068,23 @@ fn supervisor(tasks: &mut AgentTasks, verb: &str, rest: &str) -> Result<Answer, 
             None => tasks.save_the_supervisor_skill(rest),
         },
         "skill-reset" => tasks.reset_the_supervisor_skill(),
+        // The modal's three buttons about the editor it holds, which act on the window's tab (`task-2556`).
+        "skill-save" => {
+            let asked = tasks.save_the_supervisor_skill_in_the_editor();
+            tasks.asking.push(asked);
+            Ok(Answer::said("the skill in the modal's editor is being saved and applied"))
+        }
+        "skill-revert" => {
+            let asked = tasks.revert_the_supervisor_skill();
+            tasks.asking.push(asked);
+            Ok(Answer::said("the unsaved changes in the modal's editor are being thrown away"))
+        }
+        "skill-open" => {
+            let path = tasks.ensure_the_supervisor_skill_file()?;
+            tasks.supervisor_open = false;
+            tasks.asking.push(Request::OpenFile(path.clone()));
+            Ok(Answer::said(format!("{} opens in a tab", path.display())))
+        }
         "endpoint" | "model" | "effort" => supervisor_setting(tasks, verb, rest),
         "" | "status" => {
             let running = tasks.supervisor_is_running();
@@ -1077,6 +1094,10 @@ fn supervisor(tasks: &mut AgentTasks, verb: &str, rest: &str) -> Result<Answer, 
             value["open"] = json!(tasks.supervisor_open);
             value["view"] = json!(tasks.supervisor_view.name());
             value["skill"] = json!(tasks.supervisor_skill_path().display().to_string());
+            // Where the Supervisor Skill view's editor was drawn, in the modal's own points.
+            value["editorArea"] = json!(tasks
+                .supervisor_editor_area
+                .map(|area| [area.min.x, area.min.y, area.width(), area.height()]));
             value["screen"] = json!(screen);
             Ok(Answer::said(match running {
                 true => "the supervisor is running",
@@ -1086,7 +1107,8 @@ fn supervisor(tasks: &mut AgentTasks, verb: &str, rest: &str) -> Result<Answer, 
         }
         other => Err(format!(
             "`supervisor {other}` is not something the supervisor does: start, stop, restart, send <text>, open, \
-             close, view, layout, skill, skill-set <text>, skill-reset, endpoint, model or effort"
+             close, view, layout, skill, skill-set <text>, skill-save, skill-revert, skill-open, skill-reset, \
+             endpoint, model or effort"
         )),
     }
 }
@@ -1108,9 +1130,6 @@ fn supervisor_view(tasks: &mut AgentTasks, rest: &str) -> Result<Answer, String>
     })?;
     tasks.supervisor_view = view;
     tasks.supervisor_open = true;
-    if view == SupervisorView::Skill {
-        tasks.load_the_supervisor_skill();
-    }
     Ok(Answer::said(format!("the supervisor modal shows {}", view.name()))
         .with(json!({ "view": view.name() })))
 }

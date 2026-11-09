@@ -586,6 +586,8 @@ impl UnluminousApp {
             crate::services::plugin_ui::ChromeSlot,
             crate::services::vello_canvas::Chrome,
         )> = Vec::new();
+        // The file a modal wants in the window's own editor, and which plugin asked (`task-2556`).
+        let mut embedded: Option<(String, crate::services::plugin_ui::EmbeddedFile)> = None;
         for plugin in self.plugin_ui.surfaces().plugins() {
             if !self.plugin_ui.is_open(&plugin) {
                 continue;
@@ -612,6 +614,9 @@ impl UnluminousApp {
             if let Some(provider) = self.plugin_ui.provider(&plugin) {
                 let (wanted, _closed) = provider.modal(ui.ctx(), &look);
                 asked.extend(wanted.into_iter().map(|request| (plugin.clone(), request)));
+                if let Some(file) = provider.take_the_embedded_file() {
+                    embedded = Some((plugin.clone(), file));
+                }
                 if let Some(slot) = provider.take_the_modals_canvas() {
                     drop(look);
                     chromes.push((slot, chrome));
@@ -634,6 +639,14 @@ impl UnluminousApp {
                 false,
             ) {
                 slot.painter.set(slot.shape, drawn);
+            }
+        }
+        // After the decoration, so the editor is drawn over the well the modal reserved for it.
+        let asking = embedded.as_ref().map(|(plugin, _)| plugin.clone());
+        let modified = self.show_the_modal_editor(ui.ctx(), embedded.map(|(_, file)| file));
+        if let (Some(plugin), Some(modified)) = (asking, modified) {
+            if let Some(provider) = self.plugin_ui.provider(&plugin) {
+                provider.embedded_file_shown(modified);
             }
         }
         for (plugin, request) in asked {
@@ -660,7 +673,14 @@ impl UnluminousApp {
             // The reason is already in the status bar; a plugin that asked for a file has no
             // reply channel for one, so there is nothing further to do with it here.
             Request::OpenFile(path) => {
-                let _ = self.open_path_in_tab(&path, true);
+                // A file the modal's editor holds is moved to a pane rather than opened a second time. `task-2556`.
+                if !self.move_the_modal_tab_to_a_pane(&path) {
+                    let _ = self.open_path_in_tab(&path, true);
+                }
+            }
+            Request::SaveFile(path) => self.save_the_tab_holding(&path),
+            Request::ReloadFile(path) => {
+                self.reload_from_disk(&path, true);
             }
             // **The one place a command becomes a change is `run_cli`**, and this is a plugin
             // reaching it. The answer goes back to the provider that asked, by the id it asked with,

@@ -1494,7 +1494,7 @@ before the conversations button, with the Chat settings dialog under the header.
 
 ### The supervisor, and a board other windows change (`task-2253`)
 
-`Chat with supervisor`, the round button in front of `Add Task`, opens `components::agent_tasks::supervisor_modal`:
+`Chat with supervisor`, the round button at the left of the board's header since `task-2556`, opens `components::agent_tasks::supervisor_modal`:
 the supervisor's terminal, a message box and `Send`, and since `task-2556` its skill file and its settings. The supervisor is one agent, the board's endpoint, started in
 the board's project folder by the same `spawn` a ticket's agent uses, keyed `SUPERVISOR` (0) among the tickets'
 terminals, and told the board's commands by `agent::supervisor_handoff`. `plugins run agent-tasks supervisor
@@ -1519,8 +1519,10 @@ and `components::agent_tasks::supervisor_modal` the modal, redrawn in `rux` the 
 - **A save is applied by telling the running supervisor** (`agent::skill_changed`), because it read the old file when it
   started. One that is not running reads the saved file when it starts; `start_the_supervisor` writes the baseline
   first when the file is missing, so the handoff always names a file that is there.
-- **The draft is never replaced under a person.** A file changed by another program is read again only while the
-  draft has nothing unsaved, once a second.
+- **Any save of the file is applied, by one watch.** `watch_the_supervisor_skill` runs from the board's `catch_up`
+  and looks at the file's modified time once a second; a new one tells a running supervisor. So the modal's
+  `Save & apply`, `Ctrl`/`Cmd`+`S` in its editor, the file opened in a tab, `supervisor skill-set` and another program
+  are all applied the same way, and nothing else sends `skill_changed`.
 - **`supervisor-endpoint`, `supervisor-model` and `supervisor-effort`** in `settings.conf` are what it starts on, set
   by the modal's gear and by `Settings -> Agent-Tasks -> The supervisor`. Empty is the board's endpoint and its model.
   A new endpoint drops the model chosen for the old one.
@@ -1528,10 +1530,28 @@ and `components::agent_tasks::supervisor_modal` the modal, redrawn in `rux` the 
 A test window has no settings folder, so its skill file is under `%TEMP%/unluminous-agent-tasks-<pid>/`, shared by
 every test in one binary. A test that saves a skill resets it before it ends.
 
-**A box that answers a chord itself claims it with `controls::claim_chords`.** The menus read a key before a plugin's
-modal is drawn, and `File -> Save` is left reachable from text boxes on purpose, so `Ctrl+S` in the skill's source
-saved the skill and also asked the untitled document behind the modal to save. A claim made while the box has the
-keyboard holds for the next frame, and `frame.rs` leaves a claimed chord in the input for the box.
+**The Supervisor Skill tab is the window's own editor, drawn into the modal** (the QA pass: *"I want the edit skill in
+the modal to be an actual file editor, with line numbers etc, just like in file editor pane"*). Four rules:
+
+- **A provider reserves the room and the window draws the editor.** The modal sets `AgentTasks::embedded_file` (the
+  file, the modal's layer, the rectangle, the view), the window takes it through `UiProvider::take_the_embedded_file`
+  after the modal is drawn, and `app::modal_editor` draws the tab with `show_a_document_in`, the function a pane and a
+  canvas note use, then reports `embedded_file_shown(modified)`. Save and Revert are `Request::SaveFile` and
+  `Request::ReloadFile`, because the document is the window's.
+- **The tab lives in `files::Home::Modal`**, a third home beside a pane and a node, in no pane, one at a time. A file
+  opened from anywhere else while it lives there moves to a pane (`opening.rs`), and so does `Open in a tab`
+  (`move_the_modal_tab_to_a_pane`). Closing the modal leaves the tab there with its unsaved changes.
+- **While the modal's editor has the keyboard, `OpenFiles::focus` stays `Home::Modal` between frames**, so the window's
+  own `Save`, `Undo` and `Find` act on the skill file. A press outside the editor, or a frame with no editor, puts it
+  back in a pane.
+- **A document inside the top modal reads the keys** (`editor_view` asks `another_modal_has_the_keyboard`, the
+  terminal's rule), and `hold_the_keyboard` keeps egui's focus while the modal's editor is typed into, so an arrow key
+  cannot walk the focus onto one of the modal's buttons for the next space to press.
+
+**The board's supervisor button is the first control at the left of its header**, before the view switch, in every
+view, drawn with `theme::svg_icon::PERSON_MILITARY_POINTING` (Font Awesome's `person-military-pointing`), a
+`FilledMark`: a solid icon whose subpaths are cut into triangles by `unluminous_core`'s ear clipping, because egui fills
+a polygon as a fan.
 
 ### The board and the ticket are the Agent-Tasks design, drawn with `rux`'s board parts (`task-2241`)
 

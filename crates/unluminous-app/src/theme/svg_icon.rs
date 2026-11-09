@@ -5,8 +5,8 @@
 //! `d` strings, parsed once per frame and stroked with the painter, at the size and in the tint the
 //! neighbouring `rux` marks use.
 //!
-//! Supported path commands are `M L H V C A Z` and their lowercase forms, which is every command the three
-//! icons below use.
+//! Supported path commands are `M L H V C S A Z` and their lowercase forms, which is every command the icons
+//! below use. A [`FilledMark`] is a solid silhouette, filled rather than stroked (`task-2556`).
 
 use egui::{Color32, Pos2, Shape, Stroke};
 
@@ -366,6 +366,65 @@ lucide!(
         "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z"
     ]
 );
+/// A solid icon: its view box and the path data of its outline, every subpath filled.
+#[derive(Debug)]
+pub struct FilledMark {
+    pub width: f32,
+    pub height: f32,
+    pub d: &'static str,
+}
+
+/// Font Awesome 6 `person-military-pointing` (CC BY 4.0), the supervisor's mark (`task-2556`, after
+/// `FaPersonMilitaryPointing`).
+pub static PERSON_MILITARY_POINTING: FilledMark = FilledMark {
+    width: 576.0,
+    height: 512.0,
+    d: "M246.9 14.1C234 15.2 224 26 224 39c0 13.8 11.2 25 25 25l151 0c8.8 0 16-7.2 16-16l0-30.6C416 8 408 .7 398.7 1.4L246.9 14.1zM240 112c0 44.2 35.8 80 80 80s80-35.8 80-80c0-5.5-.6-10.8-1.6-16L241.6 96c-1 5.2-1.6 10.5-1.6 16zM72 224c-22.1 0-40 17.9-40 40s17.9 40 40 40l152 0 0 89.4L386.8 230.5c-13.3-4.3-27.3-6.5-41.6-6.5L240 224 72 224zm345.7 20.9L246.6 416 416 416l0-46.3 53.6 90.6c11.2 19 35.8 25.3 54.8 14.1s25.3-35.8 14.1-54.8L462.3 290.8c-11.2-18.9-26.6-34.5-44.6-45.9zM224 448l0 32c0 17.7 14.3 32 32 32l128 0c17.7 0 32-14.3 32-32l0-32-192 0z",
+};
+
+/// Draw a [`FilledMark`] centred on `centre`, `size` points across its longer side, in `color`.
+///
+/// Each subpath is flattened and cut into triangles by `unluminous_core`'s ear clipping, because a fan, which is
+/// how egui fills a polygon, paints outside a concave outline.
+pub fn paint_filled(
+    painter: &egui::Painter,
+    centre: Pos2,
+    size: f32,
+    mark: &FilledMark,
+    color: Color32,
+) {
+    use unluminous_core::mermaid::scene::{triangles, Point};
+    let scale = size / mark.width.max(mark.height);
+    let to_screen = |p: [f32; 2]| {
+        Pos2::new(
+            centre.x + (p[0] - mark.width / 2.0) * scale,
+            centre.y + (p[1] - mark.height / 2.0) * scale,
+        )
+    };
+    let mut mesh = egui::Mesh::default();
+    let mut outlines: Vec<Vec<Pos2>> = Vec::new();
+    for line in flatten(mark.d) {
+        let mut points = line.points.clone();
+        if points.len() > 1 && points.first() == points.last() {
+            points.pop();
+        }
+        let corners: Vec<Point> = points.iter().map(|p| Point { x: p[0], y: p[1] }).collect();
+        let first = mesh.vertices.len() as u32;
+        for point in &points {
+            mesh.colored_vertex(to_screen(*point), color);
+        }
+        for [a, b, c] in triangles(&corners) {
+            mesh.add_triangle(first + a as u32, first + b as u32, first + c as u32);
+        }
+        outlines.push(points.iter().map(|p| to_screen(*p)).collect::<Vec<Pos2>>());
+    }
+    painter.add(Shape::mesh(mesh));
+    // A mesh is not feathered, so a hairline round each outline gives the edges egui's own smoothing.
+    for outline in outlines {
+        painter.add(Shape::closed_line(outline, Stroke::new(0.6, color)));
+    }
+}
+
 /// Draw `mark` centred on `centre`, `size` points across, in `color`.
 pub fn paint(painter: &egui::Painter, centre: Pos2, size: f32, mark: &SvgMark, color: Color32) {
     let scale = size / mark.view;
@@ -465,6 +524,8 @@ fn flatten(d: &str) -> Vec<Line> {
     let mut lines: Vec<Line> = Vec::new();
     let (mut at, mut start) = ([0.0f32; 2], [0.0f32; 2]);
     let (mut index, mut command) = (0usize, 'M');
+    // The second control point of the last cubic, which `S` reflects for its first one.
+    let mut last_control: Option<[f32; 2]> = None;
     let number = |index: &mut usize| -> f32 {
         let value = tokens.get(*index).and_then(|t| t.parse().ok()).unwrap_or(0.0);
         *index += 1;
@@ -509,6 +570,21 @@ fn flatten(d: &str) -> Vec<Line> {
                 let c2 = [base[0] + number(&mut index), base[1] + number(&mut index)];
                 next = [base[0] + number(&mut index), base[1] + number(&mut index)];
                 push_to(&mut lines, &cubic(at, c1, c2, next), next);
+                at = next;
+                last_control = Some(c2);
+                continue;
+            }
+            'S' => {
+                let c1 = match last_control {
+                    Some(c) => [2.0 * at[0] - c[0], 2.0 * at[1] - c[1]],
+                    None => at,
+                };
+                let c2 = [base[0] + number(&mut index), base[1] + number(&mut index)];
+                next = [base[0] + number(&mut index), base[1] + number(&mut index)];
+                push_to(&mut lines, &cubic(at, c1, c2, next), next);
+                at = next;
+                last_control = Some(c2);
+                continue;
             }
             'A' => {
                 let (rx, ry, turn) = (number(&mut index), number(&mut index), number(&mut index));
@@ -518,6 +594,7 @@ fn flatten(d: &str) -> Vec<Line> {
             }
             _ => index += 1,
         }
+        last_control = None;
         at = next;
     }
     lines

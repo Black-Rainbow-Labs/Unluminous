@@ -4827,80 +4827,118 @@ fn chat_with_supervisor_opens_a_modal_with_its_terminal_a_message_box_and_send()
     assert!(harness.query_all_by_label_contains("Start supervisor").count() > 0);
 }
 
-/// `task-2556`: *"I want a tab to show an editable supervisor skill file so I can modify just like in file preview
-/// pane, and saving it immediately gets applied as the skill the supervisor uses."* The Skill tab shows the shipped
-/// skill as source and preview, typing makes it unsaved, and `Save & apply` writes the file `supervisor skill`
-/// reads back. `Reset to default` puts the shipped skill back.
+/// Type `words` into whatever holds the keyboard, a letter a frame.
+fn type_letters(harness: &mut Harness<'static, UnluminousApp>, words: &str) {
+    for letter in words.chars() {
+        match letter {
+            '\n' => harness.key_press(egui::Key::Enter),
+            _ => harness.input_mut().events.push(egui::Event::Text(letter.to_string())),
+        }
+        pump(harness);
+    }
+    steady(harness);
+}
+
+/// `task-2556`, QA: *"I want the edit skill in the modal to be an actual file editor, with line numbers etc, just
+/// like in file editor pane. If I click open in tab, it should close the modal and ensure the file editor pane is
+/// open with the file."* The Supervisor Skill tab draws the window's own editor on the skill file: a tab living in
+/// the modal, typed into, saved by the window's `Ctrl`/`Cmd`+`S`, reverted, and moved into a pane by `Open in a tab`.
 #[test]
-fn the_supervisor_skill_tab_edits_and_saves_the_skill_file() {
+fn the_supervisor_skill_tab_is_the_windows_editor_on_the_skill_file() {
     let mut harness = harness("");
     did(&mut harness, "plugins pane agent-tasks/board --show");
     steady(&mut harness);
     harness.get_by_label("Chat with supervisor").click();
     steady(&mut harness);
-    for control in ["Terminal tab", "Skill tab", "Supervisor settings"] {
+    for control in ["Terminal tab", "Supervisor Skill tab", "Supervisor settings"] {
         assert!(harness.query_all_by_label(control).count() > 0, "the header has `{control}`");
     }
-    harness.get_by_label("Skill tab").click();
+    harness.get_by_label("Supervisor Skill tab").click();
     steady(&mut harness);
-    assert_eq!(did(&mut harness, "plugins run agent-tasks supervisor")["view"], "skill");
-    for control in [
-        "Supervisor skill",
-        "Supervisor skill preview",
-        "Save & apply",
-        "Revert",
-        "Reset to default",
-        "Open in a tab",
-        "Skill layout",
-    ] {
-        assert!(
-            harness.query_all_by_label_contains(control).count() > 0,
-            "the Skill tab has `{control}`"
-        );
-    }
+    did(&mut harness, "plugins run agent-tasks supervisor layout edit");
+    steady(&mut harness);
     let shipped = did(&mut harness, "plugins run agent-tasks supervisor skill");
     assert_eq!(shipped["default"], serde_json::json!(true), "{shipped}");
-    assert!(shipped["text"].as_str().unwrap_or_default().contains("unluminous-supervisor"));
-    // The box is taller than its well, because the skill is longer than the well, so its middle is out of sight:
-    // the well's own ground is what a press on the part that shows reaches.
-    harness.get_by_label("Supervisor skill field").click();
+    let path = std::path::PathBuf::from(shipped["path"].as_str().unwrap_or_default());
+    for control in ["Save & apply", "Revert", "Reset to default", "Open in a tab", "Skill layout"] {
+        assert!(
+            harness.query_all_by_label_contains(control).count() > 0,
+            "the tab has `{control}`"
+        );
+    }
+    let index = harness.state().files.tab_in_modal().expect("the skill file is a tab in the modal");
+    assert_eq!(harness.state().files.at(index).path(), Some(path.as_path()));
+
+    // A press in the editor gives it the keyboard, and what is typed goes into the window's document.
+    let state = did(&mut harness, "plugins run agent-tasks supervisor");
+    let area: Vec<f32> = state["editorArea"]
+        .as_array()
+        .expect("the editor's area")
+        .iter()
+        .map(|value| value.as_f64().unwrap_or(0.0) as f32)
+        .collect();
+    click_at(&mut harness, egui::pos2(area[0] + area[2] / 2.0, area[1] + area[3] / 2.0));
+    harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::Home);
     steady(&mut harness);
-    harness.get_by_label("Supervisor skill").type_text("Work at most 3 tickets at a time.\n");
-    steady(&mut harness);
+    type_letters(&mut harness, "Work at most 3 tickets at a time.\n");
+    let index = harness.state().files.tab_in_modal().expect("still in the modal");
+    let typed = harness.state().files.at(index).document.text().to_string();
+    let keyboard = did(&mut harness, "status --section keyboard");
+    assert!(
+        typed.starts_with("Work at most 3 tickets at a time.\n"),
+        "{} / found anywhere: {} / modified: {} / keyboard: {keyboard} / area: {area:?}",
+        &typed[..80.min(typed.len())],
+        typed.contains("tickets at a time"),
+        harness.state().files.at(index).document.is_modified()
+    );
     assert!(harness.query_all_by_label("Unsaved").count() > 0, "a typed change is marked unsaved");
-    // `Ctrl`/`Cmd`+`S` in the source saves the skill, and only the skill: the untitled document behind the modal is
-    // not asked to save, which would open the Save dialog.
+    assert_eq!(
+        did(&mut harness, "plugins run agent-tasks supervisor skill")["unsaved"],
+        serde_json::json!(true)
+    );
+
+    // `Ctrl`/`Cmd`+`S` is the window's own Save, and it saves the modal's tab and nothing else.
     harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::S);
     steady(&mut harness);
-    assert!(harness.state().save_dialog.is_none(), "the chord was the skill's, not the document's");
+    assert!(
+        harness.state().save_dialog.is_none(),
+        "the untitled document behind the modal was not asked to save"
+    );
+    let saved = std::fs::read_to_string(&path).unwrap_or_default().replace("\r\n", "\n");
+    assert!(saved.starts_with("Work at most 3 tickets at a time.\n"), "the file was written");
+    steady(&mut harness);
     assert_eq!(
         did(&mut harness, "plugins run agent-tasks supervisor skill")["unsaved"],
         serde_json::json!(false)
     );
-    harness
-        .get_by_label("Supervisor skill")
-        .type_text("Check every agent's work before moving on.\n");
+
+    // Revert throws an unsaved change away.
+    type_letters(&mut harness, "zzz");
+    harness.get_by_label("Revert").click();
     steady(&mut harness);
-    harness.get_by_label("Save & apply").click();
-    steady(&mut harness);
-    let saved = did(&mut harness, "plugins run agent-tasks supervisor skill");
-    assert_eq!(saved["default"], serde_json::json!(false), "{saved}");
-    assert_eq!(saved["unsaved"], serde_json::json!(false), "{saved}");
-    let text = saved["text"].as_str().unwrap_or_default().to_owned();
-    assert!(text.contains("Work at most 3 tickets at a time."), "{text}");
-    let path = std::path::PathBuf::from(saved["path"].as_str().unwrap_or_default());
-    assert_eq!(std::fs::read_to_string(&path).unwrap_or_default().replace("\r\n", "\n"), text);
-    // The layouts the file preview pane has.
-    did(&mut harness, "plugins run agent-tasks supervisor layout preview");
+    let index = harness.state().files.tab_in_modal().expect("still in the modal");
+    assert!(
+        !harness.state().files.at(index).document.text().to_string().contains("zzz"),
+        "reverted"
+    );
+
+    // `Open in a tab` closes the modal and shows the file in the editing area.
+    harness.get_by_label("Open in a tab").click();
     steady(&mut harness);
     assert_eq!(
-        harness.query_all_by_label("Supervisor skill").count(),
-        0,
-        "Preview shows no source"
+        did(&mut harness, "plugins run agent-tasks supervisor")["open"],
+        serde_json::json!(false)
     );
-    did(&mut harness, "plugins run agent-tasks supervisor layout split");
-    harness.get_by_label("Reset to default").click();
-    steady(&mut harness);
+    assert!(harness.state().files.tab_in_modal().is_none(), "the tab left the modal");
+    let shown = harness.state().files.active_index();
+    assert_eq!(
+        harness.state().files.at(shown).path(),
+        Some(path.as_path()),
+        "the file is the tab showing"
+    );
+    assert!(harness.state().files.home_of(shown).pane().is_some(), "in a pane");
+
+    did(&mut harness, "plugins run agent-tasks supervisor skill-reset");
     assert_eq!(
         did(&mut harness, "plugins run agent-tasks supervisor skill")["default"],
         serde_json::json!(true)
@@ -4909,7 +4947,8 @@ fn the_supervisor_skill_tab_edits_and_saves_the_skill_file() {
 
 /// `task-2556`: *"We also want the user to be able to configure which model is used for the supervisor (perhaps in
 /// settings or a gear icon in our supervisor modal)."* The gear shows the endpoint, model and effort fields, and the
-/// command line's `supervisor model` and `supervisor effort` are what start reads.
+/// command line's `supervisor model` and `supervisor effort` are what start reads. The QA pass took `Edit the skill`
+/// off it: the Supervisor Skill tab is beside the gear.
 #[test]
 fn the_supervisor_gear_shows_its_endpoint_model_and_effort() {
     let mut harness = harness("");
@@ -4918,12 +4957,13 @@ fn the_supervisor_gear_shows_its_endpoint_model_and_effort() {
     harness.get_by_label("Supervisor settings").click();
     steady(&mut harness);
     assert_eq!(did(&mut harness, "plugins run agent-tasks supervisor")["view"], "settings");
-    for control in ["Endpoint", "Model", "Effort", "Edit the skill"] {
+    for control in ["Endpoint", "Model", "Effort"] {
         assert!(
             harness.query_all_by_label_contains(control).count() > 0,
             "the settings have `{control}`"
         );
     }
+    assert_eq!(harness.query_all_by_label("Edit the skill").count(), 0, "no Edit the skill button");
     did(&mut harness, "plugins run agent-tasks supervisor model claude-sonnet-5-5");
     did(&mut harness, "plugins run agent-tasks supervisor effort high");
     let state = did(&mut harness, "plugins run agent-tasks supervisor");
@@ -4938,9 +4978,31 @@ fn the_supervisor_gear_shows_its_endpoint_model_and_effort() {
         did(&mut harness, "plugins run agent-tasks supervisor")["model"],
         serde_json::Value::Null
     );
-    harness.get_by_label("Edit the skill").click();
+}
+
+/// `task-2556`, QA: *"Supervisor icon should get moved to the very left of the pane, to the left of the tab nav for
+/// Board, epic, etc."* The button is the first control in the header, before the view switch.
+#[test]
+fn the_supervisor_button_is_at_the_left_of_the_boards_header() {
+    let mut harness = harness("");
+    did(&mut harness, "plugins pane agent-tasks/board --show");
     steady(&mut harness);
-    assert_eq!(did(&mut harness, "plugins run agent-tasks supervisor")["view"], "skill");
+    let button = harness.get_by_label("Chat with supervisor").rect();
+    // Every control naming a view that sits in the header's row is right of the button.
+    let in_the_header: Vec<egui::Rect> = ["Board", "Backlog", "Epics"]
+        .iter()
+        .flat_map(|view| {
+            harness.query_all_by_label_contains(view).map(|node| node.rect()).collect::<Vec<_>>()
+        })
+        .filter(|rect| rect.center().y > button.min.y && rect.center().y < button.max.y)
+        .collect();
+    assert!(!in_the_header.is_empty(), "the view switch is in the header's row");
+    for switch in in_the_header {
+        assert!(
+            button.max.x <= switch.min.x,
+            "the supervisor button is left of the views: {button:?} {switch:?}"
+        );
+    }
 }
 
 /// Where the Chat tab tests keep Claude Code's folder and the ticket's project: under the temporary folder,
