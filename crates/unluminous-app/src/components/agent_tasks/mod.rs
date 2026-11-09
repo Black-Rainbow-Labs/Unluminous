@@ -674,6 +674,30 @@ pub(crate) fn raw_or_rendered(
 /// description sized string: how many characters could possibly fit is known from the width and the size, and
 /// there is no point laying out the other ten thousand. Only the tests call it on its own now; the board
 /// calls [`clipped_in`].
+/// The round button that opens the supervisor's modal, carved in while the modal is open, with Font Awesome's
+/// person pointing in it (`task-2556`). Answers whether it was pressed.
+fn supervisor_button(rux: &mut rux::Rux<'_>, at: Rect, open: bool, scale: f32) -> bool {
+    // An empty mark: the button draws its surface and takes the press, and the filled figure is painted over it.
+    let response = rux::components::RoundButton::mark(rux::Icon::User, 0.0, "Chat with supervisor")
+        .size(rux::components::RoundSize::Send)
+        .on(open)
+        .show(rux, at);
+    let theme = rux.theme();
+    let ink = match (open, response.hovered()) {
+        (true, _) => theme.ink.i900,
+        (false, true) => theme.chat.sky,
+        (false, false) => theme.ink.i500,
+    };
+    crate::theme::svg_icon::paint_filled(
+        rux.painter(),
+        at.center(),
+        20.0 * scale,
+        &crate::theme::svg_icon::PERSON_MILITARY_POINTING,
+        ink,
+    );
+    response.clicked()
+}
+
 #[cfg(test)]
 pub(crate) fn clipped(
     painter: &egui::Painter,
@@ -860,28 +884,4 @@ mod tests {
             "a second line holds more of it: {one_line:?} against {two_lines:?}"
         );
     }
-}
-
-/// The round button that opens the supervisor's modal, carved in while the modal is open, with Font Awesome's
-/// person pointing in it (`task-2556`). Answers whether it was pressed.
-fn supervisor_button(rux: &mut rux::Rux<'_>, at: Rect, open: bool, scale: f32) -> bool {
-    // An empty mark: the button draws its surface and takes the press, and the filled figure is painted over it.
-    let response = rux::components::RoundButton::mark(rux::Icon::User, 0.0, "Chat with supervisor")
-        .size(rux::components::RoundSize::Send)
-        .on(open)
-        .show(rux, at);
-    let theme = rux.theme();
-    let ink = match (open, response.hovered()) {
-        (true, _) => theme.ink.i900,
-        (false, true) => theme.chat.sky,
-        (false, false) => theme.ink.i500,
-    };
-    crate::theme::svg_icon::paint_filled(
-        rux.painter(),
-        at.center(),
-        20.0 * scale,
-        &crate::theme::svg_icon::PERSON_MILITARY_POINTING,
-        ink,
-    );
-    response.clicked()
 }

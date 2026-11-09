@@ -2264,6 +2264,10 @@ impl UnluminousApp {
         let mut plugin_tabs = Vec::new();
         let mut browser_tabs = Vec::new();
         for file in self.files.iter() {
+            // The supervisor modal's editor is the modal's, not something the project left open. `task-2556`.
+            if file.home == crate::app::files::Home::Modal {
+                continue;
+            }
             // A browser tab is remembered by where it had been, in a list of its own, for the reason a
             // plugin tab is: it has no file, and every list beside `open_files` is indexed with it. `task-2203`.
             if let Some(tab) = &file.browser {

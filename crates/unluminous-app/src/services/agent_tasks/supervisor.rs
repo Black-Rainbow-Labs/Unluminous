@@ -27,10 +27,8 @@ use super::*;
 /// installs it, and the supervisor needs a skill whether or not anybody has.
 pub const DEFAULT_SKILL: &str = include_str!("../../../skills/unluminous-supervisor/SKILL.md");
 
-/// How often the skill file's modified time is looked at while the Skill view shows it with nothing unsaved.
-
 /// The baseline with the line endings a text box keeps: `\n` only. A checkout made on Windows with
-/// `core.autocrlf` compiles the file in with `\r\n`, and a draft compared against that would always be unsaved.
+/// `core.autocrlf` compiles the file in with `\r\n`, and a file compared against that would never be the default.
 pub fn default_skill() -> String {
     DEFAULT_SKILL.replace("\r\n", "\n")
 }
