@@ -763,12 +763,8 @@ fn settings_aside(board: &mut AgentTasks, rux: &mut rux::Rux<'_>, area: Rect) ->
     let mut requests = Vec::new();
     let chat = rux.theme().chat;
     let theme = rux.theme();
-    let card = Rect::from_min_size(
-        area.min,
-        Vec2::new(area.width().min(460.0), 150.0_f32.min(area.height())),
-    );
-    rux.chrome.surface(card, 22.0, chat.well, chat.carved_sm());
-    let inside = card.shrink(20.0);
+    let width = area.width().min(460.0);
+    let inside_width = (width - 40.0).max(40.0);
     let running = board.supervisor_is_running();
     let words = match running {
         true => "A change here is used the next time the supervisor starts. It is running now, so Restart \
@@ -780,9 +776,18 @@ fn settings_aside(board: &mut AgentTasks, rux: &mut rux::Rux<'_>, area: Rect) ->
         Style::sans(12.5).leading(1.5),
         words,
         theme.ink.i500,
-        inside.width(),
+        inside_width,
     );
     let tall = galley.size().y;
+    // The card is as tall as what is on it: the sentence, and the button while one runs.
+    let button = match running {
+        true => 16.0 + ROW,
+        false => 0.0,
+    };
+    let card =
+        Rect::from_min_size(area.min, Vec2::new(width, (tall + button + 40.0).min(area.height())));
+    rux.chrome.surface(card, 22.0, chat.well, chat.carved_sm());
+    let inside = card.shrink(20.0);
     rux.painter().with_clip_rect(card).galley(inside.min, galley, theme.ink.i500);
     let row = Rect::from_min_size(
         Pos2::new(inside.min.x, inside.min.y + tall + 16.0),

@@ -270,10 +270,15 @@ impl AgentTasks {
 
     /// The skill file, written with the shipped skill first when nobody has saved one, so the path the supervisor
     /// is told and the file the modal's editor opens always name a file that is there.
-    pub fn ensure_the_supervisor_skill_file(&self) -> Result<PathBuf, String> {
+    ///
+    /// Writing the baseline is not a change anybody made, so the watch is told its new modified time and says
+    /// nothing about it. Without that, opening the Supervisor Skill view the first time said "saved".
+    pub fn ensure_the_supervisor_skill_file(&mut self) -> Result<PathBuf, String> {
         let path = self.supervisor_skill_path();
         if !path.exists() {
             self.write_the_skill(&path, &default_skill())?;
+            self.supervisor_skill.watched = Some(modified(&path));
+            self.supervisor_skill.is_default = true;
         }
         Ok(path)
     }
