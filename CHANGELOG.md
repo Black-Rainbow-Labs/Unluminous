@@ -6,7 +6,15 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.27.3 — 2026-11-10
+## 1.28.0 — 2026-11-10
+
+- Termoil's panes, keys, palette and themes in every terminal grid (`task-2597`)
+- Rustfmt (`task-2597`)
+- Terminal.theme in the settings name list, and a boxed refusal for clippy (`task-2597`)
+- Drive the new terminal commands both ways, and the Terminal settings page with its Theme card (`task-2597`)
+- Termoil's 22 shaders over every terminal (`task-2597`)
+
+## 1.27.3 — 2026-11-09
 
 - One paste from the macOS menu bar attaches the clipboard picture once (`task-2592`)
 
