@@ -374,16 +374,17 @@ impl UnluminousApp {
     }
 
     /// The tab a Termoil command acts on, or the refusal to answer with when there is none.
-    fn cli_termoil_tab(&self, request: &Request) -> Result<usize, Outcome> {
+    fn cli_termoil_tab(&self, request: &Request) -> Result<usize, Box<Outcome>> {
         let Some(index) = self.cli_terminal_tab(request) else {
-            return Err(no(
+            return Err(Box::new(no(
                 request,
                 code::NOT_APPLICABLE,
                 "There is no terminal running. `terminal show` starts one.",
-            ));
+            )));
         };
         if index >= self.terminal.tabs.count() {
-            return Err(no(request, code::NOT_FOUND, format!("There is no terminal tab {index}.")));
+            let missing = format!("There is no terminal tab {index}.");
+            return Err(Box::new(no(request, code::NOT_FOUND, missing)));
         }
         Ok(index)
     }
@@ -417,7 +418,7 @@ impl UnluminousApp {
     ) -> Outcome {
         let index = match self.cli_termoil_tab(request) {
             Ok(index) => index,
-            Err(refused) => return refused,
+            Err(refused) => return *refused,
         };
         self.show_the_terminal_tile(true);
         let host = self.terminal.tabs.at_mut(index).expect("a tab, checked above");
@@ -444,7 +445,7 @@ impl UnluminousApp {
         };
         let index = match self.cli_termoil_tab(request) {
             Ok(index) => index,
-            Err(refused) => return refused,
+            Err(refused) => return *refused,
         };
         if let Some(pane) = request.whole("pane") {
             let host = self.terminal.tabs.at(index).expect("a tab, checked above");
@@ -469,7 +470,7 @@ impl UnluminousApp {
     fn cli_terminal_panes(&mut self, request: &Request) -> Outcome {
         let index = match self.cli_termoil_tab(request) {
             Ok(index) => index,
-            Err(refused) => return refused,
+            Err(refused) => return *refused,
         };
         let host = self.terminal.tabs.at(index).expect("a tab, checked above");
         let (panes, zoomed) = crate::components::terminal_layer::panes_of(host);
@@ -491,7 +492,7 @@ impl UnluminousApp {
     fn cli_terminal_close_pane(&mut self, request: &Request) -> Outcome {
         let index = match self.cli_termoil_tab(request) {
             Ok(index) => index,
-            Err(refused) => return refused,
+            Err(refused) => return *refused,
         };
         let Some(pane) = request.whole("pane").or_else(|| request.whole("number")) else {
             let close = crate::services::termoil_keys::TermoilCommand::ClosePane;
@@ -514,7 +515,7 @@ impl UnluminousApp {
         use crate::services::termoil_keys::TermoilCommand;
         let index = match self.cli_termoil_tab(request) {
             Ok(index) => index,
-            Err(refused) => return refused,
+            Err(refused) => return *refused,
         };
         let target = request.text("target").unwrap_or_default();
         let command = match target.trim() {

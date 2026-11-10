@@ -2013,6 +2013,7 @@ mod tests {
     fn the_named_settings_are_exactly_the_ones_the_file_used_to_read_and_write() {
         let mut expected = vec![
             "terminal.shell",
+            "terminal.theme",
             "editor.exclude",
             "mcp.areas",
             "appearance.theme",
