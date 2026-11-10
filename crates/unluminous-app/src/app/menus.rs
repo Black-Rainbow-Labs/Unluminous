@@ -874,6 +874,9 @@ impl UnluminousApp {
         if !claimed {
             return false;
         }
+        if matches!(action, Action::Paste) {
+            crate::app::note_a_paste_release_was_sent(ctx);
+        }
         crate::app::send_on_the_next_frame(ctx, events);
         true
     }

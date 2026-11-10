@@ -739,6 +739,57 @@ pub fn send_on_the_next_frame(ctx: &egui::Context, events: Vec<egui::Event>) {
     ctx.request_repaint();
 }
 
+/// How long after a menu's paste the keyboard's own release of `V` is taken to belong to that paste.
+///
+/// A person holds the key for a tenth of a second or so; a second is long enough for a slow press and too
+/// short to swallow a second paste anybody meant.
+const PASTE_RELEASE_SENT_FOR: std::time::Duration = std::time::Duration::from_secs(1);
+
+fn paste_release_key() -> egui::Id {
+    egui::Id::new("unluminous-paste-release-sent")
+}
+
+/// Record that a menu's paste has sent the paste chord's key going up itself.
+///
+/// `task-2592`: *"When I paste an image into agent chat, I'm now seeing 2 thumbnails of the same image."*
+/// On macOS `Cmd+V` is the menu bar's key equivalent, so AppKit takes the key going **down** and the menu's
+/// paste sends a release of `V` for the chat composer, the report dialog and a plugin tab to see
+/// (`task-2277`). The key going **up** is not a key equivalent, so AppKit hands it to the window as well,
+/// and every reader of the chord asked for the clipboard's picture twice. [`drop_the_keyboards_paste_release`]
+/// takes the keyboard's release out once this has been recorded.
+///
+/// @param ctx - the window's context
+pub fn note_a_paste_release_was_sent(ctx: &egui::Context) {
+    let now = std::time::Instant::now();
+    ctx.data_mut(|data| data.insert_temp(paste_release_key(), now));
+}
+
+/// Take the keyboard's release of the paste chord out of the frame's raw input, when a menu's paste has
+/// already sent one in its place. See [`note_a_paste_release_was_sent`].
+///
+/// Only the first such release is taken, and only within [`PASTE_RELEASE_SENT_FOR`], so a later paste
+/// from the keyboard is untouched.
+///
+/// @param ctx - the window's context
+/// @param events - the raw input's events, before egui reads them
+pub fn drop_the_keyboards_paste_release(ctx: &egui::Context, events: &mut Vec<egui::Event>) {
+    let Some(sent) = ctx.data(|data| data.get_temp::<std::time::Instant>(paste_release_key()))
+    else {
+        return;
+    };
+    if sent.elapsed() > PASTE_RELEASE_SENT_FOR {
+        ctx.data_mut(|data| data.remove::<std::time::Instant>(paste_release_key()));
+        return;
+    }
+    let releases = |event: &egui::Event| {
+        crate::components::agent_chat::is_a_paste_chord(std::slice::from_ref(event))
+    };
+    if let Some(at) = events.iter().position(releases) {
+        events.remove(at);
+        ctx.data_mut(|data| data.remove::<std::time::Instant>(paste_release_key()));
+    }
+}
+
 /// Turn what a field's right click menu asked for into the event `egui::TextEdit` already answers.
 ///
 /// **Nothing here cuts or pastes any text.** A `TextEdit` that holds the keyboard reads `Event::Copy`,
@@ -804,6 +855,7 @@ fn apply_what_a_fields_menu_asked_for(ui: &mut egui::Ui) {
                 }
                 input.events.push(released);
             });
+            note_a_paste_release_was_sent(ui.ctx());
             return;
         }
     };
@@ -3218,5 +3270,47 @@ mod tests_task_2063 {
         assert_eq!(app.settings.background_image, "wood-rings.jpg");
 
         std::fs::remove_dir_all(&root).ok();
+    }
+}
+
+/// `task-2592`: one paste from the macOS menu bar attached the clipboard's picture twice, because the menu
+/// sends the chord's key going up and the keyboard sends it as well.
+#[cfg(test)]
+mod tests_task_2592 {
+    use super::{drop_the_keyboards_paste_release, note_a_paste_release_was_sent};
+    use crate::components::agent_chat::is_a_paste_chord;
+
+    fn release() -> egui::Event {
+        egui::Event::Key {
+            key: egui::Key::V,
+            physical_key: Some(egui::Key::V),
+            pressed: false,
+            repeat: false,
+            modifiers: egui::Modifiers::COMMAND,
+        }
+    }
+
+    /// The keyboard's release after a menu's paste is taken out once, and the next paste from the keyboard
+    /// is left alone.
+    #[test]
+    fn a_menu_paste_leaves_one_release_of_the_chord() {
+        let ctx = egui::Context::default();
+        note_a_paste_release_was_sent(&ctx);
+        let mut events = vec![egui::Event::Text("a".to_owned()), release()];
+        drop_the_keyboards_paste_release(&ctx, &mut events);
+        assert!(!is_a_paste_chord(&events), "the keyboard's release is taken out: {events:?}");
+        assert_eq!(events.len(), 1, "and nothing else is");
+        let mut later = vec![release()];
+        drop_the_keyboards_paste_release(&ctx, &mut later);
+        assert!(is_a_paste_chord(&later), "a second paste from the keyboard still counts");
+    }
+
+    /// With no menu paste, the keyboard's release is the only one there is and is kept.
+    #[test]
+    fn a_paste_from_the_keyboard_alone_keeps_its_release() {
+        let ctx = egui::Context::default();
+        let mut events = vec![release()];
+        drop_the_keyboards_paste_release(&ctx, &mut events);
+        assert!(is_a_paste_chord(&events));
     }
 }

@@ -2809,6 +2809,8 @@ impl UnluminousApp {
         // nothing reading the pointer — which is every widget, because they all ask `Response::clicked`.
         // One step a frame, which is what makes a press and a release a click rather than a flicker.
         // See `services::input`.
+        // Before the command line's events are added, so only the keyboard's own release is taken.
+        crate::app::drop_the_keyboards_paste_release(ctx, &mut raw_input.events);
         if let Some(events) = self.input.next_frame() {
             raw_input.events.extend(events);
         }
