@@ -1401,6 +1401,8 @@ pub struct UnluminousApp {
     pub termoil_target: Option<u64>,
     /// True while the palette is the terminal theme picker, which previews each theme as it is moved through.
     pub choosing_a_terminal_theme: bool,
+    /// True while the palette is the terminal shader picker, which previews each shader as it is moved through.
+    pub choosing_a_terminal_shader: bool,
     /// The tabs that have been closed, oldest first, so the newest can be opened again.
     ///
     /// Travel history rather than state: bounded at
@@ -1830,6 +1832,7 @@ impl UnluminousApp {
             palette: None,
             termoil_target: None,
             choosing_a_terminal_theme: false,
+            choosing_a_terminal_shader: false,
             closed_tabs: Vec::new(),
             update: None,
             update_answer: None,
@@ -2007,6 +2010,8 @@ impl UnluminousApp {
         // No Termoil theme for the terminals either, for the same reason: the thread may have drawn another
         // window that chose one (`task-2597`).
         crate::services::terminal_colours::choose("");
+        crate::services::terminal_shader::choose("");
+        crate::services::terminal_shader::preview(None);
         theme::apply(ctx);
         self.themed = true;
         // What the plugins contribute, read from their manifests. Here rather than only in
@@ -2168,6 +2173,7 @@ impl UnluminousApp {
         self.apply_the_theme();
         // And the terminals' Termoil theme, which an empty setting leaves following the window's (`task-2597`).
         crate::services::terminal_colours::choose(&self.settings.terminal_theme);
+        crate::services::terminal_shader::choose(&self.settings.terminal_shader);
         self.install_the_interface_font();
     }
 

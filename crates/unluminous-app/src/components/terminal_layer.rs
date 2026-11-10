@@ -63,6 +63,8 @@ pub enum Request {
     Palette(u64),
     /// Open the theme picker for the grid with this serial.
     Themes(u64),
+    /// Open the shader picker for the grid with this serial.
+    Shaders(u64),
 }
 
 /// How a pane is started: the program the terminal setting names, and what wakes the window when it writes.
@@ -326,6 +328,10 @@ fn run_on(host: &mut Session, split: &mut Split, command: TermoilCommand, owns_t
             REQUESTS.with(|requests| requests.borrow_mut().push(Request::Themes(host.serial())));
             Ran::done("Opened the terminal theme picker")
         }
+        C::ChooseShader => {
+            REQUESTS.with(|requests| requests.borrow_mut().push(Request::Shaders(host.serial())));
+            Ran::done("Opened the terminal shader picker")
+        }
         _ => {
             let focused = split.layout.focused();
             let session = match focused {
@@ -546,6 +552,7 @@ pub fn menu_entries(owns_tabs: bool, split: bool) -> Vec<Entry> {
         Entry::Separator,
         row(C::CommandPalette),
         row(C::ChooseTheme),
+        row(C::ChooseShader),
         Entry::Separator,
         row(C::ClearScrollback),
         row(C::ResetTerminal),
@@ -652,6 +659,13 @@ pub(crate) fn show(ui: &mut egui::Ui, area: Rect, grid: LayerGrid<'_>) -> GridOu
     }
     if focused {
         WITH_KEYBOARD.with(|holder| holder.set(Some((serial, ui.ctx().cumulative_pass_nr()))));
+    }
+    // Termoil's shader over the whole terminal, panes and all, as Termoil draws one over its window. Not while
+    // something is drawn over the terminal, because the shader is drawn after everything else: the right click
+    // menu, or another modal, unless the shader picker is the modal and is previewing.
+    let covered = menu_open || crate::app::another_modal_has_the_keyboard(ui.ctx(), ui.layer_id());
+    if !covered || crate::services::terminal_shader::previewing() {
+        crate::services::terminal_shader::shade(ui, area, None);
     }
     show_the_menu(ui, serial, host, &mut split, owns_tabs, &mut outcome);
     put_back(serial, split);

@@ -148,6 +148,7 @@ impl UnluminousApp {
             match request {
                 Request::Palette(serial) => self.open_the_termoil_palette(Some(serial)),
                 Request::Themes(serial) => self.open_the_terminal_theme_picker(Some(serial)),
+                Request::Shaders(serial) => self.open_the_terminal_shader_picker(Some(serial)),
             }
         }
     }
@@ -208,6 +209,60 @@ impl UnluminousApp {
         self.palette = Some(palette);
         self.termoil_target = serial;
         self.choosing_a_terminal_theme = true;
+        self.choosing_a_terminal_shader = false;
+    }
+
+    /// The shader picker: no shader, then Termoil's 22 shaders with what each looks like, each drawn over every
+    /// terminal as it is moved through. Enter keeps the one chosen, and anything else puts the terminals back.
+    pub fn open_the_terminal_shader_picker(&mut self, serial: Option<u64>) {
+        use crate::app::actions::Action;
+        use crate::components::command_palette::{Command, CommandPalette, Words};
+        let current = self.settings.terminal_shader.trim().to_owned();
+        let row = |name: &str, label: &str, summary: &str| Command {
+            name: Action::SetTerminalShader(name.to_owned()).name(),
+            label: label.to_owned(),
+            menu: summary.to_owned(),
+            shortcut: String::new(),
+            enabled: true,
+            checked: current.eq_ignore_ascii_case(name),
+            action: Action::SetTerminalShader(name.to_owned()),
+        };
+        let mut commands = vec![row("", "No Shader", "The terminal as it is drawn")];
+        for builtin in crate::services::terminal_shader::BUILTINS {
+            commands.push(row(builtin.name, builtin.name, builtin.summary));
+        }
+        let mut palette = CommandPalette::open_with(commands, Words::SHADERS, usize::MAX);
+        if let Some(at) = palette.results().iter().position(|found| found.command.checked) {
+            palette.chosen = at;
+        }
+        self.palette = Some(palette);
+        self.termoil_target = serial;
+        self.choosing_a_terminal_theme = false;
+        self.choosing_a_terminal_shader = true;
+    }
+
+    /// Choose the Termoil shader every terminal is drawn with, by name, and write it to the settings. Empty or
+    /// `none` is no shader. Refused for a name that is not a shader.
+    pub fn set_the_terminal_shader(&mut self, name: &str) -> Result<String, String> {
+        let name = name.trim();
+        let wanted = match name.is_empty() || name.eq_ignore_ascii_case("none") {
+            true => String::new(),
+            false => match crate::services::terminal_shader::named(name) {
+                Some(builtin) => builtin.name.to_owned(),
+                None => {
+                    return Err(format!(
+                        "There is no Termoil shader called {name}. `terminal shaders` lists them."
+                    ))
+                }
+            },
+        };
+        let before = self.settings.clone();
+        self.settings.terminal_shader = wanted.clone();
+        self.apply_settings(&before);
+        Ok(match wanted.is_empty() {
+            true => "The terminals are drawn with no shader".to_owned(),
+            false => format!("The terminals are drawn with the {wanted} shader"),
+        })
     }
 
     /// Choose the Termoil theme every terminal is drawn in, by name, and write it to the settings. Empty follows

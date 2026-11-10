@@ -5966,7 +5966,14 @@ the emulator Unluminous already uses. Seven rules:
   `themes/README`. `terminal.theme` chooses one, `services::terminal_colours::choose` puts it into the thread's
   palette, and empty follows the window's theme exactly as before. The picker is the command palette opened with
   `Words::THEMES`, and `show_the_command_palette` previews the chosen row and puts the setting back on `Escape`.
-- **Not built**: Termoil's shaders and cursor effects (a pass over Termoil's own renderer), search and link hints.
+- **Termoil's shaders run in a hook in the vendored egui-wgpu** (`AfterTheFrame`, `AfterTheFrameHook`), after egui has
+  drawn the frame into the scene texture and before it is copied to the window or read for a screenshot. Each grid adds
+  an empty paint callback (`services::terminal_shader::shade`) whose `paint` records its rectangle in pixels; the hook
+  copies that part of the frame out and draws the shader back over it. A paint callback's own scene texture is the
+  **previous** frame, which already holds the shader, so a shader drawn from it would glow more every frame. The
+  `.wgsl` files are copies of Termoil's and the wrapper is Termoil's, so a shader runs in both unchanged. A grid under
+  another modal or under its right click menu draws no shader, because the hook draws after everything else.
+- **Not built**: Termoil's cursor effects, search and link hints.
 
 ## The code index answers what ripgrep would, from memory, and it is measured rather than assumed
 

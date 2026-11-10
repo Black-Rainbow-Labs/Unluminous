@@ -3236,6 +3236,33 @@ unluminous-cli terminal themes
 unluminous-cli terminal themes solarized
 ```
 
+### terminal shader
+
+```
+unluminous-cli terminal shader [name]
+```
+
+Read or choose the Termoil shader drawn over every terminal. none turns it off.
+
+- `name` (optional) — The shader, from `terminal shaders`, or none. Read the current one when this is left out. Everything after it on the line belongs to it.
+
+```sh
+unluminous-cli terminal shader neon
+unluminous-cli terminal shader none
+```
+
+### terminal shaders
+
+```
+unluminous-cli terminal shaders
+```
+
+The 22 Termoil shaders, with what each looks like.
+
+```sh
+unluminous-cli terminal shaders --json
+```
+
 ### terminal keys
 
 ```

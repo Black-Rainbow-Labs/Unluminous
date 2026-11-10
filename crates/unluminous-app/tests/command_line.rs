@@ -2558,6 +2558,11 @@ fn drive_the_terminal_and_the_runs(coverage: &mut Coverage) {
     c.refuses(&mut harness, "terminal theme not a theme");
     c.works(&mut harness, "terminal themes solarized");
     c.works(&mut harness, "terminal keys --json");
+    c.works(&mut harness, "terminal shader neon");
+    c.works(&mut harness, "terminal shader");
+    c.works(&mut harness, "terminal shader none");
+    c.refuses(&mut harness, "terminal shader not a shader");
+    c.works(&mut harness, "terminal shaders --json");
     c.works(&mut harness, "terminal close 0");
     c.works(&mut harness, "terminal new");
 

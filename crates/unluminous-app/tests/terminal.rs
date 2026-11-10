@@ -1700,3 +1700,32 @@ fn a_right_click_on_a_terminal_opens_termoil_s_menu_and_its_rows_run() {
     assert_eq!(panes_of_the_tab(&harness).len(), 2, "the menu row split the terminal");
     assert!(harness.query_by_label("Split Pane Right").is_none(), "the menu went away");
 }
+
+#[test]
+fn the_shader_picker_previews_each_shader_and_a_row_that_is_run_is_kept() {
+    use unluminous_app::services::terminal_shader;
+    let mut harness = a_terminal_with_the_keyboard();
+    let ctx = harness.ctx.clone();
+    harness.state_mut().run_action(Action::Termoil(TermoilCommand::ChooseShader), &ctx);
+    steady(&mut harness);
+    let palette = harness.state_mut().palette.as_mut().expect("the picker opened");
+    assert_eq!(palette.words.title, "Choose Terminal Shader");
+    assert_eq!(palette.results()[0].command.label, "No Shader");
+    assert_eq!(palette.results().len(), 23, "none and Termoil's 22");
+    let at =
+        palette.results().iter().position(|found| found.command.label == "neon").expect("listed");
+    palette.chosen = at;
+    steady(&mut harness);
+    assert_eq!(terminal_shader::in_use().map(|shader| shader.name), Some("neon"), "previewed");
+
+    harness.key_press(egui::Key::Escape);
+    steady(&mut harness);
+    assert!(terminal_shader::in_use().is_none(), "Escape put the terminals back");
+    assert_eq!(harness.state().settings.terminal_shader, "");
+
+    did(&mut harness, "terminal shader neon-glow");
+    assert_eq!(harness.state().settings.terminal_shader, "neon-glow");
+    assert_eq!(terminal_shader::in_use().map(|shader| shader.name), Some("neon-glow"));
+    did(&mut harness, "terminal shader none");
+    assert!(terminal_shader::in_use().is_none());
+}

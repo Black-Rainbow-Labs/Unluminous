@@ -839,7 +839,7 @@ impl Page {
             Page::Keymap => &["Preset", "Shortcuts", "Keyboard", "VS Code", "IntelliJ"],
             Page::Editor => &["Font", "Gutter", "Suggestions", "Debugger", "Updates"],
             Page::Plugins => &["Marketplace", "Installed", "Color Scheme", "Syntax"],
-            Page::Terminal => &["Font", "Theme", "Shell"],
+            Page::Terminal => &["Font", "Theme", "Shader", "Shell"],
             Page::Mcp => &["Install", "Server", "Configuration"],
             Page::Ai => &["Model Integrations", "Keys", "OpenCode", "Claude", "Codex", "Pi"],
             Page::Voice => {
@@ -1131,6 +1131,9 @@ settings! {
         /// The Termoil theme every terminal is drawn in, by name, from the 894 Termoil ships (`task-2597`). Empty
         /// follows the window's own theme, which is what a terminal always did.
         terminal_theme = String::new() => "terminal.theme", "a Termoil theme name, or empty to follow the window's theme";
+        /// The Termoil shader every terminal is drawn with, by name, from the 22 Termoil ships (`task-2597`). Empty
+        /// is none.
+        terminal_shader = String::new() => "terminal.shader", "a Termoil shader name, or empty for none";
         /// Extra patterns the project index leaves out, beyond `.gitignore` and the build folders.
         ///
         /// `task-1804` §7.3: the index skipped three hardcoded folder names and read no ignore file at
@@ -2014,6 +2017,7 @@ mod tests {
         let mut expected = vec![
             "terminal.shell",
             "terminal.theme",
+            "terminal.shader",
             "editor.exclude",
             "mcp.areas",
             "appearance.theme",
@@ -2155,6 +2159,7 @@ mod tests {
             terminal_font_size: 14.0,
             terminal_shell: "pwsh.exe".to_owned(),
             terminal_theme: "Dracula".to_owned(),
+            terminal_shader: "neon".to_owned(),
             shell_integration: true,
             line_numbers: false,
             indent: Indent::Spaces(4),

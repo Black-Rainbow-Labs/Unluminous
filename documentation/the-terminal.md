@@ -124,8 +124,13 @@ the highlighted theme as the list is moved through. `Enter` keeps it and `Escape
 choice is the `terminal.theme` setting, on `Settings -> Terminal`, and an empty setting follows the window's
 own theme, which is what a terminal did before.
 
-Termoil's shaders, cursor effects, search and link hints are not here. A shader is a pass over the whole
-window that Termoil's renderer runs, and Unluminous draws a terminal with its own painter.
+**Termoil's 22 shaders** are drawn over every terminal: neon glow, neon, a CRT, amber and green phosphor, VHS and
+the rest. `terminal.shader` on `Settings -> Terminal` chooses one, `View -> Terminal Panes -> Choose Terminal
+Shader` previews each as the list is moved through, and `unluminous-cli terminal shader neon` sets it. The shader
+covers the whole terminal, panes and all, the way Termoil draws one over its window, and combines with any theme.
+A shader that moves, such as neon glow, redraws the window while a terminal is showing.
+
+Termoil's cursor effects, search and link hints are not here.
 
 ## A tab comes back showing what was on it
 

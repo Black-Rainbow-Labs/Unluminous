@@ -304,6 +304,9 @@ pub enum Action {
     /// Draw every terminal in this Termoil theme, by name, and write it to the settings. Empty follows the
     /// window's theme. What the terminal theme picker's rows are. `task-2597`.
     SetTerminalTheme(String),
+    /// Draw every terminal with this Termoil shader, by name, and write it to the settings. Empty is none. What the
+    /// terminal shader picker's rows are. `task-2597`.
+    SetTerminalShader(String),
     /// Make an empty file in this folder. The name is asked for first.
     NewFile(PathBuf),
     /// Make a file in this folder from the template with this name, a built in type or one of a person's
@@ -2635,6 +2638,7 @@ fn termoil_rows() -> Vec<Entry> {
         Entry::Separator,
         row(C::CommandPalette),
         row(C::ChooseTheme),
+        row(C::ChooseShader),
         Entry::Separator,
         row(C::ClearScrollback),
         row(C::ResetTerminal),

@@ -292,6 +292,7 @@ impl UnluminousApp {
             | Action::NextTerminalPrompt
             | Action::Termoil(_)
             | Action::SetTerminalTheme(_)
+            | Action::SetTerminalShader(_)
             | Action::CloseTerminalTab
             | Action::ToggleRunTile
             | Action::ToggleDebugTile
@@ -1192,6 +1193,11 @@ impl UnluminousApp {
                 if let Some(ctx) = self.context.clone() {
                     self.message = Some(self.run_a_termoil_command(command, &ctx));
                 }
+            }
+            Action::SetTerminalShader(name) => {
+                self.message = Some(match self.set_the_terminal_shader(&name) {
+                    Ok(said) | Err(said) => said,
+                });
             }
             Action::SetTerminalTheme(name) => {
                 self.message = Some(match self.set_the_terminal_theme(&name) {

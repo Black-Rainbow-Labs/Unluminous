@@ -73,6 +73,8 @@ impl UnluminousApp {
             ),
             "theme" => self.cli_terminal_theme(request),
             "themes" => self.cli_terminal_themes(request),
+            "shader" => self.cli_terminal_shader(request),
+            "shaders" => self.cli_terminal_shaders(request),
             "keys" => self.cli_terminal_keys(request),
             _ => unknown(request),
         }
@@ -583,6 +585,34 @@ impl UnluminousApp {
             .collect();
         let value = json!({ "themes": names, "theme": chosen, "featured": themes::FEATURED });
         lines(request, format!("{} Termoil themes", names.len()), rows, value)
+    }
+
+    fn cli_terminal_shader(&mut self, request: &Request) -> Outcome {
+        if let Some(name) = request.text("name") {
+            if let Err(refused) = self.set_the_terminal_shader(&name) {
+                return no(request, code::NOT_FOUND, refused);
+            }
+        }
+        let shader = self.settings.terminal_shader.clone();
+        let said = match shader.is_empty() {
+            true => "The terminals are drawn with no shader".to_owned(),
+            false => format!("The terminals are drawn with the {shader} shader"),
+        };
+        ok(request, said, json!({ "shader": shader }))
+    }
+
+    fn cli_terminal_shaders(&mut self, request: &Request) -> Outcome {
+        use crate::services::terminal_shader::{moves, BUILTINS};
+        let chosen = self.settings.terminal_shader.clone();
+        let mut rows = Vec::new();
+        let mut text = Vec::new();
+        for builtin in BUILTINS {
+            let mark = if chosen.eq_ignore_ascii_case(builtin.name) { "*" } else { " " };
+            text.push(format!("{mark} {:<16} {}", builtin.name, builtin.summary));
+            rows.push(json!({ "name": builtin.name, "summary": builtin.summary, "moves": moves(builtin) }));
+        }
+        let value = json!({ "shaders": rows, "shader": chosen });
+        lines(request, format!("{} Termoil shaders", BUILTINS.len()), text, value)
     }
 
     fn cli_terminal_keys(&mut self, request: &Request) -> Outcome {

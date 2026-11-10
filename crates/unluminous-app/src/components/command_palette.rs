@@ -91,6 +91,14 @@ impl Words {
         one: "command",
         many: "commands",
     };
+    /// The terminal shader picker, over Termoil's shaders.
+    pub const SHADERS: Words = Words {
+        title: "Choose Terminal Shader",
+        field: "Find a shader",
+        hint: "Type part of a shader's name",
+        one: "shader",
+        many: "shaders",
+    };
     /// The terminal theme picker, over Termoil's themes.
     pub const THEMES: Words = Words {
         title: "Choose Terminal Theme",

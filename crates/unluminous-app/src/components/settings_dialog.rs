@@ -1352,6 +1352,33 @@ fn terminal_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> Draw
             },
         );
     });
+    // And Termoil's shaders, drawn over every terminal (`task-2597`).
+    kit::card(ui, &mut column, "Shader", None, |card| {
+        let mut names = vec!["None".to_owned()];
+        names.extend(
+            crate::services::terminal_shader::BUILTINS
+                .iter()
+                .map(|builtin| builtin.name.to_owned()),
+        );
+        let chosen = names
+            .iter()
+            .skip(1)
+            .position(|name| name.eq_ignore_ascii_case(settings.terminal_shader.trim()))
+            .map_or(0, |at| at + 1);
+        card.row(
+            "Shader",
+            Some("One of Termoil's 22 shaders, drawn over every terminal: neon glow, a CRT, amber phosphor and the rest. View -> Terminal Panes -> Choose Terminal Shader previews each one as you move through them."),
+            |row| {
+                if let Some(index) = row.select("Terminal shader", &names, Some(chosen), 240.0) {
+                    settings.terminal_shader = match index {
+                        0 => String::new(),
+                        _ => names[index].clone(),
+                    };
+                    changed = true;
+                }
+            },
+        );
+    });
     kit::card(ui, &mut column, "Shell", None, |card| {
         // Compared rather than taken from the field's own `changed`, because a field reports a change on every
         // letter and this is written to disk: what matters is that the setting is not what it was.

@@ -2106,7 +2106,26 @@ impl UnluminousApp {
                     }
                 }
             }
+            // The shader picker does the same with the shader its chosen row names.
+            if self.choosing_a_terminal_shader {
+                if let Some(Action::SetTerminalShader(name)) =
+                    palette.chosen_command().map(|command| &command.action)
+                {
+                    let previewed =
+                        crate::services::terminal_shader::in_use().map(|builtin| builtin.name);
+                    let wanted =
+                        crate::services::terminal_shader::named(name).map(|builtin| builtin.name);
+                    if previewed != wanted || !crate::services::terminal_shader::previewing() {
+                        crate::services::terminal_shader::preview(Some(name));
+                        ui.ctx().request_repaint();
+                    }
+                }
+            }
             if outcome.close {
+                if self.choosing_a_terminal_shader {
+                    crate::services::terminal_shader::preview(None);
+                }
+                self.choosing_a_terminal_shader = false;
                 if self.choosing_a_terminal_theme && outcome.run.is_none() {
                     crate::services::terminal_colours::follow_the_theme();
                 }

@@ -167,6 +167,10 @@ impl Action {
             Action::PreviousTerminalPrompt => "previous-terminal-prompt".to_owned(),
             Action::NextTerminalPrompt => "next-terminal-prompt".to_owned(),
             Action::Termoil(command) => format!("termoil-{}", command.name()),
+            Action::SetTerminalShader(name) => match name.is_empty() {
+                true => "set-terminal-shader".to_owned(),
+                false => format!("set-terminal-shader-{name}"),
+            },
             Action::SetTerminalTheme(name) => match name.is_empty() {
                 true => "set-terminal-theme".to_owned(),
                 false => format!("set-terminal-theme-{}", terminal_theme_slug(name)),
@@ -286,6 +290,13 @@ impl Action {
         if let Some(rest) = name.strip_prefix("termoil-") {
             return crate::services::termoil_keys::TermoilCommand::from_name(rest)
                 .map(Action::Termoil);
+        }
+        if name == "set-terminal-shader" {
+            return Some(Action::SetTerminalShader(String::new()));
+        }
+        if let Some(rest) = name.strip_prefix("set-terminal-shader-") {
+            return crate::services::terminal_shader::named(rest)
+                .map(|builtin| Action::SetTerminalShader(builtin.name.to_owned()));
         }
         if name == "set-terminal-theme" {
             return Some(Action::SetTerminalTheme(String::new()));

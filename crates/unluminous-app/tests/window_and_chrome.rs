@@ -4374,6 +4374,7 @@ const EVERY_VARIANT: &[&str] = &[
     "NextTerminalPrompt",
     "Termoil",
     "SetTerminalTheme",
+    "SetTerminalShader",
     "NewFile",
     "NewFileFromTemplate",
     "SaveAsTemplate",
@@ -4512,6 +4513,7 @@ fn variant_name(action: &Action) -> &'static str {
         Action::NextTerminalPrompt => "NextTerminalPrompt",
         Action::Termoil(_) => "Termoil",
         Action::SetTerminalTheme(_) => "SetTerminalTheme",
+        Action::SetTerminalShader(_) => "SetTerminalShader",
         Action::NewFile(_) => "NewFile",
         Action::NewFileFromTemplate { .. } => "NewFileFromTemplate",
         Action::SaveAsTemplate(_) => "SaveAsTemplate",
@@ -5365,6 +5367,7 @@ fn every_step() -> Vec<Step> {
         Step::new(Action::NextTerminalPrompt).ready_with(a_terminal_tab_scrolled_back_to_a_prompt),
         // Termoil's commands, each on a terminal tab (`task-2597`). Each one says what it did on the status bar.
         Step::new(Action::SetTerminalTheme("Dracula".to_owned())).ready_with(a_terminal_tab),
+        Step::new(Action::SetTerminalShader("neon".to_owned())).ready_with(a_terminal_tab),
     ]
     .into_iter()
     .chain(unluminous_app::services::termoil_keys::TermoilCommand::ALL.iter().map(|command| {

@@ -712,7 +712,8 @@ impl Painter {
 
         let mut capture_buffer = None;
         {
-            let renderer = render_state.renderer.read();
+            // Written rather than read, for the hook run after the copy to the window (`task-2597`).
+            let mut renderer = render_state.renderer.write();
 
             // With the scene texture on, every frame is drawn the way a captured frame is: into the capture
             // texture, then copied to the surface. A new texture after a resize holds nothing yet, so it is
@@ -799,6 +800,20 @@ impl Painter {
                 &screen_descriptor,
             );
 
+            // Unluminous (`task-2597`): what is drawn over the frame once it is drawn, into the frame itself, so the
+            // window and a screenshot both show it. The hook copies what it reads out of the frame first.
+            if (capture || scene)
+                && let Some(capture_state) = &self.screen_capture_state
+                && let Some(hook) = renderer.callback_resources.get_mut::<crate::AfterTheFrameHook>()
+            {
+                hook.0.draw(
+                    &render_state.device,
+                    &render_state.queue,
+                    &mut encoder,
+                    &capture_state.texture,
+                    &capture_state.texture,
+                );
+            }
             if capture && let Some(capture_state) = &mut self.screen_capture_state {
                 capture_buffer = Some(capture_state.copy_to_buffer(&render_state.device, &mut encoder));
             }

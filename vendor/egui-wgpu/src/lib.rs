@@ -370,6 +370,29 @@ pub struct SceneTexture {
     pub frame: u64,
 }
 
+/// Something drawn over a frame once egui has drawn it (Unluminous `task-2597`).
+///
+/// With [`WgpuConfiguration::scene_texture`] on, a frame is drawn into the scene texture and then copied to the
+/// window. A hook in the renderer's callback resources as an [`AfterTheFrameHook`] is run between the two, with the
+/// scene texture as both `scene` and `target`, so what it draws is in the window and in a screenshot. It must copy
+/// what it reads out of `scene` before it draws. Unluminous draws Termoil's shaders over its terminals this way:
+/// reading the previous frame, which is all a callback is handed, would read the shader's own output back in.
+pub trait AfterTheFrame: Send + Sync {
+    /// Draw over `target`, reading `scene`, the frame just drawn. Both have the same size and format, and may be the
+    /// same texture.
+    fn draw(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        scene: &wgpu::Texture,
+        target: &wgpu::Texture,
+    );
+}
+
+/// The [`AfterTheFrame`] the renderer runs, kept in its callback resources.
+pub struct AfterTheFrameHook(pub Box<dyn AfterTheFrame>);
+
 /// Whether the next frame is drawn into the scene texture and not shown (Unluminous `task-2293`).
 static HOLD_THE_NEXT_FRAME: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
