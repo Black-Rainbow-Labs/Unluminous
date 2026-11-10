@@ -2538,6 +2538,26 @@ fn drive_the_terminal_and_the_runs(coverage: &mut Coverage) {
     c.works(&mut harness, "terminal move 0");
     c.works(&mut harness, "terminal send hello");
     c.works(&mut harness, "terminal read");
+    // Termoil's panes and themes (`task-2597`). A pane split from a detached tab is detached too.
+    c.works(&mut harness, "terminal split --direction down");
+    c.works(&mut harness, "terminal panes --json");
+    c.works(&mut harness, "terminal send --pane 1 hello");
+    c.works(&mut harness, "terminal read --pane 1");
+    c.works(&mut harness, "terminal focus-pane 0");
+    c.works(&mut harness, "terminal zoom-pane");
+    c.works(&mut harness, "terminal zoom-pane");
+    c.works(&mut harness, "terminal close-pane 1");
+    c.refuses(&mut harness, "terminal close-pane 1");
+    c.refuses(&mut harness, "terminal focus-pane 7");
+    c.refuses(&mut harness, "terminal zoom-pane");
+    c.refuses(&mut harness, "terminal split --direction sideways");
+    c.refuses(&mut harness, "terminal panes --tab 9");
+    c.works(&mut harness, "terminal theme Dracula");
+    c.works(&mut harness, "terminal theme");
+    c.works(&mut harness, "terminal theme window");
+    c.refuses(&mut harness, "terminal theme not a theme");
+    c.works(&mut harness, "terminal themes solarized");
+    c.works(&mut harness, "terminal keys --json");
     c.works(&mut harness, "terminal close 0");
     c.works(&mut harness, "terminal new");
 
