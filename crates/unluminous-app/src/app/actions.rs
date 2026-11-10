@@ -895,7 +895,10 @@ impl Shortcut {
             return false;
         }
         if cfg!(target_os = "macos") {
-            modifiers.command == self.command && (modifiers.ctrl && !modifiers.mac_cmd) == self.ctrl
+            // On macOS `ctrl` is the Control key alone, so a chord holding Cmd and Control both is both.
+            // `task-2601`: this read `ctrl && !mac_cmd`, which no Cmd+Ctrl press could ever match, so
+            // Termoil's `Cmd+Ctrl+Z` (zoom) and `Cmd+Ctrl` with an arrow (move a divider) did nothing.
+            modifiers.command == self.command && modifiers.ctrl == self.ctrl
         } else {
             // Either flag counts as the control key being held. The platform sets both, and
             // `egui::Modifiers::COMMAND` — which is what a test presses — sets only `command`.

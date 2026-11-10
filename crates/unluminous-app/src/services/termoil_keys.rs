@@ -484,6 +484,27 @@ mod tests {
         );
     }
 
+    /// What macOS sends for a chord holding Cmd and Control: `command` and `mac_cmd` for Cmd, `ctrl` for Control.
+    /// Every macOS Termoil key is matched from what macOS would send for it (`task-2601`), which is how
+    /// `Cmd+Ctrl+Z` was found never to match.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn every_macos_key_is_matched_from_what_macos_sends_for_it() {
+        for (chord, command) in bindings_macos() {
+            if arrives_as_a_clipboard_event(command) {
+                continue;
+            }
+            let sent = egui::Modifiers {
+                alt: chord.alt,
+                ctrl: chord.ctrl,
+                shift: chord.shift,
+                mac_cmd: chord.command,
+                command: chord.command,
+            };
+            assert_eq!(command_for(chord.key, &sent), Some(command), "{}", chord_text(chord));
+        }
+    }
+
     /// The macOS keys are Termoil's own defaults wherever Termoil has one (`task-2601`), from
     /// `default_keybindings_macos` in `termoil-app/src/config/keys.rs`.
     #[test]
