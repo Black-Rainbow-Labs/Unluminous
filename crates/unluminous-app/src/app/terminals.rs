@@ -214,16 +214,17 @@ impl UnluminousApp {
     /// the window's theme. Refused for a name that is not a theme.
     pub fn set_the_terminal_theme(&mut self, name: &str) -> Result<String, String> {
         let name = name.trim();
-        let wanted =
-            match name.is_empty() || name.eq_ignore_ascii_case("window") {
-                true => String::new(),
-                false => match unluminous_terminal::themes::named(name) {
-                    Some(theme) => theme.name.clone(),
-                    None => return Err(format!(
+        let wanted = match name.is_empty() || name.eq_ignore_ascii_case("window") {
+            true => String::new(),
+            false => match unluminous_terminal::themes::named(name) {
+                Some(theme) => theme.name.clone(),
+                None => {
+                    return Err(format!(
                         "There is no Termoil theme called {name}. `terminal themes` lists them."
-                    )),
-                },
-            };
+                    ))
+                }
+            },
+        };
         let before = self.settings.clone();
         self.settings.terminal_theme = wanted.clone();
         self.apply_settings(&before);
