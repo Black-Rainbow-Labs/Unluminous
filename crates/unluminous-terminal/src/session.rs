@@ -54,6 +54,14 @@ use crate::screen::{
     Cursor, CursorShape, ImagePixels, Screen, ScreenCell, ScreenImage, UnderlineStyle,
 };
 
+/// The serial the next session is given. See [`Session::serial`].
+static NEXT_SERIAL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// A serial no session has had before.
+fn next_serial() -> u64 {
+    NEXT_SERIAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
 /// How many lines of output are kept above the top of the screen.
 pub const SCROLLBACK: usize = 10_000;
 
@@ -268,6 +276,12 @@ pub struct Session {
     /// The pixels of every picture the program has sent, shared with the snapshots, and the generation each
     /// was given. See [`Session::images_on_screen`].
     images: std::cell::RefCell<ImageTracker>,
+    /// A number no other session in this process has, which is how the window keeps what it holds about a
+    /// terminal (its split panes, `task-2597`) against the terminal it belongs to.
+    serial: u64,
+    /// Held for as long as the session lives. [`Session::liveness`] hands out a weak copy, so whatever keeps
+    /// something for this session can tell that it has gone without being told.
+    alive: Arc<()>,
 }
 
 /// Remembers the pixels handed to the painter for each picture, so an unchanged picture keeps its generation and
@@ -405,6 +419,8 @@ impl Session {
             process_folder_asked: std::cell::RefCell::new(None),
             given: String::new(),
             images: std::cell::RefCell::new(ImageTracker::default()),
+            serial: next_serial(),
+            alive: Arc::new(()),
         })
     }
 
@@ -442,6 +458,8 @@ impl Session {
             process_folder_asked: std::cell::RefCell::new(None),
             given: String::new(),
             images: std::cell::RefCell::new(ImageTracker::default()),
+            serial: next_serial(),
+            alive: Arc::new(()),
         }
     }
 
@@ -1121,6 +1139,81 @@ impl Session {
             .filter(|mark| mark.kind == termoil_vt::terminal::MarkKind::PromptStart)
             .count()
     }
+
+    /// The number this session was given when it was made, which no other session in the process has.
+    pub fn serial(&self) -> u64 {
+        self.serial
+    }
+
+    /// A weak handle that stops upgrading once this session is dropped (`task-2597`).
+    ///
+    /// The split panes beside a terminal belong to whatever holds that terminal: a tab, a node on the canvas,
+    /// a ticket. Those hold the session and nothing else, so the window keeps the panes against this handle and
+    /// lets go of them on the frame the handle stops answering, which is what closing the tab, the node or the
+    /// ticket does.
+    pub fn liveness(&self) -> std::sync::Weak<()> {
+        Arc::downgrade(&self.alive)
+    }
+
+    /// Put the emulator back the way it started, keeping the program running: Termoil's `reset-terminal`.
+    ///
+    /// `RIS` given to the emulator directly, for the reason [`Session::clear`] gives its sequences directly.
+    /// Termoil puts the host's palette back on `RIS` (`task-2489`), so a program that changed the colours
+    /// leaves them changed no longer.
+    pub fn reset(&mut self) {
+        self.clear_selection();
+        {
+            let mut term = lock(&self.term);
+            term.advance(b"\x1bc");
+            term.take_replies();
+            give_the_palette(&mut term, &self.palette.get());
+        }
+        self.scroll_anchor = None;
+    }
+
+    /// Throw away the history above the screen and keep the screen: Termoil's `clear-scrollback`.
+    pub fn clear_history(&mut self) {
+        self.clear_selection();
+        {
+            let mut term = lock(&self.term);
+            term.advance(b"\x1b[3J");
+            term.take_replies();
+        }
+        self.scroll_anchor = None;
+    }
+
+    /// Select everything the terminal holds, the history and the screen: Termoil's `select-all`.
+    pub fn select_all(&mut self) {
+        self.clear_selection();
+        let mut term = lock(&self.term);
+        let alternate = term.is_alt_screen();
+        let pages = &term.screen().pages;
+        let bottom = pages.active_y(0);
+        let first = bottom - pages.history_rows();
+        let last = bottom + pages.rows() as usize - 1;
+        let last_column = pages.cols().saturating_sub(1);
+        let pages = &mut term.screen_mut().pages;
+        let selection = Selection::new(pages, SelectionMode::Char, first, 0);
+        selection.update(pages, last, last_column);
+        self.selection = Some(Picked { selection, alternate, extended: true });
+    }
+
+    /// Scroll the view to the oldest line the history holds: Termoil's `scroll-to-top`.
+    pub fn scroll_to_top(&mut self) {
+        let history = lock(&self.term).screen().pages.history_rows();
+        self.scroll(history.min(i32::MAX as usize) as i32);
+    }
+
+    /// True for a session with no program behind it, which the tests use. A pane split from one is detached
+    /// too, so a test of splitting starts no shell.
+    pub fn is_detached(&self) -> bool {
+        self.sent_while_detached.is_some()
+    }
+
+    /// How many rows the screen has, which is how far a page scroll moves.
+    pub fn rows(&self) -> usize {
+        self.size.rows
+    }
 }
 
 /// The size in pixels a picture is drawn at for a placement, in the pixels of the cell size `cell`.
@@ -1665,6 +1758,39 @@ mod tests {
                 .all(|column| screen.cell(0, column).is_some_and(|cell| cell.character != '\t')),
             "no cell is drawn with a tab character in it"
         );
+    }
+
+    /// Termoil's `clear-scrollback`, `select-all`, `reset-terminal` and `scroll-to-top` (`task-2597`).
+    #[test]
+    fn the_termoil_commands_clear_select_reset_and_scroll() {
+        let mut session = detached();
+        assert!(session.serial() != detached().serial(), "every session has its own serial");
+        let alive = session.liveness();
+        for line in 0..40 {
+            session.feed(
+                format!(
+                    "line {line}
+"
+                )
+                .as_bytes(),
+            );
+        }
+        session.scroll_to_top();
+        assert!(session.snapshot().contains("line 0"), "the oldest line is at the top");
+        session.scroll_to_bottom();
+        session.select_all();
+        let selected = session.selected_text().expect("everything is selected");
+        assert!(selected.contains("line 0") && selected.contains("line 39"));
+        session.clear_history();
+        session.scroll_to_top();
+        assert!(!session.snapshot().contains("line 0"), "the history is gone");
+        assert!(session.snapshot().contains("line 39"), "the screen is kept");
+        session.feed(b"[31mred");
+        session.reset();
+        assert!(!session.snapshot().contains("line 39"), "a reset clears the screen");
+        assert!(session.is_detached());
+        drop(session);
+        assert!(alive.upgrade().is_none(), "the handle stops answering when the session goes");
     }
 
     #[test]

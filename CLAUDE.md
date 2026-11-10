@@ -5938,6 +5938,36 @@ each one is now, and where:
   installer, and `ConptyChoice::Auto` loads it from beside `unluminous.exe`. A build run from `target`, which every
   test is, has none beside it and uses the built in one, which is what the tests were measured against.
 
+### Every grid has Termoil's panes, keys, palette and themes (`task-2597`)
+
+*"We want the termoil functionality for menu, themes, split screen etc to be available in Unluminous terminal,
+realm, agent tasks, etc. When Termoil has focus, its keyboard shortcuts should work."* `termoil-app` cannot be a
+dependency for the reason `termoil-font` cannot (`winit`, `wgpu` and `objc2`), so the features are built here on
+the emulator Unluminous already uses. Seven rules:
+
+- **`terminal_panel::grid` goes through `components::terminal_layer::show`**, and the old body is `pane_grid`. Every
+  caller (the terminal tile, the run tile, a canvas terminal node, a ticket's agent) gets splits, Termoil's keys, the
+  right click menu, the palette and the theme picker from that one function. `owns_tabs` is true only for the
+  terminal tile, the one owner Termoil's tab commands mean anything to.
+- **A split is kept against the owner's session, not inside the owner.** `unluminous_terminal::panes::Layout` is the
+  layout, pane `0` is always the owner's session, and the other panes' sessions sit in a thread local map keyed by
+  `Session::serial`. `terminal_layer::forget_the_dead` drops a split on the frame `Session::liveness` stops
+  upgrading, which is what closing the tab, the node or the ticket does. No owner had to learn about panes.
+- **One function runs a command, whichever way it was asked for**: `terminal_layer::run`. A key, the right click
+  menu, the palette, `View -> Terminal Panes`, `action run termoil-<name>` and the `terminal` commands all reach it.
+  A command for a grid outside the terminal tile is queued and run when that grid is next drawn.
+- **Termoil's keys come before the menu chords while a grid has the keyboard.** `services::termoil_keys` is the
+  table, copied from Termoil's `config/keys.rs`, and `read_the_menu_shortcuts` leaves any of them to the grid. On
+  macOS a menu key equivalent is taken by AppKit first, so `no_termoil_key_on_macos_is_a_menu_key_equivalent` fails
+  when a menu entry gains a key a macOS Termoil binding uses. The `View -> Terminal Panes` rows carry no keys for
+  the same reason the prompt rows do not.
+- **A pane split from a detached session is detached**, so a test of splitting starts no shell.
+- **`unluminous-terminal/themes/themes.txt` is a copy of Termoil's**, with the commit it came from in
+  `themes/README`. `terminal.theme` chooses one, `services::terminal_colours::choose` puts it into the thread's
+  palette, and empty follows the window's theme exactly as before. The picker is the command palette opened with
+  `Words::THEMES`, and `show_the_command_palette` previews the chosen row and puts the setting back on `Escape`.
+- **Not built**: Termoil's shaders and cursor effects (a pass over Termoil's own renderer), search and link hints.
+
 ## The code index answers what ripgrep would, from memory, and it is measured rather than assumed
 
 **The index is Atrius now (`task-2172`).** It moved to its own private repository,

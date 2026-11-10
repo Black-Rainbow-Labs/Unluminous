@@ -839,7 +839,7 @@ impl Page {
             Page::Keymap => &["Preset", "Shortcuts", "Keyboard", "VS Code", "IntelliJ"],
             Page::Editor => &["Font", "Gutter", "Suggestions", "Debugger", "Updates"],
             Page::Plugins => &["Marketplace", "Installed", "Color Scheme", "Syntax"],
-            Page::Terminal => &["Font", "Shell"],
+            Page::Terminal => &["Font", "Theme", "Shell"],
             Page::Mcp => &["Install", "Server", "Configuration"],
             Page::Ai => &["Model Integrations", "Keys", "OpenCode", "Claude", "Codex", "Pi"],
             Page::Voice => {
@@ -1128,6 +1128,9 @@ settings! {
         /// The program a new terminal runs. Empty means the one this machine says the person has, which
         /// `unluminous_terminal::session` decides and which is PowerShell on Windows.
         terminal_shell = String::new() => "terminal.shell", "a program, or empty for this machine's own";
+        /// The Termoil theme every terminal is drawn in, by name, from the 894 Termoil ships (`task-2597`). Empty
+        /// follows the window's own theme, which is what a terminal always did.
+        terminal_theme = String::new() => "terminal.theme", "a Termoil theme name, or empty to follow the window's theme";
         /// Extra patterns the project index leaves out, beyond `.gitignore` and the build folders.
         ///
         /// `task-1804` §7.3: the index skipped three hardcoded folder names and read no ignore file at
@@ -2150,6 +2153,7 @@ mod tests {
             opacity: 0.4,
             terminal_font_size: 14.0,
             terminal_shell: "pwsh.exe".to_owned(),
+            terminal_theme: "Dracula".to_owned(),
             shell_integration: true,
             line_numbers: false,
             indent: Indent::Spaces(4),

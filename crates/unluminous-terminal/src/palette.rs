@@ -136,6 +136,21 @@ impl Palette {
         }
     }
 
+    /// A palette made of a Termoil theme's colors (`task-2597`): its ground, its text, its cursor and its
+    /// sixteen named colors. Whether it is light is read from the ground, which is what decides how dim
+    /// text is drawn, and bold text in the default color is the theme's bright white on a dark ground and
+    /// its black on a light one, the way the two palettes above do it.
+    pub fn from_colors(foreground: Rgb, background: Rgb, cursor: Rgb, named: [Rgb; 16]) -> Self {
+        let light = luminance(background) > 0.5;
+        let bright_foreground = if light { named[0] } else { named[15] };
+        Self { foreground, background, cursor, bright_foreground, light, named }
+    }
+
+    /// The sixteen named colors this palette has.
+    pub fn named(&self) -> [Rgb; 16] {
+        self.named
+    }
+
     /// The palette terminals on this thread use from now on. The window calls this when its theme
     /// changes, and every session reads it the next time it is drawn.
     pub fn set_current(palette: Palette) {
@@ -181,6 +196,11 @@ impl Palette {
             }
         }
     }
+}
+
+/// How light a color is, from 0 for black to 1 for white, weighted the way the eye weighs the three.
+fn luminance(colour: Rgb) -> f32 {
+    (0.2126 * colour.r as f32 + 0.7152 * colour.g as f32 + 0.0722 * colour.b as f32) / 255.0
 }
 
 impl Default for Palette {

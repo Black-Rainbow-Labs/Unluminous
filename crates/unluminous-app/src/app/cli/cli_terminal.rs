@@ -62,6 +62,18 @@ impl UnluminousApp {
             "send" => self.cli_terminal_send(request),
             "read" => self.cli_terminal_read(request),
             "height" => self.cli_terminal_height(request),
+            // Termoil's panes and themes, `task-2597`.
+            "split" => self.cli_terminal_split(request),
+            "panes" => self.cli_terminal_panes(request),
+            "close-pane" => self.cli_terminal_close_pane(request),
+            "focus-pane" => self.cli_terminal_focus_pane(request),
+            "zoom-pane" => self.cli_terminal_termoil(
+                request,
+                crate::services::termoil_keys::TermoilCommand::ZoomPane,
+            ),
+            "theme" => self.cli_terminal_theme(request),
+            "themes" => self.cli_terminal_themes(request),
+            "keys" => self.cli_terminal_keys(request),
             _ => unknown(request),
         }
     }
@@ -174,7 +186,25 @@ impl UnluminousApp {
         }
         // The mode comes from the tab the keys are going to, because application cursor and
         // bracketed paste are per-program and the two tabs may be running two different ones.
-        let mode = self.terminal.tabs.at(index).map(|session| session.mode()).unwrap_or_default();
+        // And from the pane, when `--pane` names one split from the tab (`task-2597`).
+        let pane = request.whole("pane").map(|pane| pane as u32);
+        let mode = match pane {
+            Some(pane) => match self.terminal.tabs.at(index).and_then(|host| {
+                crate::components::terminal_layer::read_pane(host, pane, |session| session.mode())
+            }) {
+                Some(mode) => mode,
+                None => {
+                    return no(
+                        request,
+                        code::NOT_FOUND,
+                        format!(
+                            "Terminal tab {index} has no pane {pane}. `terminal panes` lists them."
+                        ),
+                    )
+                }
+            },
+            None => self.terminal.tabs.at(index).map(|session| session.mode()).unwrap_or_default(),
+        };
         let mut bytes: Vec<u8> = Vec::new();
         let mut said = String::new();
         if let Some(name) = request.text("key") {
@@ -212,9 +242,17 @@ impl UnluminousApp {
         }
         // Naming a tab does not show it: the bytes go to the named tab and the tab that is showing
         // is left alone, which is the whole point of targeting.
-        self.terminal.tabs.at(index).expect("a tab, checked above").send(bytes.clone());
+        let host = self.terminal.tabs.at(index).expect("a tab, checked above");
+        match pane {
+            Some(pane) => {
+                crate::components::terminal_layer::read_pane(host, pane, |session| {
+                    session.send(bytes.clone())
+                });
+            }
+            None => host.send(bytes.clone()),
+        }
         self.show_the_terminal_tile(true);
-        ok(request, said, json!({ "bytes": bytes.len(), "tab": index }))
+        ok(request, said, json!({ "bytes": bytes.len(), "tab": index, "pane": pane.unwrap_or(0) }))
     }
 
     fn cli_terminal_read(&mut self, request: &Request) -> Outcome {
@@ -232,7 +270,15 @@ impl UnluminousApp {
         // send is not looking at the screen as it was before the command ran.
         self.terminal.tabs.pump();
         let count = request.whole("lines");
-        let Some(text) = self.terminal_text(tab, count) else {
+        let pane = request.whole("pane").map(|pane| pane as u32);
+        let Some(text) = self.terminal_text_in(tab, pane, count) else {
+            if let Some(pane) = pane {
+                return no(
+                    request,
+                    code::NOT_FOUND,
+                    format!("Terminal tab {tab} has no pane {pane}. `terminal panes` lists them."),
+                );
+            }
             // The tab may have closed while the request was on the queue, in which case there is
             // no screen to read and the honest answer is the one `close` gives for the same state.
             return no(request, code::NOT_FOUND, format!("There is no terminal tab {tab}."));
@@ -241,6 +287,7 @@ impl UnluminousApp {
         match request.text("wait-for") {
             Some(needle) if !text.contains(&needle) => Outcome::Hold(Waiting::TerminalText {
                 tab,
+                pane,
                 needle,
                 lines: count,
                 until: waits_for(request, "timeout", DEFAULT_WAIT),
@@ -283,9 +330,21 @@ impl UnluminousApp {
     /// What the tab at `tab` has on its screen, with the blank lines under it trimmed away and at
     /// most `count` lines kept. `None` when the tab is not there any more, which is what a tab that
     /// closed while a read was on the queue answers with.
-    pub(crate) fn terminal_text(&self, tab: usize, count: Option<usize>) -> Option<String> {
-        let session = self.terminal.tabs.at(tab)?;
-        let whole = session.snapshot().text();
+    ///
+    /// `pane` names one pane split from the tab, and `None` or `0` is the tab's own terminal (`task-2597`).
+    pub(crate) fn terminal_text_in(
+        &self,
+        tab: usize,
+        pane: Option<u32>,
+        count: Option<usize>,
+    ) -> Option<String> {
+        let host = self.terminal.tabs.at(tab)?;
+        let whole = match pane {
+            Some(pane) => crate::components::terminal_layer::read_pane(host, pane, |session| {
+                session.snapshot().text()
+            })?,
+            None => host.snapshot().text(),
+        };
         let mut rows: Vec<&str> = whole.lines().collect();
         while rows.last().is_some_and(|row| row.trim().is_empty()) {
             rows.pop();
@@ -312,6 +371,236 @@ impl UnluminousApp {
                 session.folder().map(|path| path.display().to_string()).unwrap_or_default()
             })
             .collect()
+    }
+
+    /// The tab a Termoil command acts on, or the refusal to answer with when there is none.
+    fn cli_termoil_tab(&self, request: &Request) -> Result<usize, Outcome> {
+        let Some(index) = self.cli_terminal_tab(request) else {
+            return Err(no(
+                request,
+                code::NOT_APPLICABLE,
+                "There is no terminal running. `terminal show` starts one.",
+            ));
+        };
+        if index >= self.terminal.tabs.count() {
+            return Err(no(request, code::NOT_FOUND, format!("There is no terminal tab {index}.")));
+        }
+        Ok(index)
+    }
+
+    /// The panes of the tab at `index`, as the command line answers with them.
+    fn terminal_panes_value(&self, index: usize) -> Value {
+        let Some(host) = self.terminal.tabs.at(index) else {
+            return json!({ "tab": index, "panes": [] });
+        };
+        let (panes, zoomed) = crate::components::terminal_layer::panes_of(host);
+        let rows: Vec<Value> = panes
+            .iter()
+            .map(|pane| {
+                json!({
+                    "pane": pane.id,
+                    "focused": pane.focused,
+                    "rows": pane.rows,
+                    "columns": pane.columns,
+                    "name": pane.name,
+                })
+            })
+            .collect();
+        json!({ "tab": index, "panes": rows, "zoomed": zoomed })
+    }
+
+    /// Run one Termoil command on a tab, the way its key does, and answer with the tab's panes.
+    pub(crate) fn cli_terminal_termoil(
+        &mut self,
+        request: &Request,
+        command: crate::services::termoil_keys::TermoilCommand,
+    ) -> Outcome {
+        let index = match self.cli_termoil_tab(request) {
+            Ok(index) => index,
+            Err(refused) => return refused,
+        };
+        self.show_the_terminal_tile(true);
+        let host = self.terminal.tabs.at_mut(index).expect("a tab, checked above");
+        let ran = crate::components::terminal_layer::run(host, command, true);
+        if let Some(asked) = ran.tabs {
+            self.answer_a_termoil_tab_ask(asked);
+        }
+        let value = self.terminal_panes_value(index);
+        match ran.done {
+            true => ok(request, ran.message, value),
+            false => no(request, code::NOT_APPLICABLE, ran.message),
+        }
+    }
+
+    fn cli_terminal_split(&mut self, request: &Request) -> Outcome {
+        use unluminous_terminal::panes::Direction;
+        let side = request.text("direction").unwrap_or_else(|| "right".to_owned());
+        let Some(direction) = Direction::parse(&side) else {
+            return no(
+                request,
+                code::USAGE,
+                format!("{side} is not a side. Say right, down, left or up."),
+            );
+        };
+        let index = match self.cli_termoil_tab(request) {
+            Ok(index) => index,
+            Err(refused) => return refused,
+        };
+        if let Some(pane) = request.whole("pane") {
+            let host = self.terminal.tabs.at(index).expect("a tab, checked above");
+            if !crate::components::terminal_layer::focus_pane(host, pane as u32) {
+                return no(
+                    request,
+                    code::NOT_FOUND,
+                    format!("Terminal tab {index} has no pane {pane}."),
+                );
+            }
+        }
+        self.show_the_terminal_tile(true);
+        let host = self.terminal.tabs.at_mut(index).expect("a tab, checked above");
+        let ran = crate::components::terminal_layer::split_toward(host, direction);
+        let value = self.terminal_panes_value(index);
+        match ran.done {
+            true => ok(request, ran.message, value),
+            false => no(request, code::NOT_APPLICABLE, ran.message),
+        }
+    }
+
+    fn cli_terminal_panes(&mut self, request: &Request) -> Outcome {
+        let index = match self.cli_termoil_tab(request) {
+            Ok(index) => index,
+            Err(refused) => return refused,
+        };
+        let host = self.terminal.tabs.at(index).expect("a tab, checked above");
+        let (panes, zoomed) = crate::components::terminal_layer::panes_of(host);
+        let rows: Vec<String> = panes
+            .iter()
+            .map(|pane| {
+                let mark = if pane.focused { "*" } else { " " };
+                format!("{mark}{:<3} {:>3}x{:<4} {}", pane.id, pane.columns, pane.rows, pane.name)
+            })
+            .collect();
+        let said = format!(
+            "{} panes in terminal tab {index}{}",
+            rows.len(),
+            if zoomed { ", one zoomed" } else { "" }
+        );
+        lines(request, said, rows, self.terminal_panes_value(index))
+    }
+
+    fn cli_terminal_close_pane(&mut self, request: &Request) -> Outcome {
+        let index = match self.cli_termoil_tab(request) {
+            Ok(index) => index,
+            Err(refused) => return refused,
+        };
+        let Some(pane) = request.whole("pane").or_else(|| request.whole("number")) else {
+            let close = crate::services::termoil_keys::TermoilCommand::ClosePane;
+            return self.cli_terminal_termoil(request, close);
+        };
+        let host = self.terminal.tabs.at(index).expect("a tab, checked above");
+        match crate::components::terminal_layer::close_pane(host, pane as u32) {
+            true => ok(request, format!("Closed pane {pane}"), self.terminal_panes_value(index)),
+            false => no(
+                request,
+                code::NOT_FOUND,
+                format!(
+                    "Terminal tab {index} has no pane {pane} that can be closed. Pane 0 is the tab's own, and `terminal close` closes the tab."
+                ),
+            ),
+        }
+    }
+
+    fn cli_terminal_focus_pane(&mut self, request: &Request) -> Outcome {
+        use crate::services::termoil_keys::TermoilCommand;
+        let index = match self.cli_termoil_tab(request) {
+            Ok(index) => index,
+            Err(refused) => return refused,
+        };
+        let target = request.text("target").unwrap_or_default();
+        let command = match target.trim() {
+            "left" => Some(TermoilCommand::FocusLeft),
+            "right" => Some(TermoilCommand::FocusRight),
+            "up" => Some(TermoilCommand::FocusUp),
+            "down" => Some(TermoilCommand::FocusDown),
+            "next" => Some(TermoilCommand::NextPane),
+            "previous" => Some(TermoilCommand::PreviousPane),
+            _ => None,
+        };
+        if let Some(command) = command {
+            return self.cli_terminal_termoil(request, command);
+        }
+        let Ok(pane) = target.trim().parse::<u32>() else {
+            return no(
+                request,
+                code::USAGE,
+                "Name a pane by its number, or say left, right, up, down, next or previous.",
+            );
+        };
+        let host = self.terminal.tabs.at(index).expect("a tab, checked above");
+        match crate::components::terminal_layer::focus_pane(host, pane) {
+            true => {
+                self.show_the_terminal_tile(true);
+                ok(
+                    request,
+                    format!("Pane {pane} has the keyboard"),
+                    self.terminal_panes_value(index),
+                )
+            }
+            false => {
+                no(request, code::NOT_FOUND, format!("Terminal tab {index} has no pane {pane}."))
+            }
+        }
+    }
+
+    fn cli_terminal_theme(&mut self, request: &Request) -> Outcome {
+        if let Some(name) = request.text("name") {
+            if let Err(refused) = self.set_the_terminal_theme(&name) {
+                return no(request, code::NOT_FOUND, refused);
+            }
+        }
+        let theme = self.settings.terminal_theme.clone();
+        let said = match theme.is_empty() {
+            true => "The terminals follow the window's theme".to_owned(),
+            false => format!("The terminals are drawn in {theme}"),
+        };
+        ok(request, said, json!({ "theme": theme, "followsTheWindow": theme.is_empty() }))
+    }
+
+    fn cli_terminal_themes(&mut self, request: &Request) -> Outcome {
+        use unluminous_terminal::themes;
+        let filter = request.text("filter").unwrap_or_default();
+        let chosen = self.settings.terminal_theme.clone();
+        let names = themes::matching(&filter);
+        let rows: Vec<String> = names
+            .iter()
+            .map(|name| {
+                let mark = if chosen.eq_ignore_ascii_case(name) { "*" } else { " " };
+                let shipped =
+                    if themes::FEATURED.contains(name) { "  (ships with Unluminous)" } else { "" };
+                format!("{mark} {name}{shipped}")
+            })
+            .collect();
+        let value = json!({ "themes": names, "theme": chosen, "featured": themes::FEATURED });
+        lines(request, format!("{} Termoil themes", names.len()), rows, value)
+    }
+
+    fn cli_terminal_keys(&mut self, request: &Request) -> Outcome {
+        use crate::services::termoil_keys::{self, TermoilCommand};
+        let mut rows = Vec::new();
+        let mut text = Vec::new();
+        for command in TermoilCommand::ALL {
+            let keys =
+                termoil_keys::chord_of(*command).map(termoil_keys::chord_text).unwrap_or_default();
+            let action = crate::app::actions::Action::Termoil(*command).name();
+            text.push(format!("{keys:<26} {:<26} {action}", command.label()));
+            rows.push(json!({
+                "command": command.name(),
+                "label": command.label(),
+                "keys": keys,
+                "action": action,
+            }));
+        }
+        lines(request, format!("{} Termoil commands", rows.len()), text, json!({ "keys": rows }))
     }
 
     pub(crate) fn terminal_value(&self) -> Value {

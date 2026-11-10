@@ -298,6 +298,12 @@ pub enum Action {
     /// Scroll the terminal tab that is showing to the next prompt the shell marked, or to the newest output after
     /// the last one. `task-2514`.
     NextTerminalPrompt,
+    /// One of Termoil's commands, on the terminal grid that has the keyboard, or on the terminal tab that is showing
+    /// when none does: split a pane, move between panes, the palette, the theme picker and the rest. `task-2597`.
+    Termoil(crate::services::termoil_keys::TermoilCommand),
+    /// Draw every terminal in this Termoil theme, by name, and write it to the settings. Empty follows the
+    /// window's theme. What the terminal theme picker's rows are. `task-2597`.
+    SetTerminalTheme(String),
     /// Make an empty file in this folder. The name is asked for first.
     NewFile(PathBuf),
     /// Make a file in this folder from the template with this name, a built in type or one of a person's
@@ -2602,6 +2608,10 @@ fn view_menu(state: &MenuState) -> Menu {
                 .enabled(state.terminal_tabs > 0),
             Entry::item("Next Terminal Prompt", Action::NextTerminalPrompt)
                 .enabled(state.terminal_tabs > 0),
+            // Termoil's commands (`task-2597`). Like the prompt rows, their keys are read by the grid itself
+            // while it has the keyboard, so the keys are not on these rows: a row with a key equivalent would
+            // also take that key from the terminal on macOS.
+            Entry::Submenu { name: "Terminal Panes".to_owned(), entries: termoil_rows() },
         ]
         .into_iter()
         // **Absent while the Realm plugin is off**, which is Unluminous's rule for a control that cannot
@@ -2609,6 +2619,26 @@ fn view_menu(state: &MenuState) -> Menu {
         .filter(|entry| state.realm_available || !is_about_the_realm(entry))
         .collect(),
     }
+}
+
+/// The `View -> Terminal Panes` rows: every Termoil command a terminal grid answers. `task-2597`.
+fn termoil_rows() -> Vec<Entry> {
+    use crate::services::termoil_keys::TermoilCommand as C;
+    let row = |command: C| Entry::item(command.label(), Action::Termoil(command));
+    vec![
+        row(C::SplitRight),
+        row(C::SplitDown),
+        row(C::ClosePane),
+        row(C::ZoomPane),
+        row(C::NextPane),
+        row(C::PreviousPane),
+        Entry::Separator,
+        row(C::CommandPalette),
+        row(C::ChooseTheme),
+        Entry::Separator,
+        row(C::ClearScrollback),
+        row(C::ResetTerminal),
+    ]
 }
 
 /// Whether a `View` menu row is the Realm's own: its toggle or its submenu.

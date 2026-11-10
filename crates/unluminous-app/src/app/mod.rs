@@ -1396,6 +1396,11 @@ pub struct UnluminousApp {
     /// menus are rebuilt out of `MenuState` each time they are asked for, and a list that changed
     /// under the arrow keys would move the row somebody was about to press Enter on.
     pub palette: Option<crate::components::command_palette::CommandPalette>,
+    /// The terminal grid the terminal command palette or the theme picker was opened over, by its session's
+    /// serial, so what is chosen there is run on that grid (`task-2597`).
+    pub termoil_target: Option<u64>,
+    /// True while the palette is the terminal theme picker, which previews each theme as it is moved through.
+    pub choosing_a_terminal_theme: bool,
     /// The tabs that have been closed, oldest first, so the newest can be opened again.
     ///
     /// Travel history rather than state: bounded at
@@ -1823,6 +1828,8 @@ impl UnluminousApp {
             background_thumbnails_making: Default::default(),
             go_to_file: None,
             palette: None,
+            termoil_target: None,
+            choosing_a_terminal_theme: false,
             closed_tabs: Vec::new(),
             update: None,
             update_answer: None,
@@ -1997,7 +2004,9 @@ impl UnluminousApp {
         // in. In the released binary this is a window's first frame and there is nothing to reset;
         // `use_store` reads the settings and applies the chosen theme a moment later.
         theme::activate(theme::when_nothing_is_chosen());
-        crate::services::terminal_colours::follow_the_theme();
+        // No Termoil theme for the terminals either, for the same reason: the thread may have drawn another
+        // window that chose one (`task-2597`).
+        crate::services::terminal_colours::choose("");
         theme::apply(ctx);
         self.themed = true;
         // What the plugins contribute, read from their manifests. Here rather than only in
@@ -2157,6 +2166,8 @@ impl UnluminousApp {
         // The theme after the plugins, because the theme this file names may be one of theirs, and after
         // the font because the interface font falls back to the editor's family.
         self.apply_the_theme();
+        // And the terminals' Termoil theme, which an empty setting leaves following the window's (`task-2597`).
+        crate::services::terminal_colours::choose(&self.settings.terminal_theme);
         self.install_the_interface_font();
     }
 

@@ -3073,7 +3073,7 @@ unluminous-cli terminal move --tab 2 0
 ### terminal send
 
 ```
-unluminous-cli terminal send [text] [--tab <index>] [--no-enter] [--key <name>]
+unluminous-cli terminal send [text] [--tab <index>] [--pane <number>] [--no-enter] [--key <name>]
 ```
 
 Send a command to the shell in a terminal tab, the one that is showing when --tab is left out. Naming a tab does not show it. Enter is pressed for you unless you say not to.
@@ -3081,6 +3081,7 @@ Send a command to the shell in a terminal tab, the one that is showing when --ta
 - `text` (optional) — The command. Everything after the verb is taken as the command, so it needs no quotes. Everything after it on the line belongs to it.
 
 - `--tab <index>` — Which tab to send to, counting from 0. The one that is showing when it is left out.
+- `--pane <number>` — Which pane of the tab. Pane 0 when it is left out.
 - `--no-enter` — Type the text and leave it on the prompt without running it.
 - `--key <name>` — Send a key instead of text: enter, tab, escape, up, down, left, right, backspace, ctrl-c, ctrl-d, ctrl-l.
 
@@ -3094,12 +3095,13 @@ unluminous-cli terminal send --no-enter cd ..
 ### terminal read
 
 ```
-unluminous-cli terminal read [--tab <index>] [--lines <number>] [--wait-for <text>] [--timeout <milliseconds>]
+unluminous-cli terminal read [--tab <index>] [--pane <number>] [--lines <number>] [--wait-for <text>] [--timeout <milliseconds>]
 ```
 
 Read what a terminal tab has on its screen, the one that is showing when --tab is left out, with the words and the address of every OSC 8 link on it, which the text alone hides. Reading a tab does not show it.
 
 - `--tab <index>` — Which tab to read, counting from 0. The one that is showing when it is left out.
+- `--pane <number>` — Which pane of the tab. Pane 0 when it is left out.
 - `--lines <number>` — Only the last so many lines.
 - `--wait-for <text>` — Wait until this text is on the named tab's screen before answering, which is how to wait for a command to finish.
 - `--timeout <milliseconds>` — How long to wait for --wait-for. 10000 by default.
@@ -3122,6 +3124,128 @@ Read how tall the terminal tile is, or set it. The same measurement dragging its
 
 ```sh
 unluminous-cli terminal height 400
+```
+
+### terminal split
+
+```
+unluminous-cli terminal split [--direction <side>] [--tab <index>] [--pane <number>]
+```
+
+Split a terminal tab into another pane running a new shell. The new pane gets the keyboard.
+
+- `--direction <side>` — Which side the new pane goes on: right (the default), down, left or up.
+- `--tab <index>` — Which tab, counting from 0. The one that is showing when it is left out.
+- `--pane <number>` — Which pane to split. The one with the keyboard when it is left out.
+
+```sh
+unluminous-cli terminal split
+unluminous-cli terminal split --direction down --tab 1
+```
+
+### terminal panes
+
+```
+unluminous-cli terminal panes [--tab <index>]
+```
+
+The panes a terminal tab is split into, and which has the keyboard. Pane 0 is the tab's own.
+
+- `--tab <index>` — Which tab, counting from 0. The one that is showing when it is left out.
+
+```sh
+unluminous-cli terminal panes --json
+```
+
+### terminal close-pane
+
+```
+unluminous-cli terminal close-pane [number] [--pane <number>] [--tab <index>]
+```
+
+Close a pane of a terminal tab, the one with the keyboard when none is named. On pane 0 it closes the tab.
+
+- `number` (optional) — The pane, from `terminal panes`. The --pane flag when it is given.
+
+- `--pane <number>` — Which pane to close.
+- `--tab <index>` — Which tab, counting from 0. The one that is showing when it is left out.
+
+```sh
+unluminous-cli terminal close-pane 1
+```
+
+### terminal focus-pane
+
+```
+unluminous-cli terminal focus-pane <target> [--tab <index>]
+```
+
+Give the keyboard to a pane of a terminal tab, by number or by side.
+
+- `target` (required) — A pane number, or left, right, up, down, next or previous.
+
+- `--tab <index>` — Which tab, counting from 0. The one that is showing when it is left out.
+
+```sh
+unluminous-cli terminal focus-pane 0
+unluminous-cli terminal focus-pane right
+```
+
+### terminal zoom-pane
+
+```
+unluminous-cli terminal zoom-pane [--tab <index>]
+```
+
+Show the pane with the keyboard alone, or put the split back.
+
+- `--tab <index>` — Which tab, counting from 0. The one that is showing when it is left out.
+
+```sh
+unluminous-cli terminal zoom-pane
+```
+
+### terminal theme
+
+```
+unluminous-cli terminal theme [name]
+```
+
+Read or choose the Termoil theme every terminal is drawn in. window follows the window's theme.
+
+- `name` (optional) — The theme, from `terminal themes`, or window. Read the current one when this is left out. Everything after it on the line belongs to it.
+
+```sh
+unluminous-cli terminal theme
+unluminous-cli terminal theme Dracula
+unluminous-cli terminal theme window
+```
+
+### terminal themes
+
+```
+unluminous-cli terminal themes [filter]
+```
+
+The 894 Termoil themes, the ones Unluminous ships first.
+
+- `filter` (optional) — Only the themes whose name holds this, ignoring case. Everything after it on the line belongs to it.
+
+```sh
+unluminous-cli terminal themes
+unluminous-cli terminal themes solarized
+```
+
+### terminal keys
+
+```
+unluminous-cli terminal keys
+```
+
+Termoil's keys in every terminal grid, each with the name `action run` takes.
+
+```sh
+unluminous-cli terminal keys --json
 ```
 
 ## run — the named commands the project is started with

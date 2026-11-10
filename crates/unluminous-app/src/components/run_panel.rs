@@ -508,6 +508,7 @@ pub fn show(
         renderer,
         font_size,
         opacity,
+        false,
     );
     panel.selecting = selecting;
     outcome.take_focus |= grid_outcome.take_focus;

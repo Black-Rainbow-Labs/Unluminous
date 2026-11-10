@@ -22,6 +22,20 @@ use std::path::PathBuf;
 use crate::app::actions::{Action, DebugAction, FoldAction, GitAction, HighlightColor, RunAction};
 use crate::app::ViewMode;
 
+/// A Termoil theme's name as it is written in an action name: lower case, with a hyphen for anything that is not a
+/// letter or a digit. `task-2597`.
+fn terminal_theme_slug(name: &str) -> String {
+    let mut slug = String::new();
+    for character in name.chars() {
+        match character.is_ascii_alphanumeric() {
+            true => slug.push(character.to_ascii_lowercase()),
+            false if !slug.ends_with('-') => slug.push('-'),
+            false => {}
+        }
+    }
+    slug.trim_matches('-').to_owned()
+}
+
 /// The name a built in template has when `slug` is its slug, so a menu entry read back from its name is the
 /// same entry; any other slug is kept as it is, and the window finds a person's own template by it.
 fn template_named(slug: &str) -> String {
@@ -152,6 +166,11 @@ impl Action {
             Action::RenameTerminalTab => "rename-terminal-tab".to_owned(),
             Action::PreviousTerminalPrompt => "previous-terminal-prompt".to_owned(),
             Action::NextTerminalPrompt => "next-terminal-prompt".to_owned(),
+            Action::Termoil(command) => format!("termoil-{}", command.name()),
+            Action::SetTerminalTheme(name) => match name.is_empty() {
+                true => "set-terminal-theme".to_owned(),
+                false => format!("set-terminal-theme-{}", terminal_theme_slug(name)),
+            },
             Action::NewFile(_) => "new-file".to_owned(),
             // The template is in the name, as a slug, and the folder goes down the path channel. `task-2336`.
             Action::NewFileFromTemplate { template, .. } => {
@@ -262,6 +281,20 @@ impl Action {
             if let Some(shortcut) = crate::app::actions::ShortcutAction::from_name(name) {
                 return Some(Action::Shortcut(shortcut));
             }
+        }
+        // Termoil's commands and the terminal themes, `task-2597`.
+        if let Some(rest) = name.strip_prefix("termoil-") {
+            return crate::services::termoil_keys::TermoilCommand::from_name(rest)
+                .map(Action::Termoil);
+        }
+        if name == "set-terminal-theme" {
+            return Some(Action::SetTerminalTheme(String::new()));
+        }
+        if let Some(rest) = name.strip_prefix("set-terminal-theme-") {
+            return unluminous_terminal::themes::all()
+                .iter()
+                .find(|theme| terminal_theme_slug(&theme.name) == rest)
+                .map(|theme| Action::SetTerminalTheme(theme.name.clone()));
         }
         // `fill-<side>`, the panel menu's `Fill Whole <Side>`.
         if let Some(rest) = name.strip_prefix("fill-") {

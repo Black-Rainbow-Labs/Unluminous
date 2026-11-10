@@ -1315,6 +1315,7 @@ impl UnluminousApp {
                 &self.renderer,
                 font,
                 opacity,
+                false,
             )
         };
         if outcome.take_focus {

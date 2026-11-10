@@ -61,6 +61,52 @@ pub struct Match {
     pub hits: Vec<usize>,
 }
 
+/// The words a palette is drawn with: its title, the field's label and hint, and what one row is called.
+///
+/// The palette is `Find Action` unless it was opened with other words, which is how the terminal's own
+/// command palette and its theme picker are the same modal over different rows (`task-2597`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Words {
+    pub title: &'static str,
+    pub field: &'static str,
+    pub hint: &'static str,
+    pub one: &'static str,
+    pub many: &'static str,
+}
+
+impl Words {
+    /// `Find Action`, over every menu entry.
+    pub const ACTIONS: Words = Words {
+        title: "Find Action",
+        field: "Find action",
+        hint: "Type part of a command",
+        one: "command",
+        many: "commands",
+    };
+    /// Termoil's command palette, over the commands a terminal answers.
+    pub const TERMINAL: Words = Words {
+        title: "Terminal Commands",
+        field: "Find a terminal command",
+        hint: "Type part of a command",
+        one: "command",
+        many: "commands",
+    };
+    /// The terminal theme picker, over Termoil's themes.
+    pub const THEMES: Words = Words {
+        title: "Choose Terminal Theme",
+        field: "Find a theme",
+        hint: "Type part of a theme's name",
+        one: "theme",
+        many: "themes",
+    };
+}
+
+impl Default for Words {
+    fn default() -> Self {
+        Self::ACTIONS
+    }
+}
+
 /// What has been typed into the palette and which row is chosen.
 #[derive(Debug, Default)]
 pub struct CommandPalette {
@@ -73,12 +119,23 @@ pub struct CommandPalette {
     searched: Option<String>,
     /// Set when the keyboard moved the choice, so the list scrolls to keep it in view.
     follow: bool,
+    /// The words it is drawn with.
+    pub words: Words,
+    /// How many rows it offers at most. Zero is [`LIMIT`].
+    limit: usize,
 }
 
 impl CommandPalette {
     /// Open it over the entries the menus hold right now.
     pub fn open(commands: Vec<Command>) -> Self {
         let mut palette = Self { commands, ..Self::default() };
+        palette.refresh();
+        palette
+    }
+
+    /// Open it over `commands`, drawn with `words` and offering at most `limit` rows.
+    pub fn open_with(commands: Vec<Command>, words: Words, limit: usize) -> Self {
+        let mut palette = Self { commands, words, limit, ..Self::default() };
         palette.refresh();
         palette
     }
@@ -90,7 +147,8 @@ impl CommandPalette {
         if self.searched.as_deref() == Some(self.query.as_str()) {
             return;
         }
-        self.results = rank(&self.commands, &self.query, LIMIT);
+        let limit = if self.limit == 0 { LIMIT } else { self.limit };
+        self.results = rank(&self.commands, &self.query, limit);
         self.searched = Some(self.query.clone());
         self.chosen = 0;
         self.follow = true;
@@ -189,7 +247,7 @@ pub struct PaletteOutcome {
 pub fn show(ctx: &egui::Context, state: &mut CommandPalette) -> PaletteOutcome {
     let mut outcome = PaletteOutcome::default();
     let (_, closed) = modal::show(ctx, "unluminous-command-palette", WIDTH, HEIGHT, |ui, area| {
-        if modal::header(ui, area, "Find Action") {
+        if modal::header(ui, area, state.words.title) {
             outcome.close = true;
         }
         // The arrow keys and Enter are taken out of the frame's events before the field is drawn,
@@ -214,8 +272,8 @@ pub fn show(ctx: &egui::Context, state: &mut CommandPalette) -> PaletteOutcome {
         let entry = controls::search_field(
             ui,
             field,
-            "Find action",
-            "Type part of a command",
+            state.words.field,
+            state.words.hint,
             &mut state.query,
         );
         if !entry.has_focus() {
@@ -235,10 +293,11 @@ pub fn show(ctx: &egui::Context, state: &mut CommandPalette) -> PaletteOutcome {
         }
 
         let count = state.results.len();
+        let words = state.words;
         let summary = match count {
-            0 => "No command matches".to_owned(),
-            1 => "1 command".to_owned(),
-            many => format!("{many} commands"),
+            0 => format!("No {} matches", words.one),
+            1 => format!("1 {}", words.one),
+            many => format!("{many} {}", words.many),
         };
         modal::label(
             &ui.painter_at(area),

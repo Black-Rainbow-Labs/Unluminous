@@ -1480,3 +1480,223 @@ fn the_edit_menus_copy_takes_the_terminals_selection_not_the_documents() {
         "and the document was not touched"
     );
 }
+
+// ============================================================================================
+// Termoil's panes, keys, palette and themes inside every terminal grid (`task-2597`).
+//
+// Every one of these is a detached terminal, and a pane split from a detached terminal is detached too, so no
+// shell is started and nothing waits for one.
+
+use unluminous_app::components::terminal_layer;
+use unluminous_app::services::termoil_keys::{self, TermoilCommand};
+
+/// Press the key Termoil gives `command` on this platform, the way the platform reports it.
+fn press_termoil(harness: &mut Harness<'static, UnluminousApp>, command: TermoilCommand) {
+    let chord = termoil_keys::chord_of(command).expect("the command has a key");
+    let mac = cfg!(target_os = "macos");
+    let modifiers = Modifiers {
+        alt: chord.alt,
+        shift: chord.shift,
+        ctrl: chord.ctrl || (chord.command && !mac),
+        command: chord.command || (chord.ctrl && !mac),
+        mac_cmd: chord.command && mac,
+    };
+    harness.key_press_modifiers(modifiers, chord.key);
+    steady(harness);
+}
+
+/// The panes of the terminal tab that is showing.
+fn panes_of_the_tab(harness: &Harness<'static, UnluminousApp>) -> Vec<terminal_layer::PaneInfo> {
+    terminal_layer::panes_of(harness.state().terminal.tabs.active().expect("a tab")).0
+}
+
+/// What has been typed into one pane of the terminal tab that is showing.
+fn typed_into(harness: &mut Harness<'static, UnluminousApp>, pane: u32) -> String {
+    let host = harness.state_mut().terminal.tabs.active_mut().expect("a tab");
+    terminal_layer::with_pane(host, pane, |session| session.sent_to_a_detached_session())
+        .expect("the pane")
+}
+
+/// A detached terminal tab with the keyboard.
+fn a_terminal_with_the_keyboard() -> Harness<'static, UnluminousApp> {
+    let mut harness = with_terminal("the document", 20, 80);
+    harness.state_mut().focus = unluminous_app::app::Focus::Terminal;
+    steady(&mut harness);
+    harness
+}
+
+#[test]
+fn termoil_s_keys_split_a_terminal_tab_and_move_between_its_panes() {
+    let mut harness = a_terminal_with_the_keyboard();
+    press_termoil(&mut harness, TermoilCommand::SplitRight);
+    let panes = panes_of_the_tab(&harness);
+    assert_eq!(panes.len(), 2, "Split Right made a second pane");
+    assert!(panes[1].focused, "the new pane has the keyboard");
+    let _ = harness.get_by_label("Grid: terminal-grid-pane-1");
+
+    // Typing goes to the pane with the keyboard and to no other.
+    harness.input_mut().events.push(egui::Event::Text("right".to_owned()));
+    steady(&mut harness);
+    assert_eq!(typed_into(&mut harness, 1), "right");
+    assert_eq!(typed_into(&mut harness, 0), "", "the first pane was not typed into");
+
+    press_termoil(&mut harness, TermoilCommand::FocusLeft);
+    assert!(panes_of_the_tab(&harness)[0].focused, "Alt+Left moved the keyboard to the first pane");
+    harness.input_mut().events.push(egui::Event::Text("left".to_owned()));
+    steady(&mut harness);
+    assert_eq!(typed_into(&mut harness, 0), "left");
+
+    press_termoil(&mut harness, TermoilCommand::SplitDown);
+    assert_eq!(panes_of_the_tab(&harness).len(), 3);
+    press_termoil(&mut harness, TermoilCommand::ZoomPane);
+    let zoomed = terminal_layer::panes_of(harness.state().terminal.tabs.active().expect("a tab")).1;
+    assert!(zoomed, "Zoom Pane shows the pane alone");
+    press_termoil(&mut harness, TermoilCommand::ZoomPane);
+    press_termoil(&mut harness, TermoilCommand::ClosePane);
+    assert_eq!(panes_of_the_tab(&harness).len(), 2, "Close Pane closed the pane with the keyboard");
+    assert_eq!(
+        harness.state().document().text().to_string(),
+        "the document",
+        "no key reached the document"
+    );
+}
+
+#[test]
+fn termoil_s_palette_key_in_a_terminal_opens_the_terminal_s_own_palette() {
+    let mut harness = a_terminal_with_the_keyboard();
+    press_termoil(&mut harness, TermoilCommand::CommandPalette);
+    let palette = harness.state().palette.as_ref().expect("a palette opened");
+    assert_eq!(palette.words.title, "Terminal Commands");
+    assert!(palette.results().iter().any(|found| found.command.label == "Split Pane Right"));
+    assert!(palette.results().iter().all(|found| found.command.menu == "Terminal"));
+
+    // Running a row runs the command on the terminal the palette was opened over.
+    let row = palette
+        .results()
+        .iter()
+        .find(|found| found.command.label == "Split Pane Down")
+        .expect("a row")
+        .command
+        .clone();
+    let ctx = harness.ctx.clone();
+    harness.state_mut().palette = None;
+    harness.state_mut().run_a_palette_row(row, &ctx);
+    steady(&mut harness);
+    assert_eq!(panes_of_the_tab(&harness).len(), 2);
+}
+
+#[test]
+fn the_command_line_splits_a_tab_and_speaks_to_one_pane() {
+    let mut harness = with_terminal("", 20, 80);
+    let split = did(&mut harness, "terminal split --direction down");
+    assert_eq!(split["panes"].as_array().expect("panes").len(), 2);
+    did(&mut harness, "terminal send --pane 1 --no-enter hello");
+    assert_eq!(typed_into(&mut harness, 1), "hello");
+    assert_eq!(typed_into(&mut harness, 0), "", "pane 0 was not sent anything");
+    {
+        let host = harness.state_mut().terminal.tabs.active_mut().expect("a tab");
+        terminal_layer::with_pane(host, 1, |pane| pane.feed(b"written in pane one\r\n"));
+    }
+    let read = did(&mut harness, "terminal read --pane 1");
+    assert!(read["text"].as_str().expect("text").contains("written in pane one"));
+    assert_eq!(refused(&mut harness, "terminal read --pane 7"), "not-found");
+
+    let listed = did(&mut harness, "terminal panes");
+    assert_eq!(listed["panes"][1]["focused"], true);
+    did(&mut harness, "terminal focus-pane up");
+    assert_eq!(did(&mut harness, "terminal panes")["panes"][0]["focused"], true);
+    assert_eq!(did(&mut harness, "terminal zoom-pane")["zoomed"], true);
+    did(&mut harness, "terminal zoom-pane");
+    did(&mut harness, "terminal close-pane 1");
+    assert_eq!(did(&mut harness, "terminal panes")["panes"].as_array().expect("panes").len(), 1);
+    assert_eq!(refused(&mut harness, "terminal close-pane 0"), "not-found");
+
+    let keys = did(&mut harness, "terminal keys");
+    let actions = keys["keys"].as_array().expect("keys");
+    assert!(actions.iter().any(|key| key["action"] == "termoil-split-right"));
+}
+
+#[test]
+fn the_terminal_theme_is_a_setting_and_colors_every_terminal() {
+    let mut harness = with_terminal("", 20, 80);
+    let ground = |harness: &Harness<'static, UnluminousApp>| {
+        harness.state().terminal.tabs.active().expect("a tab").snapshot().background
+    };
+    let window_ground = ground(&harness);
+    let chosen = did(&mut harness, "terminal theme Dracula");
+    assert_eq!(chosen["theme"], "Dracula");
+    assert_eq!(harness.state().settings.terminal_theme, "Dracula");
+    let dracula = unluminous_terminal::themes::named("Dracula").expect("bundled");
+    assert_eq!(ground(&harness), dracula.background, "the terminal is drawn in the theme");
+
+    let listed = did(&mut harness, "terminal themes dracula");
+    assert!(listed["themes"].as_array().expect("themes").iter().any(|name| name == "Dracula"));
+    assert_eq!(refused(&mut harness, "terminal theme Not A Theme"), "not-found");
+
+    did(&mut harness, "terminal theme window");
+    assert_eq!(harness.state().settings.terminal_theme, "");
+    assert_eq!(ground(&harness), window_ground, "back to the window's own");
+}
+
+#[test]
+fn the_theme_picker_previews_each_theme_and_puts_the_chosen_one_back() {
+    let mut harness = a_terminal_with_the_keyboard();
+    let ctx = harness.ctx.clone();
+    harness.state_mut().run_action(Action::Termoil(TermoilCommand::ChooseTheme), &ctx);
+    steady(&mut harness);
+    let palette = harness.state_mut().palette.as_mut().expect("the picker opened");
+    assert_eq!(palette.words.title, "Choose Terminal Theme");
+    assert_eq!(palette.results()[0].command.label, "Follow the Window's Theme");
+    assert_eq!(
+        palette.results()[1].command.label,
+        "Unluminous Dark",
+        "the shipped themes come first"
+    );
+    let at = palette
+        .results()
+        .iter()
+        .position(|found| found.command.label == "Dracula")
+        .expect("listed");
+    palette.chosen = at;
+    steady(&mut harness);
+    let dracula = unluminous_terminal::themes::named("Dracula").expect("bundled");
+    let current = || unluminous_terminal::Palette::current().background;
+    assert_eq!(current(), dracula.background, "the highlighted theme is previewed");
+
+    harness.key_press(egui::Key::Escape);
+    steady(&mut harness);
+    assert!(harness.state().palette.is_none(), "Escape put the picker away");
+    assert_ne!(current(), dracula.background, "and the terminals went back");
+    assert_eq!(harness.state().settings.terminal_theme, "");
+
+    harness.state_mut().run_action(Action::SetTerminalTheme("Dracula".to_owned()), &ctx);
+    steady(&mut harness);
+    assert_eq!(harness.state().settings.terminal_theme, "Dracula", "a row that is run is kept");
+}
+
+#[test]
+fn a_canvas_terminal_node_splits_on_termoil_s_keys_too() {
+    use unluminous_app::services::realm::Kind;
+    let mut harness = harness("");
+    did(&mut harness, "realm show");
+    let node = harness.state_mut().new_detached_realm_node(Kind::Terminal, egui::pos2(40.0, 40.0));
+    steady(&mut harness);
+    harness.state_mut().realm.realm.choose(Some(node));
+    harness.state_mut().focus = unluminous_app::app::Focus::Realm;
+    steady(&mut harness);
+    press_termoil(&mut harness, TermoilCommand::SplitRight);
+    let session = harness.state().realm.live.terminal(node).expect("the node's terminal");
+    assert_eq!(terminal_layer::panes_of(session).0.len(), 2, "the node's terminal is split");
+    let _ = harness.get_by_label(&format!("Grid: realm-terminal-{node}-pane-1"));
+}
+
+#[test]
+fn a_right_click_on_a_terminal_opens_termoil_s_menu_and_its_rows_run() {
+    let mut harness = a_terminal_with_the_keyboard();
+    let grid = harness.get_by_label("Grid: terminal-grid").rect();
+    right_click_at(&mut harness, grid.center());
+    harness.get_by_label("Split Pane Right").click();
+    steady(&mut harness);
+    assert_eq!(panes_of_the_tab(&harness).len(), 2, "the menu row split the terminal");
+    assert!(harness.query_by_label("Split Pane Right").is_none(), "the menu went away");
+}

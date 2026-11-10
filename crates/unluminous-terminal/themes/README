@@ -1,0 +1,10 @@
+themes.txt is a copy of Termoil's crates/termoil-app/themes/themes.txt, taken at Termoil commit d0dba6a
+(task-2597). One theme per line:
+name|foreground|background|cursor|selection background|selection foreground|the sixteen ANSI colors.
+
+Termoil converted the color schemes from https://github.com/mbadolato/iTerm2-Color-Schemes at commit
+3d8a6a1a983d7fe721aa6cb9a5b98066cd74303a (MIT license, see LICENSE). Termoil Dark and Termoil Light are
+written by the Termoil authors, and Unluminous Dark, Unluminous Light, Islands Dracula Colorful, Material
+Palenight, Material Deep Ocean, Monokai Pro and One Dark are the themes Unluminous ships.
+
+A theme added or fixed in Termoil is copied here, the way sprite.rs is.

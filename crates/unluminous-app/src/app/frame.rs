@@ -103,6 +103,14 @@ impl UnluminousApp {
 
         self.terminal_holds_the_keyboard =
             crate::components::terminal_panel::a_terminal_has_the_keyboard(ui.ctx());
+        // Termoil's panes (`task-2597`): what a new pane runs, the panes of a terminal that has gone, and the
+        // palette or theme picker a grid asked for last frame.
+        crate::components::terminal_layer::set_spawning(
+            &self.settings.terminal_shell,
+            self.waker(),
+        );
+        crate::components::terminal_layer::forget_the_dead();
+        self.take_the_termoil_requests();
         let places = self.lay_the_frame_out(ui);
         // Before the menus are built, so `Recent Projects` lists a project another window has just opened.
         self.keep_the_recent_projects_current();
@@ -961,6 +969,13 @@ impl UnluminousApp {
                     if in_a_terminal && a_bracket {
                         return true;
                     }
+                    // **Termoil's keys are the terminal's while a terminal has the keyboard** (`task-2597`):
+                    // `Ctrl+Shift+P` is the terminal's palette there and Unluminous's everywhere else.
+                    if in_a_terminal
+                        && crate::services::termoil_keys::command_for(*key, modifiers).is_some()
+                    {
+                        return true;
+                    }
                     found = Some(chosen);
                     in_a_terminal
                 });
@@ -1535,6 +1550,13 @@ impl UnluminousApp {
             if let Some((index, at)) = panel_outcome.menu {
                 self.terminal_menu = Some((at, index));
             }
+            // Termoil's tab keys, pressed in the grid (`task-2597`).
+            if let Some(asked) = panel_outcome.tabs {
+                self.answer_a_termoil_tab_ask(asked);
+            }
+            if let Some(message) = panel_outcome.message {
+                self.message = Some(message);
+            }
             // A shell that has stopped, from `exit` or otherwise, closes its tab, and the tile goes with the
             // last of them. A tile that never had a tab is left showing, because that is the one that has a
             // reason to give: the message says why the shell would not start.
@@ -2065,6 +2087,34 @@ impl UnluminousApp {
         if let Some(mut palette) = self.palette.take() {
             palette.refresh();
             let outcome = crate::components::command_palette::show(ui.ctx(), &mut palette);
+            // The theme picker draws every terminal in the theme its chosen row names, as the row moves
+            // (`task-2597`), and puts the chosen theme back when it shuts without one being kept.
+            if self.choosing_a_terminal_theme {
+                if let Some(Action::SetTerminalTheme(name)) =
+                    palette.chosen_command().map(|command| &command.action)
+                {
+                    let wanted = match name.is_empty() {
+                        true => crate::services::terminal_colours::for_the_window(),
+                        false => unluminous_terminal::themes::named(name)
+                            .map(|theme| theme.palette())
+                            .unwrap_or_else(crate::services::terminal_colours::for_the_window),
+                    };
+                    // Asked for a frame only when the preview moved, so an open picker costs nothing idle.
+                    if unluminous_terminal::Palette::current() != wanted {
+                        unluminous_terminal::Palette::set_current(wanted);
+                        ui.ctx().request_repaint();
+                    }
+                }
+            }
+            if outcome.close {
+                if self.choosing_a_terminal_theme && outcome.run.is_none() {
+                    crate::services::terminal_colours::follow_the_theme();
+                }
+                self.choosing_a_terminal_theme = false;
+                if outcome.run.is_none() {
+                    self.termoil_target = None;
+                }
+            }
             if !outcome.close {
                 self.palette = Some(palette);
             }

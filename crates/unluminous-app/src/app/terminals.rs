@@ -74,6 +74,165 @@ impl UnluminousApp {
         self.open_a_terminal_tab_in(None, None);
     }
 
+    /// Do what a Termoil tab key asked of the terminal tile (`task-2597`).
+    pub(crate) fn answer_a_termoil_tab_ask(&mut self, asked: terminal_panel::TabAsk) {
+        use terminal_panel::TabAsk;
+        let count = self.terminal.tabs.count();
+        let at = self.terminal.tabs.active_index();
+        match asked {
+            TabAsk::New => {
+                self.new_terminal_tab();
+                self.a_tile_took_the_keyboard(dock::Panel::Terminal);
+            }
+            TabAsk::Next if count > 1 => self.terminal.tabs.show((at + 1) % count),
+            TabAsk::Previous if count > 1 => self.terminal.tabs.show((at + count - 1) % count),
+            TabAsk::Next | TabAsk::Previous => {}
+            TabAsk::Close => {
+                self.terminal.tabs.close(at);
+                if self.terminal.tabs.is_empty() {
+                    self.terminal.visible = false;
+                    self.focus = crate::app::Focus::Editor;
+                }
+            }
+        }
+    }
+
+    /// Run a Termoil command (`task-2597`): on the grid the palette was opened over, or else on the grid that
+    /// has the keyboard, or else on the terminal tab that is showing. Answers what it did.
+    ///
+    /// A grid in the terminal tile is run on here and now, because the tile's sessions are the window's own.
+    /// Any other grid, a node, a run or a ticket's agent, is handed the command to run the next time it is
+    /// drawn, which is the next frame.
+    pub fn run_a_termoil_command(
+        &mut self,
+        command: crate::services::termoil_keys::TermoilCommand,
+        ctx: &egui::Context,
+    ) -> String {
+        use crate::components::terminal_layer;
+        let target = self.termoil_target.take().or_else(|| terminal_layer::with_keyboard(ctx));
+        let in_the_tile = |app: &Self, serial: u64| {
+            app.terminal.tabs.sessions().iter().position(|session| session.serial() == serial)
+        };
+        let index = match target {
+            Some(serial) => match in_the_tile(self, serial) {
+                Some(index) => index,
+                None => {
+                    terminal_layer::queue(serial, command);
+                    ctx.request_repaint();
+                    return format!("{} in the terminal that has the keyboard", command.label());
+                }
+            },
+            None => {
+                self.show_the_terminal_tile(true);
+                self.terminal.tabs.active_index()
+            }
+        };
+        let Some(session) = self.terminal.tabs.at_mut(index) else {
+            return "There is no terminal tab".to_owned();
+        };
+        let ran = terminal_layer::run(session, command, true);
+        if let Some(text) = ran.copy.clone() {
+            ctx.copy_text(text);
+        }
+        if let Some(asked) = ran.tabs {
+            self.answer_a_termoil_tab_ask(asked);
+        }
+        self.take_the_termoil_requests();
+        ran.message
+    }
+
+    /// Open the modals the terminals asked for: the terminal command palette and the theme picker.
+    pub(crate) fn take_the_termoil_requests(&mut self) {
+        use crate::components::terminal_layer::Request;
+        for request in crate::components::terminal_layer::take_requests() {
+            match request {
+                Request::Palette(serial) => self.open_the_termoil_palette(Some(serial)),
+                Request::Themes(serial) => self.open_the_terminal_theme_picker(Some(serial)),
+            }
+        }
+    }
+
+    /// The terminal command palette: every Termoil command, with its key, over the grid with this serial.
+    pub fn open_the_termoil_palette(&mut self, serial: Option<u64>) {
+        use crate::components::command_palette::{Command, CommandPalette, Words};
+        use crate::services::termoil_keys::{self, TermoilCommand};
+        let commands = TermoilCommand::ALL
+            .iter()
+            .filter(|command| **command != TermoilCommand::CommandPalette)
+            .map(|command| Command {
+                name: crate::app::actions::Action::Termoil(*command).name(),
+                label: command.label().to_owned(),
+                menu: "Terminal".to_owned(),
+                shortcut: termoil_keys::chord_of(*command)
+                    .map(termoil_keys::chord_text)
+                    .unwrap_or_default(),
+                enabled: true,
+                checked: false,
+                action: crate::app::actions::Action::Termoil(*command),
+            })
+            .collect();
+        self.palette = Some(CommandPalette::open_with(commands, Words::TERMINAL, 200));
+        self.termoil_target = serial;
+        self.choosing_a_terminal_theme = false;
+    }
+
+    /// The theme picker: every Termoil theme, the ones Unluminous ships first, previewed in every terminal as it
+    /// is moved through. Enter keeps the one chosen, and anything else puts the terminals back.
+    pub fn open_the_terminal_theme_picker(&mut self, serial: Option<u64>) {
+        use crate::app::actions::Action;
+        use crate::components::command_palette::{Command, CommandPalette, Words};
+        let current = self.settings.terminal_theme.trim().to_owned();
+        let row = |name: &str, label: &str, menu: &str| Command {
+            name: Action::SetTerminalTheme(name.to_owned()).name(),
+            label: label.to_owned(),
+            menu: menu.to_owned(),
+            shortcut: String::new(),
+            enabled: true,
+            checked: current.eq_ignore_ascii_case(name),
+            action: Action::SetTerminalTheme(name.to_owned()),
+        };
+        let mut commands = vec![row("", "Follow the Window's Theme", "Unluminous")];
+        for name in unluminous_terminal::themes::names_in_picker_order() {
+            let featured = unluminous_terminal::themes::FEATURED.contains(&name);
+            commands.push(row(
+                name,
+                name,
+                if featured { "Ships with Unluminous" } else { "Termoil" },
+            ));
+        }
+        let mut palette = CommandPalette::open_with(commands, Words::THEMES, usize::MAX);
+        // Start on the theme in use, so the first preview is no change at all.
+        if let Some(at) = palette.results().iter().position(|found| found.command.checked) {
+            palette.chosen = at;
+        }
+        self.palette = Some(palette);
+        self.termoil_target = serial;
+        self.choosing_a_terminal_theme = true;
+    }
+
+    /// Choose the Termoil theme every terminal is drawn in, by name, and write it to the settings. Empty follows
+    /// the window's theme. Refused for a name that is not a theme.
+    pub fn set_the_terminal_theme(&mut self, name: &str) -> Result<String, String> {
+        let name = name.trim();
+        let wanted =
+            match name.is_empty() || name.eq_ignore_ascii_case("window") {
+                true => String::new(),
+                false => match unluminous_terminal::themes::named(name) {
+                    Some(theme) => theme.name.clone(),
+                    None => return Err(format!(
+                        "There is no Termoil theme called {name}. `terminal themes` lists them."
+                    )),
+                },
+            };
+        let before = self.settings.clone();
+        self.settings.terminal_theme = wanted.clone();
+        self.apply_settings(&before);
+        Ok(match wanted.is_empty() {
+            true => "The terminals follow the window's theme".to_owned(),
+            false => format!("The terminals are drawn in {wanted}"),
+        })
+    }
+
     /// Start this shell under the script that makes PowerShell report the folder it is in, when the setting
     /// says so.
     ///

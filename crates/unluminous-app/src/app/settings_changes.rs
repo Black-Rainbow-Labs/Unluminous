@@ -62,6 +62,13 @@ impl UnluminousApp {
         // of the four moved, for the reason `reconcile_mcp` records beside itself: a list of the settings
         // that have to remember to say so is a list whose next entry is the one that forgot.
         self.apply_the_theme();
+        // The terminals' own Termoil theme, after the window's, because an empty one means "the window's"
+        // (`task-2597`). Asked on every change for the same reason the window's theme is.
+        if self.settings.terminal_theme != before.terminal_theme
+            || crate::services::terminal_colours::chosen() != self.settings.terminal_theme.trim()
+        {
+            crate::services::terminal_colours::choose(&self.settings.terminal_theme);
+        }
         self.give_glass_something_to_bend(before);
         // The interface's own family is bound into egui rather than read at drawing time, so it is
         // installed again when it moves — and only then, because `set_fonts` throws away the glyph atlas.

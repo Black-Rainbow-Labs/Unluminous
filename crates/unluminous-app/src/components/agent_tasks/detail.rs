@@ -58,6 +58,7 @@ pub(crate) fn terminal(
             renderer,
             monospace,
             opacity,
+            false,
         )
     };
     board.terminal_selecting = selecting;

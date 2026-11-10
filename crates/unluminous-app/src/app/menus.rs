@@ -290,6 +290,8 @@ impl UnluminousApp {
             | Action::RenameTerminalTab
             | Action::PreviousTerminalPrompt
             | Action::NextTerminalPrompt
+            | Action::Termoil(_)
+            | Action::SetTerminalTheme(_)
             | Action::CloseTerminalTab
             | Action::ToggleRunTile
             | Action::ToggleDebugTile
@@ -1185,6 +1187,16 @@ impl UnluminousApp {
             Action::PreviousTerminalPrompt | Action::NextTerminalPrompt => {
                 let forward = matches!(action, Action::NextTerminalPrompt);
                 self.message = Some(self.jump_to_a_terminal_prompt(forward).to_owned());
+            }
+            Action::Termoil(command) => {
+                if let Some(ctx) = self.context.clone() {
+                    self.message = Some(self.run_a_termoil_command(command, &ctx));
+                }
+            }
+            Action::SetTerminalTheme(name) => {
+                self.message = Some(match self.set_the_terminal_theme(&name) {
+                    Ok(said) | Err(said) => said,
+                });
             }
             Action::RenameTerminalTab => {
                 let index = self.terminal.tabs.active_index();

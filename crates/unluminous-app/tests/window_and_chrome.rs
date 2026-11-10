@@ -4372,6 +4372,8 @@ const EVERY_VARIANT: &[&str] = &[
     "RenameTerminalTab",
     "PreviousTerminalPrompt",
     "NextTerminalPrompt",
+    "Termoil",
+    "SetTerminalTheme",
     "NewFile",
     "NewFileFromTemplate",
     "SaveAsTemplate",
@@ -4508,6 +4510,8 @@ fn variant_name(action: &Action) -> &'static str {
         Action::RenameTerminalTab => "RenameTerminalTab",
         Action::PreviousTerminalPrompt => "PreviousTerminalPrompt",
         Action::NextTerminalPrompt => "NextTerminalPrompt",
+        Action::Termoil(_) => "Termoil",
+        Action::SetTerminalTheme(_) => "SetTerminalTheme",
         Action::NewFile(_) => "NewFile",
         Action::NewFileFromTemplate { .. } => "NewFileFromTemplate",
         Action::SaveAsTemplate(_) => "SaveAsTemplate",
@@ -5155,6 +5159,15 @@ fn a_terminal_tab(harness: &mut Harness<'static, UnluminousApp>) {
     harness.step();
 }
 
+/// A terminal tab split into two panes, with the first one holding the keyboard, so every Termoil command has a pane
+/// on each side of it to act on (`task-2597`).
+fn a_terminal_tab_split_in_two(harness: &mut Harness<'static, UnluminousApp>) {
+    a_terminal_tab(harness);
+    ask(harness, "terminal split");
+    ask(harness, "terminal focus-pane 0");
+    harness.step();
+}
+
 /// A terminal tab whose shell marked three prompts with `OSC 133`, with output enough between them to scroll.
 fn a_terminal_tab_with_prompts(harness: &mut Harness<'static, UnluminousApp>) {
     harness.state_mut().new_detached_terminal_tab(6, 60);
@@ -5350,6 +5363,14 @@ fn every_step() -> Vec<Step> {
         Step::new(Action::RenameTerminalTab).ready_with(a_terminal_tab),
         Step::new(Action::PreviousTerminalPrompt).ready_with(a_terminal_tab_with_prompts),
         Step::new(Action::NextTerminalPrompt).ready_with(a_terminal_tab_scrolled_back_to_a_prompt),
+        // Termoil's commands, each on a terminal tab (`task-2597`). Each one says what it did on the status bar.
+        Step::new(Action::SetTerminalTheme("Dracula".to_owned())).ready_with(a_terminal_tab),
+    ]
+    .into_iter()
+    .chain(unluminous_app::services::termoil_keys::TermoilCommand::ALL.iter().map(|command| {
+        Step::new(Action::Termoil(*command)).ready_with(a_terminal_tab_split_in_two)
+    }))
+    .chain(vec![
         Step::new(Action::NewFile(folder.join("docs"))),
         Step::new(Action::NewFileFromTemplate {
             folder: folder.join("docs"),
@@ -5408,7 +5429,8 @@ fn every_step() -> Vec<Step> {
             .at(Where::Paused)
             .after(&["editor caret --line 4 --column 12"]),
         Step::new(Action::Debug(DebugAction::EvaluateExpression)).at(Where::Paused),
-    ];
+    ])
+    .collect();
 
     // The Run menu, against a configuration that prints a word and stops.
     let a_configuration = ["run add echoing cmd /c echo hello", "run select echoing"];

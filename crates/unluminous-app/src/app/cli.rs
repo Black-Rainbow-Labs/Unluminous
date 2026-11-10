@@ -150,7 +150,13 @@ pub enum Waiting {
     /// tab and by nothing else, because a promise kept by looking at a different screen is not a
     /// promise. Following the tab that is showing while the wait runs is the race `task-1705` is
     /// about, so the number is fixed rather than re-asked on every frame.
-    TerminalText { tab: usize, needle: String, lines: Option<usize>, until: Instant },
+    TerminalText {
+        tab: usize,
+        pane: Option<u32>,
+        needle: String,
+        lines: Option<usize>,
+        until: Instant,
+    },
     /// Some text a run has written, which is how an agent waits for a dev server to say it is
     /// listening before it uses it.
     RunOutput { name: Option<String>, needle: String, tail: Option<usize>, until: Instant },
@@ -580,8 +586,8 @@ impl UnluminousApp {
                 }
                 Some(Reply::done(&request.command, "Done.", json!({ "frames": *target })))
             }
-            Waiting::TerminalText { tab, needle, lines, .. } => {
-                let screen = self.terminal_text(*tab, *lines)?;
+            Waiting::TerminalText { tab, pane, needle, lines, .. } => {
+                let screen = self.terminal_text_in(*tab, *pane, *lines)?;
                 screen.contains(needle.as_str()).then(|| {
                     Reply::done(
                         &request.command,
@@ -771,8 +777,8 @@ impl UnluminousApp {
                 "The window did not draw the frames the input needed, so it may not all have arrived."
                     .to_owned(),
             ),
-            Waiting::TerminalText { tab, needle, lines, .. } => {
-                let screen = self.terminal_text(*tab, *lines).unwrap_or_default();
+            Waiting::TerminalText { tab, pane, needle, lines, .. } => {
+                let screen = self.terminal_text_in(*tab, *pane, *lines).unwrap_or_default();
                 return Reply {
                     ok: false,
                     command: "terminal.read".to_owned(),

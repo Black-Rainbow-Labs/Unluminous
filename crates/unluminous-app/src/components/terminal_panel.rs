@@ -82,6 +82,10 @@ pub struct PanelOutcome {
     pub copy: Option<String>,
     /// A tab was right clicked: which one, and where the pointer was.
     pub menu: Option<(usize, Pos2)>,
+    /// A Termoil tab command from the grid: a new tab, the next or the previous, or closing this one.
+    pub tabs: Option<TabAsk>,
+    /// What a Termoil command run on the grid did, for the status bar.
+    pub message: Option<String>,
     /// The tile is being carried to another edge of the window, or its header was right clicked.
     ///
     /// The divider that resizes it is drawn by the window now rather than here: since `task-1697`
@@ -354,12 +358,15 @@ fn show_grid(
         renderer,
         font_size,
         opacity,
+        true,
     );
     panel.selecting = selecting;
     outcome.take_focus |= grid_outcome.take_focus;
     if let Some(text) = grid_outcome.copy {
         outcome.copy = Some(text);
     }
+    outcome.tabs = grid_outcome.tabs;
+    outcome.message = grid_outcome.message;
 }
 
 /// What a grid produced this frame.
@@ -372,6 +379,20 @@ pub(crate) struct GridOutcome {
     pub take_focus: bool,
     /// Text to put on the clipboard, from a copy or from a program asking.
     pub copy: Option<String>,
+    /// A Termoil command for the terminal tile's tabs, which only the tile can do (`task-2597`).
+    pub tabs: Option<TabAsk>,
+    /// What the last Termoil command run on the grid did, for the status bar.
+    pub message: Option<String>,
+}
+
+/// What a grid asks of the terminal tile's tabs: Termoil's `new-tab`, `next-tab` and `previous-tab`, and
+/// `close` on a tab's own first pane (`task-2597`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TabAsk {
+    New,
+    Next,
+    Previous,
+    Close,
 }
 
 /// One session's grid: work out its size, tell the session, draw what it reports, and take the
@@ -385,8 +406,48 @@ pub(crate) struct GridOutcome {
 /// `id` keeps the two tiles' widgets apart — egui identifies a widget by its id, and two grids
 /// sharing one would be one widget drawn twice. `empty` is what to say when there is no session,
 /// which is the one thing the two tiles really do differ about.
+///
+/// **Through `terminal_layer`** since `task-2597`, which gives every grid Termoil's split panes, keys, right
+/// click menu, palette and theme picker. `owns_tabs` is true for the terminal tile, the one owner Termoil's
+/// tab commands mean anything to.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn grid(
+    ui: &mut egui::Ui,
+    area: Rect,
+    session: Option<&mut unluminous_terminal::Session>,
+    selecting: &mut bool,
+    focused: bool,
+    id: &str,
+    empty: &str,
+    renderer: &TextRenderer,
+    font_size: f32,
+    opacity: f32,
+    owns_tabs: bool,
+) -> GridOutcome {
+    match session {
+        None => {
+            pane_grid(ui, area, None, selecting, focused, id, empty, renderer, font_size, opacity)
+        }
+        Some(host) => crate::components::terminal_layer::show(
+            ui,
+            area,
+            crate::components::terminal_layer::LayerGrid {
+                host,
+                selecting,
+                focused,
+                id,
+                renderer,
+                font_size,
+                opacity,
+                owns_tabs,
+            },
+        ),
+    }
+}
+
+/// One pane's grid: what [`grid`] did before `task-2597`, and what the layer draws each pane with.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn pane_grid(
     ui: &mut egui::Ui,
     area: Rect,
     session: Option<&mut unluminous_terminal::Session>,

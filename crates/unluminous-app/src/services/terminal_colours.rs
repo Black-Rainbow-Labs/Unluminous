@@ -14,13 +14,52 @@ use unluminous_terminal::{Palette, Rgb};
 
 use crate::theme::{self, color};
 
-/// Hand this thread's terminals the palette of the active theme.
+thread_local! {
+    /// The Termoil theme the person chose for the terminals, from the `terminal.theme` setting (`task-2597`).
+    /// Empty follows the window's own theme. Per thread for the reason [`Palette::current`] is.
+    static CHOSEN: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
+}
+
+/// Hand this thread's terminals the palette of the active theme, or of the Termoil theme chosen for them.
 pub fn follow_the_theme() {
     Palette::set_current(for_the_active_theme());
 }
 
-/// The palette a terminal is drawn in under the active theme.
+/// Choose the Termoil theme the terminals are drawn in, by name, and move every terminal onto it. An empty
+/// name, or one that is not a theme, follows the window's own theme again. Answers whether the name was a
+/// theme.
+pub fn choose(name: &str) -> bool {
+    let known = unluminous_terminal::themes::named(name).is_some();
+    CHOSEN.with(|chosen| {
+        *chosen.borrow_mut() = if known { name.trim().to_owned() } else { String::new() }
+    });
+    follow_the_theme();
+    known
+}
+
+/// Draw the terminals in a theme for now without choosing it, which is what the picker does as its list is
+/// moved through. [`follow_the_theme`] puts back the one chosen.
+pub fn preview(name: &str) {
+    if let Some(found) = unluminous_terminal::themes::named(name) {
+        Palette::set_current(found.palette());
+    }
+}
+
+/// The Termoil theme the terminals are drawn in, or empty while they follow the window's theme.
+pub fn chosen() -> String {
+    CHOSEN.with(|chosen| chosen.borrow().clone())
+}
+
+/// The palette a terminal is drawn in: the chosen Termoil theme's, or the active window theme's.
 pub fn for_the_active_theme() -> Palette {
+    match CHOSEN.with(|chosen| unluminous_terminal::themes::named(&chosen.borrow())) {
+        Some(found) => found.palette(),
+        None => for_the_window(),
+    }
+}
+
+/// The palette the window's own theme gives a terminal, whatever Termoil theme is chosen.
+pub fn for_the_window() -> Palette {
     let mut palette = match theme::is_dark() {
         true => Palette::new(),
         false => Palette::light(),
@@ -42,6 +81,24 @@ mod tests {
         theme::activate(theme::Theme::unluminous_dark());
         let palette = for_the_active_theme();
         assert_eq!(palette, Palette::new());
+    }
+
+    /// `task-2597`: a Termoil theme chosen for the terminals wins over the window's, and an empty choice
+    /// gives the window's back.
+    #[test]
+    fn a_chosen_termoil_theme_colors_the_terminals_and_empty_follows_the_window() {
+        theme::activate(theme::Theme::unluminous_dark());
+        assert!(choose("Dracula"));
+        let dracula = unluminous_terminal::themes::named("Dracula").expect("bundled");
+        assert_eq!(Palette::current().background, dracula.background);
+        assert_eq!(chosen(), "Dracula");
+        preview("Unluminous Light");
+        assert!(Palette::current().light, "a preview draws in the theme without choosing it");
+        follow_the_theme();
+        assert_eq!(Palette::current().background, dracula.background, "and is put back");
+        assert!(!choose("not a theme"));
+        assert_eq!(Palette::current(), Palette::new(), "the window's own palette again");
+        assert!(!choose(""));
     }
 
     #[test]

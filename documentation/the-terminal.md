@@ -85,6 +85,48 @@ choice is made the way every terminal on Windows makes it: something selected an
 and it interrupts, `Ctrl+Shift+C` always copies, and `Ctrl+X` reaches the program as `0x18`, because
 nothing in a terminal can be cut and that is how a person leaves `nano`.
 
+## Panes, Termoil's keys and the themes
+
+Every terminal grid in the window has what a Termoil pane has: the terminal tile, the run tile, a terminal
+node on the canvas and a ticket's agent terminal. While a grid has the keyboard, Termoil's keys work in it
+and come before the window's own menu keys, so `Ctrl+Shift+P` there is the terminal's command palette and
+not `Find Action`. On macOS the keys are Termoil's `Cmd` keys, with `Option` added where Unluminous's menus
+already hold the key: `Cmd+Option+D` splits right, `Cmd+Shift+D` splits down, `Cmd+Option+W` closes a pane,
+`Cmd+Option+K` clears the scrollback, `Ctrl+Option+Tab` moves between tabs, `Cmd+Ctrl+Z` zooms, and `Cmd+Option`
+with an arrow moves between panes.
+
+| Keys on Windows and Linux | What they do |
+| --- | --- |
+| `Ctrl+Shift+D` | Split the pane, the new one on the right |
+| `Ctrl+Shift+E` | Split the pane, the new one below |
+| `Ctrl+Shift+W` | Close the pane. On a tab's first pane it closes the tab |
+| `Alt` and an arrow | Give the keyboard to the pane on that side |
+| `Ctrl+Shift+Alt` and an arrow | Move the divider nearest the pane that way |
+| `Ctrl+Shift+Z` | Show the pane alone, or put the split back |
+| `Ctrl+Shift+P` | The terminal command palette |
+| `Ctrl+Shift+Y` | The theme picker |
+| `Ctrl+Shift+T`, `Ctrl+Tab`, `Ctrl+Shift+Tab` | A new terminal tab, and the next or previous one |
+| `Ctrl+Shift+Up` and `Down` | The previous and the next prompt the shell marked |
+| `Shift+PageUp` and `PageDown`, `Ctrl+Shift+Home` and `End` | Scroll a page, or to the top or bottom |
+| `Ctrl+Shift+K` | Clear the scrollback |
+| `Ctrl+Shift+C` and `Ctrl+Shift+V` | Copy and paste |
+
+`Ctrl+Shift+Z` and `Ctrl+Shift+Y` are Unluminous's own, because Termoil leaves zoom and the theme picker to its
+palette. Termoil's font size keys are the window's zoom here, which already changes the terminal font size.
+`unluminous-cli terminal keys` lists all of them with the action name `action run` takes for each.
+
+**A right click on a grid** opens a menu of the same commands. `View -> Terminal Panes` has them too, and acts
+on the grid that has the keyboard, or on the terminal tab that is showing when no grid does. A pane's divider
+can be dragged. A pane whose program ends is closed, the way Termoil closes one.
+
+**The theme picker** lists Termoil's 894 themes, the ones Unluminous ships first, and draws every terminal in
+the highlighted theme as the list is moved through. `Enter` keeps it and `Escape` puts the old one back. The
+choice is the `terminal.theme` setting, on `Settings -> Terminal`, and an empty setting follows the window's
+own theme, which is what a terminal did before.
+
+Termoil's shaders, cursor effects, search and link hints are not here. A shader is a pass over the whole
+window that Termoil's renderer runs, and Unluminous draws a terminal with its own painter.
+
 ## A tab comes back showing what was on it
 
 A terminal that was open when the window closed comes back as a fresh shell **in the folder it was
@@ -164,6 +206,10 @@ unluminous-cli terminal new
 unluminous-cli terminal send cargo test
 unluminous-cli terminal read --wait-for "test result" --json
 unluminous-cli terminal rename --tab 0 "the build"
+unluminous-cli terminal split --direction down
+unluminous-cli terminal send --pane 1 cargo watch
+unluminous-cli terminal panes --json
+unluminous-cli terminal theme "Material Palenight"
 ```
 
 `terminal read` reads the **screen**, which is what its summary says it does. `run output` reads the

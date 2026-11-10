@@ -1326,6 +1326,32 @@ fn terminal_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> Draw
             },
         );
     });
+    // Termoil's themes, for every terminal in the window (`task-2597`). The first row follows the window's own
+    // theme, which is what an empty setting means.
+    kit::card(ui, &mut column, "Theme", None, |card| {
+        let mut names = vec!["Follow the window's theme".to_owned()];
+        names.extend(
+            unluminous_terminal::themes::names_in_picker_order().into_iter().map(str::to_owned),
+        );
+        let chosen = names
+            .iter()
+            .skip(1)
+            .position(|name| name.eq_ignore_ascii_case(settings.terminal_theme.trim()))
+            .map_or(0, |at| at + 1);
+        card.row(
+            "Colors",
+            Some("Which of Termoil's 894 themes the terminal tile, runs, canvas terminals and ticket agents are drawn in. Ctrl+Shift+Y in a terminal, or View -> Terminal Panes -> Choose Terminal Theme, previews each one as you move through them."),
+            |row| {
+                if let Some(index) = row.select("Terminal theme", &names, Some(chosen), 240.0) {
+                    settings.terminal_theme = match index {
+                        0 => String::new(),
+                        _ => names[index].clone(),
+                    };
+                    changed = true;
+                }
+            },
+        );
+    });
     kit::card(ui, &mut column, "Shell", None, |card| {
         // Compared rather than taken from the field's own `changed`, because a field reports a change on every
         // letter and this is written to disk: what matters is that the setting is not what it was.
