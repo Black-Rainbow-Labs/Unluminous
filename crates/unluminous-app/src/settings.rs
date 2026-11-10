@@ -1134,6 +1134,9 @@ settings! {
         /// The Termoil shader every terminal is drawn with, by name, from the 22 Termoil ships (`task-2597`). Empty
         /// is none.
         terminal_shader = String::new() => "terminal.shader", "a Termoil shader name, or empty for none";
+        /// The Termoil cursor effect drawn around every terminal's cursor, by name, from the 20 Termoil ships
+        /// (`task-2601`). Empty is none.
+        terminal_cursor_effect = String::new() => "terminal.cursor_effect", "a Termoil cursor effect name, or empty for none";
         /// Extra patterns the project index leaves out, beyond `.gitignore` and the build folders.
         ///
         /// `task-1804` §7.3: the index skipped three hardcoded folder names and read no ignore file at
@@ -2018,6 +2021,7 @@ mod tests {
             "terminal.shell",
             "terminal.theme",
             "terminal.shader",
+            "terminal.cursor_effect",
             "editor.exclude",
             "mcp.areas",
             "appearance.theme",
@@ -2160,6 +2164,7 @@ mod tests {
             terminal_shell: "pwsh.exe".to_owned(),
             terminal_theme: "Dracula".to_owned(),
             terminal_shader: "neon".to_owned(),
+            terminal_cursor_effect: "sonar".to_owned(),
             shell_integration: true,
             line_numbers: false,
             indent: Indent::Spaces(4),

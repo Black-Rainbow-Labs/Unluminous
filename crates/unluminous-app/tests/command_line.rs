@@ -569,7 +569,9 @@ fn go_to_file_is_opened_populated_and_accepted_from_the_command_line() {
 fn every_modal_reports_which_one_is_open_and_shuts_when_it_is_cancelled() {
     let mut harness = harness_in(&sample_folder());
     assert_eq!(did(&mut harness, "modal state")["open"], serde_json::Value::Null);
-    for (name, extra) in [("go-to-file", ""), ("settings", ""), ("find-in-files", "")] {
+    for (name, extra) in
+        [("go-to-file", ""), ("settings", ""), ("find-in-files", ""), ("terminal-appearance", "")]
+    {
         did(&mut harness, &format!("modal open {name} {extra}"));
         assert_eq!(
             did(&mut harness, "modal state")["open"],
@@ -2563,6 +2565,11 @@ fn drive_the_terminal_and_the_runs(coverage: &mut Coverage) {
     c.works(&mut harness, "terminal shader none");
     c.refuses(&mut harness, "terminal shader not a shader");
     c.works(&mut harness, "terminal shaders --json");
+    c.works(&mut harness, "terminal cursor-effect sonar");
+    c.works(&mut harness, "terminal cursor-effect");
+    c.works(&mut harness, "terminal cursor-effect none");
+    c.refuses(&mut harness, "terminal cursor-effect not an effect");
+    c.works(&mut harness, "terminal cursor-effects --json");
     c.works(&mut harness, "terminal close 0");
     c.works(&mut harness, "terminal new");
 

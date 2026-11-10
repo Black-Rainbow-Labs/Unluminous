@@ -90,10 +90,10 @@ nothing in a terminal can be cut and that is how a person leaves `nano`.
 Every terminal grid in the window has what a Termoil pane has: the terminal tile, the run tile, a terminal
 node on the canvas and a ticket's agent terminal. While a grid has the keyboard, Termoil's keys work in it
 and come before the window's own menu keys, so `Ctrl+Shift+P` there is the terminal's command palette and
-not `Find Action`. On macOS the keys are Termoil's `Cmd` keys, with `Option` added where Unluminous's menus
-already hold the key: `Cmd+Option+D` splits right, `Cmd+Shift+D` splits down, `Cmd+Option+W` closes a pane,
-`Cmd+Option+K` clears the scrollback, `Ctrl+Option+Tab` moves between tabs, `Cmd+Ctrl+Z` zooms, and `Cmd+Option`
-with an arrow moves between panes.
+not `Find Action`. On macOS the keys are Termoil's own: `Cmd+D` splits right, `Cmd+Shift+D` splits down, `Cmd+W`
+closes a pane, `Cmd+K` clears the scrollback, `Ctrl+Tab` moves between tabs, `Cmd+Ctrl+Z` zooms, and `Cmd+Option`
+with an arrow moves between panes. While a terminal has the keyboard, the menu bar at the top of the screen leaves
+those keys off Show Diff, Close, Commit and the editor's tab switching, so the terminal gets them.
 
 | Keys on Windows and Linux | What they do |
 | --- | --- |
@@ -119,18 +119,26 @@ palette. Termoil's font size keys are the window's zoom here, which already chan
 on the grid that has the keyboard, or on the terminal tab that is showing when no grid does. A pane's divider
 can be dragged. A pane whose program ends is closed, the way Termoil closes one.
 
-**The theme picker** lists Termoil's 894 themes, the ones Unluminous ships first, and draws every terminal in
-the highlighted theme as the list is moved through. `Enter` keeps it and `Escape` puts the old one back. The
-choice is the `terminal.theme` setting, on `Settings -> Terminal`, and an empty setting follows the window's
-own theme, which is what a terminal did before.
+**Terminal Appearance** is one modal with three lists, the way Termoil's theme switcher has them: Termoil's 894
+themes on the left, the ones Unluminous ships first, then its 22 shaders, then its 20 cursor effects. `Choose
+Terminal Theme`, `Choose Terminal Shader` and `Choose Terminal Cursor Effect` all open it, each with its own list
+holding the keys. Left and Right (or Tab) move between the lists, Up and Down draw every terminal with the
+highlighted row of each list as they move, `Enter` or `Keep` keeps all three and `Escape` puts all three back.
+The choices are the `terminal.theme`, `terminal.shader` and `terminal.cursor_effect` settings, on
+`Settings -> Terminal`, and an empty theme follows the window's own theme, which is what a terminal did before.
 
 **Termoil's 22 shaders** are drawn over every terminal: neon glow, neon, a CRT, amber and green phosphor, VHS and
-the rest. `terminal.shader` on `Settings -> Terminal` chooses one, `View -> Terminal Panes -> Choose Terminal
-Shader` previews each as the list is moved through, and `unluminous-cli terminal shader neon` sets it. The shader
-covers the whole terminal, panes and all, the way Termoil draws one over its window, and combines with any theme.
-A shader that moves, such as neon glow, redraws the window while a terminal is showing.
+the rest. `unluminous-cli terminal shader neon` sets one. The shader covers the whole terminal, panes and all, the
+way Termoil draws one over its window, and combines with any theme. A shader that moves, such as neon glow,
+redraws the window while a terminal is showing. Anything drawn over a terminal, such as a modal, a menu or a
+tooltip, is left out of the shader, so it keeps its own colors.
 
-Termoil's cursor effects, search and link hints are not here.
+**Termoil's 20 cursor effects** are drawn around the cursor of the pane with the keyboard: a glow, sonar rings, a
+spotlight, an orbit and the rest. They run after the shader in the same pass, so any cursor effect goes with any
+shader or with none, and a chosen effect replaces a shader's own cursor light. `unluminous-cli terminal
+cursor-effect sonar` sets one, and `terminal cursor-effects` lists them.
+
+Termoil's search and link hints are not here.
 
 ## A tab comes back showing what was on it
 

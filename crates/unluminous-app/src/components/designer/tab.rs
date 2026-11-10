@@ -21,8 +21,10 @@ use crate::services::plugin_ui::{Look, Request};
 
 /// How tall the toolbar is.
 pub const TOOLBAR: f32 = 50.0;
-/// How wide the notes are.
+/// How wide the notes are until the divider beside them is dragged.
 pub const SIDEBAR: f32 = 320.0;
+/// How tall the one bar over a maximized design is (`task-2601`).
+pub const MAXIMISED_BAR: f32 = 40.0;
 /// The width of a tab below which the notes start hidden.
 pub const NARROW: f32 = 760.0;
 /// How tall the prompt box is.
@@ -55,7 +57,8 @@ pub struct Arranged {
 /// @param area - the tab
 /// @param scale - the surface's own zoom
 /// @param sidebar - whether the notes are showing
-pub fn arrange(area: Rect, scale: f32, sidebar: bool) -> Arranged {
+/// @param notes_width - how wide the notes are, in points at no zoom, which the divider beside them sets
+pub fn arrange(area: Rect, scale: f32, sidebar: bool, notes_width: f32) -> Arranged {
     let pad = PAD * scale;
     let toolbar = Rect::from_min_size(
         Pos2::new(area.left() + pad, area.top() + 8.0 * scale),
@@ -65,7 +68,7 @@ pub fn arrange(area: Rect, scale: f32, sidebar: bool) -> Arranged {
         Pos2::new(area.left() + pad, toolbar.bottom() + 8.0 * scale),
         Pos2::new(area.right() - pad, (area.bottom() - pad).max(toolbar.bottom() + 8.0 * scale)),
     );
-    let width = (SIDEBAR * scale).min(body.width() * 0.6);
+    let width = (notes_width * scale).min(body.width() * 0.7);
     let (main, side) = match sidebar && body.width() > 200.0 * scale {
         true => (
             Rect::from_min_max(
@@ -135,6 +138,15 @@ struct Facts {
     mode: Mode,
     device: Device,
     status: String,
+    notes_shown: Option<bool>,
+    maximised: bool,
+}
+
+/// What was pressed in the toolbar that the tab answers itself.
+#[derive(Default)]
+struct Chips {
+    notes: bool,
+    maximise: bool,
 }
 
 /// Draw the tab for a design and apply what was pressed.
@@ -155,19 +167,36 @@ pub fn show(
     let Some(facts) = facts_of(designer, design) else {
         return Outcome { page: area, zoom: 1.0, requests: Vec::new() };
     };
-    let memory = egui::Id::new(("designer-sidebar", design));
-    let stored = ui.ctx().data(|data| data.get_temp::<bool>(memory));
-    let showing = stored.unwrap_or(area.width() >= NARROW * scale);
-    let arranged = arrange(area, scale, showing);
+    if facts.maximised {
+        return show_maximised(designer, ui, area, look, design, &facts);
+    }
+    let showing = facts.notes_shown.unwrap_or(area.width() >= NARROW * scale);
+    let width = designer.notes_width.unwrap_or(SIDEBAR);
+    let arranged = arrange(area, scale, showing, width);
+    if let Some(view) = designer.design_view_mut(design) {
+        view.notes_drawn = arranged.sidebar.is_some();
+    }
     let (page, zoom) = page_placement(arranged.well, facts.device);
     kit::well(ui, scale, arranged.well, WELL_RADIUS * scale);
     let mut acts = Vec::new();
-    let toggled = toolbar(ui, look, arranged.toolbar, design, &facts, zoom, &mut acts);
-    if toggled {
-        ui.ctx().data_mut(|data| data.insert_temp(memory, !showing));
+    let showing = arranged.sidebar.is_some();
+    let pressed = toolbar(ui, look, arranged.toolbar, design, &facts, zoom, showing, &mut acts);
+    if pressed.notes {
+        acts.push(Act::ShowNotes(design.to_path_buf(), !showing));
+    }
+    if pressed.maximise {
+        acts.push(Act::Maximise(design.to_path_buf(), true));
     }
     device_label(ui, scale, arranged.well, page, facts.device);
     if let Some(side) = arranged.sidebar {
+        acts.extend(the_divider(
+            ui,
+            scale,
+            arranged.well,
+            side,
+            width,
+            designer.notes_width_unsaved,
+        ));
         acts.extend(notes::show(designer, ui, look, side, design));
     }
     if let Some(prompt) = arranged.prompt {
@@ -184,7 +213,81 @@ fn facts_of(designer: &Designer, design: &Path) -> Option<Facts> {
         mode: view.mode,
         device: view.device,
         status: view.status.clone(),
+        notes_shown: view.notes_shown,
+        maximised: view.maximised,
     })
+}
+
+/// A maximized design (`task-2601`): one bar along the top with the design's name and a button that puts it back
+/// in its tab, and the page in the rest of the pane, with no toolbar, notes or prompt box.
+fn show_maximised(
+    designer: &mut Designer,
+    ui: &mut egui::Ui,
+    area: Rect,
+    look: &Look<'_>,
+    design: &Path,
+    facts: &Facts,
+) -> Outcome {
+    let scale = look.scale();
+    let inset = 6.0 * scale;
+    let bar = Rect::from_min_size(
+        Pos2::new(area.left() + PAD * scale, area.top() + inset),
+        Vec2::new((area.width() - 2.0 * PAD * scale).max(0.0), MAXIMISED_BAR * scale),
+    );
+    let well = Rect::from_min_max(
+        Pos2::new(area.left() + inset, bar.bottom() + inset),
+        Pos2::new(area.right() - inset, (area.bottom() - inset).max(bar.bottom() + inset)),
+    );
+    let (page, zoom) = page_placement(well, facts.device);
+    kit::well(ui, scale, well, WELL_RADIUS * scale / 2.0);
+    let mut acts = Vec::new();
+    kit::layer(ui, scale, "designer-maximised-bar", bar, |rux| {
+        let middle = bar.center().y;
+        let close = Rect::from_center_size(
+            Pos2::new(bar.right() - CHIP * scale / 2.0, middle),
+            Vec2::splat(CHIP * scale),
+        );
+        let room = (close.left() - bar.left() - 12.0 * scale).max(0.0);
+        kit::heading(rux, Pos2::new(bar.left(), middle), &facts.name, 15.0, room);
+        if kit::chip_button(rux, close, Icon::X, CHIP, "Normal size") {
+            acts.push(Act::Maximise(design.to_path_buf(), false));
+        }
+    });
+    device_label(ui, scale, well, page, facts.device);
+    Outcome { page, zoom, requests: super::apply(designer, acts) }
+}
+
+/// The divider between the page and the notes, which sets how wide the notes are (`task-2601`). A double click
+/// puts them back to their usual width. The width is written down when the drag stops.
+///
+/// @param well - the page's well, at the divider's left
+/// @param side - the notes, at its right
+/// @param width - how wide the notes are now, in points at no zoom
+/// @param unsaved - a drag has moved the width and not yet written it down
+fn the_divider(
+    ui: &mut egui::Ui,
+    scale: f32,
+    well: Rect,
+    side: Rect,
+    width: f32,
+    unsaved: bool,
+) -> Vec<Act> {
+    use crate::components::splitter;
+    let middle = (well.right() + side.left()) / 2.0;
+    let line = Rect::from_min_max(
+        Pos2::new(middle - 0.5, side.top() + 8.0 * scale),
+        Pos2::new(middle + 0.5, side.bottom() - 8.0 * scale),
+    );
+    let drag = splitter::show(ui, line, "notes", splitter::Axis::Upright);
+    let mut acts = Vec::new();
+    if drag.reset {
+        acts.push(Act::NotesWidth(SIDEBAR, true));
+    } else if drag.delta != 0.0 {
+        acts.push(Act::NotesWidth(width - drag.delta / scale, false));
+    } else if unsaved && !ui.input(|input| input.pointer.primary_down()) {
+        acts.push(Act::NotesWidth(width, true));
+    }
+    acts
 }
 
 /// `Phone · 390` over the page, so a person can see which device the page is laid out for.
@@ -276,7 +379,8 @@ pub fn plan(room: f32) -> Plan {
 
 /// The toolbar: the design's name, the mode and the device, the zoom, the status, and four chips.
 ///
-/// Answers whether the notes chip was pressed, which is the one thing the toolbar does itself.
+/// Answers whether the notes chip or the maximize chip was pressed, which the tab answers itself.
+#[allow(clippy::too_many_arguments)]
 fn toolbar(
     ui: &mut egui::Ui,
     look: &Look<'_>,
@@ -284,10 +388,11 @@ fn toolbar(
     design: &Path,
     facts: &Facts,
     zoom: f64,
+    notes_showing: bool,
     acts: &mut Vec<Act>,
-) -> bool {
+) -> Chips {
     let scale = look.scale();
-    let mut toggled = false;
+    let mut pressed = Chips::default();
     kit::layer(ui, scale, "designer-toolbar", rect, |rux| {
         let middle = rect.center().y;
         let chips_width = 4.0 * (CHIP + 8.0) * scale;
@@ -319,9 +424,9 @@ fn toolbar(
         if !facts.status.is_empty() && room > 60.0 * scale {
             kit::quiet(rux, Pos2::new(pen.x, middle), &facts.status, 12.0, room);
         }
-        toggled = the_four_chips(rux, rect, design, scale, acts);
+        pressed = the_four_chips(rux, rect, design, scale, notes_showing, acts);
     });
-    toggled
+    pressed
 }
 
 /// The device control in the form the toolbar had room for. Answers the device chosen this frame, if any.
@@ -372,14 +477,21 @@ fn show_the_zoom(rux: &mut Rux<'_>, pen: &mut Pen, middle: f32, scale: f32, zoom
     rux::text::draw_centred(rux.painter(), chip, galley, ink);
 }
 
-/// Notes, History, Source and Reload, from the right. Answers whether the notes chip was pressed.
+/// The notes toggle, Source, History and Maximize, from the right. Answers which of the two the tab answers itself
+/// was pressed.
+///
+/// **The notes toggle is where Reload was** (`task-2601`): *"Replace the undo button with the button for toggle
+/// notes."* Reload's arrow read as undo. The page reloads by itself when its file changes, and Reload is still
+/// `Designer -> Reload Design` and `plugins run designer reload`. The toggle sits in a carved well while the notes
+/// are showing, so it reads as on or off.
 fn the_four_chips(
     rux: &mut Rux<'_>,
     rect: Rect,
     design: &Path,
     scale: f32,
+    notes_showing: bool,
     acts: &mut Vec<Act>,
-) -> bool {
+) -> Chips {
     let middle = rect.center().y;
     let mut x = rect.right() - CHIP * scale / 2.0;
     let mut place = || {
@@ -387,16 +499,25 @@ fn the_four_chips(
         x -= (CHIP + 8.0) * scale;
         Rect::from_center_size(centre, Vec2::splat(CHIP * scale))
     };
-    if kit::chip_button(rux, place(), Icon::Rerun, CHIP, "Reload") {
-        acts.push(Act::Reload(design.to_path_buf()));
+    let mut pressed = Chips::default();
+    let notes = place();
+    if notes_showing {
+        kit::well_surface(rux, notes.expand(2.0 * scale), notes.height() / 2.0 + 2.0 * scale);
     }
+    let name = if notes_showing { "Hide notes" } else { "Show notes" };
+    pressed.notes = rux::components::ChipButton::new(Icon::Bubble, CHIP, name)
+        .mark(16.0, Some(1.6))
+        .folds(notes_showing)
+        .show(rux, notes)
+        .clicked();
     if kit::chip_button(rux, place(), Icon::Document, CHIP, "Source") {
         acts.push(Act::OpenSource(design.to_path_buf()));
     }
     if kit::chip_button(rux, place(), Icon::Clock, CHIP, "History") {
         acts.push(Act::ShowHistory(design.to_path_buf()));
     }
-    kit::chip_button(rux, place(), Icon::Bubble, CHIP, "Notes")
+    pressed.maximise = kit::chip_button(rux, place(), Icon::Expand, CHIP, "Maximize design");
+    pressed
 }
 
 /// The prompt box under the page: a carved box with a hint naming what it is about, `Send open notes` beside
@@ -547,20 +668,31 @@ mod tests {
     }
 
     #[test]
+    fn the_notes_are_as_wide_as_the_divider_says_and_never_take_most_of_the_tab() {
+        let tall = Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 800.0));
+        let wide = arrange(tall, 1.0, true, 500.0).sidebar.expect("showing");
+        assert_eq!(wide.width(), 500.0);
+        let at_two = arrange(tall, 2.0, true, 200.0).sidebar.expect("showing");
+        assert_eq!(at_two.width(), 400.0, "the width is at no zoom, so it grows with the surface");
+        let too_wide = arrange(tall, 1.0, true, 5000.0).sidebar.expect("showing");
+        assert!(too_wide.width() <= (1200.0 - 28.0) * 0.7 + 0.01, "{}", too_wide.width());
+    }
+
+    #[test]
     fn the_notes_start_hidden_below_a_narrow_tab_and_the_prompt_needs_some_height() {
         let tall = Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 800.0));
-        let with = arrange(tall, 1.0, true);
+        let with = arrange(tall, 1.0, true, SIDEBAR);
         assert!(with.sidebar.is_some() && with.prompt.is_some());
         assert!(
             with.well.right() < with.sidebar.unwrap().left(),
             "the well and the notes do not overlap"
         );
-        let without = arrange(tall, 1.0, false);
+        let without = arrange(tall, 1.0, false, SIDEBAR);
         assert!(without.sidebar.is_none());
         assert!(without.well.width() > with.well.width());
         let short = Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 200.0));
         assert!(
-            arrange(short, 1.0, true).prompt.is_none(),
+            arrange(short, 1.0, true, SIDEBAR).prompt.is_none(),
             "no room for a prompt, so none is drawn"
         );
     }

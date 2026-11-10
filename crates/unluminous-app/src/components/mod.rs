@@ -82,6 +82,7 @@ pub mod splitter;
 pub mod spreadsheet;
 pub mod status_bar;
 pub mod templates_dialog;
+pub mod terminal_appearance;
 pub mod terminal_layer;
 pub mod terminal_paint;
 pub mod terminal_panel;

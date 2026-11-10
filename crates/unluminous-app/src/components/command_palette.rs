@@ -99,6 +99,14 @@ impl Words {
         one: "shader",
         many: "shaders",
     };
+    /// The cursor effect list of the terminal appearance picker, over Termoil's cursor effects (`task-2601`).
+    pub const CURSOR_EFFECTS: Words = Words {
+        title: "Choose Terminal Cursor Effect",
+        field: "Find a cursor effect",
+        hint: "Type part of a cursor effect's name",
+        one: "cursor effect",
+        many: "cursor effects",
+    };
     /// The terminal theme picker, over Termoil's themes.
     pub const THEMES: Words = Words {
         title: "Choose Terminal Theme",
@@ -172,7 +180,8 @@ impl CommandPalette {
         self.results.get(self.chosen).map(|found| &found.command)
     }
 
-    fn move_choice(&mut self, by: i32) {
+    /// Move the choice by `by` rows, stopping at either end.
+    pub(crate) fn move_choice(&mut self, by: i32) {
         if self.results.is_empty() {
             return;
         }
@@ -289,7 +298,7 @@ pub fn show(ctx: &egui::Context, state: &mut CommandPalette) -> PaletteOutcome {
         }
 
         let list = Rect::from_min_max(Pos2::new(body.left(), field.bottom() + 10.0), body.max);
-        let taken = rows(ui, list, state);
+        let taken = rows(ui, list, state, "command-palette-rows");
         let chosen = taken.or(enter.then_some(state.chosen));
         if let Some(index) = chosen {
             if let Some(row) = state.results.get(index) {
@@ -337,7 +346,14 @@ pub fn show(ctx: &egui::Context, state: &mut CommandPalette) -> PaletteOutcome {
 }
 
 /// The list of commands. Answers with the row that was double clicked.
-fn rows(ui: &mut egui::Ui, area: Rect, state: &mut CommandPalette) -> Option<usize> {
+///
+/// @param salt - what keeps this list's scrolling apart from another list in the same modal
+pub(crate) fn rows(
+    ui: &mut egui::Ui,
+    area: Rect,
+    state: &mut CommandPalette,
+    salt: &str,
+) -> Option<usize> {
     let mut taken = None;
     let mut chose = None;
     let mut follow_to = None;
@@ -345,7 +361,7 @@ fn rows(ui: &mut egui::Ui, area: Rect, state: &mut CommandPalette) -> Option<usi
     // Intersected rather than assigned, which is `components::explorer`'s rule: a clip written from
     // a component's own rectangle throws away whatever the caller had cut it to.
     child.set_clip_rect(child.clip_rect().intersect(area));
-    egui::ScrollArea::vertical().id_salt("command-palette-rows").show(&mut child, |ui| {
+    egui::ScrollArea::vertical().id_salt(salt).show(&mut child, |ui| {
         if state.results.is_empty() {
             ui.add_space(8.0);
             ui.label(
@@ -361,7 +377,9 @@ fn rows(ui: &mut egui::Ui, area: Rect, state: &mut CommandPalette) -> Option<usi
             // menus and two controls with one name cannot be told apart — by a person hearing them
             // read out, or by a test asking for one. `go_to_file`'s rule about a folder.
             let label = format!("Run {} on {}", command.label, command.menu);
-            let response = modal::row(ui, index, &label, chosen, |painter, row| {
+            // Keyed by the list as well as the row, because the appearance picker draws three lists in one modal
+            // and their rows would otherwise be one widget each (`task-2601`).
+            let response = modal::row(ui, (salt, index), &label, chosen, |painter, row| {
                 let tint = match (command.enabled, chosen) {
                     (false, _) => color::text_faint(),
                     (true, true) => color::text_strong(),

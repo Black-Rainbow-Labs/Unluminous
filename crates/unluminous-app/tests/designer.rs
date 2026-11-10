@@ -478,6 +478,108 @@ fn the_toolbar_and_the_pane_are_controls_a_person_can_press() {
     assert_eq!(the_tabs(&mut harness)["tabs"], serde_json::json!(["landing.html", "Pricing.html"]));
 }
 
+/// The notes beside the design, from `notes::show`, are on the screen.
+fn the_notes_are_showing(harness: &Harness<'static, UnluminousApp>) -> bool {
+    harness.query_by_label("Hide notes").is_some()
+}
+
+/// `task-2601`: *"Notes should have a toggle button to show/hide it. Replace the undo button with the button for
+/// toggle notes."* The rightmost chip, where Reload's arrow was, shows and hides the notes, and says which it
+/// will do. Reload is still on the Designer menu.
+#[test]
+fn the_notes_toggle_is_where_reload_was_and_shows_and_hides_the_notes() {
+    let (_folder, mut harness) = a_window_on_a_design("unluminous-designer-notes-toggle");
+    assert!(the_notes_are_showing(&harness), "a wide tab starts with the notes showing");
+    assert!(harness.query_by_label("Reload").is_none(), "Reload's arrow is gone from the toolbar");
+    let toggle = harness.get_by_label("Hide notes").rect();
+    let source = harness.get_by_label("Source").rect();
+    assert!(toggle.left() > source.right(), "the toggle is the rightmost chip");
+    let well = harness.state().browser_placements()[0].area;
+
+    harness.get_by_label("Hide notes").click();
+    steady(&mut harness);
+    assert!(!the_notes_are_showing(&harness));
+    assert!(harness.query_by_label("Show notes").is_some());
+    let wider = harness.state().browser_placements()[0].area;
+    assert!(wider.width() > well.width(), "the page takes the room the notes had");
+
+    harness.get_by_label("Show notes").click();
+    steady(&mut harness);
+    assert!(the_notes_are_showing(&harness));
+
+    // The agent's half is the same function.
+    assert_eq!(did(&mut harness, "plugins run designer notes hide")["notes"], false);
+    steady(&mut harness);
+    assert!(!the_notes_are_showing(&harness));
+    assert_eq!(did(&mut harness, "plugins run designer notes")["notes"], true, "toggled back");
+    steady(&mut harness);
+    assert!(the_notes_are_showing(&harness));
+    did(&mut harness, "plugins run designer reload");
+}
+
+/// `task-2601`: *"I need a maximize button that allows the design/html to fill the full pane for designer, and a
+/// close to bring it back to normal size."*
+#[test]
+fn maximize_fills_the_designer_pane_with_the_page_and_normal_size_puts_it_back() {
+    let (_folder, mut harness) = a_window_on_a_design("unluminous-designer-maximize");
+    let normal = harness.state().browser_placements()[0].area;
+    harness.get_by_label("Maximize design").click();
+    steady(&mut harness);
+    let full = harness.state().browser_placements()[0].area;
+    assert!(
+        full.width() > normal.width() && full.height() > normal.height(),
+        "{normal:?} {full:?}"
+    );
+    assert!(harness.query_by_label("New tab").is_none(), "the pane's tab strip is not drawn");
+    assert!(harness.query_by_label("Hide notes").is_none(), "nor the notes");
+    assert!(harness.query_by_label("Send to agent").is_none(), "nor the prompt box");
+
+    harness.get_by_label("Normal size").click();
+    steady(&mut harness);
+    assert_eq!(harness.state().browser_placements()[0].area, normal, "back as it was");
+    assert!(harness.query_by_label("New tab").is_some());
+
+    // Escape puts it back too, and the agent's verbs are the same two functions.
+    did(&mut harness, "plugins run designer maximize");
+    steady(&mut harness);
+    assert!(harness.query_by_label("Normal size").is_some());
+    harness.key_press(egui::Key::Escape);
+    steady(&mut harness);
+    assert!(harness.query_by_label("Normal size").is_none(), "Escape restored it");
+    assert_eq!(did(&mut harness, "plugins run designer maximize")["maximized"], true);
+    assert_eq!(did(&mut harness, "plugins run designer normal-size")["maximized"], false);
+}
+
+/// `task-2601`: *"The html/design should also be resizable with a dragger on the right to control how much space
+/// it uses versus notes."* Dragging the divider left gives the notes more room and the page less, and the width
+/// is written to the project's `designs.conf` when the drag stops, so a new window starts at it.
+#[test]
+fn the_divider_beside_the_notes_sets_how_much_room_the_page_has_and_is_remembered() {
+    let (folder, mut harness) = a_window_on_a_design("unluminous-designer-divider");
+    let page = harness.state().browser_placements()[0].area;
+    let handle = harness.get_by_label("Resize notes").rect();
+    drag(&mut harness, handle.center(), handle.center() - egui::vec2(120.0, 0.0));
+    steady(&mut harness);
+    let narrower = harness.state().browser_placements()[0].area;
+    assert!(
+        (page.width() - narrower.width() - 120.0).abs() < 2.0,
+        "the page gave the notes 120 points: {page:?} {narrower:?}"
+    );
+    let written =
+        std::fs::read_to_string(folder.join(".unluminous/designs.conf")).expect("written");
+    assert!(written.contains("notes.width = 440"), "{written}");
+
+    let mut again = harness_in(&folder);
+    again.set_size(egui::vec2(1700.0, 900.0));
+    steady(&mut again);
+    did(&mut again, "tab open .designs/landing.html");
+    steady(&mut again);
+    assert_eq!(again.state_mut().designer().unwrap().notes_width, Some(440.0), "read back");
+
+    assert_eq!(did(&mut harness, "plugins run designer notes-width 260")["notes_width"], 260.0);
+    assert_eq!(refused(&mut harness, "plugins run designer notes-width wide"), "failed");
+}
+
 #[test]
 fn a_design_tab_the_editing_area_remembered_comes_back_in_the_designer_pane() {
     // `plugin-tabs.txt` is what the released binary wrote for every plugin tab, and a design tab in the editing area,

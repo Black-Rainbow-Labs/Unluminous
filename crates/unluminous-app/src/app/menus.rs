@@ -293,6 +293,7 @@ impl UnluminousApp {
             | Action::Termoil(_)
             | Action::SetTerminalTheme(_)
             | Action::SetTerminalShader(_)
+            | Action::SetTerminalCursorEffect(_)
             | Action::CloseTerminalTab
             | Action::ToggleRunTile
             | Action::ToggleDebugTile
@@ -1196,6 +1197,11 @@ impl UnluminousApp {
             }
             Action::SetTerminalShader(name) => {
                 self.message = Some(match self.set_the_terminal_shader(&name) {
+                    Ok(said) | Err(said) => said,
+                });
+            }
+            Action::SetTerminalCursorEffect(name) => {
+                self.message = Some(match self.set_the_terminal_cursor_effect(&name) {
                     Ok(said) | Err(said) => said,
                 });
             }

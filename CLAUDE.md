@@ -5958,8 +5958,11 @@ the emulator Unluminous already uses. Seven rules:
   A command for a grid outside the terminal tile is queued and run when that grid is next drawn.
 - **Termoil's keys come before the menu chords while a grid has the keyboard.** `services::termoil_keys` is the
   table, copied from Termoil's `config/keys.rs`, and `read_the_menu_shortcuts` leaves any of them to the grid. On
-  macOS a menu key equivalent is taken by AppKit first, so `no_termoil_key_on_macos_is_a_menu_key_equivalent` fails
-  when a menu entry gains a key a macOS Termoil binding uses. The `View -> Terminal Panes` rows carry no keys for
+  macOS a menu key equivalent is taken by AppKit first, so since `task-2601` the macOS bar is built from
+  `termoil_keys::leave_the_terminal_its_keys` while a grid has the keyboard, and the macOS keys are Termoil's own
+  (`Cmd+D`, `Cmd+W`, `Cmd+K`). `while_a_terminal_has_the_keyboard_no_menu_key_equivalent_is_a_termoil_key` and
+  `no_macos_termoil_key_is_one_the_system_takes_first` are the tests: `task-2597` had put Split Pane Right on
+  `Cmd+Option+D`, which macOS takes for Show or Hide the Dock before the window sees it. The `View -> Terminal Panes` rows carry no keys for
   the same reason the prompt rows do not.
 - **A pane split from a detached session is detached**, so a test of splitting starts no shell.
 - **`unluminous-terminal/themes/themes.txt` is a copy of Termoil's**, with the commit it came from in
@@ -5973,7 +5976,24 @@ the emulator Unluminous already uses. Seven rules:
   **previous** frame, which already holds the shader, so a shader drawn from it would glow more every frame. The
   `.wgsl` files are copies of Termoil's and the wrapper is Termoil's, so a shader runs in both unchanged. A grid under
   another modal or under its right click menu draws no shader, because the hook draws after everything else.
-- **Not built**: Termoil's cursor effects, search and link hints.
+- **Not built**: Termoil's search and link hints.
+
+### Terminal Appearance, cursor effects, and a shader that stays off a modal (`task-2601`)
+
+- **The shader is cut around whatever is drawn above the grid.** `terminal_shader::drawn_over` lists the rectangle of
+  every visible layer above the grid's own (a modal's dialog by `modal::drawn_by_id`, because a modal's layer also
+  holds a backdrop the size of the window), and the hook draws the shader once per piece `uncovered` leaves, with a
+  scissor each. Before this a shader previewed from the picker was drawn over the picker. `take_the_last_shaded` is
+  what a test reads.
+- **Termoil's 20 cursor effects are `services::terminal_cursor_effect`**, copies of Termoil's `cursor-effects/` with
+  the commit in `terminal_cursor_effects/README`, joined to a shader by Termoil's own `compose`. A pipeline is
+  compiled per shader and effect pair (`Look::key`). The cursor is the center of the focused pane's cursor cell,
+  from `GridOutcome::cursor`. `terminal.cursor_effect` is the setting.
+- **One modal holds the three lists** (`components::terminal_appearance`), each a `CommandPalette`, and the three
+  `Choose Terminal ...` commands open it with their own list holding the keys. `command_palette::rows` keys a row by
+  its list as well as its index, because three lists in one modal otherwise made one widget of each row number.
+  `modal open terminal-appearance`, and `modal type`, `choose`, `results`, `accept` and `cancel`, act on the list
+  with the keys.
 
 ## The code index answers what ripgrep would, from memory, and it is measured rather than assumed
 
@@ -7491,6 +7511,17 @@ left, a menu, a Settings page and `explorer.shows = .designs`. Six rules to keep
   `components::markdown_text`. The mocks the screenshot tests were compared with are in
   `_agent_output/task-2254-designer/mocks/`. `designer_tab`, `designer_tab_phone`, `designer_composer`,
   `designer_pane`, `designer_settings`, `designer_history` and `designer_tab_light` are the pictures.
+
+### The Designer tab can be maximized, and the notes have a divider and a toggle (`task-2601`)
+
+- **`DesignView::maximised`** draws only a bar with the name and `Normal size` over the page, and `app::designer`
+  leaves the pane's tab strip out, so the page fills the pane. Escape puts it back. `maximize` and `normal-size`
+  are the agent's verbs.
+- **The notes are shown or hidden by `DesignView::notes_shown`**, which replaced an egui temporary, so
+  `plugins run designer notes show|hide|toggle` reaches the same state as the chip. The chip is where Reload was;
+  Reload is `Designer -> Reload Design`, and a page reloads by itself when its file changes.
+- **The divider is `splitter::show` named `Resize notes`**, and `Designer::notes_width` is written to
+  `designs.conf` as `notes.width` only when the drag stops.
 
 ## What `task-2270` changed
 

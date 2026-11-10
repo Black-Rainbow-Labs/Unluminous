@@ -1340,7 +1340,7 @@ fn terminal_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> Draw
             .map_or(0, |at| at + 1);
         card.row(
             "Colors",
-            Some("Which of Termoil's 894 themes the terminal tile, runs, canvas terminals and ticket agents are drawn in. Ctrl+Shift+Y in a terminal, or View -> Terminal Panes -> Choose Terminal Theme, previews each one as you move through them."),
+            Some("Which of Termoil's 894 themes the terminal tile, runs, canvas terminals and ticket agents are drawn in. Ctrl+Shift+Y in a terminal (Cmd+Shift+Y on macOS), or View -> Terminal Panes -> Choose Terminal Theme, opens Terminal Appearance, which previews each one as you move through them."),
             |row| {
                 if let Some(index) = row.select("Terminal theme", &names, Some(chosen), 240.0) {
                     settings.terminal_theme = match index {
@@ -1367,10 +1367,37 @@ fn terminal_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> Draw
             .map_or(0, |at| at + 1);
         card.row(
             "Shader",
-            Some("One of Termoil's 22 shaders, drawn over every terminal: neon glow, a CRT, amber phosphor and the rest. View -> Terminal Panes -> Choose Terminal Shader previews each one as you move through them."),
+            Some("One of Termoil's 22 shaders, drawn over every terminal: neon glow, a CRT, amber phosphor and the rest. View -> Terminal Panes -> Choose Terminal Shader opens Terminal Appearance on its shaders, which previews each one as you move through them."),
             |row| {
                 if let Some(index) = row.select("Terminal shader", &names, Some(chosen), 240.0) {
                     settings.terminal_shader = match index {
+                        0 => String::new(),
+                        _ => names[index].clone(),
+                    };
+                    changed = true;
+                }
+            },
+        );
+    });
+    // And Termoil's cursor effects, drawn around every terminal's cursor with or without a shader (`task-2601`).
+    kit::card(ui, &mut column, "Cursor", None, |card| {
+        let mut names = vec!["None".to_owned()];
+        names.extend(
+            crate::services::terminal_cursor_effect::EFFECTS
+                .iter()
+                .map(|effect| effect.name.to_owned()),
+        );
+        let chosen = names
+            .iter()
+            .skip(1)
+            .position(|name| name.eq_ignore_ascii_case(settings.terminal_cursor_effect.trim()))
+            .map_or(0, |at| at + 1);
+        card.row(
+            "Cursor effect",
+            Some("One of Termoil's 20 cursor effects, drawn around the cursor of every terminal: a glow, sonar rings, a spotlight and the rest. View -> Terminal Panes -> Choose Terminal Cursor Effect opens Terminal Appearance on its cursor effects, which previews each one as you move through them."),
+            |row| {
+                if let Some(index) = row.select("Terminal cursor effect", &names, Some(chosen), 240.0) {
+                    settings.terminal_cursor_effect = match index {
                         0 => String::new(),
                         _ => names[index].clone(),
                     };

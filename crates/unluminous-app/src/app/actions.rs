@@ -307,6 +307,9 @@ pub enum Action {
     /// Draw every terminal with this Termoil shader, by name, and write it to the settings. Empty is none. What the
     /// terminal shader picker's rows are. `task-2597`.
     SetTerminalShader(String),
+    /// Draw every terminal with this Termoil cursor effect, by name, and write it to the settings. Empty is none.
+    /// What the cursor effect list of the appearance picker holds. `task-2601`.
+    SetTerminalCursorEffect(String),
     /// Make an empty file in this folder. The name is asked for first.
     NewFile(PathBuf),
     /// Make a file in this folder from the template with this name, a built in type or one of a person's
@@ -2639,6 +2642,7 @@ fn termoil_rows() -> Vec<Entry> {
         row(C::CommandPalette),
         row(C::ChooseTheme),
         row(C::ChooseShader),
+        row(C::ChooseCursorEffect),
         Entry::Separator,
         row(C::ClearScrollback),
         row(C::ResetTerminal),

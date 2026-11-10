@@ -383,6 +383,9 @@ pub(crate) struct GridOutcome {
     pub tabs: Option<TabAsk>,
     /// What the last Termoil command run on the grid did, for the status bar.
     pub message: Option<String>,
+    /// The center of the cursor, in points, when the grid drew one. A cursor effect is drawn around it
+    /// (`task-2601`).
+    pub cursor: Option<Pos2>,
 }
 
 /// What a grid asks of the terminal tile's tabs: Termoil's `new-tab`, `next-tab` and `previous-tab`, and
@@ -530,6 +533,11 @@ pub(crate) fn pane_grid(
             hovered_link,
         },
     );
+
+    outcome.cursor = screen.cursor.map(|cursor| {
+        let pen = terminal_paint::Grid { origin, cell }.at(cursor.row, cursor.column);
+        Rect::from_min_size(pen, Vec2::new(cell.width, cell.height)).center()
+    });
 
     // Input, once the drawing is decided, so that a key press is acted on with the size the program already
     // knows about.

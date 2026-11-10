@@ -157,6 +157,7 @@ impl Designer {
         let (tabs, active) = tabs_from(&values, |design| project.join(design).is_file());
         self.tabs = tabs;
         self.active_tab = active;
+        self.notes_width = values.number("notes.width").map(|width| width as f32);
     }
 
     /// Write the tabs down in the project's `.unluminous/designs.conf`.

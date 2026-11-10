@@ -55,6 +55,9 @@ pub fn run(designer: &mut Designer, command: &str, arguments: &[String]) -> Resu
         "device" | "mode" | "mode-browse" | "mode-comment" | "select" => {
             about_the_page(designer, command, &parsed)
         }
+        "maximize" | "normal-size" | "notes" | "notes-width" => {
+            about_the_layout(designer, command, &parsed)
+        }
         "selection" | "comments" | "comment" | "reply" | "resolve" | "reopen" | "delete"
         | "move" => about_the_notes(designer, command, &parsed),
         "ask" | "ask-all" | "prompt" | "history" | "restore" | "reload" | "source" => {
@@ -211,6 +214,48 @@ fn about_the_page(
             })?;
             designer.set_mode(&design, mode)?;
             Ok(Answer::said(format!("Mode: {}", mode.title())).with(json!({ "mode": mode.name() })))
+        }
+    }
+}
+
+/// The verbs that arrange a design's tab: maximizing the page, and showing and sizing the notes (`task-2601`).
+fn about_the_layout(
+    designer: &mut Designer,
+    command: &str,
+    parsed: &Parsed<'_>,
+) -> Result<Answer, String> {
+    if command == "notes-width" {
+        let word = argument(parsed.words, 0).unwrap_or_default();
+        let width: f32 = word.parse().map_err(|_| format!("`{word}` is not a width in points."))?;
+        let kept = designer.set_notes_width(width, true);
+        return Ok(Answer::said(format!("The notes are {kept} points wide"))
+            .with(json!({ "notes_width": kept })));
+    }
+    let design = which(designer, &parsed.design)?;
+    let shown = designer.name_of(&design);
+    match command {
+        "maximize" | "normal-size" => {
+            let maximised = command == "maximize";
+            designer.set_maximised(&design, maximised)?;
+            let said = match maximised {
+                true => format!("{shown} fills the Designer pane"),
+                false => format!("{shown} is back in its tab"),
+            };
+            Ok(Answer::said(said).with(json!({ "design": shown, "maximized": maximised })))
+        }
+        _ => {
+            let wanted = match argument(parsed.words, 0).unwrap_or("toggle") {
+                "show" | "on" => Some(true),
+                "hide" | "off" => Some(false),
+                "toggle" => None,
+                other => return Err(format!("`{other}` is not show, hide or toggle.")),
+            };
+            let now = designer.show_notes(&design, wanted)?;
+            let said = match now {
+                true => format!("The notes beside {shown} are showing"),
+                false => format!("The notes beside {shown} are hidden"),
+            };
+            Ok(Answer::said(said).with(json!({ "design": shown, "notes": now })))
         }
     }
 }

@@ -75,6 +75,8 @@ impl UnluminousApp {
             "themes" => self.cli_terminal_themes(request),
             "shader" => self.cli_terminal_shader(request),
             "shaders" => self.cli_terminal_shaders(request),
+            "cursor-effect" => self.cli_terminal_cursor_effect(request),
+            "cursor-effects" => self.cli_terminal_cursor_effects(request),
             "keys" => self.cli_terminal_keys(request),
             _ => unknown(request),
         }
@@ -613,6 +615,36 @@ impl UnluminousApp {
         }
         let value = json!({ "shaders": rows, "shader": chosen });
         lines(request, format!("{} Termoil shaders", BUILTINS.len()), text, value)
+    }
+
+    fn cli_terminal_cursor_effect(&mut self, request: &Request) -> Outcome {
+        if let Some(name) = request.text("name") {
+            if let Err(refused) = self.set_the_terminal_cursor_effect(&name) {
+                return no(request, code::NOT_FOUND, refused);
+            }
+        }
+        let effect = self.settings.terminal_cursor_effect.clone();
+        let said = match effect.is_empty() {
+            true => "The terminals are drawn with no cursor effect".to_owned(),
+            false => format!("The terminals are drawn with the {effect} cursor effect"),
+        };
+        ok(request, said, json!({ "cursor_effect": effect }))
+    }
+
+    fn cli_terminal_cursor_effects(&mut self, request: &Request) -> Outcome {
+        use crate::services::terminal_cursor_effect::{moves, EFFECTS};
+        let chosen = self.settings.terminal_cursor_effect.clone();
+        let mut rows = Vec::new();
+        let mut text = Vec::new();
+        for effect in EFFECTS {
+            let mark = if chosen.eq_ignore_ascii_case(effect.name) { "*" } else { " " };
+            text.push(format!("{mark} {:<16} {}", effect.name, effect.summary));
+            rows.push(
+                json!({ "name": effect.name, "summary": effect.summary, "moves": moves(effect) }),
+            );
+        }
+        let value = json!({ "cursor_effects": rows, "cursor_effect": chosen });
+        lines(request, format!("{} Termoil cursor effects", EFFECTS.len()), text, value)
     }
 
     fn cli_terminal_keys(&mut self, request: &Request) -> Outcome {

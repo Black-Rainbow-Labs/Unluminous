@@ -71,6 +71,7 @@ impl UnluminousApp {
         }
         // And the shader drawn over them, which is per thread like the palette.
         crate::services::terminal_shader::choose(&self.settings.terminal_shader);
+        crate::services::terminal_cursor_effect::choose(&self.settings.terminal_cursor_effect);
         self.give_glass_something_to_bend(before);
         // The interface's own family is bound into egui rather than read at drawing time, so it is
         // installed again when it moves — and only then, because `set_fonts` throws away the glyph atlas.

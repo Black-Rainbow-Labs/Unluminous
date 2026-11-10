@@ -1399,10 +1399,9 @@ pub struct UnluminousApp {
     /// The terminal grid the terminal command palette or the theme picker was opened over, by its session's
     /// serial, so what is chosen there is run on that grid (`task-2597`).
     pub termoil_target: Option<u64>,
-    /// True while the palette is the terminal theme picker, which previews each theme as it is moved through.
-    pub choosing_a_terminal_theme: bool,
-    /// True while the palette is the terminal shader picker, which previews each shader as it is moved through.
-    pub choosing_a_terminal_shader: bool,
+    /// The terminal appearance picker while it is open: Termoil's themes, shaders and cursor effects, each
+    /// previewed in every terminal as it is moved through (`task-2601`).
+    pub terminal_appearance: Option<crate::components::terminal_appearance::AppearancePicker>,
     /// The tabs that have been closed, oldest first, so the newest can be opened again.
     ///
     /// Travel history rather than state: bounded at
@@ -1831,8 +1830,7 @@ impl UnluminousApp {
             go_to_file: None,
             palette: None,
             termoil_target: None,
-            choosing_a_terminal_theme: false,
-            choosing_a_terminal_shader: false,
+            terminal_appearance: None,
             closed_tabs: Vec::new(),
             update: None,
             update_answer: None,
@@ -2012,6 +2010,8 @@ impl UnluminousApp {
         crate::services::terminal_colours::choose("");
         crate::services::terminal_shader::choose("");
         crate::services::terminal_shader::preview(None);
+        crate::services::terminal_cursor_effect::choose("");
+        crate::services::terminal_cursor_effect::preview(None);
         theme::apply(ctx);
         self.themed = true;
         // What the plugins contribute, read from their manifests. Here rather than only in
@@ -2174,6 +2174,7 @@ impl UnluminousApp {
         // And the terminals' Termoil theme, which an empty setting leaves following the window's (`task-2597`).
         crate::services::terminal_colours::choose(&self.settings.terminal_theme);
         crate::services::terminal_shader::choose(&self.settings.terminal_shader);
+        crate::services::terminal_cursor_effect::choose(&self.settings.terminal_cursor_effect);
         self.install_the_interface_font();
     }
 

@@ -3263,6 +3263,33 @@ The 22 Termoil shaders, with what each looks like.
 unluminous-cli terminal shaders --json
 ```
 
+### terminal cursor-effect
+
+```
+unluminous-cli terminal cursor-effect [name]
+```
+
+Read or choose the Termoil cursor effect drawn around every terminal's cursor, with or without a shader. none turns it off.
+
+- `name` (optional) — The cursor effect, from `terminal cursor-effects`, or none. Read the current one when this is left out. Everything after it on the line belongs to it.
+
+```sh
+unluminous-cli terminal cursor-effect sonar
+unluminous-cli terminal cursor-effect none
+```
+
+### terminal cursor-effects
+
+```
+unluminous-cli terminal cursor-effects
+```
+
+The 20 Termoil cursor effects, with what each looks like.
+
+```sh
+unluminous-cli terminal cursor-effects --json
+```
+
 ### terminal keys
 
 ```
@@ -4463,12 +4490,12 @@ unluminous-cli modal list --json
 ### modal open
 
 ```
-unluminous-cli modal open <command-palette|go-to-file|find-in-files|settings|about|new-file|rename> [--query <text>] [--path <path>] [--page <name>]
+unluminous-cli modal open <command-palette|terminal-appearance|go-to-file|find-in-files|settings|about|new-file|rename> [--query <text>] [--path <path>] [--page <name>]
 ```
 
 Open a modal, and put something in its box in the same breath.
 
-- `name` — command-palette, go-to-file, find-in-files, settings, about, new-file or rename.
+- `name` — command-palette, terminal-appearance, go-to-file, find-in-files, settings, about, new-file or rename.
 
 - `--query <text>` — Type this into the modal's box as it opens.
 - `--path <path>` — The folder a new file goes in, or the file being renamed. Needed by new-file and rename.

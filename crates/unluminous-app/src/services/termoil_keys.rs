@@ -5,7 +5,9 @@
 //! the panes, zooming one, the command palette, the theme picker, the scroll and prompt keys, clearing and
 //! resetting. The keys are Termoil's defaults, from `termoil-app/src/config/keys.rs`, so a person who uses
 //! Termoil already knows them. While a grid has the keyboard they come before the window's menu chords, which
-//! is what makes `Ctrl+Shift+P` the terminal's palette there and Unluminous's everywhere else.
+//! is what makes `Ctrl+Shift+P` the terminal's palette there and Unluminous's everywhere else. On macOS, where
+//! the menu bar takes a key equivalent before the window sees it, the bar is built without Termoil's keys while
+//! a grid has the keyboard ([`leave_the_terminal_its_keys`]), so `Cmd+D` splits the pane there.
 //!
 //! Termoil's keys that Unluminous does not take, and why:
 //!
@@ -42,6 +44,7 @@ pub enum TermoilCommand {
     CommandPalette,
     ChooseTheme,
     ChooseShader,
+    ChooseCursorEffect,
     PreviousPrompt,
     NextPrompt,
     ScrollPageUp,
@@ -80,6 +83,7 @@ impl TermoilCommand {
         C::CommandPalette,
         C::ChooseTheme,
         C::ChooseShader,
+        C::ChooseCursorEffect,
         C::Copy,
         C::Paste,
         C::SelectAll,
@@ -116,6 +120,7 @@ impl TermoilCommand {
             C::CommandPalette => "command-palette",
             C::ChooseTheme => "choose-theme",
             C::ChooseShader => "choose-shader",
+            C::ChooseCursorEffect => "choose-cursor-effect",
             C::PreviousPrompt => "previous-prompt",
             C::NextPrompt => "next-prompt",
             C::ScrollPageUp => "scroll-page-up",
@@ -153,6 +158,7 @@ impl TermoilCommand {
             C::CommandPalette => "Terminal Command Palette",
             C::ChooseTheme => "Choose Terminal Theme",
             C::ChooseShader => "Choose Terminal Shader",
+            C::ChooseCursorEffect => "Choose Terminal Cursor Effect",
             C::PreviousPrompt => "Previous Prompt",
             C::NextPrompt => "Next Prompt",
             C::ScrollPageUp => "Scroll Page Up",
@@ -233,18 +239,24 @@ fn bindings_elsewhere() -> Vec<(Shortcut, TermoilCommand)> {
     ]
 }
 
-/// Termoil's default keys on macOS, from `default_keybindings_macos` in Termoil, with `Option` added to the six
-/// that are key equivalents of Unluminous's own menus, and `Cmd+Ctrl+Z` for zoom, because `Cmd+Option+Z` is Rollback. AppKit hands a key equivalent to the menu before the grid
-/// sees it, so Termoil's `Cmd+D`, `Cmd+W`, `Cmd+K`, `Ctrl+Tab` and `Ctrl+Shift+Tab` would have been Show Diff,
-/// Close Window, Commit and the editor's tabs there (`no_termoil_key_on_macos_is_a_menu_key_equivalent`).
+/// Termoil's default keys on macOS, from `default_keybindings_macos` in Termoil, so `Cmd+D` splits right and
+/// `Cmd+W` closes a pane exactly as they do in Termoil's own window (`task-2601`). Termoil has no default for
+/// zoom or the theme picker, so those two are `Cmd+Ctrl+Z` and `Cmd+Shift+Y`.
+///
+/// Six of these are key equivalents of Unluminous's own menus: `Cmd+D` is Show Diff, `Cmd+W` is Close, `Cmd+K`
+/// is Commit, and `Ctrl+Tab` and `Ctrl+Shift+Tab` move between the editor's tabs. AppKit hands a key
+/// equivalent to the menu before the grid sees the press, so while a grid has the keyboard the macOS menu bar
+/// is built with those chords taken off ([`leave_the_terminal_its_keys`]). `task-2597` had moved them to
+/// `Cmd+Option` chords instead, and `Cmd+Option+D` is the system's own Show or Hide the Dock, which the window
+/// never receives at all.
 fn bindings_macos() -> Vec<(Shortcut, TermoilCommand)> {
     use egui::Key as K;
-    let tab = |shift: bool| Shortcut { key: K::Tab, command: false, shift, alt: true, ctrl: true };
+    let tab = |shift: bool| Shortcut { key: K::Tab, command: false, shift, alt: false, ctrl: true };
     vec![
         (cmd(K::T, false, false, false), C::NewTab),
-        (cmd(K::D, false, true, false), C::SplitRight),
+        (cmd(K::D, false, false, false), C::SplitRight),
         (cmd(K::D, true, false, false), C::SplitDown),
-        (cmd(K::W, false, true, false), C::ClosePane),
+        (cmd(K::W, false, false, false), C::ClosePane),
         (tab(false), C::NextTab),
         (tab(true), C::PreviousTab),
         (cmd(K::ArrowLeft, false, true, false), C::FocusLeft),
@@ -266,7 +278,7 @@ fn bindings_macos() -> Vec<(Shortcut, TermoilCommand)> {
         ),
         (cmd(K::Home, false, false, false), C::ScrollToTop),
         (cmd(K::End, false, false, false), C::ScrollToBottom),
-        (cmd(K::K, false, true, false), C::ClearScrollback),
+        (cmd(K::K, false, false, false), C::ClearScrollback),
         (cmd(K::ArrowLeft, false, false, true), C::ResizeLeft),
         (cmd(K::ArrowRight, false, false, true), C::ResizeRight),
         (cmd(K::ArrowUp, false, false, true), C::ResizeUp),
@@ -274,6 +286,53 @@ fn bindings_macos() -> Vec<(Shortcut, TermoilCommand)> {
         (cmd(K::Z, false, false, true), C::ZoomPane),
         (cmd(K::Y, true, false, false), C::ChooseTheme),
     ]
+}
+
+/// True when two chords are the same keys, whichever platform flags they were written with.
+fn same_keys(one: &Shortcut, other: &Shortcut) -> bool {
+    one.key == other.key
+        && one.command == other.command
+        && one.shift == other.shift
+        && one.alt == other.alt
+        && one.ctrl == other.ctrl
+}
+
+/// The menus with every chord a macOS Termoil key uses taken off, for the macOS menu bar while a terminal grid
+/// has the keyboard (`task-2601`). AppKit gives a key equivalent to the menu before the window sees the press,
+/// so without this `Cmd+D` in a terminal would be Show Diff rather than Split Pane Right. Copy and paste are left
+/// alone, because they reach the grid as clipboard events through the menu.
+///
+/// @param menus - the menus the bar would otherwise be built from
+pub fn leave_the_terminal_its_keys(
+    menus: &[crate::app::actions::Menu],
+) -> Vec<crate::app::actions::Menu> {
+    use crate::app::actions::Entry;
+    let taken: Vec<Shortcut> = bindings_macos()
+        .into_iter()
+        .filter(|(_, command)| !arrives_as_a_clipboard_event(*command))
+        .map(|(chord, _)| chord)
+        .collect();
+    fn strip(entries: &mut [Entry], taken: &[Shortcut]) {
+        for entry in entries {
+            match entry {
+                Entry::Item { shortcut, .. } => {
+                    if shortcut
+                        .as_ref()
+                        .is_some_and(|held| taken.iter().any(|chord| same_keys(held, chord)))
+                    {
+                        *shortcut = None;
+                    }
+                }
+                Entry::Submenu { entries, .. } => strip(entries, taken),
+                Entry::Separator => {}
+            }
+        }
+    }
+    let mut menus = menus.to_vec();
+    for menu in &mut menus {
+        strip(&mut menu.entries, &taken);
+    }
+    menus
 }
 
 /// The keys for the platform this was built for.
@@ -364,12 +423,9 @@ mod tests {
         assert_eq!(other.len(), held.len(), "both platforms bind the same commands");
     }
 
-    /// On macOS a menu entry's key is a key equivalent, and AppKit gives it to the menu before the grid ever
-    /// sees a key press. So no Termoil key on macOS may be a key one of the menus holds, or the menu would
-    /// win in the terminal. Checked on every platform, because the menus are built the same everywhere.
-    #[test]
-    fn no_termoil_key_on_macos_is_a_menu_key_equivalent() {
-        use crate::app::actions::{menus, Entry, MenuState};
+    /// Every chord one of the menus holds, with the name of its entry.
+    fn menu_chords(menus: &[crate::app::actions::Menu]) -> Vec<(String, Shortcut)> {
+        use crate::app::actions::Entry;
         fn walk(entries: &[Entry], out: &mut Vec<(String, Shortcut)>) {
             for entry in entries {
                 match entry {
@@ -382,26 +438,115 @@ mod tests {
             }
         }
         let mut held = Vec::new();
-        for menu in menus(&MenuState::default()) {
+        for menu in menus {
             walk(&menu.entries, &mut held);
         }
-        let clashes: Vec<String> = bindings_macos()
+        held
+    }
+
+    /// The macOS Termoil keys a menu entry also holds, as `command and entry`.
+    fn clashes_with(menus: &[crate::app::actions::Menu]) -> Vec<String> {
+        let held = menu_chords(menus);
+        bindings_macos()
             .into_iter()
             .filter(|(_, command)| !arrives_as_a_clipboard_event(*command))
             .filter_map(|(chord, command)| {
-                let same = |other: &Shortcut| {
-                    other.key == chord.key
-                        && other.command == chord.command
-                        && other.shift == chord.shift
-                        && other.alt == chord.alt
-                        && other.ctrl == chord.ctrl
-                };
                 held.iter()
-                    .find(|(_, other)| same(other))
+                    .find(|(_, other)| same_keys(other, &chord))
                     .map(|(name, _)| format!("{command:?} and {name}"))
             })
-            .collect();
-        assert!(clashes.is_empty(), "these Termoil keys are menu keys on macOS: {clashes:?}");
+            .collect()
+    }
+
+    /// On macOS a menu entry's key is a key equivalent, and AppKit gives it to the menu before the grid ever
+    /// sees a key press. So while a grid has the keyboard the bar is built from [`leave_the_terminal_its_keys`],
+    /// and no Termoil key may be left on it. Checked on every platform, because the menus are built the same
+    /// everywhere. `Cmd+D` is Show Diff and `Cmd+S` is Save in the menus as they are, and only the first is taken.
+    #[test]
+    fn while_a_terminal_has_the_keyboard_no_menu_key_equivalent_is_a_termoil_key() {
+        use crate::app::actions::{menus, MenuState};
+        let plain = menus(&MenuState::default());
+        assert!(!clashes_with(&plain).is_empty(), "the menus hold some of Termoil's keys");
+        let left = leave_the_terminal_its_keys(&plain);
+        let clashes = clashes_with(&left);
+        assert!(clashes.is_empty(), "these Termoil keys are still menu keys on macOS: {clashes:?}");
+        let save =
+            Shortcut { key: egui::Key::S, command: true, shift: false, alt: false, ctrl: false };
+        assert!(
+            menu_chords(&left).iter().any(|(_, chord)| same_keys(chord, &save)),
+            "a chord Termoil does not use stays on the menu"
+        );
+        let copy =
+            Shortcut { key: egui::Key::C, command: true, shift: false, alt: false, ctrl: false };
+        assert!(
+            menu_chords(&left).iter().any(|(_, chord)| same_keys(chord, &copy)),
+            "copy stays, because it reaches the grid as a clipboard event"
+        );
+    }
+
+    /// The macOS keys are Termoil's own defaults wherever Termoil has one (`task-2601`), from
+    /// `default_keybindings_macos` in `termoil-app/src/config/keys.rs`.
+    #[test]
+    fn the_macos_keys_are_termoil_s_own() {
+        use egui::Key as K;
+        let on = |command: TermoilCommand| {
+            bindings_macos().into_iter().find(|(_, held)| *held == command).map(|(chord, _)| chord)
+        };
+        let chord =
+            |key, command, shift, alt, ctrl| Some(Shortcut { key, command, shift, alt, ctrl });
+        assert_eq!(on(C::NewTab), chord(K::T, true, false, false, false), "cmd+t");
+        assert_eq!(on(C::SplitRight), chord(K::D, true, false, false, false), "cmd+d");
+        assert_eq!(on(C::SplitDown), chord(K::D, true, true, false, false), "cmd+shift+d");
+        assert_eq!(on(C::ClosePane), chord(K::W, true, false, false, false), "cmd+w");
+        assert_eq!(on(C::NextTab), chord(K::Tab, false, false, false, true), "ctrl+tab");
+        assert_eq!(on(C::PreviousTab), chord(K::Tab, false, true, false, true), "ctrl+shift+tab");
+        assert_eq!(on(C::FocusLeft), chord(K::ArrowLeft, true, false, true, false), "cmd+alt+left");
+        assert_eq!(on(C::CommandPalette), chord(K::P, true, true, false, false), "cmd+shift+p");
+        assert_eq!(on(C::PreviousPrompt), chord(K::ArrowUp, true, false, false, false), "cmd+up");
+        assert_eq!(on(C::ScrollToTop), chord(K::Home, true, false, false, false), "cmd+home");
+        assert_eq!(on(C::ClearScrollback), chord(K::K, true, false, false, false), "cmd+k");
+        assert_eq!(
+            on(C::ResizeLeft),
+            chord(K::ArrowLeft, true, false, false, true),
+            "cmd+ctrl+left"
+        );
+    }
+
+    /// A chord macOS itself takes never reaches the window, so none of the macOS Termoil keys may be one
+    /// (`task-2601`). `Cmd+Option+D` was Split Pane Right, and it shows and hides the Dock instead.
+    #[test]
+    fn no_macos_termoil_key_is_one_the_system_takes_first() {
+        use egui::Key as K;
+        let cmd_only = |key, shift, alt, ctrl| Shortcut { key, command: true, shift, alt, ctrl };
+        let ctrl_only =
+            |key| Shortcut { key, command: false, shift: false, alt: false, ctrl: true };
+        let system = [
+            (cmd_only(K::D, false, true, false), "Show or Hide the Dock"),
+            (cmd_only(K::Space, false, false, false), "Spotlight"),
+            (cmd_only(K::Space, false, true, false), "Finder search"),
+            (cmd_only(K::Space, false, false, true), "Emoji and Symbols"),
+            (cmd_only(K::Tab, false, false, false), "Switch applications"),
+            (cmd_only(K::Backtick, false, false, false), "Switch windows"),
+            (cmd_only(K::H, false, false, false), "Hide"),
+            (cmd_only(K::H, false, true, false), "Hide Others"),
+            (cmd_only(K::M, false, false, false), "Minimize"),
+            (cmd_only(K::Q, false, false, false), "Quit"),
+            (cmd_only(K::Q, false, false, true), "Lock Screen"),
+            (cmd_only(K::F, false, false, true), "Full Screen"),
+            (cmd_only(K::Escape, false, true, false), "Force Quit"),
+            (cmd_only(K::Num3, true, false, false), "Screenshot"),
+            (cmd_only(K::Num4, true, false, false), "Screenshot of a part"),
+            (cmd_only(K::Num5, true, false, false), "Screenshot toolbar"),
+            (ctrl_only(K::ArrowLeft), "Move a space left"),
+            (ctrl_only(K::ArrowRight), "Move a space right"),
+            (ctrl_only(K::ArrowUp), "Mission Control"),
+            (ctrl_only(K::ArrowDown), "Application windows"),
+        ];
+        for (chord, command) in bindings_macos() {
+            if let Some((_, what)) = system.iter().find(|(taken, _)| same_keys(taken, &chord)) {
+                panic!("{command:?} is on {}, which macOS takes for {what}", chord_text(chord));
+            }
+        }
     }
 
     #[cfg(not(target_os = "macos"))]

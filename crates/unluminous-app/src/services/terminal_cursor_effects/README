@@ -1,0 +1,4 @@
+These files are copies of Termoil's crates/termoil-app/cursor-effects/, taken at Termoil commit 71016ad
+(task-2601). Each one defines `fn termoil_cursor_effect(uv, color)`, and common.wgsl is the helpers every one may
+use. services/terminal_cursor_effect.rs joins one to a shader the way Termoil's cursor_effects::compose does, so
+an effect written for one runs in the other unchanged. A fix to an effect is made in Termoil and copied here.

@@ -65,6 +65,8 @@ pub enum Request {
     Themes(u64),
     /// Open the shader picker for the grid with this serial.
     Shaders(u64),
+    /// Open the appearance picker on its cursor effects, for the grid with this serial (`task-2601`).
+    CursorEffects(u64),
 }
 
 /// How a pane is started: the program the terminal setting names, and what wakes the window when it writes.
@@ -332,6 +334,11 @@ fn run_on(host: &mut Session, split: &mut Split, command: TermoilCommand, owns_t
             REQUESTS.with(|requests| requests.borrow_mut().push(Request::Shaders(host.serial())));
             Ran::done("Opened the terminal shader picker")
         }
+        C::ChooseCursorEffect => {
+            REQUESTS
+                .with(|requests| requests.borrow_mut().push(Request::CursorEffects(host.serial())));
+            Ran::done("Opened the terminal cursor effect picker")
+        }
         _ => {
             let focused = split.layout.focused();
             let session = match focused {
@@ -553,6 +560,7 @@ pub fn menu_entries(owns_tabs: bool, split: bool) -> Vec<Entry> {
         row(C::CommandPalette),
         row(C::ChooseTheme),
         row(C::ChooseShader),
+        row(C::ChooseCursorEffect),
         Entry::Separator,
         row(C::ClearScrollback),
         row(C::ResetTerminal),
@@ -655,17 +663,21 @@ pub(crate) fn show(ui: &mut egui::Ui, area: Rect, grid: LayerGrid<'_>) -> GridOu
             font_size,
             opacity,
         );
+        outcome.cursor = drawn.cursor;
         merge(drawn, &mut outcome);
     }
     if focused {
         WITH_KEYBOARD.with(|holder| holder.set(Some((serial, ui.ctx().cumulative_pass_nr()))));
     }
-    // Termoil's shader over the whole terminal, panes and all, as Termoil draws one over its window. Not while
-    // something is drawn over the terminal, because the shader is drawn after everything else: the right click
-    // menu, or another modal, unless the shader picker is the modal and is previewing.
+    // Termoil's shader and cursor effect over the whole terminal, panes and all, as Termoil draws them over its
+    // window. Not while the right click menu or another modal is open, because a modal's backdrop is a picture of
+    // the window that already has the shader in it, unless the appearance picker is the modal and is previewing.
+    // Whatever is drawn above the terminal is cut out of the shader either way (`task-2601`).
     let covered = menu_open || crate::app::another_modal_has_the_keyboard(ui.ctx(), ui.layer_id());
-    if !covered || crate::services::terminal_shader::previewing() {
-        crate::services::terminal_shader::shade(ui, area, None);
+    let previewing = crate::services::terminal_shader::previewing()
+        || crate::services::terminal_cursor_effect::previewing();
+    if !covered || previewing {
+        crate::services::terminal_shader::shade(ui, area, outcome.cursor);
     }
     show_the_menu(ui, serial, host, &mut split, owns_tabs, &mut outcome);
     put_back(serial, split);
@@ -777,6 +789,7 @@ fn draw_the_panes(
             font_size,
             opacity,
         );
+        outcome.cursor = drawn.cursor;
         merge(drawn, outcome);
         return;
     }
@@ -820,6 +833,9 @@ fn draw_the_panes(
         };
         if drawn.take_focus {
             split.layout.focus(pane);
+        }
+        if pane == focused {
+            outcome.cursor = drawn.cursor;
         }
         merge(drawn, outcome);
         if pane == focused && !split.layout.is_zoomed() {

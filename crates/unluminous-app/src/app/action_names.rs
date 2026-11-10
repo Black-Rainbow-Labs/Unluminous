@@ -171,6 +171,10 @@ impl Action {
                 true => "set-terminal-shader".to_owned(),
                 false => format!("set-terminal-shader-{name}"),
             },
+            Action::SetTerminalCursorEffect(name) => match name.is_empty() {
+                true => "set-terminal-cursor-effect".to_owned(),
+                false => format!("set-terminal-cursor-effect-{name}"),
+            },
             Action::SetTerminalTheme(name) => match name.is_empty() {
                 true => "set-terminal-theme".to_owned(),
                 false => format!("set-terminal-theme-{}", terminal_theme_slug(name)),
@@ -297,6 +301,13 @@ impl Action {
         if let Some(rest) = name.strip_prefix("set-terminal-shader-") {
             return crate::services::terminal_shader::named(rest)
                 .map(|builtin| Action::SetTerminalShader(builtin.name.to_owned()));
+        }
+        if name == "set-terminal-cursor-effect" {
+            return Some(Action::SetTerminalCursorEffect(String::new()));
+        }
+        if let Some(rest) = name.strip_prefix("set-terminal-cursor-effect-") {
+            return crate::services::terminal_cursor_effect::named(rest)
+                .map(|effect| Action::SetTerminalCursorEffect(effect.name.to_owned()));
         }
         if name == "set-terminal-theme" {
             return Some(Action::SetTerminalTheme(String::new()));

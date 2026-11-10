@@ -85,6 +85,7 @@ pub mod store;
 pub mod system_files;
 pub mod telemetry;
 pub mod terminal_colours;
+pub mod terminal_cursor_effect;
 pub mod terminal_shader;
 pub mod termoil_keys;
 pub mod text_renderer;

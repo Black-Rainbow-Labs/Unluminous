@@ -167,6 +167,7 @@ impl UnluminousApp {
         self.show_the_new_project_dialog(ui);
         self.show_the_background_grid(ui);
         self.show_the_command_palette(ui);
+        self.show_the_terminal_appearance(ui);
         self.show_go_to_file(ui);
         self.show_find_in_files(ui);
         // The references, the candidate list and the rename, which are one modal wearing three faces.
@@ -621,13 +622,19 @@ impl UnluminousApp {
         }
 
         // The macOS menu bar, which is built once and rebuilt when what it holds changes.
+        let in_a_terminal = self.a_terminal_has_the_keyboard()
+            || crate::components::terminal_panel::a_terminal_has_the_keyboard(ui.ctx());
         if let Some(native) = self.native_menu.as_mut() {
             // **No key equivalents while a chord is being recorded** on the Keymap page (`task-2286`):
             // AppKit hands a key equivalent to the menu before the window sees it, so pressing `Cmd+S` to
             // bind it would save instead.
-            match self.settings_window.keymap.recording.is_some() {
-                true => native.refresh(&crate::services::keymap::without_chords(menus)),
-                false => native.refresh(menus),
+            // **And none of Termoil's keys while a terminal grid has the keyboard** (`task-2601`), for the same
+            // reason: `Cmd+D` in a terminal is Split Pane Right, and as a key equivalent it would be Show Diff.
+            match (self.settings_window.keymap.recording.is_some(), in_a_terminal) {
+                (true, _) => native.refresh(&crate::services::keymap::without_chords(menus)),
+                (false, true) => native
+                    .refresh(&crate::services::termoil_keys::leave_the_terminal_its_keys(menus)),
+                (false, false) => native.refresh(menus),
             }
             if let Some(chosen) = native.poll() {
                 *action = Some(chosen);
@@ -2087,49 +2094,7 @@ impl UnluminousApp {
         if let Some(mut palette) = self.palette.take() {
             palette.refresh();
             let outcome = crate::components::command_palette::show(ui.ctx(), &mut palette);
-            // The theme picker draws every terminal in the theme its chosen row names, as the row moves
-            // (`task-2597`), and puts the chosen theme back when it shuts without one being kept.
-            if self.choosing_a_terminal_theme {
-                if let Some(Action::SetTerminalTheme(name)) =
-                    palette.chosen_command().map(|command| &command.action)
-                {
-                    let wanted = match name.is_empty() {
-                        true => crate::services::terminal_colours::for_the_window(),
-                        false => unluminous_terminal::themes::named(name)
-                            .map(|theme| theme.palette())
-                            .unwrap_or_else(crate::services::terminal_colours::for_the_window),
-                    };
-                    // Asked for a frame only when the preview moved, so an open picker costs nothing idle.
-                    if unluminous_terminal::Palette::current() != wanted {
-                        unluminous_terminal::Palette::set_current(wanted);
-                        ui.ctx().request_repaint();
-                    }
-                }
-            }
-            // The shader picker does the same with the shader its chosen row names.
-            if self.choosing_a_terminal_shader {
-                if let Some(Action::SetTerminalShader(name)) =
-                    palette.chosen_command().map(|command| &command.action)
-                {
-                    let previewed =
-                        crate::services::terminal_shader::in_use().map(|builtin| builtin.name);
-                    let wanted =
-                        crate::services::terminal_shader::named(name).map(|builtin| builtin.name);
-                    if previewed != wanted || !crate::services::terminal_shader::previewing() {
-                        crate::services::terminal_shader::preview(Some(name));
-                        ui.ctx().request_repaint();
-                    }
-                }
-            }
             if outcome.close {
-                if self.choosing_a_terminal_shader {
-                    crate::services::terminal_shader::preview(None);
-                }
-                self.choosing_a_terminal_shader = false;
-                if self.choosing_a_terminal_theme && outcome.run.is_none() {
-                    crate::services::terminal_colours::follow_the_theme();
-                }
-                self.choosing_a_terminal_theme = false;
                 if outcome.run.is_none() {
                     self.termoil_target = None;
                 }
@@ -2143,6 +2108,25 @@ impl UnluminousApp {
             if let Some(command) = outcome.run {
                 self.run_a_palette_row(command, ui.ctx());
             }
+        }
+    }
+
+    /// The terminal appearance picker (`task-2601`): every terminal is drawn with the three rows it has chosen, as
+    /// they move, and what it kept or put back is applied when it shuts.
+    fn show_the_terminal_appearance(&mut self, ui: &mut egui::Ui) {
+        let Some(mut picker) = self.terminal_appearance.take() else { return };
+        let outcome = crate::components::terminal_appearance::show(ui.ctx(), &mut picker);
+        let chosen = picker.chosen();
+        if preview_the_terminal_appearance(&chosen) {
+            ui.ctx().request_repaint();
+        }
+        self.terminal_appearance = Some(picker);
+        if outcome.keep {
+            self.terminal_appearance = None;
+            self.termoil_target = None;
+            self.message = Some(self.keep_the_terminal_appearance(&chosen));
+        } else if outcome.close {
+            self.put_the_terminal_appearance_back();
         }
     }
 
@@ -3071,4 +3055,44 @@ fn let_a_press_elsewhere_take_the_focus(ctx: &egui::Context) {
     if ctx.options(|options| options.input_options.surrender_focus_on != on) {
         ctx.options_mut(|options| options.input_options.surrender_focus_on = on);
     }
+}
+
+/// Draw every terminal with the theme, shader and cursor effect the appearance picker has chosen. A list whose filter
+/// matches nothing previews what is in use. Answers whether anything changed, so a frame is asked for only then and
+/// an open picker costs nothing while it is idle.
+///
+/// @param chosen - what the picker's rows name
+fn preview_the_terminal_appearance(
+    chosen: &crate::components::terminal_appearance::Chosen,
+) -> bool {
+    use crate::services::{terminal_colours, terminal_cursor_effect, terminal_shader};
+    let mut changed = false;
+    let wanted = match chosen.theme.as_deref() {
+        None => terminal_colours::for_the_active_theme(),
+        Some("") => terminal_colours::for_the_window(),
+        Some(name) => unluminous_terminal::themes::named(name)
+            .map(|theme| theme.palette())
+            .unwrap_or_else(terminal_colours::for_the_window),
+    };
+    if unluminous_terminal::Palette::current() != wanted {
+        unluminous_terminal::Palette::set_current(wanted);
+        changed = true;
+    }
+    if let Some(name) = &chosen.shader {
+        let wanted = terminal_shader::named(name).map(|builtin| builtin.name);
+        let shown = terminal_shader::in_use().map(|builtin| builtin.name);
+        if shown != wanted || !terminal_shader::previewing() {
+            terminal_shader::preview(Some(name));
+            changed = true;
+        }
+    }
+    if let Some(name) = &chosen.cursor {
+        let wanted = terminal_cursor_effect::named(name).map(|effect| effect.name);
+        let shown = terminal_cursor_effect::in_use().map(|effect| effect.name);
+        if shown != wanted || !terminal_cursor_effect::previewing() {
+            terminal_cursor_effect::preview(Some(name));
+            changed = true;
+        }
+    }
+    changed
 }

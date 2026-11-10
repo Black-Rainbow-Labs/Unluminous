@@ -76,6 +76,13 @@ pub enum Act {
     Prompt(PathBuf),
     /// Show a project path in the platform's file manager.
     Reveal(PathBuf),
+    /// Show the notes beside a design, or hide them (`task-2601`).
+    ShowNotes(PathBuf, bool),
+    /// Let the page fill the pane, or put it back in its tab (`task-2601`).
+    Maximise(PathBuf, bool),
+    /// The divider beside the notes was dragged to this width, in points at no zoom, and whether the drag
+    /// stopped (`task-2601`).
+    NotesWidth(f32, bool),
 }
 
 /// The one place an act becomes a change.
@@ -168,6 +175,19 @@ fn apply_to_a_note(designer: &mut Designer, act: Act) -> Result<(), String> {
                 .map(|view| view.prompt.clone())
                 .ok_or_else(|| "That design is not open.".to_owned())?;
             designer.ask_about_the_design(&design, &words)
+        }
+        other => apply_to_the_layout(designer, other),
+    }
+}
+
+/// The acts that arrange a design's tab: the notes and the maximized page (`task-2601`).
+fn apply_to_the_layout(designer: &mut Designer, act: Act) -> Result<(), String> {
+    match act {
+        Act::ShowNotes(design, shown) => designer.show_notes(&design, Some(shown)).map(|_| ()),
+        Act::Maximise(design, maximised) => designer.set_maximised(&design, maximised),
+        Act::NotesWidth(width, done) => {
+            designer.set_notes_width(width, done);
+            Ok(())
         }
         _ => Ok(()),
     }

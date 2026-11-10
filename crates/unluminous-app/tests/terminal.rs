@@ -1640,24 +1640,24 @@ fn the_terminal_theme_is_a_setting_and_colors_every_terminal() {
 
 #[test]
 fn the_theme_picker_previews_each_theme_and_puts_the_chosen_one_back() {
+    use unluminous_app::components::terminal_appearance::Column;
     let mut harness = a_terminal_with_the_keyboard();
     let ctx = harness.ctx.clone();
     harness.state_mut().run_action(Action::Termoil(TermoilCommand::ChooseTheme), &ctx);
     steady(&mut harness);
-    let palette = harness.state_mut().palette.as_mut().expect("the picker opened");
-    assert_eq!(palette.words.title, "Choose Terminal Theme");
-    assert_eq!(palette.results()[0].command.label, "Follow the Window's Theme");
+    assert!(harness.state().palette.is_none(), "the appearance picker, not the command palette");
+    let picker = harness.state_mut().terminal_appearance.as_mut().expect("the picker opened");
+    assert_eq!(picker.column, Column::Theme, "Choose Terminal Theme gives the themes the keys");
+    let themes = &mut picker.lists[0];
+    assert_eq!(themes.results()[0].command.label, "Follow the Window's Theme");
     assert_eq!(
-        palette.results()[1].command.label,
+        themes.results()[1].command.label,
         "Unluminous Dark",
         "the shipped themes come first"
     );
-    let at = palette
-        .results()
-        .iter()
-        .position(|found| found.command.label == "Dracula")
-        .expect("listed");
-    palette.chosen = at;
+    let at =
+        themes.results().iter().position(|found| found.command.label == "Dracula").expect("listed");
+    themes.chosen = at;
     steady(&mut harness);
     let dracula = unluminous_terminal::themes::named("Dracula").expect("bundled");
     let current = || unluminous_terminal::Palette::current().background;
@@ -1665,13 +1665,119 @@ fn the_theme_picker_previews_each_theme_and_puts_the_chosen_one_back() {
 
     harness.key_press(egui::Key::Escape);
     steady(&mut harness);
-    assert!(harness.state().palette.is_none(), "Escape put the picker away");
+    assert!(harness.state().terminal_appearance.is_none(), "Escape put the picker away");
     assert_ne!(current(), dracula.background, "and the terminals went back");
     assert_eq!(harness.state().settings.terminal_theme, "");
 
     harness.state_mut().run_action(Action::SetTerminalTheme("Dracula".to_owned()), &ctx);
     steady(&mut harness);
     assert_eq!(harness.state().settings.terminal_theme, "Dracula", "a row that is run is kept");
+}
+
+/// `task-2601`: *"The theme and shader should be in the same option modal, with theme on left, shader, and also
+/// cursor theme, like it is for termoil."* One modal, three lists, all three previewed at once, Enter keeps all
+/// three, and Escape puts all three back.
+#[test]
+fn the_appearance_picker_holds_themes_shaders_and_cursor_effects_and_keeps_all_three() {
+    use unluminous_app::components::terminal_appearance::Column;
+    use unluminous_app::services::{terminal_cursor_effect, terminal_shader};
+    let mut harness = a_terminal_with_the_keyboard();
+    let ctx = harness.ctx.clone();
+    harness.state_mut().run_action(Action::Termoil(TermoilCommand::ChooseShader), &ctx);
+    steady(&mut harness);
+    let picker = harness.state_mut().terminal_appearance.as_mut().expect("the picker opened");
+    assert_eq!(picker.column, Column::Shader, "Choose Terminal Shader gives the shaders the keys");
+    assert_eq!(picker.lists[1].results()[0].command.label, "No Shader");
+    assert_eq!(picker.lists[1].results().len(), 23, "none and Termoil's 22");
+    assert_eq!(picker.lists[2].results()[0].command.label, "No Cursor Effect");
+    assert_eq!(picker.lists[2].results().len(), 21, "none and Termoil's 20");
+    let _ = harness.get_by_label("Run Dracula on Termoil");
+    let shown = &terminal_shader::BUILTINS[0];
+    let _ = harness.get_by_label(&format!("Run {} on {}", shown.name, shown.summary));
+    let glow = &terminal_cursor_effect::EFFECTS[0];
+    let _ = harness.get_by_label(&format!("Run {} on {}", glow.name, glow.summary));
+
+    // Down in the shader list, Right, and Down in the cursor effects: both are previewed.
+    harness.key_press(egui::Key::ArrowDown);
+    steady(&mut harness);
+    let first = terminal_shader::BUILTINS[0].name;
+    assert_eq!(terminal_shader::in_use().map(|shader| shader.name), Some(first), "previewed");
+    harness.key_press(egui::Key::ArrowRight);
+    steady(&mut harness);
+    harness.key_press(egui::Key::ArrowDown);
+    steady(&mut harness);
+    let column = harness.state().terminal_appearance.as_ref().map(|picker| picker.column);
+    assert_eq!(column, Some(Column::Cursor), "Right gave the cursor effects the keys");
+    let effect = terminal_cursor_effect::EFFECTS[0].name;
+    assert_eq!(terminal_cursor_effect::in_use().map(|effect| effect.name), Some(effect));
+    assert_eq!(terminal_shader::in_use().map(|shader| shader.name), Some(first), "still previewed");
+
+    harness.key_press(egui::Key::Escape);
+    steady(&mut harness);
+    assert!(terminal_shader::in_use().is_none(), "Escape put the shader back");
+    assert!(terminal_cursor_effect::in_use().is_none(), "and the cursor effect");
+    assert_eq!(harness.state().settings.terminal_shader, "");
+    assert_eq!(harness.state().settings.terminal_cursor_effect, "");
+
+    // Opened again, and Enter keeps the shader and the cursor effect together.
+    harness.state_mut().run_action(Action::Termoil(TermoilCommand::ChooseCursorEffect), &ctx);
+    steady(&mut harness);
+    let column = harness.state().terminal_appearance.as_ref().map(|picker| picker.column);
+    assert_eq!(column, Some(Column::Cursor));
+    harness.key_press(egui::Key::ArrowDown);
+    steady(&mut harness);
+    harness.key_press(egui::Key::ArrowLeft);
+    steady(&mut harness);
+    harness.key_press(egui::Key::ArrowDown);
+    steady(&mut harness);
+    harness.key_press(egui::Key::Enter);
+    steady(&mut harness);
+    assert!(harness.state().terminal_appearance.is_none(), "Enter shut the picker");
+    assert_eq!(harness.state().settings.terminal_shader, first, "the shader was kept");
+    assert_eq!(harness.state().settings.terminal_cursor_effect, effect, "and the cursor effect");
+    assert_eq!(terminal_shader::in_use().map(|shader| shader.name), Some(first));
+    assert_eq!(terminal_cursor_effect::in_use().map(|effect| effect.name), Some(effect));
+
+    did(&mut harness, "terminal shader none");
+    did(&mut harness, "terminal cursor-effect none");
+    assert!(terminal_cursor_effect::in_use().is_none());
+}
+
+/// `task-2601`: *"The shader of terminal impacts the modal over it."* The shader is drawn after egui has drawn
+/// everything, so the appearance picker previewing a shader was drawn over by it. The modal's own rectangle is cut
+/// out of what the shader covers, and with no modal nothing is.
+#[test]
+fn the_shader_is_kept_out_of_a_modal_drawn_over_the_terminal() {
+    use unluminous_app::services::terminal_shader;
+    let mut harness = a_terminal_with_the_keyboard();
+    let ctx = harness.ctx.clone();
+    did(&mut harness, "terminal shader crt");
+    let _ = terminal_shader::take_the_last_shaded();
+    steady(&mut harness);
+    let (grid, holes) = terminal_shader::take_the_last_shaded().expect("the terminal was shaded");
+    assert!(holes.is_empty(), "nothing is over the terminal: {holes:?}");
+
+    harness.state_mut().run_action(Action::Termoil(TermoilCommand::ChooseShader), &ctx);
+    steady(&mut harness);
+    steady(&mut harness);
+    let (_, holes) =
+        terminal_shader::take_the_last_shaded().expect("still shaded while previewing");
+    let dialog = unluminous_app::components::modal::drawn(
+        &ctx,
+        unluminous_app::components::terminal_appearance::ID,
+    )
+    .expect("the picker was drawn");
+    let over = dialog.intersect(grid);
+    assert!(over.width() > 0.0 && over.height() > 0.0, "the picker is over the terminal");
+    assert!(
+        holes.iter().any(
+            |hole| (hole.min - over.min).length() < 1.0 && (hole.max - over.max).length() < 1.0
+        ),
+        "the part of the picker over the terminal is cut out of the shader: {holes:?} {over:?}"
+    );
+    harness.key_press(egui::Key::Escape);
+    steady(&mut harness);
+    did(&mut harness, "terminal shader none");
 }
 
 #[test]
@@ -1702,27 +1808,9 @@ fn a_right_click_on_a_terminal_opens_termoil_s_menu_and_its_rows_run() {
 }
 
 #[test]
-fn the_shader_picker_previews_each_shader_and_a_row_that_is_run_is_kept() {
+fn a_shader_chosen_from_the_command_line_is_drawn_and_none_turns_it_off() {
     use unluminous_app::services::terminal_shader;
     let mut harness = a_terminal_with_the_keyboard();
-    let ctx = harness.ctx.clone();
-    harness.state_mut().run_action(Action::Termoil(TermoilCommand::ChooseShader), &ctx);
-    steady(&mut harness);
-    let palette = harness.state_mut().palette.as_mut().expect("the picker opened");
-    assert_eq!(palette.words.title, "Choose Terminal Shader");
-    assert_eq!(palette.results()[0].command.label, "No Shader");
-    assert_eq!(palette.results().len(), 23, "none and Termoil's 22");
-    let at =
-        palette.results().iter().position(|found| found.command.label == "neon").expect("listed");
-    palette.chosen = at;
-    steady(&mut harness);
-    assert_eq!(terminal_shader::in_use().map(|shader| shader.name), Some("neon"), "previewed");
-
-    harness.key_press(egui::Key::Escape);
-    steady(&mut harness);
-    assert!(terminal_shader::in_use().is_none(), "Escape put the terminals back");
-    assert_eq!(harness.state().settings.terminal_shader, "");
-
     did(&mut harness, "terminal shader neon-glow");
     assert_eq!(harness.state().settings.terminal_shader, "neon-glow");
     assert_eq!(terminal_shader::in_use().map(|shader| shader.name), Some("neon-glow"));

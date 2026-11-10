@@ -2880,6 +2880,24 @@ pub const COMMANDS: &[Command] = &[
     },
     Command {
         area: "terminal",
+        verb: "cursor-effect",
+        summary: "Read or choose the Termoil cursor effect drawn around every terminal's cursor, with or without a shader. none turns it off.",
+        arguments: &[rest("name", false, "The cursor effect, from `terminal cursor-effects`, or none. Read the current one when this is left out.")],
+        flags: NO_FLAGS,
+        examples: &["unluminous-cli terminal cursor-effect sonar", "unluminous-cli terminal cursor-effect none"],
+        local: false,
+    },
+    Command {
+        area: "terminal",
+        verb: "cursor-effects",
+        summary: "The 20 Termoil cursor effects, with what each looks like.",
+        arguments: NO_ARGUMENTS,
+        flags: NO_FLAGS,
+        examples: &["unluminous-cli terminal cursor-effects --json"],
+        local: false,
+    },
+    Command {
+        area: "terminal",
         verb: "keys",
         summary: "Termoil's keys in every terminal grid, each with the name `action run` takes.",
         arguments: NO_ARGUMENTS,
@@ -3774,9 +3792,10 @@ pub const COMMANDS: &[Command] = &[
         arguments: &[closed(
             "name",
             true,
-            "command-palette, go-to-file, find-in-files, settings, about, new-file or rename.",
+            "command-palette, terminal-appearance, go-to-file, find-in-files, settings, about, new-file or rename.",
             &[
                 "command-palette",
+                "terminal-appearance",
                 "go-to-file",
                 "find-in-files",
                 "settings",

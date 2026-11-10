@@ -118,6 +118,10 @@ pub enum Modal {
     History { design: PathBuf },
 }
 
+/// The narrowest and widest the notes beside a design can be dragged, in points at no zoom (`task-2601`).
+pub const NOTES_NARROWEST: f32 = 220.0;
+pub const NOTES_WIDEST: f32 = 900.0;
+
 /// What is known about one open design.
 #[derive(Debug)]
 pub struct DesignView {
@@ -143,6 +147,13 @@ pub struct DesignView {
     pub details: BTreeMap<u32, Element>,
     /// The last thing that happened, drawn at the right of the toolbar.
     pub status: String,
+    /// Whether the notes are showing, as a person or an agent last asked. `None` until one does, when a tab
+    /// narrower than `tab::NARROW` starts with them hidden (`task-2601`).
+    pub notes_shown: Option<bool>,
+    /// Whether the notes were showing the last time the tab was drawn, which is what a toggle turns over.
+    pub notes_drawn: bool,
+    /// The page fills the whole Designer pane, with one bar along the top to put it back (`task-2601`).
+    pub maximised: bool,
     pub(super) calls: Vec<PageCall>,
     pub(super) pins_dirty: bool,
     pub(super) notes_stamp: Option<SystemTime>,
@@ -164,6 +175,9 @@ impl DesignView {
             page_revision: 0,
             details: BTreeMap::new(),
             status: String::new(),
+            notes_shown: None,
+            notes_drawn: true,
+            maximised: false,
             calls: Vec::new(),
             pins_dirty: true,
             notes_stamp: None,
@@ -195,6 +209,11 @@ pub struct Designer {
     pub(super) active_tab: usize,
     /// The project whose remembered tabs have been read, so they are read once a project.
     pub(super) tabs_read_for: Option<PathBuf>,
+    /// How wide the notes are, in points at no zoom, once a person has dragged the divider beside them. Kept in
+    /// the project's `designs.conf` as `notes.width` (`task-2601`).
+    pub notes_width: Option<f32>,
+    /// The notes were dragged to a width that has not been written down yet, which happens when the drag stops.
+    pub notes_width_unsaved: bool,
     pub modal: Option<Modal>,
     /// The last thing that went wrong while reading the settings, drawn on the Settings page.
     pub problem: Option<String>,
@@ -224,6 +243,8 @@ impl Designer {
             tabs: vec![None],
             active_tab: 0,
             tabs_read_for: None,
+            notes_width: None,
+            notes_width_unsaved: false,
             modal: None,
             problem: None,
             outbox: Vec::new(),

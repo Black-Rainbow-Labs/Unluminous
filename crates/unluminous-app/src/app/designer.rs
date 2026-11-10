@@ -286,8 +286,16 @@ impl UnluminousApp {
             pane_ui.set_clip_rect(body.intersect(ui.clip_rect()));
             let designer = self.plugin_ui.opened("designer", "designer").ok()?;
             let designer = designer.as_any_mut()?.downcast_mut::<Designer>()?;
-            let (content, mut requests) =
-                crate::components::designer::tabs::show(designer, &mut pane_ui, &look, body);
+            // A maximized design fills the whole pane, so its tab strip is not drawn either (`task-2601`).
+            let maximised = design
+                .and_then(|design| designer.design_view(design))
+                .is_some_and(|view| view.maximised);
+            let (content, mut requests) = match maximised {
+                true => (body, Vec::new()),
+                false => {
+                    crate::components::designer::tabs::show(designer, &mut pane_ui, &look, body)
+                }
+            };
             let mut inside = pane_ui.new_child(egui::UiBuilder::new().max_rect(content));
             inside.set_clip_rect(content.intersect(pane_ui.clip_rect()));
             let outcome = match design {
@@ -472,6 +480,11 @@ impl UnluminousApp {
             && pressed(ui, Key::Escape)
         {
             designer.clear_the_selection(&design)
+        } else if designer.design_view(&design).is_some_and(|view| view.maximised)
+            && pressed(ui, Key::Escape)
+        {
+            // Escape puts a maximized design back in its tab, once nothing is chosen in it (`task-2601`).
+            designer.set_maximised(&design, false)
         } else {
             Ok(())
         };

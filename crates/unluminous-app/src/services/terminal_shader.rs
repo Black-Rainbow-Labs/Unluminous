@@ -128,12 +128,9 @@ pub fn in_use() -> Option<&'static Builtin> {
     }
 }
 
-/// The wrapper Termoil appends to a shader, from `termoil-render/src/shader.rs`, with the one constant Termoil
-/// defines when it joins a shader to a cursor effect. Unluminous has no cursor effects, so the shader keeps its own
-/// cursor light.
+/// The wrapper Termoil appends to a shader, from `termoil-render/src/shader.rs`. `TERMOIL_SHADER_CURSOR` comes
+/// before it, from [`terminal_cursor_effect::compose`](crate::services::terminal_cursor_effect::compose).
 const WRAPPER: &str = r#"
-
-const TERMOIL_SHADER_CURSOR: f32 = 1.0;
 
 struct TermoilUniforms {
     size: vec2<f32>,
@@ -169,16 +166,56 @@ fn termoil_fragment(in: TermoilVertexOut) -> @location(0) vec4<f32> {
 }
 "#;
 
-/// One rectangle of the window to draw a shader over this frame, in the window's pixels.
+/// What a terminal is drawn with: a shader, a cursor effect, or both. Never neither.
 #[derive(Debug, Clone, Copy)]
+pub struct Look {
+    pub shader: Option<&'static Builtin>,
+    pub effect: Option<&'static crate::services::terminal_cursor_effect::Effect>,
+}
+
+impl Look {
+    /// The name the compiled pipeline is kept under.
+    fn key(&self) -> String {
+        let name = |found: Option<&str>| found.unwrap_or("").to_owned();
+        format!(
+            "{}+{}",
+            name(self.shader.map(|shader| shader.name)),
+            name(self.effect.map(|effect| effect.name))
+        )
+    }
+
+    /// The whole WGSL compiled for this look: the shader and the effect joined the way Termoil joins them, then
+    /// the wrapper.
+    pub fn source(&self) -> String {
+        let joined = crate::services::terminal_cursor_effect::compose(
+            self.shader.map(|shader| shader.source),
+            self.effect,
+        );
+        format!("{joined}{WRAPPER}")
+    }
+
+    /// True when the shader or the effect moves on its own.
+    fn moves(&self) -> bool {
+        self.shader.is_some_and(moves)
+            || self.effect.is_some_and(crate::services::terminal_cursor_effect::moves)
+    }
+}
+
+/// A rectangle in the window's pixels: left, top, right and bottom.
+pub type Pixels = [u32; 4];
+
+/// One rectangle of the window to draw a shader over this frame, in the window's pixels.
+#[derive(Debug, Clone)]
 struct Job {
-    shader: &'static Builtin,
+    look: Look,
     x: u32,
     y: u32,
     width: u32,
     height: u32,
     /// The cursor's center inside the rectangle, in pixels, or negative when there is none.
     cursor: [f32; 2],
+    /// The parts of the rectangle something is drawn over, which the shader is kept out of (`task-2601`).
+    holes: Vec<Pixels>,
 }
 
 /// The rectangles recorded this frame, shared by the grids' callbacks and the hook that draws them.
@@ -189,7 +226,7 @@ struct Jobs(Arc<Mutex<Vec<Job>>>);
 struct Passes {
     jobs: Jobs,
     format: Option<wgpu::TextureFormat>,
-    pipelines: HashMap<&'static str, wgpu::RenderPipeline>,
+    pipelines: HashMap<String, wgpu::RenderPipeline>,
     layout: Option<wgpu::BindGroupLayout>,
     sampler: Option<wgpu::Sampler>,
     /// A texture for each job of a frame, kept while its size stays the same.
@@ -234,24 +271,26 @@ impl Passes {
             .clone()
     }
 
-    /// The pipeline for a shader, compiled the first time it is drawn into a target of this format.
+    /// The pipeline for a shader and cursor effect, compiled the first time they are drawn into a target of this
+    /// format.
     fn pipeline(
         &mut self,
         device: &wgpu::Device,
-        shader: &'static Builtin,
+        look: Look,
         format: wgpu::TextureFormat,
     ) -> wgpu::RenderPipeline {
         if self.format != Some(format) {
             self.pipelines.clear();
             self.format = Some(format);
         }
-        if let Some(found) = self.pipelines.get(shader.name) {
+        let key = look.key();
+        if let Some(found) = self.pipelines.get(&key) {
             return found.clone();
         }
         let layout = self.layout(device);
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some(shader.name),
-            source: wgpu::ShaderSource::Wgsl(format!("{}{WRAPPER}", shader.source).into()),
+            label: Some(&key),
+            source: wgpu::ShaderSource::Wgsl(look.source().into()),
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("unluminous-terminal-shader"),
@@ -259,7 +298,7 @@ impl Passes {
             immediate_size: 0,
         });
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some(shader.name),
+            label: Some(&key),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &module,
@@ -283,7 +322,7 @@ impl Passes {
             multiview_mask: None,
             cache: None,
         });
-        self.pipelines.insert(shader.name, pipeline.clone());
+        self.pipelines.insert(key, pipeline.clone());
         pipeline
     }
 
@@ -358,7 +397,7 @@ impl egui_wgpu::AfterTheFrame for Passes {
             if width == 0 || height == 0 {
                 continue;
             }
-            let job = Job { width, height, ..*job };
+            let job = Job { width, height, ..job.clone() };
             let copy = self.copy_for(device, index, &job, scene.format());
             encoder.copy_texture_to_texture(
                 wgpu::TexelCopyTextureInfo {
@@ -402,7 +441,7 @@ impl egui_wgpu::AfterTheFrame for Passes {
                     wgpu::BindGroupEntry { binding: 2, resource: uniforms.as_entire_binding() },
                 ],
             });
-            let pipeline = self.pipeline(device, job.shader, format);
+            let pipeline = self.pipeline(device, job.look, format);
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("unluminous-terminal-shader"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -417,19 +456,26 @@ impl egui_wgpu::AfterTheFrame for Passes {
                 multiview_mask: None,
             });
             pass.set_viewport(job.x as f32, job.y as f32, width as f32, height as f32, 0.0, 1.0);
-            pass.set_scissor_rect(job.x, job.y, width, height);
             pass.set_pipeline(&pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
-            pass.draw(0..3, 0..1);
+            // Once for each part nothing is drawn over, so a menu, a tooltip or a modal over the terminal keeps the
+            // colors it was drawn in (`task-2601`).
+            let whole = [job.x, job.y, job.x + width, job.y + height];
+            for [left, top, right, bottom] in uncovered(whole, &job.holes) {
+                pass.set_scissor_rect(left, top, right - left, bottom - top);
+                pass.draw(0..3, 0..1);
+            }
         }
     }
 }
 
 /// The empty paint callback a grid adds over itself, which records where it is for the hook.
 struct Register {
-    shader: &'static Builtin,
+    look: Look,
     /// The cursor's center in points, when the grid shows one.
     cursor: Option<egui::Pos2>,
+    /// What is drawn over the grid, in points.
+    holes: Vec<egui::Rect>,
 }
 
 impl egui_wgpu::CallbackTrait for Register {
@@ -481,26 +527,118 @@ impl egui_wgpu::CallbackTrait for Register {
             ],
             None => [-1.0, -1.0],
         };
+        let pixels = |rect: &egui::Rect| -> Pixels {
+            let to = |points: f32| (points * info.pixels_per_point).round().max(0.0) as u32;
+            [to(rect.left()), to(rect.top()), to(rect.right()), to(rect.bottom())]
+        };
         let job = Job {
-            shader: self.shader,
+            look: self.look,
             x: left as u32,
             y: top as u32,
             width: (right - left) as u32,
             height: (bottom - top) as u32,
             cursor,
+            holes: self.holes.iter().map(pixels).collect(),
         };
         jobs.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(job);
     }
 }
 
-/// Draw the shader in use over `rect`, a terminal grid that has just been drawn, with its cursor at `cursor`.
-/// Nothing while no shader is in use. A shader that moves asks for the next frame.
+thread_local! {
+    /// The grid [`shade`] was last asked for and what it kept the shader out of, for a test to read.
+    static LAST_SHADED: std::cell::RefCell<Option<(egui::Rect, Vec<egui::Rect>)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// The rectangle of the grid last shaded on this thread and the parts of it the shader was kept out of, and forget
+/// it, so a test can ask what the next frame did.
+pub fn take_the_last_shaded() -> Option<(egui::Rect, Vec<egui::Rect>)> {
+    LAST_SHADED.with(|last| last.borrow_mut().take())
+}
+
+/// What the terminals are drawn with just now, or nothing when there is neither a shader nor a cursor effect.
+pub fn look_in_use() -> Option<Look> {
+    let look = Look { shader: in_use(), effect: crate::services::terminal_cursor_effect::in_use() };
+    (look.shader.is_some() || look.effect.is_some()).then_some(look)
+}
+
+/// Draw the shader and cursor effect in use over `rect`, a terminal grid that has just been drawn, with its cursor
+/// at `cursor`. Nothing while neither is in use. One that moves asks for the next frame.
+///
+/// **Not over anything drawn above the grid** (`task-2601`). The hook draws after egui has drawn everything, so
+/// without this a shader previewed from the appearance picker was drawn over the picker itself, and a right click
+/// menu or a tooltip over a terminal took the terminal's glow.
+///
+/// @param ui - the grid's ui, whose layer is the grid's
+/// @param rect - the grid
+/// @param cursor - the center of the cursor of the pane with the keyboard, in points
 pub fn shade(ui: &egui::Ui, rect: egui::Rect, cursor: Option<egui::Pos2>) {
-    let Some(shader) = in_use() else { return };
-    ui.painter().add(egui_wgpu::Callback::new_paint_callback(rect, Register { shader, cursor }));
-    if moves(shader) {
+    let Some(look) = look_in_use() else { return };
+    let holes = drawn_over(ui.ctx(), ui.layer_id(), rect);
+    LAST_SHADED.with(|last| *last.borrow_mut() = Some((rect, holes.clone())));
+    ui.painter()
+        .add(egui_wgpu::Callback::new_paint_callback(rect, Register { look, cursor, holes }));
+    if look.moves() {
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(16));
     }
+}
+
+/// The rectangles of everything drawn in a layer above `mine` that overlaps `rect`, in window points.
+///
+/// A modal's layer holds a backdrop the size of the window as well as the dialog, so its area is the whole window
+/// and the dialog's own rectangle is asked of `modal::drawn_by_id` instead, the rule the title bar already keeps.
+///
+/// @param ctx - the window's context
+/// @param mine - the grid's layer
+/// @param rect - the grid
+pub fn drawn_over(ctx: &egui::Context, mine: egui::LayerId, rect: egui::Rect) -> Vec<egui::Rect> {
+    let above: Vec<(egui::LayerId, Option<egui::Rect>)> = ctx.memory(|memory| {
+        let order: Vec<egui::LayerId> = memory.layer_ids().collect();
+        let start = order.iter().position(|layer| *layer == mine).map_or(order.len(), |at| at + 1);
+        order[start..]
+            .iter()
+            .filter(|layer| memory.areas().is_visible(layer))
+            .map(|layer| (*layer, memory.area_rect(layer.id)))
+            .collect()
+    });
+    above
+        .into_iter()
+        .filter_map(|(layer, area)| {
+            let drawn = crate::components::modal::drawn_by_id(ctx, layer.id).or(area)?;
+            let drawn = match ctx.layer_transform_to_global(layer) {
+                Some(transform) => transform * drawn,
+                None => drawn,
+            };
+            let over = drawn.intersect(rect);
+            (over.width() > 0.0 && over.height() > 0.0).then_some(over)
+        })
+        .collect()
+}
+
+/// What is left of `whole` once every hole is cut out of it, as rectangles that do not overlap.
+///
+/// @param whole - the rectangle, in pixels
+/// @param holes - the parts to leave out, in pixels
+pub fn uncovered(whole: Pixels, holes: &[Pixels]) -> Vec<Pixels> {
+    let mut pieces = vec![whole];
+    for &[hole_left, hole_top, hole_right, hole_bottom] in holes {
+        let mut kept = Vec::new();
+        for piece @ [left, top, right, bottom] in pieces {
+            let (cut_left, cut_top) = (hole_left.max(left), hole_top.max(top));
+            let (cut_right, cut_bottom) = (hole_right.min(right), hole_bottom.min(bottom));
+            if cut_left >= cut_right || cut_top >= cut_bottom {
+                kept.push(piece);
+                continue;
+            }
+            // Above the hole, below it, and the two sides between.
+            kept.push([left, top, right, cut_top]);
+            kept.push([left, cut_bottom, right, bottom]);
+            kept.push([left, cut_top, cut_left, cut_bottom]);
+            kept.push([cut_right, cut_top, right, cut_bottom]);
+        }
+        pieces = kept.into_iter().filter(|[l, t, r, b]| l < r && t < b).collect();
+    }
+    pieces
 }
 
 #[cfg(test)]
@@ -532,7 +670,7 @@ mod tests {
     #[test]
     fn every_shader_compiles_with_the_wrapper() {
         for builtin in BUILTINS {
-            let text = format!("{}{WRAPPER}", builtin.source);
+            let text = Look { shader: Some(builtin), effect: None }.source();
             let module = naga::front::wgsl::parse_str(&text).unwrap_or_else(|problem| {
                 panic!("{} does not parse: {}", builtin.name, problem.emit_to_string(&text))
             });
@@ -543,6 +681,52 @@ mod tests {
             .validate(&module)
             .unwrap_or_else(|problem| panic!("{} does not validate: {problem:?}", builtin.name));
         }
+    }
+
+    /// Every cursor effect with no shader, and with each shader, parses and validates the way the hook compiles it.
+    #[test]
+    fn every_cursor_effect_compiles_alone_and_with_every_shader() {
+        use crate::services::terminal_cursor_effect::EFFECTS;
+        let check = |look: Look| {
+            let text = look.source();
+            let module = naga::front::wgsl::parse_str(&text).unwrap_or_else(|problem| {
+                panic!("{} does not parse: {}", look.key(), problem.emit_to_string(&text))
+            });
+            naga::valid::Validator::new(
+                naga::valid::ValidationFlags::all(),
+                naga::valid::Capabilities::default(),
+            )
+            .validate(&module)
+            .unwrap_or_else(|problem| panic!("{} does not validate: {problem:?}", look.key()));
+        };
+        for effect in EFFECTS {
+            check(Look { shader: None, effect: Some(effect) });
+            for builtin in BUILTINS {
+                check(Look { shader: Some(builtin), effect: Some(effect) });
+            }
+        }
+    }
+
+    #[test]
+    fn a_hole_is_cut_out_of_the_rectangle_and_nothing_else_is() {
+        let area = |pieces: &[Pixels]| -> u32 {
+            pieces.iter().map(|[l, t, r, b]| (r - l) * (b - t)).sum()
+        };
+        assert_eq!(uncovered([0, 0, 100, 50], &[]), vec![[0, 0, 100, 50]]);
+        let cut = uncovered([0, 0, 100, 50], &[[20, 10, 60, 30]]);
+        assert_eq!(area(&cut), 100 * 50 - 40 * 20);
+        assert!(
+            cut.iter().all(|[l, t, r, b]| r <= &20 || l >= &60 || b <= &10 || t >= &30),
+            "{cut:?}"
+        );
+        assert!(uncovered([0, 0, 100, 50], &[[0, 0, 200, 200]]).is_empty(), "covered whole");
+        assert_eq!(uncovered([0, 0, 100, 50], &[[300, 300, 400, 400]]), vec![[0, 0, 100, 50]]);
+        let two = uncovered([0, 0, 100, 100], &[[0, 0, 50, 50], [25, 25, 75, 75]]);
+        assert_eq!(
+            area(&two),
+            100 * 100 - 50 * 50 - (50 * 50 - 25 * 25),
+            "the overlap is cut once"
+        );
     }
 
     #[test]

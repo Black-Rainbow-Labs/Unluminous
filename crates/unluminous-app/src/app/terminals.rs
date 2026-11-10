@@ -143,12 +143,20 @@ impl UnluminousApp {
 
     /// Open the modals the terminals asked for: the terminal command palette and the theme picker.
     pub(crate) fn take_the_termoil_requests(&mut self) {
+        use crate::components::terminal_appearance::Column;
         use crate::components::terminal_layer::Request;
         for request in crate::components::terminal_layer::take_requests() {
             match request {
                 Request::Palette(serial) => self.open_the_termoil_palette(Some(serial)),
-                Request::Themes(serial) => self.open_the_terminal_theme_picker(Some(serial)),
-                Request::Shaders(serial) => self.open_the_terminal_shader_picker(Some(serial)),
+                Request::Themes(serial) => {
+                    self.open_the_terminal_appearance(Some(serial), Column::Theme)
+                }
+                Request::Shaders(serial) => {
+                    self.open_the_terminal_appearance(Some(serial), Column::Shader)
+                }
+                Request::CursorEffects(serial) => {
+                    self.open_the_terminal_appearance(Some(serial), Column::Cursor)
+                }
             }
         }
     }
@@ -174,71 +182,106 @@ impl UnluminousApp {
             .collect();
         self.palette = Some(CommandPalette::open_with(commands, Words::TERMINAL, 200));
         self.termoil_target = serial;
-        self.choosing_a_terminal_theme = false;
     }
 
-    /// The theme picker: every Termoil theme, the ones Unluminous ships first, previewed in every terminal as it
-    /// is moved through. Enter keeps the one chosen, and anything else puts the terminals back.
-    pub fn open_the_terminal_theme_picker(&mut self, serial: Option<u64>) {
-        use crate::app::actions::Action;
-        use crate::components::command_palette::{Command, CommandPalette, Words};
-        let current = self.settings.terminal_theme.trim().to_owned();
-        let row = |name: &str, label: &str, menu: &str| Command {
-            name: Action::SetTerminalTheme(name.to_owned()).name(),
-            label: label.to_owned(),
-            menu: menu.to_owned(),
-            shortcut: String::new(),
-            enabled: true,
-            checked: current.eq_ignore_ascii_case(name),
-            action: Action::SetTerminalTheme(name.to_owned()),
+    /// The terminal appearance picker (`task-2601`): Termoil's themes, shaders and cursor effects in three columns,
+    /// with `column` holding the keys. Each list starts on the row in use, and every terminal is drawn with the
+    /// three chosen rows as they move. Enter keeps all three, and anything else puts the terminals back. Asked
+    /// while it is open, it gives `column` the keys and keeps the rest.
+    ///
+    /// @param serial - the grid it was opened over, if any
+    /// @param column - the list that has the keys first
+    pub fn open_the_terminal_appearance(
+        &mut self,
+        serial: Option<u64>,
+        column: crate::components::terminal_appearance::Column,
+    ) {
+        use crate::components::terminal_appearance::{AppearancePicker, Kept};
+        // Already open, it only gives `column` the keys, so what has been chosen in the others is kept.
+        if let Some(picker) = self.terminal_appearance.as_mut() {
+            picker.column = column;
+            return;
+        }
+        let kept = Kept {
+            theme: self.settings.terminal_theme.trim().to_owned(),
+            shader: self.settings.terminal_shader.trim().to_owned(),
+            cursor: self.settings.terminal_cursor_effect.trim().to_owned(),
         };
-        let mut commands = vec![row("", "Follow the Window's Theme", "Unluminous")];
-        for name in unluminous_terminal::themes::names_in_picker_order() {
-            let featured = unluminous_terminal::themes::FEATURED.contains(&name);
-            commands.push(row(
-                name,
-                name,
-                if featured { "Ships with Unluminous" } else { "Termoil" },
-            ));
-        }
-        let mut palette = CommandPalette::open_with(commands, Words::THEMES, usize::MAX);
-        // Start on the theme in use, so the first preview is no change at all.
-        if let Some(at) = palette.results().iter().position(|found| found.command.checked) {
-            palette.chosen = at;
-        }
-        self.palette = Some(palette);
+        let lists =
+            [theme_rows(&kept.theme), shader_rows(&kept.shader), cursor_effect_rows(&kept.cursor)];
+        self.palette = None;
+        self.terminal_appearance = Some(AppearancePicker::open(lists, column, kept));
         self.termoil_target = serial;
-        self.choosing_a_terminal_theme = true;
-        self.choosing_a_terminal_shader = false;
     }
 
-    /// The shader picker: no shader, then Termoil's 22 shaders with what each looks like, each drawn over every
-    /// terminal as it is moved through. Enter keeps the one chosen, and anything else puts the terminals back.
-    pub fn open_the_terminal_shader_picker(&mut self, serial: Option<u64>) {
-        use crate::app::actions::Action;
-        use crate::components::command_palette::{Command, CommandPalette, Words};
-        let current = self.settings.terminal_shader.trim().to_owned();
-        let row = |name: &str, label: &str, summary: &str| Command {
-            name: Action::SetTerminalShader(name.to_owned()).name(),
-            label: label.to_owned(),
-            menu: summary.to_owned(),
-            shortcut: String::new(),
-            enabled: true,
-            checked: current.eq_ignore_ascii_case(name),
-            action: Action::SetTerminalShader(name.to_owned()),
+    /// Write the three values the appearance picker's chosen rows name to the settings, in one change, and stop
+    /// previewing. A list whose filter matched nothing keeps what it had.
+    ///
+    /// @param chosen - what the picker's rows name
+    pub fn keep_the_terminal_appearance(
+        &mut self,
+        chosen: &crate::components::terminal_appearance::Chosen,
+    ) -> String {
+        crate::services::terminal_shader::preview(None);
+        crate::services::terminal_cursor_effect::preview(None);
+        let before = self.settings.clone();
+        if let Some(theme) = &chosen.theme {
+            self.settings.terminal_theme = theme.clone();
+        }
+        if let Some(shader) = &chosen.shader {
+            self.settings.terminal_shader = shader.clone();
+        }
+        if let Some(cursor) = &chosen.cursor {
+            self.settings.terminal_cursor_effect = cursor.clone();
+        }
+        self.apply_settings(&before);
+        let named = |value: &str, none: &str| match value.is_empty() {
+            true => none.to_owned(),
+            false => value.to_owned(),
         };
-        let mut commands = vec![row("", "No Shader", "The terminal as it is drawn")];
-        for builtin in crate::services::terminal_shader::BUILTINS {
-            commands.push(row(builtin.name, builtin.name, builtin.summary));
+        format!(
+            "The terminals are drawn in {}, with {} and {}",
+            named(&self.settings.terminal_theme, "the window's theme"),
+            named(&self.settings.terminal_shader, "no shader"),
+            named(&self.settings.terminal_cursor_effect, "no cursor effect"),
+        )
+    }
+
+    /// Put the terminals back the way they were before the appearance picker previewed anything, and shut it.
+    pub(crate) fn put_the_terminal_appearance_back(&mut self) {
+        if self.terminal_appearance.take().is_none() {
+            return;
         }
-        let mut palette = CommandPalette::open_with(commands, Words::SHADERS, usize::MAX);
-        if let Some(at) = palette.results().iter().position(|found| found.command.checked) {
-            palette.chosen = at;
-        }
-        self.palette = Some(palette);
-        self.termoil_target = serial;
-        self.choosing_a_terminal_theme = false;
-        self.choosing_a_terminal_shader = true;
+        crate::services::terminal_shader::preview(None);
+        crate::services::terminal_cursor_effect::preview(None);
+        crate::services::terminal_colours::follow_the_theme();
+        self.termoil_target = None;
+    }
+
+    /// Choose the Termoil cursor effect drawn around every terminal's cursor, by name, and write it to the
+    /// settings. Empty or `none` is no effect. Refused for a name that is not a cursor effect.
+    ///
+    /// @param name - the effect's name
+    pub fn set_the_terminal_cursor_effect(&mut self, name: &str) -> Result<String, String> {
+        let name = name.trim();
+        let wanted = match name.is_empty() || name.eq_ignore_ascii_case("none") {
+            true => String::new(),
+            false => match crate::services::terminal_cursor_effect::named(name) {
+                Some(effect) => effect.name.to_owned(),
+                None => {
+                    return Err(format!(
+                        "There is no Termoil cursor effect called {name}. `terminal cursor-effects` lists them."
+                    ))
+                }
+            },
+        };
+        let before = self.settings.clone();
+        self.settings.terminal_cursor_effect = wanted.clone();
+        self.apply_settings(&before);
+        Ok(match wanted.is_empty() {
+            true => "The terminals are drawn with no cursor effect".to_owned(),
+            false => format!("The terminals are drawn with the {wanted} cursor effect"),
+        })
     }
 
     /// Choose the Termoil shader every terminal is drawn with, by name, and write it to the settings. Empty or
@@ -527,4 +570,83 @@ impl UnluminousApp {
             None => Arc::new(|| {}),
         }
     }
+}
+
+/// One row of the appearance picker's lists.
+fn appearance_row(
+    action: crate::app::actions::Action,
+    label: &str,
+    menu: &str,
+    checked: bool,
+) -> crate::components::command_palette::Command {
+    crate::components::command_palette::Command {
+        name: action.name(),
+        label: label.to_owned(),
+        menu: menu.to_owned(),
+        shortcut: String::new(),
+        enabled: true,
+        checked,
+        action,
+    }
+}
+
+/// The theme list: following the window's theme, then every Termoil theme with the ones Unluminous ships first.
+///
+/// @param current - the `terminal.theme` setting
+fn theme_rows(current: &str) -> Vec<crate::components::command_palette::Command> {
+    use crate::app::actions::Action;
+    let row = |name: &str, label: &str, menu: &str| {
+        appearance_row(
+            Action::SetTerminalTheme(name.to_owned()),
+            label,
+            menu,
+            current.eq_ignore_ascii_case(name),
+        )
+    };
+    let mut rows = vec![row("", "Follow the Window's Theme", "Unluminous")];
+    for name in unluminous_terminal::themes::names_in_picker_order() {
+        let featured = unluminous_terminal::themes::FEATURED.contains(&name);
+        rows.push(row(name, name, if featured { "Ships with Unluminous" } else { "Termoil" }));
+    }
+    rows
+}
+
+/// The shader list: no shader, then Termoil's 22 with what each looks like.
+///
+/// @param current - the `terminal.shader` setting
+fn shader_rows(current: &str) -> Vec<crate::components::command_palette::Command> {
+    use crate::app::actions::Action;
+    let row = |name: &str, label: &str, summary: &str| {
+        appearance_row(
+            Action::SetTerminalShader(name.to_owned()),
+            label,
+            summary,
+            current.eq_ignore_ascii_case(name),
+        )
+    };
+    let mut rows = vec![row("", "No Shader", "The terminal as it is drawn")];
+    for builtin in crate::services::terminal_shader::BUILTINS {
+        rows.push(row(builtin.name, builtin.name, builtin.summary));
+    }
+    rows
+}
+
+/// The cursor effect list: no effect, then Termoil's 20 with what each looks like.
+///
+/// @param current - the `terminal.cursor_effect` setting
+fn cursor_effect_rows(current: &str) -> Vec<crate::components::command_palette::Command> {
+    use crate::app::actions::Action;
+    let row = |name: &str, label: &str, summary: &str| {
+        appearance_row(
+            Action::SetTerminalCursorEffect(name.to_owned()),
+            label,
+            summary,
+            current.eq_ignore_ascii_case(name),
+        )
+    };
+    let mut rows = vec![row("", "No Cursor Effect", "The cursor as it is drawn")];
+    for effect in crate::services::terminal_cursor_effect::EFFECTS {
+        rows.push(row(effect.name, effect.name, effect.summary));
+    }
+    rows
 }

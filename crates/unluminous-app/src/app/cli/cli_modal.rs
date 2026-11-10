@@ -45,6 +45,9 @@ impl UnluminousApp {
         if self.palette.is_some() {
             return Some("command-palette".to_owned());
         }
+        if self.terminal_appearance.is_some() {
+            return Some("terminal-appearance".to_owned());
+        }
         if self.go_to_file.is_some() {
             return Some("go-to-file".to_owned());
         }
@@ -117,6 +120,18 @@ impl UnluminousApp {
             map.insert("results".to_owned(), json!(palette.results().len()));
             map.insert("chosen".to_owned(), json!(palette.chosen));
         }
+        if let Some(picker) = &self.terminal_appearance {
+            let list = &picker.lists[picker.column.index()];
+            let chosen = picker.chosen();
+            map.insert("column".to_owned(), json!(picker.column.name()));
+            map.insert("query".to_owned(), json!(list.query));
+            map.insert("results".to_owned(), json!(list.results().len()));
+            map.insert("chosen".to_owned(), json!(list.chosen));
+            map.insert(
+                "appearance".to_owned(),
+                json!({ "theme": chosen.theme, "shader": chosen.shader, "cursor": chosen.cursor }),
+            );
+        }
         if let Some(go) = &self.go_to_file {
             map.insert("query".to_owned(), json!(go.query));
             map.insert("results".to_owned(), json!(go.results().len()));
@@ -185,6 +200,22 @@ impl UnluminousApp {
         };
         let query = request.text("query").unwrap_or_default();
         match name.as_str() {
+            // The same function `Choose Terminal Theme` calls, with the themes holding the keys. `task-2601`.
+            "terminal-appearance" => {
+                use crate::components::terminal_appearance::Column;
+                self.close_every_modal();
+                self.open_the_terminal_appearance(None, Column::Theme);
+                let picker = self.terminal_appearance.as_mut().expect("it is open");
+                let list = picker.active();
+                list.query = query;
+                list.refresh();
+                let found = list.results().len();
+                ok(
+                    request,
+                    format!("Terminal Appearance is open with {found} themes"),
+                    json!({ "open": "terminal-appearance", "results": found, "column": "theme" }),
+                )
+            }
             // The palette is opened over the entries the menus hold right now, which is the one
             // function `Find Action` itself calls — `task-1922` WP4.
             "command-palette" => {
@@ -388,6 +419,18 @@ impl UnluminousApp {
 
     fn cli_modal_type(&mut self, request: &Request) -> Outcome {
         let text = request.text("text").unwrap_or_default();
+        if let Some(picker) = &mut self.terminal_appearance {
+            let column = picker.column.name();
+            let list = picker.active();
+            list.query = text.clone();
+            list.refresh();
+            let found = list.results().len();
+            return ok(
+                request,
+                format!("{found} rows of the {column} list match {text}"),
+                json!({ "query": text, "results": found, "column": column }),
+            );
+        }
         if let Some(palette) = &mut self.palette {
             palette.query = text.clone();
             palette.refresh();
@@ -517,6 +560,36 @@ impl UnluminousApp {
                 }),
             );
         }
+        if let Some(picker) = &self.terminal_appearance {
+            let list = &picker.lists[picker.column.index()];
+            let rows: Vec<Value> = list
+                .results()
+                .iter()
+                .take(limit)
+                .enumerate()
+                .map(|(at, row)| json!({ "index": at, "label": row.command.label, "summary": row.command.menu }))
+                .collect();
+            let printed: Vec<String> = list
+                .results()
+                .iter()
+                .take(limit)
+                .enumerate()
+                .map(|(at, row)| {
+                    format!("{at:<4}{}{}", column(&row.command.label, 32), row.command.menu)
+                })
+                .collect();
+            return Reply::done(
+                &request.command,
+                format!("{} rows of the {} list", list.results().len(), picker.column.name()),
+                json!({
+                    "column": picker.column.name(),
+                    "results": rows,
+                    "total": list.results().len(),
+                    "chosen": list.chosen,
+                    "lines": printed,
+                }),
+            );
+        }
         if let Some(palette) = &self.palette {
             let rows: Vec<Value> = palette
                 .results()
@@ -635,6 +708,26 @@ impl UnluminousApp {
         let Some(index) = request.whole("index") else {
             return no(request, code::USAGE, "Say which row, counting from 0.");
         };
+        if let Some(picker) = &mut self.terminal_appearance {
+            let column = picker.column.name();
+            let list = picker.active();
+            if index >= list.results().len() {
+                return no(
+                    request,
+                    code::NOT_FOUND,
+                    format!("There is no row {index}; there are {}.", list.results().len()),
+                );
+            }
+            list.chosen = index;
+            let label = list.chosen_command().map(|command| command.label.clone());
+            return ok(
+                request,
+                format!(
+                    "Chose row {index} of the {column} list, which every terminal now previews"
+                ),
+                json!({ "chosen": index, "label": label, "column": column }),
+            );
+        }
         if let Some(palette) = &mut self.palette {
             if index >= palette.results().len() {
                 return no(
@@ -705,6 +798,16 @@ impl UnluminousApp {
                     return Outcome::Reply(reply);
                 }
             }
+        }
+        if let Some(picker) = self.terminal_appearance.take() {
+            let chosen = picker.chosen();
+            self.termoil_target = None;
+            let said = self.keep_the_terminal_appearance(&chosen);
+            return ok(
+                request,
+                said,
+                json!({ "theme": self.settings.terminal_theme, "shader": self.settings.terminal_shader, "cursor_effect": self.settings.terminal_cursor_effect }),
+            );
         }
         if let Some(palette) = self.palette.take() {
             let Some(command) = palette.chosen_command().cloned() else {
@@ -868,6 +971,7 @@ impl UnluminousApp {
     /// and `About Unluminous` shuts the others exactly as `modal open` does.
     pub(crate) fn close_every_modal(&mut self) {
         self.palette = None;
+        self.put_the_terminal_appearance_back();
         self.go_to_file = None;
         self.find_in_files = None;
         self.about = None;
@@ -978,6 +1082,10 @@ fn cli_modal_zoom(request: &Request, ctx: &egui::Context) -> Outcome {
 /// The modals `modal open` knows, and what each one is.
 const MODALS: &[(&str, &str)] = &[
     ("command-palette", "Find Action: find a menu entry by part of its wording and run it."),
+    (
+        "terminal-appearance",
+        "The terminal's Termoil theme, shader and cursor effect in three lists, each previewed in every terminal as it is chosen. `modal type` filters and `modal choose` picks in the list that has the keys; `action run termoil-choose-theme`, `termoil-choose-shader` or `termoil-choose-cursor-effect` gives a list the keys; `modal accept` keeps all three and `modal cancel` puts them back.",
+    ),
     ("go-to-file", "Find a file in the project by part of its name and open it."),
     ("find-in-files", "Search every file's text, with the chosen file shown underneath."),
     (
@@ -1011,6 +1119,7 @@ const MODALS: &[(&str, &str)] = &[
 fn modal_id(name: &str) -> Option<&'static str> {
     Some(match name {
         "command-palette" => "unluminous-command-palette",
+        "terminal-appearance" => crate::components::terminal_appearance::ID,
         "go-to-file" => "unluminous-go-to-file",
         "find-in-files" => "unluminous-find-in-files",
         "settings" => "unluminous-settings",

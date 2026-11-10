@@ -14,10 +14,11 @@ use super::notes::{Anchor, Message, NoteState, NotesFile};
 use super::page::{Element, Mode, Report};
 use super::{
     history, library, modified, prompt, Composer, Configuration, DesignView, Designer, Device,
-    Filter, PageCall, Want, LOOK_AGAIN, SEND_ID,
+    Filter, PageCall, Want, LOOK_AGAIN, NOTES_NARROWEST, NOTES_WIDEST, SEND_ID,
 };
 use crate::components::toast::Kind;
 use crate::services::plugin_ui::Request;
+use crate::services::store::Values;
 
 /// What the notes thread says when the note has been handed to the agent.
 const ASKED: &str = "Sent to the agent";
@@ -59,6 +60,59 @@ impl Designer {
         view.pins_dirty = true;
         self.remember_device(design, device);
         Ok(())
+    }
+
+    /// Show or hide the notes beside a design (`task-2601`). `None` turns over what the tab last drew. Answers
+    /// whether they are showing now.
+    ///
+    /// @param design - the design, relative to the project
+    /// @param shown - show them, hide them, or turn them over
+    pub fn show_notes(&mut self, design: &Path, shown: Option<bool>) -> Result<bool, String> {
+        let view = self.loaded(design)?;
+        let now = shown.unwrap_or(!view.notes_drawn);
+        view.notes_shown = Some(now);
+        view.notes_drawn = now;
+        Ok(now)
+    }
+
+    /// Let the page fill the whole Designer pane, or put it back in its tab (`task-2601`).
+    ///
+    /// @param design - the design, relative to the project
+    /// @param maximised - fill the pane, or not
+    pub fn set_maximised(&mut self, design: &Path, maximised: bool) -> Result<(), String> {
+        self.loaded(design)?.maximised = maximised;
+        Ok(())
+    }
+
+    /// How wide the notes are, from the divider beside them (`task-2601`). Written to the project's
+    /// `designs.conf` only when `done`, which is when the drag stops, so a drag writes nothing until it ends.
+    ///
+    /// @param width - the width in points at no zoom, kept between `NOTES_NARROWEST` and `NOTES_WIDEST`
+    /// @param done - the drag has stopped
+    pub fn set_notes_width(&mut self, width: f32, done: bool) -> f32 {
+        let width = width.clamp(NOTES_NARROWEST, NOTES_WIDEST);
+        self.notes_width = Some(width);
+        self.notes_width_unsaved = !done;
+        if done {
+            self.remember_notes_width(width);
+        }
+        width
+    }
+
+    /// Write the notes' width down in the project's `.unluminous/designs.conf`.
+    fn remember_notes_width(&self, width: f32) {
+        let Some(file) = self.device_file() else { return };
+        let mut values = Values::parse(&std::fs::read_to_string(&file).unwrap_or_default());
+        values.set("notes.width", format!("{}", width.round()));
+        if let Some(parent) = file.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = crate::services::store::write_atomically(
+            &file,
+            values
+                .to_text_headed("# What one person chose in the Designer, in this project.")
+                .as_bytes(),
+        );
     }
 
     /// Choose which notes the sidebar lists.
