@@ -2094,10 +2094,8 @@ impl UnluminousApp {
         if let Some(mut palette) = self.palette.take() {
             palette.refresh();
             let outcome = crate::components::command_palette::show(ui.ctx(), &mut palette);
-            if outcome.close {
-                if outcome.run.is_none() {
-                    self.termoil_target = None;
-                }
+            if outcome.close && outcome.run.is_none() {
+                self.termoil_target = None;
             }
             if !outcome.close {
                 self.palette = Some(palette);
