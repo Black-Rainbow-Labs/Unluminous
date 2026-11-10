@@ -1658,6 +1658,10 @@ fn the_shell_typed_into_the_settings_is_what_a_new_terminal_runs() {
     open_settings(&mut harness);
     harness.get_by_label("Terminal").click();
     steady(&mut harness);
+    // The Shell card is the last on the page, below the Cursor card `task-2601` added, so the page is
+    // scrolled to it the way a person would before the field is typed into.
+    harness.state_mut().settings_window.scroll = 10_000.0;
+    steady(&mut harness);
     harness.get_by_label("Terminal shell").click();
     steady(&mut harness);
     harness.get_by_label("Terminal shell").type_text("/no/such/program/at/all");
