@@ -6,6 +6,14 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.28.1 — 2026-11-10
+
+- Termoil's own keys on macOS, Terminal Appearance with cursor effects, a shader kept off modals, and the Designer's maximize, divider and notes toggle (`task-2601`)
+- A chord holding Cmd and Control matches on macOS, so Termoil's Cmd+Ctrl+Z and Cmd+Ctrl+arrows work (`task-2601`)
+- Commit this repository's canvas as it was left, and the realm whiteboard design (`task-2603`)
+- Two clippy faults task-2601 left, a collapsible if and a cast to the same type (`task-2603`)
+- Accept the Windows pictures of task-2601's Designer toolbar and Terminal page, and scroll to the Shell card before typing into it (`task-2603`)
+
 ## 1.28.0 — 2026-11-10
 
 - Termoil's panes, keys, palette and themes in every terminal grid (`task-2597`)
