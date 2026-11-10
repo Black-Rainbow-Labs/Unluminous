@@ -6,7 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.27.2 — 2026-11-09
+## 1.27.3 — 2026-11-10
+
+- One paste from the macOS menu bar attaches the clipboard picture once (`task-2592`)
+
+## 1.27.2 — 2026-11-08
 
 - Opening the skill view writes the shipped skill without calling it a save, and the settings card fits its sentence (`task-2556`)
 
