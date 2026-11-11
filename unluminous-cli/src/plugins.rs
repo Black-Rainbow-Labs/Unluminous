@@ -114,7 +114,7 @@ pub const AGENT_TASKS: &[(&str, &str)] = &[
     ("close", "Close the ticket modal."),
     (
         "create",
-        "Press `Create task` on the new ticket that is open. Refused while it has no title, and the title field          is then outlined in red; `isNew` and `titleMissing` in the ticket's JSON say which.",
+        "Finish the new ticket that is open and close the modal; it was saved as it was typed. Refused while it          has no title, and the title field is then outlined in red; `isNew` and `titleMissing` in the ticket's          JSON say which. `start` on the new ticket finishes it the same way and launches its agent.",
     ),
     ("reload", "Read the board again from its file."),
     (

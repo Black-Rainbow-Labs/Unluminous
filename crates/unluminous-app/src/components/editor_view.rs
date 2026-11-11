@@ -71,6 +71,10 @@ pub struct ViewOutcome {
     pub copy: Option<String>,
     /// Keep the caret in view, because it moved.
     pub scroll_to_caret: bool,
+    /// The paste chord's key went back up, which is the one report of a paste that reaches the window when the
+    /// clipboard holds a picture and no text (see `agent_chat::is_a_paste_chord`). The window asks the clipboard
+    /// for a picture and, in a Markdown file, writes it beside the file and links it (`task-2634`).
+    pub paste_released: bool,
 }
 
 /// Turn one frame's input events into commands and run them.
@@ -180,6 +184,11 @@ pub fn handle_input(
                     outcome.changed |= document.apply(Command::Insert(text));
                 }
                 outcome.scroll_to_caret = true;
+            }
+            egui::Event::Key { key: egui::Key::V, pressed: false, modifiers, .. }
+                if modifiers.command =>
+            {
+                outcome.paste_released = true;
             }
             egui::Event::Paste(text) => {
                 // Line breaks from another application may be a carriage return and a line feed. The

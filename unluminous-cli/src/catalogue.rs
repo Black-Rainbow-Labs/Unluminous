@@ -1208,6 +1208,15 @@ pub const COMMANDS: &[Command] = &[
     },
     Command {
         area: "editor",
+        verb: "paste-picture",
+        summary: "Paste a picture into the Markdown file that is showing: it is written into the images folder beside the file, as <file name>-<n>.png, and a link to it is typed at the caret as a paragraph of its own, which the preview draws. The same as Ctrl+V or Cmd+V with a picture on the clipboard.",
+        arguments: NO_ARGUMENTS,
+        flags: &[FILE, option("from-file", "path", "Copy this picture file instead of the picture on the clipboard.")],
+        examples: &["unluminous-cli editor paste-picture --path notes.md", "unluminous-cli editor paste-picture --from-file shot.png"],
+        local: false,
+    },
+    Command {
+        area: "editor",
         verb: "caret",
         summary: "Read where the caret is, or move it. Lines and columns count from 1, which is what the status bar shows.",
         arguments: NO_ARGUMENTS,

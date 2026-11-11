@@ -64,6 +64,7 @@ pub mod notebook_frame;
 pub mod notebook_kernel;
 mod opening;
 mod panels;
+mod pasted_pictures;
 pub mod report;
 pub mod servers;
 pub mod signature;

@@ -1804,15 +1804,15 @@ fn add_task_opens_an_editor_with_every_field_a_ticket_needs() {
     did(&mut harness, "plugins pane agent-tasks/board --show");
     did(&mut harness, "plugins run agent-tasks new-task");
     steady(&mut harness);
-    // The modal is open, on a ticket nobody has named, which is what gives its card `Create task`.
+    // The modal is open, on a ticket nobody has named. The ticket already exists and is saved as it is typed, so
+    // its card ends in `Start Work` and there is no `Create task` to press (`task-2634`).
     let view = did(&mut harness, "plugins view agent-tasks");
     assert_eq!(view["total"], 1);
-    // `Create task` closes the editor and keeps the ticket; a ticket that exists has `Start Work` instead.
     assert!(
-        harness.query_all_by_label_contains("Create task").count() > 0,
+        harness.query_all_by_label_contains("Start Work").count() > 0,
         "the editor's own button"
     );
-    assert_eq!(harness.query_all_by_label_contains("Start Work").count(), 0);
+    assert_eq!(harness.query_all_by_label_contains("Create task").count(), 0);
     // Every field is reachable by name, which is what proves each has a control rather than a comment saying it
     // should have one.
     for control in ["Assignee", "Model", "Effort", "Priority", "Epic", "Project"] {
@@ -5227,9 +5227,9 @@ fn a_link_in_an_answer_opens_in_a_browser_tab_on_a_click() {
 }
 
 /// `task-2263`: *"When I create a task with no title, it just dissappears. there should be a validation message that
-/// highlights the required input in red."* `Create task` on a ticket with no title keeps the dialog open, outlines the
-/// title field and says why; typing a title takes the message away and `Create task` then closes the dialog with the
-/// ticket kept.
+/// highlights the required input in red."* `Start Work` on a new ticket with no title (`task-2634` put it where
+/// `Create task` was) keeps the dialog open, outlines the title field and says why; typing a title takes the message
+/// away, and the title is on the ticket as it is typed, with nothing to press, so closing the dialog keeps it.
 #[test]
 fn create_task_with_no_title_keeps_the_ticket_and_says_the_title_is_needed() {
     let mut harness = harness("");
@@ -5238,7 +5238,7 @@ fn create_task_with_no_title_keeps_the_ticket_and_says_the_title_is_needed() {
     did(&mut harness, "plugins run agent-tasks new-sprint Current Sprint");
     did(&mut harness, "plugins run agent-tasks new-task");
     steady(&mut harness);
-    harness.get_by_label("Create task").click();
+    harness.get_by_label("Start Work").click();
     steady(&mut harness);
     let missing = unluminous_app::services::agent_tasks::TITLE_MISSING;
     assert!(
@@ -5248,21 +5248,72 @@ fn create_task_with_no_title_keeps_the_ticket_and_says_the_title_is_needed() {
     assert!(harness.query_by_label("Ticket title").is_some(), "the dialog is still open");
     harness.snapshot(shot("agent_tasks_title_missing").as_str());
 
-    // The agent's half is refused the same way, and leaves the dialog open.
+    // The agent's half is refused the same way, `start` as the button is and `create` as well, and leaves the
+    // dialog open on a ticket that is still new.
+    refused(&mut harness, "plugins run agent-tasks start task-1");
     refused(&mut harness, "plugins run agent-tasks create");
     steady(&mut harness);
     assert!(harness.query_by_label(missing).is_some(), "still marked after the refusal");
+    assert!(harness.query_by_label("Ticket title").is_some(), "the dialog is still open");
 
     harness.get_by_label("Ticket title").click();
     steady(&mut harness);
     harness.input_mut().events.push(egui::Event::Text("Named at last".to_owned()));
     steady(&mut harness);
     assert!(harness.query_by_label(missing).is_none(), "typing a title takes the message away");
-    harness.get_by_label("Create task").click();
+    // Saved as it was typed, before anything is pressed.
+    let ticket = did(&mut harness, "plugins run agent-tasks task task-1");
+    assert_eq!(ticket["task"]["title"], "Named at last");
+    did(&mut harness, "plugins run agent-tasks close");
     steady(&mut harness);
     assert!(harness.query_by_label("Ticket title").is_none(), "the dialog closed");
     let ticket = did(&mut harness, "plugins run agent-tasks task task-1");
-    assert_eq!(ticket["task"]["title"], "Named at last");
+    assert_eq!(ticket["task"]["title"], "Named at last", "and the ticket was kept");
+}
+
+/// `task-2634`: *"For agent task modal create, the task should automatically be created, and start being
+/// edited/modified/saved as I type. Create Task button shouldn't be needed, and should be replaced with Start Work,
+/// which ensures things are saved and starts the task."* A new ticket's title and description are on the ticket as
+/// they are typed, and `start` on it, which is what its `Start Work` sends, makes it an ordinary ticket before the
+/// agent is launched, with the modal left open on it.
+#[test]
+fn start_work_on_a_new_ticket_keeps_what_was_typed_and_finishes_the_ticket() {
+    let mut harness = harness("");
+    harness.set_size(vec2(1500.0, 950.0));
+    did(&mut harness, "plugins pane agent-tasks/board --show");
+    did(&mut harness, "plugins run agent-tasks new-sprint Current Sprint");
+    did(&mut harness, "plugins run agent-tasks new-task");
+    steady(&mut harness);
+    assert!(harness.query_by_label("Create task").is_none(), "no Create task button");
+    harness.get_by_label("Ticket title").click();
+    steady(&mut harness);
+    harness.input_mut().events.push(egui::Event::Text("Typed and kept".to_owned()));
+    steady(&mut harness);
+    let ticket = did(&mut harness, "plugins run agent-tasks task task-1");
+    assert_eq!(ticket["task"]["title"], "Typed and kept", "the title is saved as it is typed");
+    let opened = did(&mut harness, "plugins view agent-tasks")["detail"].clone();
+    assert_eq!(opened["isNew"], true, "still a new ticket: {opened}");
+
+    // Asked without letting the window settle, because a started agent prints and a printing terminal asks for
+    // frames, which is why `a_ticket_cannot_be_started_twice_and_a_failed_start_gives_the_claim_back` does the same.
+    let ctx = harness.ctx.clone();
+    let reply = harness
+        .state_mut()
+        .run_command_line("plugins run agent-tasks start task-1", &ctx)
+        .expect("start was answered on the frame it was asked");
+    harness.step();
+    let view = did_while_waiting(&mut harness, "plugins view agent-tasks")["detail"].clone();
+    assert_eq!(view["isNew"], false, "started, the ticket is no longer new: {view}");
+    assert_eq!(view["titleMissing"], false);
+    assert!(
+        harness.query_by_label("Ticket title").is_some(),
+        "the modal stays open on the ticket it started"
+    );
+    if reply.ok {
+        did_while_waiting(&mut harness, "plugins run agent-tasks stop task-1");
+    }
+    let ticket = did_while_waiting(&mut harness, "plugins run agent-tasks task task-1");
+    assert_eq!(ticket["task"]["title"], "Typed and kept");
 }
 
 /// `task-2263`: *"Get rid of the add a todo field. The todos are for agents. Todos should be collapsed by default.

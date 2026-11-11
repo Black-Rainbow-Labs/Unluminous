@@ -50,7 +50,7 @@ use crate::services::plugin_ui::{Answer, Context, Look, Request, UiProvider};
 use model::{Assignee, Author, Board, Epic, Priority, Sprint, SprintStatus, Status, Task};
 use store::{Store, TaskEdit};
 
-/// What `Create task` says when the ticket has no title. The modal shows it under the title field.
+/// What `Start Work` on a new ticket, and `create`, say when the ticket has no title. The modal shows it under the title field.
 pub const TITLE_MISSING: &str = "A ticket needs a title. Type one in the field outlined in red.";
 
 impl AgentTasks {
@@ -263,7 +263,7 @@ pub struct Detail {
     /// Held beside the ticket rather than read from it, because the field is what somebody is typing and the
     /// row is what has been saved. Reading the row into the field every frame would fight the keyboard.
     pub title_draft: String,
-    /// True after `Create task` was pressed on a new ticket with no title, until a title is typed.
+    /// True after `Start Work` was pressed on a new ticket with no title, until a title is typed.
     ///
     /// `task-2263`: *"When I create a task with no title, it just dissappears. there should be a validation
     /// message that highlights the required input in red."* The modal draws the title field outlined in the
@@ -1135,7 +1135,15 @@ impl AgentTasks {
     /// The claim is a guarded update, so two callers pressing start on one card do not both get it. The
     /// session id is chosen here and written to the row, which is what makes the conversation resumable
     /// after this Unluminous has closed.
+    ///
+    /// **A new ticket is finished first** (`task-2634`): `Start Work` replaced `Create task` on a new ticket's
+    /// card, so starting the new ticket that is open saves its title, refuses it while it has none, and makes it
+    /// an ordinary ticket before the agent is launched. The modal stays open on it, as it does for `Start Work` on
+    /// any ticket.
     pub fn start(&mut self, key: &str) -> Result<Answer, String> {
+        if self.is_the_new_ticket(key) {
+            self.finish_the_new_ticket()?;
+        }
         let task = self.by_key(key)?;
         let (agent, endpoint) = match task.assignee.is_an_agent() {
             true => (task.assignee, task.endpoint.clone()),
@@ -1630,11 +1638,10 @@ impl AgentTasks {
         self.refresh()
     }
 
-    /// Finish creating the new ticket that is open, which is what `Create task` and the `create` command do.
+    /// Finish creating the new ticket that is open and close the modal, which is what the `create` command does.
     ///
-    /// A ticket with no title is refused and stays open with its title field marked (`task-2263`): it used to be
-    /// closed and thrown away in one press, so the ticket somebody had just filled in disappeared with nothing said.
-    /// The title is saved once more before the modal closes, so a failure to write it is reported rather than lost.
+    /// The ticket already exists and was saved as it was typed, so this only closes the modal; the modal's own
+    /// button is `Start Work` (`task-2634`), which finishes the ticket the same way and starts it.
     pub fn create_the_new_ticket(&mut self) -> Result<Answer, String> {
         let Some(task) = self.detail.task.clone() else {
             return Err("there is no new ticket open to create".to_owned());
@@ -1642,15 +1649,32 @@ impl AgentTasks {
         if !self.detail.is_new {
             return Ok(Answer::said(format!("{} was already created", task.key)));
         }
+        self.finish_the_new_ticket()?;
+        self.modal_open = false;
+        self.message = format!("{} was created", task.key);
+        Ok(Answer::said(self.message.clone()).with(json!({ "task": task.key })))
+    }
+
+    /// Make the new ticket that is open an ordinary one: refused while it has no title, saved once more, and no
+    /// longer new.
+    ///
+    /// A ticket with no title is refused and stays open with its title field marked (`task-2263`): it used to be
+    /// closed and thrown away in one press, so the ticket somebody had just filled in disappeared with nothing said.
+    /// The title is saved once more, so a failure to write it is reported rather than lost.
+    fn finish_the_new_ticket(&mut self) -> Result<(), String> {
         if self.detail.title_draft.trim().is_empty() {
             self.detail.title_missing = true;
             return Err(TITLE_MISSING.to_owned());
         }
         self.save_the_title()?;
         self.detail.is_new = false;
-        self.modal_open = false;
-        self.message = format!("{} was created", task.key);
-        Ok(Answer::said(self.message.clone()).with(json!({ "task": task.key })))
+        Ok(())
+    }
+
+    /// Whether the ticket called `key` is the new one open in the modal.
+    fn is_the_new_ticket(&self, key: &str) -> bool {
+        self.detail.is_new
+            && self.detail.task.as_ref().is_some_and(|task| task.key.eq_ignore_ascii_case(key))
     }
 
     /// Remove one todo.

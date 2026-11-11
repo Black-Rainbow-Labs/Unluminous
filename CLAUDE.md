@@ -2784,6 +2784,25 @@ its own custom layout (same behavior as if they were open in different windows).
   Tab`, `Next Project Tab` and `Previous Project Tab` (`Ctrl`/`Cmd`+`Alt`+`PageDown`/`PageUp`) are the agent's half.
   `tests/project_tabs.rs` is the tests.
 
+## What `task-2634` changed, and the rules it left
+
+- **A picture pasted into a Markdown file is written beside it, under `images/`, and linked at the caret.**
+  `services::pasted_picture` writes `<file name>-<n>.png` (the first free number) and `app::pasted_pictures` types
+  `![<file name>](images/<file name>-<n>.png)` as a paragraph of its own, with a blank line on each side where
+  there is text, because a link on the line straight after some words is lazy continuation of that paragraph
+  and the preview draws it as its alt text. Three ways reach the one function: the paste chord's key going up in
+  the editor (`ViewOutcome::paste_released`), `Edit -> Paste` (what `Cmd+V` reaches on macOS, which then drops the
+  keyboard's release so a picture is not pasted twice), and `editor paste-picture [--from-file]` for an agent.
+  **A clipboard holding any text is a text paste**, so the release after an ordinary paste does nothing.
+- **A new ticket's card ends in `Start Work`, not `Create task`.** The ticket is made by `Add Task` and saved as it
+  is typed, so the button starts it. `AgentTasks::start` finishes the new ticket that is open first
+  (`finish_the_new_ticket`: refused with the title outlined while there is no title), and the modal stays open on
+  it. `create` is still the agent's way to finish a new ticket without starting it.
+- **A sequence diagram's `rect` band and block frames hold every note and every message to oneself inside
+  them** (`sequence::block_reach`), and a note right of the last participant, or a message to itself, keeps room
+  at the right of the diagram. A frame used to span the first and the last lifeline only, so a note right of
+  the last participant was drawn half outside its band.
+
 ## What `task-2405` changed, and the rules it left
 
 - **The explorer lists every dot folder but `.git` and `.unluminous`** (`file_tree::HIDDEN`). A skill installed for the

@@ -552,8 +552,16 @@ fn measure_frame(
     // How far left of the first column a note beside it reaches, so the columns can start far enough
     // in for the whole of it to be inside the diagram rather than cut off at its left edge.
     let mut lead = 0.0_f32;
-    // How far right of the last column a note over it reaches.
+    // How far right of the last column a note over it, a note right of it, or the words of a message
+    // to itself reach.
     let mut trail = 0.0_f32;
+    // **A frame round a note or a message's words is drawn that much further out** (`task-2634`), so
+    // a note at either edge of a diagram with a `loop` or a `rect` in it needs that much more room.
+    let framed = if diagram.events.iter().any(|event| matches!(event, Event::Open { .. })) {
+        FRAME_INSET
+    } else {
+        0.0
+    };
     for (index, event) in diagram.events.iter().enumerate() {
         // **A note beside a column needs the room between that column and its neighbour**, the way a
         // message to oneself does (`task-2194`): it is drawn there, and in a gap sized only for the
@@ -562,7 +570,7 @@ fn measure_frame(
             let reach = messages[index].width + parts::PADDING_X * 2.0 + NOTE_OFFSET + 8.0;
             let first = over.first().copied().unwrap_or(0);
             match side {
-                Side::Left if first == 0 => lead = lead.max(reach - widths[0] / 2.0),
+                Side::Left if first == 0 => lead = lead.max(reach + framed - widths[0] / 2.0),
                 Side::Left => {
                     let spanned = gaps[first - 1] + (widths[first - 1] + widths[first]) / 2.0;
                     if reach > spanned {
@@ -575,6 +583,10 @@ fn measure_frame(
                         if reach > spanned {
                             *gap += reach - spanned;
                         }
+                    } else {
+                        // **A note right of the last column is drawn past the end of the diagram**
+                        // (`task-2634`): there is no gap there to widen, so the room is kept at the edge.
+                        trail = trail.max(reach + framed - widths[first] / 2.0);
                     }
                 }
                 // **A note over columns reaches past the outer two by half of whatever it is wider
@@ -590,7 +602,7 @@ fn measure_frame(
                     let note = messages[index].width + parts::PADDING_X * 2.0;
                     let overhang = ((note - spanned) / 2.0).max(NOTE_SPAN_MARGIN);
                     if left == 0 {
-                        lead = lead.max(overhang - widths[0] / 2.0);
+                        lead = lead.max(overhang + framed - widths[0] / 2.0);
                     } else {
                         let room = gaps[left - 1] + widths[left - 1] / 2.0;
                         if overhang > room {
@@ -598,7 +610,7 @@ fn measure_frame(
                         }
                     }
                     if right + 1 == widths.len() {
-                        trail = trail.max(overhang - widths[right] / 2.0);
+                        trail = trail.max(overhang + framed - widths[right] / 2.0);
                     } else {
                         let room = gaps[right] + widths[right + 1] / 2.0;
                         if overhang > room {
@@ -616,12 +628,14 @@ fn measure_frame(
         // A message to oneself writes its words to the right of the loop, so the gap on that side has
         // to hold them, or they run over the next column's lifeline and into its messages.
         if left == right {
+            let wanted = SELF_LOOP_TEXT + messages[index].width + 12.0;
             if let Some(gap) = gaps.get_mut(left) {
-                let wanted = SELF_LOOP_TEXT + messages[index].width + 12.0;
                 let spanned = *gap + (widths[left] + widths[left + 1]) / 2.0;
                 if wanted > spanned {
                     *gap += wanted - spanned;
                 }
+            } else {
+                trail = trail.max(wanted + framed - widths[left] / 2.0);
             }
             continue;
         }
@@ -1120,24 +1134,7 @@ fn draw_note(
     frame: &Frame,
     options: &Options,
 ) {
-    let width = label.width + parts::PADDING_X * 2.0;
-    let height = label.height + 12.0;
-    let first = *over.first().expect("a note names at least one participant");
-    let last = *over.last().expect("a note names at least one participant");
-    let rect = match side {
-        Side::Left => {
-            Rect::new(frame.columns[first] - width - NOTE_OFFSET, y - height / 2.0, width, height)
-        }
-        Side::Right => {
-            Rect::new(frame.columns[first] + NOTE_OFFSET, y - height / 2.0, width, height)
-        }
-        Side::Over => {
-            let left = frame.columns[first].min(frame.columns[last]);
-            let right = frame.columns[first].max(frame.columns[last]);
-            let across = (right - left + NOTE_SPAN_MARGIN * 2.0).max(width);
-            Rect::new((left + right) / 2.0 - across / 2.0, y - height / 2.0, across, height)
-        }
-    };
+    let rect = note_rect(over, side, label, y, frame);
     scene.add(Item::Rect {
         rect,
         radius: parts::CORNER,
@@ -1150,6 +1147,69 @@ fn draw_note(
         rect,
         &parts::text_style(options, 0.85, false, options.theme.text),
     );
+}
+
+/// Where a note's panel goes: beside the participant it names, or across the ones it is over.
+fn note_rect(over: &[usize], side: Side, label: &Label, y: f32, frame: &Frame) -> Rect {
+    let width = label.width + parts::PADDING_X * 2.0;
+    let height = label.height + 12.0;
+    let first = *over.first().expect("a note names at least one participant");
+    let last = *over.last().expect("a note names at least one participant");
+    match side {
+        Side::Left => {
+            Rect::new(frame.columns[first] - width - NOTE_OFFSET, y - height / 2.0, width, height)
+        }
+        Side::Right => {
+            Rect::new(frame.columns[first] + NOTE_OFFSET, y - height / 2.0, width, height)
+        }
+        Side::Over => {
+            let left = frame.columns[first].min(frame.columns[last]);
+            let right = frame.columns[first].max(frame.columns[last]);
+            let across = (right - left + NOTE_SPAN_MARGIN * 2.0).max(width);
+            Rect::new((left + right) / 2.0 - across / 2.0, y - height / 2.0, across, height)
+        }
+    }
+}
+
+/// How far left and right the things one event draws reach, for the ones that can reach past the
+/// first or the last lifeline: a note, and the words of a message to oneself.
+fn event_reach(event: &Event, label: &Label, y: f32, frame: &Frame) -> Option<(f32, f32)> {
+    match event {
+        Event::Note { over, side, .. } => {
+            let rect = note_rect(over, *side, label, y, frame);
+            Some((rect.left(), rect.right()))
+        }
+        Event::Message { from, to, .. } if from == to => {
+            let column = frame.columns[*from];
+            Some((column, column + SELF_LOOP_TEXT + label.width))
+        }
+        _ => None,
+    }
+}
+
+/// How far left and right a block frame opened at event `start` and closed at event `end` reaches:
+/// past the first and the last lifeline, and past every note and every message's words inside it
+/// (`task-2634`: a note right of the last participant was drawn half outside its `rect` band).
+fn block_reach(
+    diagram: &Diagram,
+    labels: &[Label],
+    frame: &Frame,
+    start: usize,
+    end: usize,
+) -> (f32, f32) {
+    let first = frame.columns.first().copied().unwrap_or(0.0);
+    let last = frame.columns.last().copied().unwrap_or(0.0);
+    let mut reach = (first - FRAME_INSET - 10.0, last + FRAME_INSET + 10.0);
+    for index in start..=end {
+        let Some((left, right)) =
+            event_reach(&diagram.events[index], &labels[index], frame.rows[index], frame)
+        else {
+            continue;
+        };
+        reach.0 = reach.0.min(left - FRAME_INSET);
+        reach.1 = reach.1.max(right + FRAME_INSET);
+    }
+    reach
 }
 
 /// Draw the frames round `loop`, `alt`, `opt` and the rest.
@@ -1176,12 +1236,11 @@ fn draw_blocks(
                 let Some((start, kind, label, divides)) = open.pop() else {
                     continue;
                 };
+                let (left, right) = block_reach(diagram, labels, frame, start, index);
                 let rect = Rect::new(
-                    frame.columns.first().copied().unwrap_or(0.0) - FRAME_INSET - 10.0,
+                    left,
                     frame.rows[start] - FRAME_HEADER / 2.0 - 6.0,
-                    frame.columns.last().copied().unwrap_or(0.0)
-                        - frame.columns.first().copied().unwrap_or(0.0)
-                        + (FRAME_INSET + 10.0) * 2.0,
+                    right - left,
                     frame.rows[index] - frame.rows[start] + FRAME_HEADER,
                 );
                 // `rect rgb(191, 223, 255)` is a band of colour behind its messages with no frame and
@@ -1614,6 +1673,78 @@ mod tests {
             "the columns are {between} apart for words {} wide",
             numbered.width
         );
+    }
+
+    /// `task-2634`: a `rect` band and a `loop` frame hold every note and every message to oneself
+    /// inside them, including a note right of the last participant, which ran out of the band's right
+    /// hand side, and the band and everything in it are inside the diagram.
+    #[test]
+    fn a_band_and_a_frame_hold_the_notes_beside_the_outer_participants() {
+        for (kind, opener) in [("rect", "rect rgb(80, 80, 90)"), ("loop", "loop every time")] {
+            let text = format!(
+                "sequenceDiagram\n participant A\n participant B\n A ->> B: go\n {opener}\n  Note left of A: a note left of the first participant\n  Note right of B: promoCodeSuccessDialog.tsx:118 to 119 alignItems center\n  B -->> B: offer card stays a row, exactly as on main\n  Note over B: a note over the last participant that is wide\n end\n"
+            );
+            let scene = check::drawn(&text, &options(), &["promoCodeSuccessDialog"]);
+            let frame = scene
+                .items
+                .iter()
+                .find_map(|item| match item {
+                    Item::Rect { rect, fill: Some(_), stroke: None, .. } if kind == "rect" => {
+                        Some(*rect)
+                    }
+                    Item::Rect { rect, fill: None, stroke: Some(_), .. } if kind == "loop" => {
+                        Some(*rect)
+                    }
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("the {kind} block"));
+            let notes: Vec<Rect> = scene
+                .items
+                .iter()
+                .filter_map(|item| match item {
+                    Item::Rect { rect, fill: Some(_), stroke: Some(_), radius, .. }
+                        if *radius == parts::CORNER
+                            && rect.height != HEAD_HEIGHT
+                            && rect.left() != frame.left() =>
+                    {
+                        // The `loop` frame's tab sits in its top left corner, and it is not a note.
+                        Some(*rect)
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(notes.len(), 3, "three notes in {kind}");
+            for note in notes {
+                assert!(
+                    frame.left() < note.left() && note.right() < frame.right(),
+                    "{kind}: the note {note:?} is inside {frame:?}"
+                );
+            }
+            let words = scene
+                .items
+                .iter()
+                .find_map(|item| match item {
+                    Item::Text { at, text, .. } if text.starts_with("offer card") => Some(*at),
+                    _ => None,
+                })
+                .expect("the words of the message to itself");
+            let measured = text::measure(
+                "offer card stays a row, exactly as on main",
+                &options().style(0.85, false),
+                options().metrics,
+                MESSAGE_WRAP,
+            );
+            assert!(
+                words.x + measured.width < frame.right(),
+                "{kind}: the words of the message to itself end inside {frame:?}"
+            );
+            assert!(frame.left() >= 0.0, "{kind}: the block starts inside the diagram");
+            assert!(
+                frame.right() <= scene.size.width,
+                "{kind}: the block {frame:?} ends inside the diagram {}",
+                scene.size.width
+            );
+        }
     }
 
     #[test]

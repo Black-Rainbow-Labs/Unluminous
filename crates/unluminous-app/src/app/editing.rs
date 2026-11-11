@@ -1323,9 +1323,14 @@ impl UnluminousApp {
             self.go_to_definition(offset);
             return EditorTyped { jumped: true, scroll_to_caret: false };
         }
-        let scroll_to_caret = outcome.scroll_to_caret;
+        let mut scroll_to_caret = outcome.scroll_to_caret;
         if let Some(text) = outcome.copy {
             ui.ctx().copy_text(text);
+        }
+        // A picture pasted into a Markdown file is written beside it and linked (`task-2634`). The key going up
+        // arrives after an ordinary text paste as well, and the clipboard then has text on it, so nothing happens.
+        if outcome.paste_released && self.paste_a_picture_from_the_clipboard() {
+            scroll_to_caret = true;
         }
         if outcome.changed {
             // Typing into a file you were only glancing at plainly means you meant to open it, so

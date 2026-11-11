@@ -60,6 +60,7 @@ pub mod login_shell;
 pub mod mcp;
 pub mod mermaid_scene;
 pub mod native_menu;
+pub mod pasted_picture;
 pub mod paths;
 pub mod picture;
 pub mod plugin_settings;

@@ -8,7 +8,9 @@
 //! and a round close button; then two columns. On the left the description in a carved well, the agent, the
 //! todos with a track of how many are done, and the comments, each under a small heading. On the right
 //! a raised card holding `Start Work` and the fields that say what the ticket is, each a chip with a mark and a
-//! chevron, and the priority as a small pill switch. A new ticket's card ends in `Create task`.
+//! chevron, and the priority as a small pill switch. A new ticket's card ends in `Start Work` (`task-2634`): the
+//! ticket was made by `Add Task` and is saved as it is typed, so there is nothing left to create, and the one thing
+//! to press is the one that starts it.
 //!
 //! Every surface is `rux`: `rux::components::board` for the chips, the tick boxes and the round buttons, and
 //! `Select::chip` for the fields. `components::modal::show_unframed` is the dialog, so it keeps the dragging,
@@ -143,7 +145,7 @@ const COMMENT_ROUGHLY: f32 = 56.0;
 #[derive(Debug, Default)]
 pub struct Outcome {
     pub requests: Vec<Request>,
-    /// The modal was closed, by its cross, by `Escape`, by a click outside it, or by `Create task`.
+    /// The modal was closed, by its cross, by `Escape` or by a click outside it.
     pub closed: bool,
 }
 
@@ -201,7 +203,7 @@ pub fn show(board: &mut AgentTasks, ctx: &egui::Context, look: &Look<'_>) -> Out
     outcome.requests = inner.requests;
     outcome.closed = inner.closed || should_close;
     // A new ticket closed with nothing typed into it is thrown away, because `Add Task` made the row before
-    // anybody asked for one. One with a title is kept, which is what `Create task` does too.
+    // anybody asked for one. One with a title is kept: it was saved as it was typed (`task-2634`).
     if outcome.closed && new && board.detail().title_draft.trim().is_empty() {
         if let Err(problem) = board.discard_the_ticket() {
             outcome.requests.push(Request::Message(problem));
@@ -276,7 +278,7 @@ fn contents(
                 Rect::from_min_max(Pos2::new(inner.min.x, header.max.y + HEADER_GAP), inner.max);
             if board.fields_shut {
                 // The card of fields is put away, so the column takes the whole width (`task-2261`). A new ticket
-                // keeps `Create task`, which is on that card, so it is drawn under the column instead.
+                // keeps `Start Work`, which is on that card, so it is drawn under the column instead.
                 let foot = match new {
                     true => 44.0 + SECTION_GAP,
                     false => 0.0,
@@ -288,10 +290,12 @@ fn contents(
                         Pos2::new(body.max.x - ASIDE, body.max.y - 44.0),
                         Vec2::new(ASIDE, 44.0),
                     );
-                    action_pill(rux, at, "Create task", Icon::Plus, true).clicked()
+                    action_pill(rux, at, "Start Work", Icon::Play, true).clicked()
                 };
-                let create = pressed && press_create(board, rux.ui, &mut requests);
-                (requests, closed || create)
+                if pressed {
+                    press_start_work(board, rux.ui, task, &mut requests);
+                }
+                (requests, closed)
             } else if body.width() >= TWO_COLUMNS {
                 let aside = Rect::from_min_max(Pos2::new(body.max.x - ASIDE, body.min.y), body.max);
                 let main =
@@ -299,8 +303,10 @@ fn contents(
                 requests.extend(main_column(board, rux, order, main, look, task, new));
                 let (more, pressed) = fields(board, rux, selects, aside, task, new);
                 requests.extend(more);
-                let create = pressed && press_create(board, rux.ui, &mut requests);
-                (requests, closed || create)
+                if pressed {
+                    press_start_work(board, rux.ui, task, &mut requests);
+                }
+                (requests, closed)
             } else {
                 // One column: the card of fields first and never more than half the height, scrolled inside it,
                 // then the rest, which is what the browser board's own narrow layout does.
@@ -313,12 +319,14 @@ fn contents(
                 let mut column = Vec::new();
                 let (more, pressed) = fields(board, rux, selects, aside, task, new);
                 requests.extend(more);
-                let create = pressed && press_create(board, rux.ui, &mut requests);
+                if pressed {
+                    press_start_work(board, rux.ui, task, &mut requests);
+                }
                 if rest.height() > 120.0 {
                     requests.extend(main_column(board, rux, &mut column, rest, look, task, new));
                 }
                 order.splice(0..0, column);
-                (requests, closed || create)
+                (requests, closed)
             }
         },
     );
@@ -333,24 +341,35 @@ fn contents(
     outcome
 }
 
-/// What `Create task` does, and whether the modal closes because of it.
+/// What `Start Work` on a new ticket does: the `start` command, which finishes the ticket and launches its agent.
 ///
-/// `task-2263`. A ticket with no title stays open with its title field outlined in red and the keyboard put in
-/// it; any other failure is a notice that goes by itself after three seconds, because the person is looking at
-/// the dialog they pressed the button in.
-fn press_create(board: &mut AgentTasks, ui: &egui::Ui, requests: &mut Vec<Request>) -> bool {
-    match board.create_the_new_ticket() {
-        Ok(_) => true,
+/// `task-2634` put it where `Create task` was. The modal stays open on the ticket, with its agent, as it does for
+/// `Start Work` on a ticket that exists. A ticket with no title stays new with its title field outlined in red and
+/// the keyboard put in it (`task-2263`); any other failure is a notice that goes by itself after three seconds,
+/// because the person is looking at the dialog they pressed the button in.
+fn press_start_work(
+    board: &mut AgentTasks,
+    ui: &egui::Ui,
+    task: &Task,
+    requests: &mut Vec<Request>,
+) {
+    match board.command_now("start", std::slice::from_ref(&task.key)) {
+        Ok(answer) if !answer.message.is_empty() => requests.push(Request::Message(answer.message)),
+        Ok(_) => {}
         Err(_) if board.detail().title_missing => {
             ui.ctx().memory_mut(|memory| {
                 memory.request_focus(ui.id().with("agent-tasks-ticket-title"));
             });
-            false
         }
-        Err(problem) => {
-            requests.push(not_created(&problem));
-            false
-        }
+        Err(problem) => requests.push(not_started(&problem)),
+    }
+}
+
+/// The notice for a new ticket whose agent could not be started: red, with a cross, gone after three seconds.
+fn not_started(problem: &str) -> Request {
+    Request::Notice {
+        text: format!("The agent was not started: {problem}"),
+        kind: crate::components::toast::Kind::Brief,
     }
 }
 
@@ -1579,7 +1598,7 @@ fn section_grip(
 }
 
 /// The card of fields down the right: `Start Work`, what the ticket is, and its priority. Answers whatever was
-/// asked for, and whether `Create task` was pressed.
+/// asked for, and whether a new ticket's `Start Work` was pressed.
 ///
 /// `padding: 18px; gap: 16px` on the card gradient with `--out`, `border-radius: 26px`. **It scrolls**, because
 /// in a dialog dragged towards its smallest it cannot be made to fit, and the date and `Delete task`
@@ -1598,7 +1617,7 @@ fn fields(
     let mut create = false;
     let state = rux.state;
     let inner = area.shrink(18.0);
-    // `Create task` sits at the foot of a new ticket's card, outside the scrolling part.
+    // A new ticket's `Start Work` sits at the foot of its card, outside the scrolling part.
     let foot = match new {
         true => 44.0 + 16.0,
         false => 0.0,
@@ -1655,12 +1674,12 @@ fn fields(
             Pos2::new(inner.min.x, inner.max.y - 44.0),
             Vec2::new(inner.width(), 44.0),
         );
-        create = action_pill(rux, at, "Create task", Icon::Plus, true).clicked();
+        create = action_pill(rux, at, "Start Work", Icon::Play, true).clicked();
     }
     (requests, create)
 }
 
-/// The design's 44 point action pill: `Start Work` and `Create task`, in the action's gradient.
+/// The design's 44 point action pill: `Start Work`, `Stop` and `Resume session`, in the action's gradient.
 fn action_pill(
     rux: &mut rux::Rux<'_>,
     at: Rect,
@@ -1694,7 +1713,7 @@ fn field_column(
     // ---------------------------------------------------------------- the one thing to press
     //
     // At the top, where somebody opening a ticket to start an agent looks first. A ticket with an agent already
-    // running offers `Stop`, and a new one offers nothing because it has no title yet.
+    // running offers `Stop`. A new one has its `Start Work` at the foot of the card instead.
     if !new {
         let attached =
             board.terminal_for(task.id).is_some_and(|terminal| terminal.session.is_running());

@@ -1032,6 +1032,23 @@ unluminous-cli editor insert Hello
 unluminous-cli editor insert "one\ntwo"
 ```
 
+### editor paste-picture
+
+```
+unluminous-cli editor paste-picture [--path <file>] [--from-file <path>]
+```
+
+Paste a picture into the Markdown file that is showing: it is written into the images folder beside the file, as <file name>-<n>.png, and a link to it is typed at the caret as a paragraph of its own, which the preview draws. The same as Ctrl+V or Cmd+V with a picture on the clipboard.
+
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
+
+- `--from-file <path>` — Copy this picture file instead of the picture on the clipboard.
+
+```sh
+unluminous-cli editor paste-picture --path notes.md
+unluminous-cli editor paste-picture --from-file shot.png
+```
+
 ### editor caret
 
 ```

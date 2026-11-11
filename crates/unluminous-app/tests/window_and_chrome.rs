@@ -7808,3 +7808,53 @@ fn the_view_mode_last_chosen_is_the_one_the_next_markdown_file_opens_in() {
     steady(&mut harness);
     assert_eq!(harness.state().view_mode(), ViewMode::Preview);
 }
+
+/// `task-2634`: *"We need to be able to paste an image into an md file, etc. and have it show up. The image should
+/// go in the same folder the md file is in, under a sub-dir called images."* A picture pasted into a Markdown file
+/// is written under `images/` beside it, a link to it is typed at the caret on a line of its own, and the preview
+/// draws it. Driven by `editor paste-picture --from-file`, which is the same function the paste chord and
+/// `Edit -> Paste` reach with the clipboard's picture; the person's own clipboard is left alone.
+#[test]
+fn a_picture_pasted_into_markdown_is_written_beside_it_under_images_and_drawn() {
+    let folder = fixtures_root().join("unluminous-pasted-picture");
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).expect("make the folder");
+    let shot = image::RgbaImage::from_pixel(120, 80, image::Rgba([0xC0, 0x40, 0x30, 255]));
+    let source = folder.join("shot.png");
+    shot.save(&source).expect("write shot.png");
+    std::fs::write(folder.join("notes.md"), "# Notes\n\nWords before the picture.")
+        .expect("notes.md");
+    std::fs::write(folder.join("main.rs"), "fn main() {}\n").expect("main.rs");
+    let mut harness = harness_in(&folder);
+
+    // Not into a source file: a picture belongs in a Markdown document.
+    harness.state_mut().open_path_permanently(&folder.join("main.rs")).expect("the file opens");
+    steady(&mut harness);
+    let line = format!("editor paste-picture --from-file {}", source.display());
+    assert_eq!(refused(&mut harness, &line), "not-applicable");
+    assert!(!folder.join("images").exists(), "nothing was written for a source file");
+
+    harness.state_mut().open_path_permanently(&folder.join("notes.md")).expect("the file opens");
+    steady(&mut harness);
+    did(&mut harness, "editor caret --line 3 --column 100");
+    let pasted = did(&mut harness, &line);
+    let written = folder.join("images").join("notes-1.png");
+    assert!(written.exists(), "the picture is under images beside the file: {pasted}");
+    assert_eq!(pasted["link"], "![notes](images/notes-1.png)");
+    let text = harness.state().document().text().to_string();
+    assert_eq!(
+        text, "# Notes\n\nWords before the picture.\n\n![notes](images/notes-1.png)\n",
+        "the link is a paragraph of its own after the words"
+    );
+    // A second paste takes the next name and leaves the first picture where it was.
+    did(&mut harness, &line);
+    assert!(folder.join("images").join("notes-2.png").exists());
+
+    harness.state_mut().set_view_mode(ViewMode::Preview);
+    steady(&mut harness);
+    steady(&mut harness);
+    let pictures = harness.state().preview_pictures();
+    assert_eq!(pictures.len(), 2, "both pasted pictures are drawn");
+    assert!(pictures[0].texture.is_some(), "the pasted picture was read from images/");
+    assert_eq!(pictures[0].size, vec2(120.0, 80.0));
+}

@@ -228,7 +228,8 @@ fn ticket_display(
             tasks.detail.is_new = false;
             Ok(Answer::said("the ticket is closed"))
         }
-        // `Create task`, by the same function the button calls. `task-2263`.
+        // Finishing a new ticket without starting it. Its button was `Create task` until `task-2634` made it
+        // `Start Work`, which is `start` and finishes the ticket by the same function. `task-2263`.
         "create" => tasks.create_the_new_ticket(),
         // `task-28`: the same change the two buttons on a description and on each comment make, reached the
         // same way by an agent — one function behind both, which is Unluminous's own rule about a control.

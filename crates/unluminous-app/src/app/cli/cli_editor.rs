@@ -60,6 +60,7 @@ impl UnluminousApp {
             "text" => self.cli_editor_text(request),
             "set-text" => self.cli_editor_set_text(request),
             "insert" => self.cli_editor_insert(request),
+            "paste-picture" => self.cli_editor_paste_picture(request),
             "caret" => self.cli_editor_caret(request),
             "select" => self.cli_editor_select(request),
             "indent" => self.cli_editor_indent(request),
@@ -513,6 +514,44 @@ impl UnluminousApp {
             format!("Typed {} characters", text.chars().count()),
             json!({ "caret": { "line": at.line, "column": at.column } }),
         )
+    }
+
+    /// `editor paste-picture` -- what pasting a picture into a Markdown file does, by the same function
+    /// (`task-2634`). The picture is the clipboard's, or a file's with `--from-file`, because an agent has no
+    /// clipboard of its own to put a picture on.
+    fn cli_editor_paste_picture(&mut self, request: &Request) -> Outcome {
+        if let Some(refusal) = self.not_a_document(request) {
+            return refusal;
+        }
+        let Some(document) = self.markdown_file_showing() else {
+            return no(
+                request,
+                code::NOT_APPLICABLE,
+                "A picture is pasted into a Markdown file, and the tab that is showing is not one.",
+            );
+        };
+        let picture = match request.text("from-file") {
+            Some(named) => crate::services::pasted_picture::from_a_file(&self.cli_path(&named)),
+            None => match crate::services::pasted_picture::from_the_clipboard() {
+                Ok(Some(bytes)) => Ok((bytes, "png".to_owned())),
+                Ok(None) => Err("there is no picture on the clipboard, or it holds text as well. \
+                     Give a picture with --from-file."
+                    .to_owned()),
+                Err(problem) => Err(problem),
+            },
+        };
+        let saved = picture
+            .and_then(|(bytes, extension)| self.paste_a_picture(&document, &bytes, &extension));
+        match saved {
+            Ok(saved) => ok(
+                request,
+                format!("Pasted the picture as {}", saved.path.display()),
+                json!({ "path": saved.path.display().to_string(), "link": saved.link }),
+            ),
+            Err(problem) => {
+                no(request, code::NOT_APPLICABLE, format!("The picture was not pasted: {problem}"))
+            }
+        }
     }
 
     fn cli_editor_caret(&mut self, request: &Request) -> Outcome {

@@ -990,6 +990,15 @@ impl UnluminousApp {
                             self.document_mut().apply(Command::Insert(text));
                         }
                     }
+                    // **A clipboard with no text may hold a picture** (`task-2634`), which in a Markdown file is
+                    // written beside it and linked. On macOS `Cmd+V` reaches here rather than the editor, and its
+                    // key going up reaches the editor afterwards, so that release is taken out once a picture was
+                    // pasted here and the picture is not pasted twice.
+                    _ if self.focus == Focus::Editor => {
+                        if self.paste_a_picture_from_the_clipboard() {
+                            crate::app::note_a_paste_release_was_sent(ctx);
+                        }
+                    }
                     Ok(_) => {}
                     Err(problem) => eprintln!("Unluminous could not read the clipboard: {problem}"),
                 }
