@@ -2249,6 +2249,22 @@ fn drive_the_editing_commands(coverage: &mut Coverage) {
     c.works(&mut harness, "editor preview-select --all");
     c.sets_up(&mut harness, "editor view raw");
 
+    // `task-2634`: a picture pasted into a Markdown file. In a folder of its own, so the `images` folder it
+    // makes is not in this project for a later picture of the explorer to show. A source file refuses it.
+    let pasted = fixtures_root().join("unluminous-drive-paste-picture");
+    let _ = std::fs::remove_dir_all(&pasted);
+    std::fs::create_dir_all(&pasted).expect("a folder");
+    image::RgbaImage::from_pixel(4, 4, image::Rgba([0x30, 0x70, 0xC0, 255]))
+        .save(pasted.join("dot.png"))
+        .expect("a picture");
+    std::fs::write(pasted.join("note.md"), "A note.\n").expect("a note");
+    let picture = pasted.join("dot.png");
+    let note = pasted.join("note.md");
+    c.sets_up(&mut harness, &format!("tab open {}", note.display()));
+    c.works(&mut harness, &format!("editor paste-picture --from-file {}", picture.display()));
+    c.refuses(&mut harness, "editor paste-picture --from-file no-such-picture.png");
+    c.sets_up(&mut harness, "tab close --discard");
+
     c.sets_up(&mut harness, "tab open src/main.rs");
     c.works(&mut harness, "fold list --json");
     c.works(&mut harness, "fold collapse --all");
