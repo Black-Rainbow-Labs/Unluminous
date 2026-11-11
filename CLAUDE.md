@@ -6012,6 +6012,24 @@ the emulator Unluminous already uses. Seven rules:
   the whole window to callbacks as the `SceneTexture`, or the backdrop would carry the window shader twice.
 - **A window shader that moves asks for a frame every 33 ms only while the window has the focus**, Ghostty's rule.
 
+### A shader is drawn at a strength, a curve bends the pointer too, and the window keeps its corners (`task-2622`)
+
+`tasks/task-2622-shader-strength-tdd.md` is the design.
+
+- **`appearance.shader_strength` and `terminal.shader_strength` are percentages, 70 by default**, the Strength sliders
+  on the Theme and Terminal pages. The wrapper's `strength` uniform (Termoil's first padding float) mixes the shader's
+  answer with the frame read at `termoil_warp(uv)`, never at `uv`, or a curved shader at 70% shows two pictures.
+- **A shader that bends the picture defines `termoil_warp` and scales its curve by `termoil.strength`.** Only `crt` and
+  `retro` do, so those two files are no longer byte copies of Termoil's. `Look::source` adds an identity
+  `termoil_warp` to every other shader. `services::shader_warp::curve_of` repeats each file's `CURVE`, and a test fails
+  when they differ.
+- **Pointer events are bent before egui sees them.** Each pass of a bending shader records a region
+  (`note_a_grid`, `note_the_window`), and `settle_the_native_views_before_the_pass` moves every pointer position in one
+  to the place in the frame drawn under it, after the command line's `input` events are added. A grid in a look of its
+  own is a hole in the window's region. A cursor effect's caret is moved the other way (`on_the_screen`).
+- **The window pass keeps the window's rounded corners**: the `radius` uniform is `size::WINDOW_CORNER` in pixels, and
+  outside the rounded rectangle the frame's own transparent pixel is kept. A grid's pass has a radius of 0.
+
 ## The code index answers what ripgrep would, from memory, and it is measured rather than assumed
 
 **The index is Atrius now (`task-2172`).** It moved to its own private repository,

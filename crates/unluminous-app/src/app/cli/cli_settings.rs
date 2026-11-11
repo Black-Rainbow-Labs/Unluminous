@@ -1000,6 +1000,8 @@ impl UnluminousApp {
             "appearance.terminals_keep_their_shader" => {
                 self.settings.terminals_keep_their_shader.to_string()
             }
+            "appearance.shader_strength" => format!("{:.0}", self.settings.window_shader_strength),
+            "terminal.shader_strength" => format!("{:.0}", self.settings.terminal_shader_strength),
             "editor.line_numbers" => self.settings.line_numbers.to_string(),
             "terminal.shell_integration" => self.settings.shell_integration.to_string(),
             "editor.indent" => self.settings.indent.name(),
@@ -1967,6 +1969,14 @@ const SETTINGS: &[SettingKey] = &[
         help: "Whether a terminal with its own shader or cursor effect keeps it while the window has a shader. Off: the window shader covers the terminals.",
     },
     SettingKey {
+        name: "appearance.shader_strength",
+        help: "How much of the window shader and cursor effect is drawn, 0 to 100 percent. 70 by default. A shader that curves the picture curves it by this share.",
+    },
+    SettingKey {
+        name: "terminal.shader_strength",
+        help: "How much of a terminal's own shader and cursor effect is drawn, 0 to 100 percent. 70 by default.",
+    },
+    SettingKey {
         name: "editor.line_numbers",
         help: "Whether the editing area has a column of line numbers.",
     },
@@ -2181,6 +2191,8 @@ fn fresh_value(name: &str, fresh: &crate::settings::Settings) -> String {
         "appearance.shader" => fresh.window_shader.clone(),
         "appearance.cursor_effect" => fresh.window_cursor_effect.clone(),
         "appearance.terminals_keep_their_shader" => fresh.terminals_keep_their_shader.to_string(),
+        "appearance.shader_strength" => format!("{:.0}", fresh.window_shader_strength),
+        "terminal.shader_strength" => format!("{:.0}", fresh.terminal_shader_strength),
         "editor.line_numbers" => fresh.line_numbers.to_string(),
         "terminal.shell_integration" => fresh.shell_integration.to_string(),
         "editor.indent" => fresh.indent.name(),

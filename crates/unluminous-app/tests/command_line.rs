@@ -1125,6 +1125,9 @@ const SETTINGS_HELP: &[&str] = &[
     "The Termoil shader drawn over the whole window, from `theme shaders`. Empty is none. Drawn over the terminals too unless appearance.terminals_keep_their_shader.",
     "The Termoil cursor effect drawn around the caret that has the keyboard, anywhere in the window. Empty is none.",
     "Whether a terminal with its own shader or cursor effect keeps it while the window has a shader. Off: the window shader covers the terminals.",
+    // `task-2622`: how much of each shader is drawn.
+    "How much of the window shader and cursor effect is drawn, 0 to 100 percent. 70 by default. A shader that curves the picture curves it by this share.",
+    "How much of a terminal's own shader and cursor effect is drawn, 0 to 100 percent. 70 by default.",
     "Whether the editing area has a column of line numbers.",
     "Whether PowerShell is asked to report the folder it is in, so a tab reopens where you were rather than where it started. Off. PowerShell's Set-Location never moves the process's own current directory, so there is no other way to read it; turning this on adds one line to the prompt, after your own profile has set it up. A shell that already reports its folder is followed whatever this says.",
     "Whether the completion popup arrives as you type. Ctrl+Space works either way.",

@@ -1,5 +1,9 @@
 // CRT: a curved glass tube with scanlines, an aperture grille, a little color fringing at the edges
 // and darker corners. Inspired by the CRT shaders of Timothy Lottes and cool-retro-term.
+//
+// Unluminous's copy differs from Termoil's in one way (`task-2622`): the curve is scaled by `termoil.strength`
+// and the place it reads is `termoil_warp`, which the wrapper reads the plain frame at and
+// `services::shader_warp` bends the pointer by. Keep `CURVE` in step with `shader_warp::curve_of`.
 
 const CURVE: f32 = 0.0225;
 const SCANLINE: f32 = 0.22;
@@ -11,15 +15,16 @@ fn crt_read(p: vec2<f32>) -> vec3<f32> {
     return textureSampleLevel(termoil_frame, termoil_sampler, p, 0.0).rgb;
 }
 
-/// Bends the picture outward at the edges, as the glass of a tube does. Returns the uv to read from.
-fn crt_curve(uv: vec2<f32>) -> vec2<f32> {
+/// Bends the picture outward at the edges, as the glass of a tube does, by the share of the curve the strength
+/// asks for. Returns the uv to read from.
+fn termoil_warp(uv: vec2<f32>) -> vec2<f32> {
     let c = uv * 2.0 - 1.0;
-    let bent = c * (1.0 + CURVE * dot(c, c));
+    let bent = c * (1.0 + CURVE * termoil.strength * dot(c, c));
     return bent * 0.5 + 0.5;
 }
 
 fn termoil_shade(uv: vec2<f32>, color: vec4<f32>) -> vec4<f32> {
-    let p = crt_curve(uv);
+    let p = termoil_warp(uv);
     if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0) {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     }

@@ -2868,6 +2868,11 @@ impl UnluminousApp {
         if let Some(events) = self.input.next_frame() {
             raw_input.events.extend(events);
         }
+        // **Where the pointer is in a picture a shader bent** (`task-2622`). After the command line's own events
+        // are added, because a position measured off `window screenshot` is measured off the bent picture too, and
+        // before a browser page is asked whether it was pressed.
+        let bent = crate::services::shader_warp::start_the_frame();
+        crate::services::shader_warp::bend_the_pointer(&bent, &mut raw_input.events);
         if !self.input.is_empty() {
             // Another step is waiting and nothing else will ask for the frame it needs.
             ctx.request_repaint();

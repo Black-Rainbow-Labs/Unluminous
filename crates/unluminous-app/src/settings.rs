@@ -1258,6 +1258,13 @@ settings! {
         opacity = DEFAULT_OPACITY => "appearance.background.opacity", MIN_OPACITY, 1.0, "{:.3}";
         /// The point size the terminal sets its grid in.
         terminal_font_size = 13.0 => "terminal.font.size", 6.0, 48.0, "{:.0}";
+        /// How much of the window's shader and cursor effect is drawn, in percent (`task-2622`). The shader's answer
+        /// is mixed with the frame it read, and a shader that bends the picture bends it by this share of its curve.
+        /// 70 by default, because every shader at full strength was too strong.
+        window_shader_strength = 70.0 => "appearance.shader_strength", 0.0, 100.0, "{:.0}";
+        /// How much of a terminal's own shader and cursor effect is drawn, in percent (`task-2622`). A terminal the
+        /// window's shader covers is drawn at `appearance.shader_strength` instead. 70 by default.
+        terminal_shader_strength = 70.0 => "terminal.shader_strength", 0.0, 100.0, "{:.0}";
         /// The point size the window's own text is set in. [`DEFAULT_UI_FONT_SIZE`] leaves egui exactly as it
         /// was.
         ui_font_size = DEFAULT_UI_FONT_SIZE => "appearance.ui.font.size", MIN_UI_FONT_SIZE, MAX_UI_FONT_SIZE, "{:.1}";
@@ -2047,6 +2054,8 @@ mod tests {
             "appearance.ui.font.size",
             "editor.line_numbers",
             "appearance.terminals_keep_their_shader",
+            "appearance.shader_strength",
+            "terminal.shader_strength",
             "terminal.shell_integration",
             "plugins.chrome",
             "mcp.enabled",
@@ -2181,6 +2190,8 @@ mod tests {
             window_shader: "crt".to_owned(),
             window_cursor_effect: "glow".to_owned(),
             terminals_keep_their_shader: true,
+            window_shader_strength: 45.0,
+            terminal_shader_strength: 100.0,
             shell_integration: true,
             line_numbers: false,
             indent: Indent::Spaces(4),

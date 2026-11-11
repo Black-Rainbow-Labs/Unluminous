@@ -97,6 +97,20 @@ thread_local! {
     static CHOSEN: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
     /// A shader drawn for now without being chosen, which the shader picker does as its list is moved through.
     static PREVIEW: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+    /// How much of the terminals' shader is drawn, 0 to 1, from `terminal.shader_strength` (`task-2622`).
+    static STRENGTH: std::cell::Cell<f32> = const { std::cell::Cell::new(0.7) };
+}
+
+/// Choose how much of the terminals' shader and cursor effect is drawn.
+///
+/// @param percent - 0 to 100, from `terminal.shader_strength`
+pub fn set_strength(percent: f32) {
+    STRENGTH.with(|strength| strength.set((percent / 100.0).clamp(0.0, 1.0)));
+}
+
+/// How much of the terminals' shader and cursor effect is drawn, 0 to 1.
+pub fn strength() -> f32 {
+    STRENGTH.with(std::cell::Cell::get)
 }
 
 /// Choose the shader the terminals are drawn with, by name. An empty name, `none`, or a name that is not a shader
@@ -130,14 +144,20 @@ pub fn in_use() -> Option<&'static Builtin> {
 
 /// The wrapper Termoil appends to a shader, from `termoil-render/src/shader.rs`. `TERMOIL_SHADER_CURSOR` comes
 /// before it, from [`terminal_cursor_effect::compose`](crate::services::terminal_cursor_effect::compose).
+///
+/// Two of Termoil's padding floats carry Unluminous's own values (`task-2622`). `strength` is how much of the shader
+/// is drawn: the shader's answer is mixed with the frame read where the shader reads it, `termoil_warp(uv)`, so a
+/// shader that bends the picture shows one picture bent by its share of the curve rather than two. `radius` is the
+/// window's corner radius in pixels for the pass over the whole window, and 0 for a grid: outside the rounded
+/// corners the frame's own pixel is kept, which is transparent, so the window keeps its rounded corners.
 const WRAPPER: &str = r#"
 
 struct TermoilUniforms {
     size: vec2<f32>,
     cursor: vec2<f32>,
     time: f32,
-    pad0: f32,
-    pad1: f32,
+    strength: f32,
+    radius: f32,
     pad2: f32,
 }
 
@@ -159,12 +179,33 @@ fn termoil_vertex(@builtin(vertex_index) index: u32) -> TermoilVertexOut {
     return out;
 }
 
+/// How much of a pixel is inside the window's rounded corners, with a pixel of feather. 1 everywhere for a grid.
+fn termoil_inside_the_corners(px: vec2<f32>) -> f32 {
+    if (termoil.radius <= 0.0) {
+        return 1.0;
+    }
+    let half = termoil.size * 0.5;
+    let q = abs(px - half) - (half - vec2<f32>(termoil.radius));
+    let distance = length(max(q, vec2<f32>(0.0))) + min(max(q.x, q.y), 0.0) - termoil.radius;
+    return clamp(0.5 - distance, 0.0, 1.0);
+}
+
 @fragment
 fn termoil_fragment(in: TermoilVertexOut) -> @location(0) vec4<f32> {
     let color = textureSampleLevel(termoil_frame, termoil_sampler, in.uv, 0.0);
-    return termoil_shade(in.uv, color);
+    let shaded = termoil_shade(in.uv, color);
+    let read = termoil_warp(in.uv);
+    var plain = textureSampleLevel(termoil_frame, termoil_sampler, read, 0.0);
+    if (read.x < 0.0 || read.x > 1.0 || read.y < 0.0 || read.y > 1.0) {
+        plain = vec4<f32>(0.0, 0.0, 0.0, color.a);
+    }
+    let mixed = mix(plain, shaded, clamp(termoil.strength, 0.0, 1.0));
+    return mix(color, mixed, termoil_inside_the_corners(in.uv * termoil.size));
 }
 "#;
+
+/// The place a shader reads the frame for a pixel, for a shader that does not say: where the pixel is.
+const NO_WARP: &str = "\nfn termoil_warp(uv: vec2<f32>) -> vec2<f32> {\n    return uv;\n}\n";
 
 /// What a terminal is drawn with: a shader, a cursor effect, or both. Never neither.
 #[derive(Debug, Clone, Copy)]
@@ -191,7 +232,8 @@ impl Look {
             self.shader.map(|shader| shader.source),
             self.effect,
         );
-        format!("{joined}{WRAPPER}")
+        let warp = if joined.contains("fn termoil_warp(") { "" } else { NO_WARP };
+        format!("{joined}{warp}{WRAPPER}")
     }
 
     /// True when the shader or the effect moves on its own.
@@ -214,6 +256,10 @@ pub(crate) struct Job {
     height: u32,
     /// The cursor's center inside the rectangle, in pixels, or negative when there is none.
     cursor: [f32; 2],
+    /// How much of the shader is drawn, 0 to 1 (`task-2622`).
+    strength: f32,
+    /// The window's corner radius in pixels for the pass over the whole window, and 0 for a grid (`task-2622`).
+    radius: f32,
     /// The parts of the rectangle something is drawn over, which the shader is kept out of (`task-2601`).
     holes: Vec<Pixels>,
     /// True for the pass over the whole window (`task-2612`), whose holes are worked out in the hook from the grids
@@ -438,8 +484,16 @@ impl Passes {
             })
             .clone();
         let (width, height) = (job.width, job.height);
-        let values: [f32; 8] =
-            [width as f32, height as f32, job.cursor[0], job.cursor[1], time, 0.0, 0.0, 0.0];
+        let values: [f32; 8] = [
+            width as f32,
+            height as f32,
+            job.cursor[0],
+            job.cursor[1],
+            time,
+            job.strength,
+            job.radius,
+            0.0,
+        ];
         let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("unluminous-terminal-shader"),
             size: 32,
@@ -561,6 +615,10 @@ struct Register {
     holes: Vec<egui::Rect>,
     /// True for the pass over the whole window (`task-2612`).
     whole: bool,
+    /// How much of the shader is drawn, 0 to 1.
+    strength: f32,
+    /// The corner radius to keep, in points, or 0.
+    radius: f32,
 }
 
 impl egui_wgpu::CallbackTrait for Register {
@@ -625,6 +683,8 @@ impl egui_wgpu::CallbackTrait for Register {
             width: (right - left) as u32,
             height: (bottom - top) as u32,
             cursor,
+            strength: self.strength,
+            radius: self.radius * info.pixels_per_point,
             holes: self.holes.iter().map(pixels).collect(),
             whole: self.whole,
         };
@@ -668,10 +728,27 @@ pub fn shade(ui: &egui::Ui, rect: egui::Rect, cursor: Option<egui::Pos2>) {
     let Some(look) = look_in_use() else { return };
     let holes = drawn_over(ui.ctx(), ui.layer_id(), rect);
     LAST_SHADED.with(|last| *last.borrow_mut() = Some((rect, holes.clone())));
-    register(ui.painter(), rect, look, cursor, holes, false);
+    // A curved shader moves the cursor's cell on the screen, and the pointer has to be moved with it (`task-2622`).
+    let strength = strength();
+    let cursor = cursor
+        .map(|at| crate::services::shader_warp::on_the_screen(rect, look.shader, strength, at));
+    crate::services::shader_warp::note_a_grid(rect, look.shader, strength, holes.clone());
+    let shading = Shading { strength, radius: 0.0, whole: false };
+    register(ui.painter(), rect, look, cursor, holes, shading);
     if look.moves() {
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(16));
     }
+}
+
+/// How a pass is drawn, beside what it draws.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Shading {
+    /// How much of the shader is drawn, 0 to 1.
+    pub strength: f32,
+    /// The corner radius to keep, in points, or 0.
+    pub radius: f32,
+    /// True for the pass over the whole window.
+    pub whole: bool,
 }
 
 /// Add the empty paint callback that records `rect` for the hook to draw `look` over.
@@ -681,18 +758,19 @@ pub fn shade(ui: &egui::Ui, rect: egui::Rect, cursor: Option<egui::Pos2>) {
 /// @param look - the shader and cursor effect
 /// @param cursor - the cursor's center in points, when there is one
 /// @param holes - what is drawn over the rectangle, in points
-/// @param whole - true for the pass over the whole window
+/// @param shading - the strength, the corner radius and whether it is the pass over the whole window
 pub(crate) fn register(
     painter: &egui::Painter,
     rect: egui::Rect,
     look: Look,
     cursor: Option<egui::Pos2>,
     holes: Vec<egui::Rect>,
-    whole: bool,
+    shading: Shading,
 ) {
+    let Shading { strength, radius, whole } = shading;
     painter.add(egui_wgpu::Callback::new_paint_callback(
         rect,
-        Register { look, cursor, holes, whole },
+        Register { look, cursor, holes, whole, strength, radius },
     ));
 }
 
@@ -854,6 +932,8 @@ mod tests {
             width,
             height,
             cursor: [-1.0, -1.0],
+            strength: 1.0,
+            radius: 0.0,
             holes,
             whole,
         };

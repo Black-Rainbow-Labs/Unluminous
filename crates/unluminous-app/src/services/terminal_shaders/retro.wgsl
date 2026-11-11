@@ -1,5 +1,9 @@
 // Retro: an old terminal monitor in the style of cool-retro-term. A gentle curve, soft scanlines,
 // a faint glow that bleeds from the text, film noise and a slow flicker.
+//
+// Unluminous's copy differs from Termoil's in one way (`task-2622`): the curve is scaled by `termoil.strength`
+// and the place it reads is `termoil_warp`, which the wrapper reads the plain frame at and
+// `services::shader_warp` bends the pointer by. Keep `CURVE` in step with `shader_warp::curve_of`.
 
 const CURVE: f32 = 0.03;
 const GLOW: f32 = 0.35;
@@ -25,9 +29,14 @@ fn retro_glow(p: vec2<f32>) -> vec3<f32> {
     return sum / 8.0;
 }
 
-fn termoil_shade(uv: vec2<f32>, color: vec4<f32>) -> vec4<f32> {
+/// Where the frame is read for a pixel: the gentle curve, by the share of it the strength asks for.
+fn termoil_warp(uv: vec2<f32>) -> vec2<f32> {
     let c = uv * 2.0 - 1.0;
-    let p = (c * (1.0 + CURVE * dot(c, c))) * 0.5 + 0.5;
+    return (c * (1.0 + CURVE * termoil.strength * dot(c, c))) * 0.5 + 0.5;
+}
+
+fn termoil_shade(uv: vec2<f32>, color: vec4<f32>) -> vec4<f32> {
+    let p = termoil_warp(uv);
     if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0) {
         return vec4<f32>(0.02, 0.02, 0.02, 1.0);
     }

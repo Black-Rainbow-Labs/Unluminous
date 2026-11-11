@@ -2012,7 +2012,8 @@ impl UnluminousApp {
         crate::services::terminal_shader::preview(None);
         crate::services::terminal_cursor_effect::choose("");
         crate::services::terminal_cursor_effect::preview(None);
-        crate::services::window_shader::choose("", "", false);
+        crate::services::window_shader::choose("", "", false, 70.0);
+        crate::services::terminal_shader::set_strength(70.0);
         theme::apply(ctx);
         self.themed = true;
         // What the plugins contribute, read from their manifests. Here rather than only in
@@ -2175,6 +2176,7 @@ impl UnluminousApp {
         // And the terminals' Termoil theme, which an empty setting leaves following the window's (`task-2597`).
         crate::services::terminal_colours::choose(&self.settings.terminal_theme);
         crate::services::terminal_shader::choose(&self.settings.terminal_shader);
+        crate::services::terminal_shader::set_strength(self.settings.terminal_shader_strength);
         crate::services::terminal_cursor_effect::choose(&self.settings.terminal_cursor_effect);
         self.choose_the_window_shader();
         self.install_the_interface_font();

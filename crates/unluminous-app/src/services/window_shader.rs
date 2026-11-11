@@ -28,6 +28,9 @@ thread_local! {
     static EFFECT: RefCell<String> = const { RefCell::new(String::new()) };
     /// `appearance.terminals_keep_their_shader`.
     static TERMINALS_KEEP: Cell<bool> = const { Cell::new(false) };
+    /// How much of the window's shader and cursor effect is drawn, 0 to 1, from `appearance.shader_strength`
+    /// (`task-2622`).
+    static STRENGTH: Cell<f32> = const { Cell::new(0.7) };
     /// The caret that has the keyboard, in window points, and the pass it was recorded in.
     static CARET: Cell<Option<(egui::Pos2, u64)>> = const { Cell::new(None) };
     /// What [`shade_the_window`] last recorded, for a test to read.
@@ -45,6 +48,10 @@ pub struct Shaded {
     pub cursor_effect: String,
     /// Where the cursor effect was centered, in points.
     pub caret: Option<egui::Pos2>,
+    /// How much of the shader was drawn, 0 to 1.
+    pub strength: f32,
+    /// The corner radius kept, in points.
+    pub radius: f32,
 }
 
 /// Choose what the window is drawn with, by name. An empty name, `none`, or a name that is not one turns that part
@@ -53,12 +60,19 @@ pub struct Shaded {
 /// @param shader - a Termoil shader's name
 /// @param effect - a Termoil cursor effect's name
 /// @param terminals_keep - whether a terminal with a look of its own keeps it
-pub fn choose(shader: &str, effect: &str, terminals_keep: bool) {
+/// @param percent - how much of it is drawn, 0 to 100, from `appearance.shader_strength`
+pub fn choose(shader: &str, effect: &str, terminals_keep: bool, percent: f32) {
+    STRENGTH.with(|strength| strength.set((percent / 100.0).clamp(0.0, 1.0)));
     let shader = terminal_shader::named(shader).map(|found| found.name).unwrap_or_default();
     let effect = terminal_cursor_effect::named(effect).map(|found| found.name).unwrap_or_default();
     SHADER.with(|chosen| *chosen.borrow_mut() = shader.to_owned());
     EFFECT.with(|chosen| *chosen.borrow_mut() = effect.to_owned());
     TERMINALS_KEEP.with(|keep| keep.set(terminals_keep));
+}
+
+/// How much of the window's shader and cursor effect is drawn, 0 to 1.
+pub fn strength() -> f32 {
+    STRENGTH.with(Cell::get)
 }
 
 /// The shader the window is drawn with, when there is one.
@@ -107,15 +121,25 @@ pub fn shade_the_window(ctx: &egui::Context) {
     }
     let look = Look { shader, effect };
     let rect = ctx.content_rect();
-    let caret = effect.and_then(|_| the_caret(ctx));
+    let strength = strength();
+    // Under a curve the caret is drawn somewhere else on the screen, and its light goes there (`task-2622`).
+    let caret = effect
+        .and_then(|_| the_caret(ctx))
+        .map(|at| crate::services::shader_warp::on_the_screen(rect, shader, strength, at));
+    crate::services::shader_warp::note_the_window(rect, shader, strength);
     let painter = ctx.layer_painter(egui::LayerId::background());
-    terminal_shader::register(&painter, rect, look, caret, Vec::new(), true);
+    // The window's own rounded corners are kept, because the window is drawn as one rounded rectangle.
+    let radius = f32::from(crate::theme::size::WINDOW_CORNER);
+    let shading = terminal_shader::Shading { strength, radius, whole: true };
+    terminal_shader::register(&painter, rect, look, caret, Vec::new(), shading);
     LAST_SHADED.with(|last| {
         *last.borrow_mut() = Some(Shaded {
             rect,
             shader: shader.map(|found| found.name.to_owned()).unwrap_or_default(),
             cursor_effect: effect.map(|found| found.name.to_owned()).unwrap_or_default(),
             caret,
+            strength,
+            radius,
         })
     });
     let focused = ctx.input(|input| input.viewport().focused) != Some(false);
@@ -137,17 +161,19 @@ mod tests {
     /// their own, and a window cursor effect alone never does.
     #[test]
     fn a_window_shader_covers_the_terminals_unless_they_keep_their_own() {
-        choose("", "", false);
+        choose("", "", false, 70.0);
         assert!(!covers_the_terminals(), "nothing chosen");
-        choose("crt", "", false);
+        choose("crt", "", false, 70.0);
         assert_eq!(shader_in_use().map(|found| found.name), Some("crt"));
         assert!(covers_the_terminals());
-        choose("crt", "", true);
+        assert!((strength() - 0.7).abs() < 1e-6);
+        choose("crt", "", true, 250.0);
+        assert_eq!(strength(), 1.0, "a strength past 100 is 100");
         assert!(!covers_the_terminals(), "the terminals keep their own");
-        choose("", "sonar", false);
+        choose("", "sonar", false, 70.0);
         assert!(!covers_the_terminals(), "a cursor effect alone");
         assert_eq!(effect_in_use().map(|found| found.name), Some("sonar"));
-        choose("not-a-shader", "none", false);
+        choose("not-a-shader", "none", false, 70.0);
         assert!(shader_in_use().is_none() && effect_in_use().is_none());
     }
 }

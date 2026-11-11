@@ -71,6 +71,7 @@ impl UnluminousApp {
         }
         // And the shader drawn over them, which is per thread like the palette.
         crate::services::terminal_shader::choose(&self.settings.terminal_shader);
+        crate::services::terminal_shader::set_strength(self.settings.terminal_shader_strength);
         crate::services::terminal_cursor_effect::choose(&self.settings.terminal_cursor_effect);
         self.choose_the_window_shader();
         self.give_glass_something_to_bend(before);
@@ -158,13 +159,14 @@ impl UnluminousApp {
         }
     }
 
-    /// Put the window's shader, cursor effect and `appearance.terminals_keep_their_shader` into this thread's
-    /// window pass (`task-2612`). Asked on every settings change, as the terminals' shader is.
+    /// Put the window's shader, cursor effect, `appearance.terminals_keep_their_shader` and
+    /// `appearance.shader_strength` into this thread's window pass (`task-2612`, `task-2622`). Asked on every settings change, as the terminals' shader is.
     pub(crate) fn choose_the_window_shader(&self) {
         crate::services::window_shader::choose(
             &self.settings.window_shader,
             &self.settings.window_cursor_effect,
             self.settings.terminals_keep_their_shader,
+            self.settings.window_shader_strength,
         );
     }
 

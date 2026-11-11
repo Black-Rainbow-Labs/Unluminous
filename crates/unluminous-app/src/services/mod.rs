@@ -75,6 +75,7 @@ pub mod rich_clipboard;
 pub mod run_configurations;
 pub mod scene_blur;
 pub mod scheduling;
+pub mod shader_warp;
 pub mod shell_integration;
 pub mod shortcuts;
 #[cfg(feature = "diagnostic-spans")]

@@ -1075,6 +1075,15 @@ fn shader_card(ui: &mut egui::Ui, column: &mut Column, settings: &mut Settings) 
                 }
             },
         );
+        // How much of it is drawn (`task-2622`): every shader at full strength was too strong.
+        card.row(
+            "Strength",
+            Some("How much of the window shader and cursor effect is drawn. 70% by default. A shader that curves the picture, such as crt, curves it by this share too, and a click lands on what is drawn under the pointer."),
+            |row| {
+                changed |= row.slider("Window shader strength", &mut settings.window_shader_strength, 0.0, 100.0);
+                row.suffix(&format!("{:.0}%", settings.window_shader_strength));
+            },
+        );
         changed |= card.switch(
             "Terminals keep their own shader",
             Some("Off: the window shader is drawn over the terminals too, and the terminal shader and cursor effect chosen on the Terminal page are not drawn. On: a terminal with its own shader or cursor effect is drawn with it, and the window shader is kept off the terminal."),
@@ -1441,6 +1450,14 @@ fn terminal_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> Draw
                     };
                     changed = true;
                 }
+            },
+        );
+        card.row(
+            "Strength",
+            Some("How much of the terminal shader and cursor effect is drawn. 70% by default. A terminal the window shader covers is drawn at the window shader's strength."),
+            |row| {
+                changed |= row.slider("Terminal shader strength", &mut settings.terminal_shader_strength, 0.0, 100.0);
+                row.suffix(&format!("{:.0}%", settings.terminal_shader_strength));
             },
         );
     });
