@@ -6,6 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.29.0 — 2026-11-11
+
+- Termoil's shaders and cursor effects over the whole window, and terminals that keep their own when asked (`task-2612`)
+- The help of task-2612's five settings rows in the settings list test, and the Windows picture of the Terminal page's longer Shader help (`task-2615`)
+
 ## 1.28.1 — 2026-11-10
 
 - Termoil's own keys on macOS, Terminal Appearance with cursor effects, a shader kept off modals, and the Designer's maximize, divider and notes toggle (`task-2601`)
