@@ -6,7 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.29.0 — 2026-11-11
+## 1.30.0 — 2026-11-11
+
+- A strength for the window and terminal shaders (70% by default), the pointer bent through the crt and retro curve, and the window's rounded corners kept under a shader (`task-2622`)
+- Accept the Windows picture of the Terminal page's Shader card with its new Strength row (`task-2622`)
+
+## 1.29.0 — 2026-11-10
 
 - Termoil's shaders and cursor effects over the whole window, and terminals that keep their own when asked (`task-2612`)
 - The help of task-2612's five settings rows in the settings list test, and the Windows picture of the Terminal page's longer Shader help (`task-2615`)

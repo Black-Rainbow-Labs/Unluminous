@@ -6385,13 +6385,13 @@ dependencies = [
 
 [[package]]
 name = "termoil-input"
-version = "1.5.11"
-source = "git+https://github.com/Black-Rainbow-Labs/Termoil.git?branch=main#71016ad8126fef6a6ed2944d1465b9f9f46ec561"
+version = "1.5.12"
+source = "git+https://github.com/Black-Rainbow-Labs/Termoil.git?branch=main#5db60c13cac3e0fb55ff4892c978994805dcea4d"
 
 [[package]]
 name = "termoil-pty"
-version = "1.5.11"
-source = "git+https://github.com/Black-Rainbow-Labs/Termoil.git?branch=main#71016ad8126fef6a6ed2944d1465b9f9f46ec561"
+version = "1.5.12"
+source = "git+https://github.com/Black-Rainbow-Labs/Termoil.git?branch=main#5db60c13cac3e0fb55ff4892c978994805dcea4d"
 dependencies = [
  "libc",
  "rustix 1.1.4",
@@ -6401,8 +6401,8 @@ dependencies = [
 
 [[package]]
 name = "termoil-vt"
-version = "1.5.11"
-source = "git+https://github.com/Black-Rainbow-Labs/Termoil.git?branch=main#71016ad8126fef6a6ed2944d1465b9f9f46ec561"
+version = "1.5.12"
+source = "git+https://github.com/Black-Rainbow-Labs/Termoil.git?branch=main#5db60c13cac3e0fb55ff4892c978994805dcea4d"
 dependencies = [
  "base64 0.22.1",
  "flate2",
@@ -6996,7 +6996,7 @@ checksum = "39ec24b3121d976906ece63c9daad25b85969647682eee313cb5779fdd69e14e"
 
 [[package]]
 name = "unluminous-app"
-version = "1.29.0"
+version = "1.30.0"
 dependencies = [
  "ab_glyph",
  "arboard",
@@ -7061,7 +7061,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-chat"
-version = "1.29.0"
+version = "1.30.0"
 dependencies = [
  "serde_json",
  "sha2",
@@ -7070,7 +7070,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-cli"
-version = "1.29.0"
+version = "1.30.0"
 dependencies = [
  "atrius-index",
  "blake3",
@@ -7081,7 +7081,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-core"
-version = "1.29.0"
+version = "1.30.0"
 dependencies = [
  "unicode-segmentation",
  "unicode-width",
@@ -7089,14 +7089,14 @@ dependencies = [
 
 [[package]]
 name = "unluminous-dap"
-version = "1.29.0"
+version = "1.30.0"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "unluminous-db"
-version = "1.29.0"
+version = "1.30.0"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.3.4",
@@ -7110,7 +7110,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-git"
-version = "1.29.0"
+version = "1.30.0"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
@@ -7118,14 +7118,14 @@ dependencies = [
 
 [[package]]
 name = "unluminous-jupyter"
-version = "1.29.0"
+version = "1.30.0"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "unluminous-lsp"
-version = "1.29.0"
+version = "1.30.0"
 dependencies = [
  "serde_json",
  "unluminous-core",
@@ -7134,7 +7134,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-sheet"
-version = "1.29.0"
+version = "1.30.0"
 dependencies = [
  "base64 0.22.1",
  "crc32fast",
@@ -7148,7 +7148,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-terminal"
-version = "1.29.0"
+version = "1.30.0"
 dependencies = [
  "ab_glyph_rasterizer",
  "kurbo 0.13.1",
@@ -7162,7 +7162,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-voice"
-version = "1.29.0"
+version = "1.30.0"
 dependencies = [
  "block2 0.6.2",
  "cpal",
@@ -7179,7 +7179,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-word"
-version = "1.29.0"
+version = "1.30.0"
 dependencies = [
  "ab_glyph",
  "aes",
