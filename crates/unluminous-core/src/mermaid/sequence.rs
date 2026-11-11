@@ -1200,10 +1200,9 @@ fn block_reach(
     let first = frame.columns.first().copied().unwrap_or(0.0);
     let last = frame.columns.last().copied().unwrap_or(0.0);
     let mut reach = (first - FRAME_INSET - 10.0, last + FRAME_INSET + 10.0);
-    for index in start..=end {
-        let Some((left, right)) =
-            event_reach(&diagram.events[index], &labels[index], frame.rows[index], frame)
-        else {
+    let inside = diagram.events.iter().zip(labels).zip(&frame.rows).take(end + 1).skip(start);
+    for ((event, label), y) in inside {
+        let Some((left, right)) = event_reach(event, label, *y, frame) else {
             continue;
         };
         reach.0 = reach.0.min(left - FRAME_INSET);

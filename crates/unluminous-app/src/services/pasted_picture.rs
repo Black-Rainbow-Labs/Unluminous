@@ -87,7 +87,8 @@ pub fn save_beside(document: &Path, bytes: &[u8], extension: &str) -> Result<Sav
         .map_err(|problem| format!("{} could not be made: {problem}", folder.display()))?;
     let stem = safe_stem(document);
     let path = free_name(&folder, &stem, extension);
-    std::fs::write(&path, bytes)
+    // Through a temporary file, so a picture is never left half written under the name the link points at.
+    crate::services::store::write_atomically(&path, bytes)
         .map_err(|problem| format!("{} could not be written: {problem}", path.display()))?;
     let name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default().to_owned();
     let link = format!("![{stem}](images/{name})");
