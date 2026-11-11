@@ -1119,6 +1119,12 @@ const SETTINGS_HELP: &[&str] = &[
     "The point size the window's own text is set in. The editing area keeps its own.",
     "The point size the terminal sets its grid in.",
     "What each terminal tab runs. Empty means PowerShell on Windows and $SHELL elsewhere.",
+    // `task-2612`: Termoil's shaders and cursor effects, over a terminal and over the window.
+    "The Termoil shader drawn over every terminal, from `terminal shaders`. Empty is none.",
+    "The Termoil cursor effect drawn around every terminal's cursor, from `terminal cursor-effects`. Empty is none.",
+    "The Termoil shader drawn over the whole window, from `theme shaders`. Empty is none. Drawn over the terminals too unless appearance.terminals_keep_their_shader.",
+    "The Termoil cursor effect drawn around the caret that has the keyboard, anywhere in the window. Empty is none.",
+    "Whether a terminal with its own shader or cursor effect keeps it while the window has a shader. Off: the window shader covers the terminals.",
     "Whether the editing area has a column of line numbers.",
     "Whether PowerShell is asked to report the folder it is in, so a tab reopens where you were rather than where it started. Off. PowerShell's Set-Location never moves the process's own current directory, so there is no other way to read it; turning this on adds one line to the prompt, after your own profile has set it up. A shell that already reports its folder is followed whatever this says.",
     "Whether the completion popup arrives as you type. Ctrl+Space works either way.",
