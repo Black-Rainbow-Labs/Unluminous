@@ -993,6 +993,13 @@ impl UnluminousApp {
             "appearance.ui.font.size" => format!("{:.1}", self.settings.ui_font_size),
             "terminal.font.size" => format!("{:.0}", self.settings.terminal_font_size),
             "terminal.shell" => self.settings.terminal_shell.clone(),
+            "terminal.shader" => self.settings.terminal_shader.clone(),
+            "terminal.cursor_effect" => self.settings.terminal_cursor_effect.clone(),
+            "appearance.shader" => self.settings.window_shader.clone(),
+            "appearance.cursor_effect" => self.settings.window_cursor_effect.clone(),
+            "appearance.terminals_keep_their_shader" => {
+                self.settings.terminals_keep_their_shader.to_string()
+            }
             "editor.line_numbers" => self.settings.line_numbers.to_string(),
             "terminal.shell_integration" => self.settings.shell_integration.to_string(),
             "editor.indent" => self.settings.indent.name(),
@@ -1156,6 +1163,34 @@ impl UnluminousApp {
             // it is wrong the tile says so in the shell's own words, which is `Tabs::open`'s answer
             // and is a better message than one made up here.
             "terminal.shell" => settings.terminal_shell = value.trim().to_owned(),
+            // A Termoil shader or cursor effect by name, as `terminal shader` and `theme shader` take it (`task-2612`).
+            "terminal.shader" | "appearance.shader" => {
+                let found = crate::app::settings_changes::chosen_by_name(value, |name| {
+                    crate::services::terminal_shader::named(name).map(|found| found.name)
+                })
+                .ok_or_else(|| {
+                    format!(
+                        "There is no Termoil shader called {}. `theme shaders` lists them.",
+                        value.trim()
+                    )
+                })?;
+                match name {
+                    "terminal.shader" => settings.terminal_shader = found,
+                    _ => settings.window_shader = found,
+                }
+            }
+            "terminal.cursor_effect" | "appearance.cursor_effect" => {
+                let found = crate::app::settings_changes::chosen_by_name(value, |name| {
+                    crate::services::terminal_cursor_effect::named(name).map(|found| found.name)
+                })
+                .ok_or_else(|| {
+                    format!("There is no Termoil cursor effect called {}. `theme cursor-effects` lists them.", value.trim())
+                })?;
+                match name {
+                    "terminal.cursor_effect" => settings.terminal_cursor_effect = found,
+                    _ => settings.window_cursor_effect = found,
+                }
+            }
             // Not checked, for `terminal.shell`'s reason turned round: a pattern naming nothing in
             // this project today may name something tomorrow, and a line that matches nothing costs
             // nothing. A pattern that will not parse at all is skipped by the reader with the rest
@@ -1583,12 +1618,121 @@ impl UnluminousApp {
                     }),
                 )
             }
+            "shader" => self.cli_theme_shader(request),
+            "cursor-effect" => self.cli_theme_cursor_effect(request),
+            "shaders" => {
+                use crate::services::terminal_shader::{moves, BUILTINS};
+                let rows =
+                    BUILTINS.iter().map(|builtin| (builtin.name, builtin.summary, moves(builtin)));
+                self.cli_theme_list(
+                    request,
+                    "shaders",
+                    "shader",
+                    &self.settings.window_shader.clone(),
+                    rows.collect(),
+                )
+            }
+            "cursor-effects" => {
+                use crate::services::terminal_cursor_effect::{moves, EFFECTS};
+                let rows =
+                    EFFECTS.iter().map(|effect| (effect.name, effect.summary, moves(effect)));
+                let chosen = self.settings.window_cursor_effect.clone();
+                self.cli_theme_list(
+                    request,
+                    "cursor_effects",
+                    "cursor_effect",
+                    &chosen,
+                    rows.collect(),
+                )
+            }
             _ => no(
                 request,
                 code::UNKNOWN_COMMAND,
                 format!("There is no theme command called {verb}."),
             ),
         }
+    }
+
+    /// `theme shader [name] [--terminals keep|cover]`: read or choose the shader drawn over the whole window, and
+    /// whether the terminals keep their own (`task-2612`). Every refusal comes before anything changes.
+    fn cli_theme_shader(&mut self, request: &Request) -> Outcome {
+        let keep = match request.text("terminals").map(|said| said.trim().to_ascii_lowercase()) {
+            None => None,
+            Some(said) if said == "keep" => Some(true),
+            Some(said) if said == "cover" => Some(false),
+            Some(said) => {
+                return no(
+                    request,
+                    code::USAGE,
+                    format!("--terminals is keep or cover, not {said}. keep leaves a terminal its own shader; cover draws the window shader over it."),
+                )
+            }
+        };
+        if let Some(name) = request.text("name") {
+            if let Err(refused) = self.set_the_window_shader(&name) {
+                return no(request, code::NOT_FOUND, refused);
+            }
+        }
+        if let Some(keep) = keep {
+            self.set_terminals_keep_their_shader(keep);
+        }
+        self.cli_window_look(request)
+    }
+
+    /// `theme cursor-effect [name]`: read or choose the cursor effect drawn around the caret that has the keyboard.
+    fn cli_theme_cursor_effect(&mut self, request: &Request) -> Outcome {
+        if let Some(name) = request.text("name") {
+            if let Err(refused) = self.set_the_window_cursor_effect(&name) {
+                return no(request, code::NOT_FOUND, refused);
+            }
+        }
+        self.cli_window_look(request)
+    }
+
+    /// The answer to both window look commands: the three settings and one sentence about them.
+    fn cli_window_look(&self, request: &Request) -> Outcome {
+        let terminals = if self.settings.terminals_keep_their_shader { "keep" } else { "cover" };
+        ok(
+            request,
+            self.what_the_window_is_drawn_with(),
+            json!({
+                "shader": self.settings.window_shader,
+                "cursor_effect": self.settings.window_cursor_effect,
+                "terminals": terminals,
+            }),
+        )
+    }
+
+    /// A list of Termoil shaders or cursor effects, with the window's choice marked.
+    ///
+    /// @param plural - the key the rows are answered under
+    /// @param single - the key the chosen one is answered under
+    /// @param chosen - the window's setting
+    /// @param rows - each name, what it looks like, and whether it moves
+    fn cli_theme_list(
+        &self,
+        request: &Request,
+        plural: &str,
+        single: &str,
+        chosen: &str,
+        rows: Vec<(&str, &str, bool)>,
+    ) -> Outcome {
+        let text: Vec<String> = rows
+            .iter()
+            .map(|(name, summary, _)| {
+                let mark = if chosen.eq_ignore_ascii_case(name) { "*" } else { " " };
+                format!("{mark} {name:<16} {summary}")
+            })
+            .collect();
+        let values: Vec<Value> =
+            rows.iter().map(|(name, summary, moves)| json!({ "name": name, "summary": summary, "moves": moves })).collect();
+        let what = plural.replace('_', " ");
+        lines(
+            request,
+            format!("{} Termoil {what}", rows.len()),
+            text,
+            json!({ plural: values, single: chosen }),
+        )
     }
 
     /// A colour written the way a manifest and the settings file write one, which is what a caller reads
@@ -1803,6 +1947,26 @@ const SETTINGS: &[SettingKey] = &[
         help: "Whether PowerShell is asked to report the folder it is in, so a tab reopens where you were rather than where it started. Off. PowerShell's Set-Location never moves the process's own current directory, so there is no other way to read it; turning this on adds one line to the prompt, after your own profile has set it up. A shell that already reports its folder is followed whatever this says.",
     },
     SettingKey {
+        name: "terminal.shader",
+        help: "The Termoil shader drawn over every terminal, from `terminal shaders`. Empty is none.",
+    },
+    SettingKey {
+        name: "terminal.cursor_effect",
+        help: "The Termoil cursor effect drawn around every terminal's cursor, from `terminal cursor-effects`. Empty is none.",
+    },
+    SettingKey {
+        name: "appearance.shader",
+        help: "The Termoil shader drawn over the whole window, from `theme shaders`. Empty is none. Drawn over the terminals too unless appearance.terminals_keep_their_shader.",
+    },
+    SettingKey {
+        name: "appearance.cursor_effect",
+        help: "The Termoil cursor effect drawn around the caret that has the keyboard, anywhere in the window. Empty is none.",
+    },
+    SettingKey {
+        name: "appearance.terminals_keep_their_shader",
+        help: "Whether a terminal with its own shader or cursor effect keeps it while the window has a shader. Off: the window shader covers the terminals.",
+    },
+    SettingKey {
         name: "editor.line_numbers",
         help: "Whether the editing area has a column of line numbers.",
     },
@@ -2012,6 +2176,11 @@ fn fresh_value(name: &str, fresh: &crate::settings::Settings) -> String {
         "appearance.ui.font.size" => format!("{:.1}", fresh.ui_font_size),
         "terminal.font.size" => format!("{:.0}", fresh.terminal_font_size),
         "terminal.shell" => fresh.terminal_shell.clone(),
+        "terminal.shader" => fresh.terminal_shader.clone(),
+        "terminal.cursor_effect" => fresh.terminal_cursor_effect.clone(),
+        "appearance.shader" => fresh.window_shader.clone(),
+        "appearance.cursor_effect" => fresh.window_cursor_effect.clone(),
+        "appearance.terminals_keep_their_shader" => fresh.terminals_keep_their_shader.to_string(),
         "editor.line_numbers" => fresh.line_numbers.to_string(),
         "terminal.shell_integration" => fresh.shell_integration.to_string(),
         "editor.indent" => fresh.indent.name(),

@@ -95,6 +95,7 @@ pub mod update;
 pub mod update_install;
 pub mod vello_canvas;
 pub mod wake;
+pub mod window_shader;
 pub mod word;
 
 // What Windows says about this window's keyboard focus, which is not always what `winit` says. It is

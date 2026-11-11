@@ -72,6 +72,7 @@ impl UnluminousApp {
         // And the shader drawn over them, which is per thread like the palette.
         crate::services::terminal_shader::choose(&self.settings.terminal_shader);
         crate::services::terminal_cursor_effect::choose(&self.settings.terminal_cursor_effect);
+        self.choose_the_window_shader();
         self.give_glass_something_to_bend(before);
         // The interface's own family is bound into egui rather than read at drawing time, so it is
         // installed again when it moves — and only then, because `set_fonts` throws away the glyph atlas.
@@ -155,6 +156,89 @@ impl UnluminousApp {
             self.settings.background_image = picture.to_owned();
             self.unsaved_settings = true;
         }
+    }
+
+    /// Put the window's shader, cursor effect and `appearance.terminals_keep_their_shader` into this thread's
+    /// window pass (`task-2612`). Asked on every settings change, as the terminals' shader is.
+    pub(crate) fn choose_the_window_shader(&self) {
+        crate::services::window_shader::choose(
+            &self.settings.window_shader,
+            &self.settings.window_cursor_effect,
+            self.settings.terminals_keep_their_shader,
+        );
+    }
+
+    /// Choose the Termoil shader drawn over the whole window, by name, and write it to the settings. Empty or `none`
+    /// is no shader. Refused for a name that is not a shader.
+    ///
+    /// @param name - the shader's name
+    pub fn set_the_window_shader(&mut self, name: &str) -> Result<String, String> {
+        let wanted = match chosen_by_name(name, |name| {
+            crate::services::terminal_shader::named(name).map(|found| found.name)
+        }) {
+            Some(wanted) => wanted,
+            None => {
+                return Err(format!(
+                    "There is no Termoil shader called {}. `theme shaders` lists them.",
+                    name.trim()
+                ))
+            }
+        };
+        let before = self.settings.clone();
+        self.settings.window_shader = wanted.clone();
+        self.apply_settings(&before);
+        Ok(self.what_the_window_is_drawn_with())
+    }
+
+    /// Choose the Termoil cursor effect drawn around the caret that has the keyboard, by name, and write it to the
+    /// settings. Empty or `none` is no effect. Refused for a name that is not a cursor effect.
+    ///
+    /// @param name - the effect's name
+    pub fn set_the_window_cursor_effect(&mut self, name: &str) -> Result<String, String> {
+        let found = chosen_by_name(name, |name| {
+            crate::services::terminal_cursor_effect::named(name).map(|found| found.name)
+        });
+        let Some(wanted) = found else {
+            let name = name.trim();
+            return Err(format!(
+                "There is no Termoil cursor effect called {name}. `theme cursor-effects` lists them."
+            ));
+        };
+        let before = self.settings.clone();
+        self.settings.window_cursor_effect = wanted;
+        self.apply_settings(&before);
+        Ok(self.what_the_window_is_drawn_with())
+    }
+
+    /// Choose whether a terminal with a shader or cursor effect of its own keeps it while the window has a shader,
+    /// and write it to the settings.
+    ///
+    /// @param keep - true to keep the terminals' own look, false to draw the window's shader over them
+    pub fn set_terminals_keep_their_shader(&mut self, keep: bool) {
+        let before = self.settings.clone();
+        self.settings.terminals_keep_their_shader = keep;
+        self.apply_settings(&before);
+    }
+
+    /// One sentence saying what the window is drawn with, for a command's answer and the status bar.
+    pub fn what_the_window_is_drawn_with(&self) -> String {
+        let shader = match self.settings.window_shader.is_empty() {
+            true => "no shader".to_owned(),
+            false => format!("the {} shader", self.settings.window_shader),
+        };
+        let effect = match self.settings.window_cursor_effect.is_empty() {
+            true => "no cursor effect".to_owned(),
+            false => format!("the {} cursor effect", self.settings.window_cursor_effect),
+        };
+        let terminals = match (
+            self.settings.window_shader.is_empty(),
+            self.settings.terminals_keep_their_shader,
+        ) {
+            (true, _) => "",
+            (false, true) => ", and the terminals keep their own shader",
+            (false, false) => ", over the terminals too",
+        };
+        format!("The window is drawn with {shader} and {effect}{terminals}")
     }
 
     /// Paint this window in the theme the settings name, and tell egui about it.
@@ -273,5 +357,21 @@ impl UnluminousApp {
         if let Some(hosted) = &mut self.mcp {
             hosted.reconcile(enabled, port, shape, &areas, has_channel, &folder);
         }
+    }
+}
+
+/// The name a setting is written with for `name`: empty for an empty name or `none`, the name `find` answers with
+/// otherwise, and nothing when `find` does not know it.
+///
+/// @param name - what was asked for
+/// @param find - looks a name up and answers with its spelling
+pub(crate) fn chosen_by_name(
+    name: &str,
+    find: impl Fn(&str) -> Option<&'static str>,
+) -> Option<String> {
+    let name = name.trim();
+    match name.is_empty() || name.eq_ignore_ascii_case("none") {
+        true => Some(String::new()),
+        false => find(name).map(str::to_owned),
     }
 }

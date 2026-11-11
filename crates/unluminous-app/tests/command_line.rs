@@ -2503,6 +2503,19 @@ fn drive_the_modals_and_the_settings(coverage: &mut Coverage) {
     c.refuses(&mut harness, "theme show no-such-theme --json");
     c.works(&mut harness, "theme set unluminous/dark");
     c.refuses(&mut harness, "theme set no-such-theme");
+    // The window's shader and cursor effect (`task-2612`).
+    c.works(&mut harness, "theme shader crt");
+    c.works(&mut harness, "theme shader");
+    c.works(&mut harness, "theme shader crt --terminals keep");
+    c.refuses(&mut harness, "theme shader crt --terminals sideways");
+    c.refuses(&mut harness, "theme shader not a shader");
+    c.works(&mut harness, "theme shader none --terminals cover");
+    c.works(&mut harness, "theme shaders --json");
+    c.works(&mut harness, "theme cursor-effect sonar");
+    c.works(&mut harness, "theme cursor-effect");
+    c.works(&mut harness, "theme cursor-effect none");
+    c.refuses(&mut harness, "theme cursor-effect not an effect");
+    c.works(&mut harness, "theme cursor-effects --json");
 
     c.works(&mut harness, "project recent --json");
     // A window started with no project says it is waiting for one. Last, because it changes what the window

@@ -4911,6 +4911,64 @@ unluminous-cli theme set "Monokai Pro" --icons material
 unluminous-cli theme set unluminous/dark --accent none
 ```
 
+### theme shader
+
+```
+unluminous-cli theme shader [name] [--terminals <keep|cover>]
+```
+
+Read or choose the Termoil shader drawn over the whole window, popups and modals included. While one is set it is drawn over the terminals too, in place of `terminal shader`, unless `--terminals keep`. none turns it off.
+
+- `name` (optional) — The shader, from `theme shaders`, or none. Read the current one when this is left out. Everything after it on the line belongs to it.
+
+- `--terminals <keep|cover>` — keep: a terminal with its own shader or cursor effect is drawn with it, and the window shader is kept off it. cover, the default: the window shader is drawn over the terminals and their own look is not.
+
+```sh
+unluminous-cli theme shader
+unluminous-cli theme shader crt
+unluminous-cli theme shader crt --terminals keep
+unluminous-cli theme shader none
+```
+
+### theme shaders
+
+```
+unluminous-cli theme shaders
+```
+
+The 22 Termoil shaders the window can be drawn with, with what each looks like and whether it moves, and the one chosen.
+
+```sh
+unluminous-cli theme shaders --json
+```
+
+### theme cursor-effect
+
+```
+unluminous-cli theme cursor-effect [name]
+```
+
+Read or choose the Termoil cursor effect drawn around the caret that has the keyboard, anywhere in the window: the editor's caret, a text field's, or a terminal's cursor. none turns it off.
+
+- `name` (optional) — The cursor effect, from `theme cursor-effects`, or none. Read the current one when this is left out. Everything after it on the line belongs to it.
+
+```sh
+unluminous-cli theme cursor-effect sonar
+unluminous-cli theme cursor-effect none
+```
+
+### theme cursor-effects
+
+```
+unluminous-cli theme cursor-effects
+```
+
+The 20 Termoil cursor effects the window's caret can be drawn with, and the one chosen.
+
+```sh
+unluminous-cli theme cursor-effects --json
+```
+
 ## background — the picture behind the window
 
 What is behind Unluminous's window: the desktop showing through, which is what it does unless something else is chosen, or a picture. A picture is **copied into Unluminous's own folder** when it is added, so the setting survives the original being moved, and `background remove` deletes that copy. `settings set appearance.background.image` reaches the same setting by name; these exist because a setting cannot say what pictures there are. How much of it shows through is `appearance.background.opacity`.

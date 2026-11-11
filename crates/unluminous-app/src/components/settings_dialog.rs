@@ -961,6 +961,8 @@ fn theme_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings, plugins: &
         },
     );
 
+    changed |= shader_card(ui, &mut column, settings);
+
     kit::card(ui, &mut column, "Accent", None, |card| {
         let active = crate::theme::active();
         // The theme's own first, then the accents this theme already has. The palette is closed and this does
@@ -1029,6 +1031,69 @@ fn theme_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings, plugins: &
         );
     });
     Drawn { backgrounds, ..drawn(area.top(), &column, changed) }
+}
+
+/// The Theme page's Shader card: Termoil's shaders over the whole window, a cursor effect around the caret, and
+/// whether the terminals keep their own shader (`task-2612`). Answers whether a setting changed.
+///
+/// @param column - the page's column of cards
+/// @param settings - the settings the page changes
+fn shader_card(ui: &mut egui::Ui, column: &mut Column, settings: &mut Settings) -> bool {
+    let mut changed = false;
+    kit::card(ui, column, "Shader", None, |card| {
+        let mut shaders = vec!["None".to_owned()];
+        shaders.extend(
+            crate::services::terminal_shader::BUILTINS
+                .iter()
+                .map(|builtin| builtin.name.to_owned()),
+        );
+        let chosen = chosen_or_none(&shaders, &settings.window_shader);
+        card.row(
+            "Window shader",
+            Some("One of Termoil's 22 shaders, drawn over the whole window: a CRT, amber phosphor, film grain and the rest. A shader that moves moves only while the window has the focus."),
+            |row| {
+                if let Some(index) = row.select("Window shader", &shaders, Some(chosen), 240.0) {
+                    settings.window_shader = if index == 0 { String::new() } else { shaders[index].clone() };
+                    changed = true;
+                }
+            },
+        );
+        let mut effects = vec!["None".to_owned()];
+        effects.extend(
+            crate::services::terminal_cursor_effect::EFFECTS
+                .iter()
+                .map(|effect| effect.name.to_owned()),
+        );
+        let chosen = chosen_or_none(&effects, &settings.window_cursor_effect);
+        card.row(
+            "Cursor effect",
+            Some("One of Termoil's 20 cursor effects, drawn around the caret that has the keyboard: in the editor, in a text field, or in a terminal."),
+            |row| {
+                if let Some(index) = row.select("Window cursor effect", &effects, Some(chosen), 240.0) {
+                    settings.window_cursor_effect = if index == 0 { String::new() } else { effects[index].clone() };
+                    changed = true;
+                }
+            },
+        );
+        changed |= card.switch(
+            "Terminals keep their own shader",
+            Some("Off: the window shader is drawn over the terminals too, and the terminal shader and cursor effect chosen on the Terminal page are not drawn. On: a terminal with its own shader or cursor effect is drawn with it, and the window shader is kept off the terminal."),
+            &mut settings.terminals_keep_their_shader,
+        );
+    });
+    changed
+}
+
+/// Which row of a list that starts with None holds `current`, ignoring case, or the None row.
+///
+/// @param names - None, then the names
+/// @param current - the setting
+fn chosen_or_none(names: &[String], current: &str) -> usize {
+    names
+        .iter()
+        .skip(1)
+        .position(|name| name.eq_ignore_ascii_case(current.trim()))
+        .map_or(0, |at| at + 1)
 }
 
 /// What a person reads for an icon set, which is its name with a capital letter.
@@ -1367,7 +1432,7 @@ fn terminal_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> Draw
             .map_or(0, |at| at + 1);
         card.row(
             "Shader",
-            Some("One of Termoil's 22 shaders, drawn over every terminal: neon glow, a CRT, amber phosphor and the rest. View -> Terminal Panes -> Choose Terminal Shader opens Terminal Appearance on its shaders, which previews each one as you move through them."),
+            Some("One of Termoil's 22 shaders, drawn over every terminal: neon glow, a CRT, amber phosphor and the rest. View -> Terminal Panes -> Choose Terminal Shader opens Terminal Appearance on its shaders, which previews each one as you move through them. While Settings -> Theme has a window shader, the window shader is drawn over the terminals instead, unless Terminals keep their own shader is on."),
             |row| {
                 if let Some(index) = row.select("Terminal shader", &names, Some(chosen), 240.0) {
                     settings.terminal_shader = match index {

@@ -1137,6 +1137,12 @@ settings! {
         /// The Termoil cursor effect drawn around every terminal's cursor, by name, from the 20 Termoil ships
         /// (`task-2601`). Empty is none.
         terminal_cursor_effect = String::new() => "terminal.cursor_effect", "a Termoil cursor effect name, or empty for none";
+        /// The Termoil shader drawn over the whole window, by name (`task-2612`). Empty is none. While it is set it is
+        /// drawn over the terminals too, in place of `terminal.shader`, unless `appearance.terminals_keep_their_shader`.
+        window_shader = String::new() => "appearance.shader", "a Termoil shader name, or empty for none";
+        /// The Termoil cursor effect drawn around the caret that has the keyboard, anywhere in the window
+        /// (`task-2612`). Empty is none.
+        window_cursor_effect = String::new() => "appearance.cursor_effect", "a Termoil cursor effect name, or empty for none";
         /// Extra patterns the project index leaves out, beyond `.gitignore` and the build folders.
         ///
         /// `task-1804` §7.3: the index skipped three hardcoded folder names and read no ignore file at
@@ -1280,6 +1286,10 @@ settings! {
     flag {
         /// Whether the editing area has a column of line numbers down its left.
         line_numbers = true => "editor.line_numbers";
+        /// Whether a terminal with a shader or cursor effect of its own is drawn with it while `appearance.shader`
+        /// is set, with the window's shader kept off the terminal (`task-2612`). Off: the window's shader is drawn
+        /// over the terminals too and their own look is not drawn.
+        terminals_keep_their_shader = false => "appearance.terminals_keep_their_shader";
         /// Whether Unluminous asks PowerShell to report the folder it is in.
         ///
         /// **Off, and the one setting here that changes somebody's shell rather than this window.**
@@ -2022,6 +2032,8 @@ mod tests {
             "terminal.theme",
             "terminal.shader",
             "terminal.cursor_effect",
+            "appearance.shader",
+            "appearance.cursor_effect",
             "editor.exclude",
             "mcp.areas",
             "appearance.theme",
@@ -2034,6 +2046,7 @@ mod tests {
             "terminal.font.size",
             "appearance.ui.font.size",
             "editor.line_numbers",
+            "appearance.terminals_keep_their_shader",
             "terminal.shell_integration",
             "plugins.chrome",
             "mcp.enabled",
@@ -2165,6 +2178,9 @@ mod tests {
             terminal_theme: "Dracula".to_owned(),
             terminal_shader: "neon".to_owned(),
             terminal_cursor_effect: "sonar".to_owned(),
+            window_shader: "crt".to_owned(),
+            window_cursor_effect: "glow".to_owned(),
+            terminals_keep_their_shader: true,
             shell_integration: true,
             line_numbers: false,
             indent: Indent::Spaces(4),

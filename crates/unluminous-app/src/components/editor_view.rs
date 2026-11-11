@@ -585,11 +585,11 @@ pub fn paint(
 
     if show_caret {
         let caret = layout.caret_at(document.selection().head);
-        painter.rect_filled(
-            Rect::from_min_size(to_screen(caret.x, caret.y), Vec2::new(CARET_WIDTH, caret.height)),
-            0.0,
-            caret_color,
-        );
+        let drawn =
+            Rect::from_min_size(to_screen(caret.x, caret.y), Vec2::new(CARET_WIDTH, caret.height));
+        painter.rect_filled(drawn, 0.0, caret_color);
+        // Where the window's cursor effect is drawn (`task-2612`).
+        crate::services::window_shader::note_the_caret(ui.ctx(), drawn.center());
     }
 
     // Last of all, because they are painted **over** the text at the end of its own line and must

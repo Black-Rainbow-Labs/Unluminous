@@ -252,7 +252,7 @@ dialog that changed height as its list was walked would jump under the pointer.
 | Page | What is on it |
 |---|---|
 | `Appearance & Behavior -> Appearance` | the font the window's own text is set in and the interface size, and whether a plugin's pane is drawn with depth |
-| `Appearance & Behavior -> Theme` | the Background card (whether the window is drawn on a picture, which picture, and how opaque), the theme, the accent and the icon set |
+| `Appearance & Behavior -> Theme` | the Background card (whether the window is drawn on a picture, which picture, and how opaque), the theme, the window shader and cursor effect, the accent and the icon set |
 | `Keymap` | the preset and every action's shortcut |
 | `Editor -> Editor` | the editor's font and size, the line numbers, what one indent is, auto indent, trimming, the completion popup and language servers, the debugger's value tooltip, line endings, what search leaves out, the version check, and the usage statistics card |
 | `Plugins` | the marketplace and what is installed |
@@ -327,6 +327,24 @@ scrolled.
 The **accent** is one colour over whatever the theme chose. The **icon set** is which drawn marks the
 rail and the explorer's folder arrow use: `material` by default, or `classic` for the ones Unluminous
 shipped with. `unluminous-cli theme list` says what there is and `theme set` paints the window in one.
+
+### Shaders over the whole window
+
+The Shader card on the Theme page draws one of Termoil's 22 shaders over the whole window, the way Termoil draws
+one over its own: a CRT, amber phosphor, film grain, VHS and the rest. It covers everything, menus and modals
+included, and the curve of a CRT or the shadow of a vignette belongs to the window rather than to each pane. Its
+**Cursor effect** row draws one of Termoil's 20 cursor effects around the caret that has the keyboard: the
+editor's caret, a text field's caret, or a terminal's cursor.
+
+While a window shader is chosen it is drawn over the terminals too, and the terminal shader and cursor effect on
+the Terminal page are not drawn. **Terminals keep their own shader**, off by default, changes that: a terminal
+with a shader or cursor effect of its own is drawn with it, and the window shader is kept off the terminal.
+
+A shader that does not move costs no processor time. One that moves, such as film grain, redraws the window 30
+times a second while the window has the focus, and stops while it does not, which is what Ghostty does with its
+custom shaders. `unluminous-cli theme shader crt --terminals keep` and `theme cursor-effect sonar` set them, and
+`theme shaders` and `theme cursor-effects` list them. The settings are `appearance.shader`,
+`appearance.cursor_effect` and `appearance.terminals_keep_their_shader`.
 
 ### The background
 

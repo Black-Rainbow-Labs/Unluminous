@@ -5995,6 +5995,23 @@ the emulator Unluminous already uses. Seven rules:
   `modal open terminal-appearance`, and `modal type`, `choose`, `results`, `accept` and `cancel`, act on the list
   with the keys.
 
+### A shader over the whole window, and the terminals that keep their own (`task-2612`)
+
+`tasks/task-2612-window-shaders-tdd.md` is the design. `appearance.shader`, `appearance.cursor_effect` and
+`appearance.terminals_keep_their_shader` (off by default) are the Shader card on `Settings -> Theme`.
+
+- **The window is one more job in the terminals' hook.** `services::window_shader::shade_the_window` runs last in
+  `UnluminousApp::ui` and records a `whole` job the size of the window. `terminal_shader::order_the_jobs` puts it
+  first and cuts out of it every piece a grid's own pass draws; a menu or modal over a grid stays the window's. The
+  hook copies every job's part of the frame before it draws any, so no pass reads another pass's output.
+- **While a window shader is set and the toggle is off, `terminal_shader::shade` records nothing**
+  (`window_shader::covers_the_terminals`). A window cursor effect alone never hides a terminal's own look.
+- **The window's cursor is the caret with the keyboard**: `window_shader::note_the_caret` from the editor's caret
+  painter and from a focused grid, else egui's `PlatformOutput::ime` rectangle for a text field.
+- **A modal's GPU backdrop is blurred from the unshaded frame.** `AfterTheFrame::unshaded` hands the hook's copy of
+  the whole window to callbacks as the `SceneTexture`, or the backdrop would carry the window shader twice.
+- **A window shader that moves asks for a frame every 33 ms only while the window has the focus**, Ghostty's rule.
+
 ## The code index answers what ripgrep would, from memory, and it is measured rather than assumed
 
 **The index is Atrius now (`task-2172`).** It moved to its own private repository,

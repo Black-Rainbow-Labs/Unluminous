@@ -585,8 +585,17 @@ impl Painter {
                 && let Some(capture_state) = &self.screen_capture_state
                 && self.scene_frames > 0
             {
+                // The frame without what the hook drew over it, when the hook kept one of the same size (`task-2612`).
+                let unshaded = renderer
+                    .callback_resources
+                    .get::<crate::AfterTheFrameHook>()
+                    .and_then(|hook| hook.0.unshaded())
+                    .filter(|copy| {
+                        copy.size() == capture_state.texture.size()
+                            && copy.format() == capture_state.texture.format()
+                    });
                 renderer.callback_resources.insert(crate::SceneTexture {
-                    texture: capture_state.texture.clone(),
+                    texture: unshaded.unwrap_or_else(|| capture_state.texture.clone()),
                     frame: self.scene_frames,
                 });
             }

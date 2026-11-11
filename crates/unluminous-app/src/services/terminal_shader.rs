@@ -195,7 +195,7 @@ impl Look {
     }
 
     /// True when the shader or the effect moves on its own.
-    fn moves(&self) -> bool {
+    pub(crate) fn moves(&self) -> bool {
         self.shader.is_some_and(moves)
             || self.effect.is_some_and(crate::services::terminal_cursor_effect::moves)
     }
@@ -206,7 +206,7 @@ pub type Pixels = [u32; 4];
 
 /// One rectangle of the window to draw a shader over this frame, in the window's pixels.
 #[derive(Debug, Clone)]
-struct Job {
+pub(crate) struct Job {
     look: Look,
     x: u32,
     y: u32,
@@ -216,6 +216,9 @@ struct Job {
     cursor: [f32; 2],
     /// The parts of the rectangle something is drawn over, which the shader is kept out of (`task-2601`).
     holes: Vec<Pixels>,
+    /// True for the pass over the whole window (`task-2612`), whose holes are worked out in the hook from the grids
+    /// drawn with their own look.
+    whole: bool,
 }
 
 /// The rectangles recorded this frame, shared by the grids' callbacks and the hook that draws them.
@@ -231,6 +234,10 @@ struct Passes {
     sampler: Option<wgpu::Sampler>,
     /// A texture for each job of a frame, kept while its size stays the same.
     copies: Vec<wgpu::Texture>,
+    /// The copy of the whole window the window pass reads, without any shader in it (`task-2612`).
+    whole: Option<wgpu::Texture>,
+    /// Whether the last frame drew the window pass, so [`whole`](Self::whole) holds that frame.
+    drew_whole: bool,
     started: std::time::Instant,
 }
 
@@ -339,7 +346,10 @@ impl Passes {
                 && texture.height() == job.height
                 && texture.format() == format
         };
-        if self.copies.get(index).is_some_and(fits) {
+        if job.whole && self.whole.as_ref().is_some_and(fits) {
+            return self.whole.clone().expect("checked");
+        }
+        if !job.whole && self.copies.get(index).is_some_and(fits) {
             return self.copies[index].clone();
         }
         let texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -352,7 +362,9 @@ impl Passes {
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
-        if index < self.copies.len() {
+        if job.whole {
+            self.whole = Some(texture.clone());
+        } else if index < self.copies.len() {
             self.copies[index] = texture.clone();
         } else {
             self.copies.push(texture.clone());
@@ -370,12 +382,48 @@ impl egui_wgpu::AfterTheFrame for Passes {
         scene: &wgpu::Texture,
         target: &wgpu::Texture,
     ) {
-        let jobs = std::mem::take(
+        let recorded = std::mem::take(
             &mut *self.jobs.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner()),
         );
+        let jobs = in_the_window(order_the_jobs(recorded), target.width(), target.height());
+        self.drew_whole = jobs.iter().any(|job| job.whole);
         if jobs.is_empty() {
             return;
         }
+        // Every copy before any draw, so no pass reads what another pass has already shaded (`task-2612`).
+        let copies: Vec<wgpu::Texture> = jobs
+            .iter()
+            .enumerate()
+            .map(|(index, job)| {
+                let copy = self.copy_for(device, index, job, scene.format());
+                copy_out(encoder, scene, &copy, job);
+                copy
+            })
+            .collect();
+        let time = self.started.elapsed().as_secs_f32();
+        for (job, copy) in jobs.iter().zip(&copies) {
+            self.draw_one(device, queue, encoder, target, job, copy, time);
+        }
+    }
+
+    fn unshaded(&self) -> Option<wgpu::Texture> {
+        self.whole.clone().filter(|_| self.drew_whole)
+    }
+}
+
+impl Passes {
+    /// Draw one job's shader over its part of `target`, reading `copy`, and only over the parts nothing is cut out of.
+    #[expect(clippy::too_many_arguments)]
+    fn draw_one(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::Texture,
+        job: &Job,
+        copy: &wgpu::Texture,
+        time: f32,
+    ) {
         let format = target.format();
         let target_view = target.create_view(&wgpu::TextureViewDescriptor::default());
         let sampler = self
@@ -389,84 +437,119 @@ impl egui_wgpu::AfterTheFrame for Passes {
                 })
             })
             .clone();
-        let time = self.started.elapsed().as_secs_f32();
-        for (index, job) in jobs.iter().enumerate() {
-            // Inside the window, and not empty, or there is nothing to copy.
-            let width = job.width.min(target.width().saturating_sub(job.x));
-            let height = job.height.min(target.height().saturating_sub(job.y));
-            if width == 0 || height == 0 {
-                continue;
-            }
-            let job = Job { width, height, ..job.clone() };
-            let copy = self.copy_for(device, index, &job, scene.format());
-            encoder.copy_texture_to_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: scene,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d { x: job.x, y: job.y, z: 0 },
-                    aspect: wgpu::TextureAspect::All,
+        let (width, height) = (job.width, job.height);
+        let values: [f32; 8] =
+            [width as f32, height as f32, job.cursor[0], job.cursor[1], time, 0.0, 0.0, 0.0];
+        let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("unluminous-terminal-shader"),
+            size: 32,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let bytes: Vec<u8> = values.iter().flat_map(|value| value.to_le_bytes()).collect();
+        queue.write_buffer(&uniforms, 0, &bytes);
+        let layout = self.layout(device);
+        let view = copy.create_view(&wgpu::TextureViewDescriptor::default());
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("unluminous-terminal-shader"),
+            layout: &layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
                 },
-                wgpu::TexelCopyTextureInfo {
-                    texture: &copy,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
                 },
-                wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
-            );
-            let values: [f32; 8] =
-                [width as f32, height as f32, job.cursor[0], job.cursor[1], time, 0.0, 0.0, 0.0];
-            let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("unluminous-terminal-shader"),
-                size: 32,
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-            let bytes: Vec<u8> = values.iter().flat_map(|value| value.to_le_bytes()).collect();
-            queue.write_buffer(&uniforms, 0, &bytes);
-            let layout = self.layout(device);
-            let view = copy.create_view(&wgpu::TextureViewDescriptor::default());
-            let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("unluminous-terminal-shader"),
-                layout: &layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&sampler),
-                    },
-                    wgpu::BindGroupEntry { binding: 2, resource: uniforms.as_entire_binding() },
-                ],
-            });
-            let pipeline = self.pipeline(device, job.look, format);
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("unluminous-terminal-shader"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &target_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
-                    depth_slice: None,
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
-                multiview_mask: None,
-            });
-            pass.set_viewport(job.x as f32, job.y as f32, width as f32, height as f32, 0.0, 1.0);
-            pass.set_pipeline(&pipeline);
-            pass.set_bind_group(0, &bind_group, &[]);
-            // Once for each part nothing is drawn over, so a menu, a tooltip or a modal over the terminal keeps the
-            // colors it was drawn in (`task-2601`).
-            let whole = [job.x, job.y, job.x + width, job.y + height];
-            for [left, top, right, bottom] in uncovered(whole, &job.holes) {
-                pass.set_scissor_rect(left, top, right - left, bottom - top);
-                pass.draw(0..3, 0..1);
-            }
+                wgpu::BindGroupEntry { binding: 2, resource: uniforms.as_entire_binding() },
+            ],
+        });
+        let pipeline = self.pipeline(device, job.look, format);
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("unluminous-terminal-shader"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &target_view,
+                resolve_target: None,
+                ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+                depth_slice: None,
+            })],
+            depth_stencil_attachment: None,
+            occlusion_query_set: None,
+            timestamp_writes: None,
+            multiview_mask: None,
+        });
+        pass.set_viewport(job.x as f32, job.y as f32, width as f32, height as f32, 0.0, 1.0);
+        pass.set_pipeline(&pipeline);
+        pass.set_bind_group(0, &bind_group, &[]);
+        // Once for each part nothing is drawn over, so a menu, a tooltip or a modal over the terminal keeps the
+        // colors it was drawn in (`task-2601`).
+        let whole = [job.x, job.y, job.x + width, job.y + height];
+        for [left, top, right, bottom] in uncovered(whole, &job.holes) {
+            pass.set_scissor_rect(left, top, right - left, bottom - top);
+            pass.draw(0..3, 0..1);
         }
     }
+}
+
+/// Copy a job's part of the frame into the texture its shader reads.
+fn copy_out(
+    encoder: &mut wgpu::CommandEncoder,
+    scene: &wgpu::Texture,
+    copy: &wgpu::Texture,
+    job: &Job,
+) {
+    encoder.copy_texture_to_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: scene,
+            mip_level: 0,
+            origin: wgpu::Origin3d { x: job.x, y: job.y, z: 0 },
+            aspect: wgpu::TextureAspect::All,
+        },
+        wgpu::TexelCopyTextureInfo {
+            texture: copy,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        wgpu::Extent3d { width: job.width, height: job.height, depth_or_array_layers: 1 },
+    );
+}
+
+/// The jobs cut to the window, without the ones left empty.
+///
+/// @param jobs - the frame's jobs
+/// @param width - the window's width in pixels
+/// @param height - the window's height in pixels
+fn in_the_window(jobs: Vec<Job>, width: u32, height: u32) -> Vec<Job> {
+    jobs.into_iter()
+        .map(|job| Job {
+            width: job.width.min(width.saturating_sub(job.x)),
+            height: job.height.min(height.saturating_sub(job.y)),
+            ..job
+        })
+        .filter(|job| job.width > 0 && job.height > 0)
+        .collect()
+}
+
+/// The window pass first, with every grid drawn in its own look cut out of it, and then the grids (`task-2612`).
+///
+/// A grid's pass draws only the parts of the grid nothing is drawn over, so those parts are what the window pass
+/// leaves to it. A menu or a modal over a grid is a hole in the grid's pass and gets the window's shader.
+///
+/// @param jobs - the frame's jobs, in the order they were recorded
+pub(crate) fn order_the_jobs(jobs: Vec<Job>) -> Vec<Job> {
+    let (windows, grids): (Vec<Job>, Vec<Job>) = jobs.into_iter().partition(|job| job.whole);
+    let given_to_the_grids: Vec<Pixels> = grids
+        .iter()
+        .flat_map(|grid| {
+            uncovered([grid.x, grid.y, grid.x + grid.width, grid.y + grid.height], &grid.holes)
+        })
+        .collect();
+    // One window pass a frame: a second, from a tab drawn twice, would shade the window twice.
+    let window =
+        windows.into_iter().last().map(|window| Job { holes: given_to_the_grids, ..window });
+    window.into_iter().chain(grids).collect()
 }
 
 /// The empty paint callback a grid adds over itself, which records where it is for the hook.
@@ -476,6 +559,8 @@ struct Register {
     cursor: Option<egui::Pos2>,
     /// What is drawn over the grid, in points.
     holes: Vec<egui::Rect>,
+    /// True for the pass over the whole window (`task-2612`).
+    whole: bool,
 }
 
 impl egui_wgpu::CallbackTrait for Register {
@@ -498,6 +583,8 @@ impl egui_wgpu::CallbackTrait for Register {
                 layout: None,
                 sampler: None,
                 copies: Vec::new(),
+                whole: None,
+                drew_whole: false,
                 started: std::time::Instant::now(),
             })));
         }
@@ -539,6 +626,7 @@ impl egui_wgpu::CallbackTrait for Register {
             height: (bottom - top) as u32,
             cursor,
             holes: self.holes.iter().map(pixels).collect(),
+            whole: self.whole,
         };
         jobs.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(job);
     }
@@ -573,14 +661,39 @@ pub fn look_in_use() -> Option<Look> {
 /// @param rect - the grid
 /// @param cursor - the center of the cursor of the pane with the keyboard, in points
 pub fn shade(ui: &egui::Ui, rect: egui::Rect, cursor: Option<egui::Pos2>) {
+    // The window's shader is drawn over the terminals instead, unless they keep their own (`task-2612`).
+    if crate::services::window_shader::covers_the_terminals() {
+        return;
+    }
     let Some(look) = look_in_use() else { return };
     let holes = drawn_over(ui.ctx(), ui.layer_id(), rect);
     LAST_SHADED.with(|last| *last.borrow_mut() = Some((rect, holes.clone())));
-    ui.painter()
-        .add(egui_wgpu::Callback::new_paint_callback(rect, Register { look, cursor, holes }));
+    register(ui.painter(), rect, look, cursor, holes, false);
     if look.moves() {
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(16));
     }
+}
+
+/// Add the empty paint callback that records `rect` for the hook to draw `look` over.
+///
+/// @param painter - a painter on the layer the rectangle is drawn in
+/// @param rect - the rectangle, in points
+/// @param look - the shader and cursor effect
+/// @param cursor - the cursor's center in points, when there is one
+/// @param holes - what is drawn over the rectangle, in points
+/// @param whole - true for the pass over the whole window
+pub(crate) fn register(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    look: Look,
+    cursor: Option<egui::Pos2>,
+    holes: Vec<egui::Rect>,
+    whole: bool,
+) {
+    painter.add(egui_wgpu::Callback::new_paint_callback(
+        rect,
+        Register { look, cursor, holes, whole },
+    ));
 }
 
 /// The rectangles of everything drawn in a layer above `mine` that overlaps `rect`, in window points.
@@ -727,6 +840,46 @@ mod tests {
             100 * 100 - 50 * 50 - (50 * 50 - 25 * 25),
             "the overlap is cut once"
         );
+    }
+
+    /// The window pass comes first, once, with every grid's own pass cut out of it, and a menu over a grid is left
+    /// to the window pass (`task-2612`).
+    #[test]
+    fn the_window_pass_comes_first_and_leaves_each_grid_to_its_own_pass() {
+        let look = Look { shader: named("crt"), effect: None };
+        let job = |x, y, width, height, holes: Vec<Pixels>, whole| Job {
+            look,
+            x,
+            y,
+            width,
+            height,
+            cursor: [-1.0, -1.0],
+            holes,
+            whole,
+        };
+        let ordered = order_the_jobs(vec![
+            job(10, 10, 100, 100, vec![[20, 20, 40, 40]], false),
+            job(0, 0, 400, 300, Vec::new(), true),
+            job(200, 0, 50, 50, Vec::new(), false),
+        ]);
+        assert_eq!(ordered.len(), 3);
+        assert!(ordered[0].whole, "the window pass is drawn first");
+        assert!(!ordered[1].whole && !ordered[2].whole);
+        let window = &ordered[0];
+        let cut = uncovered([0, 0, 400, 300], &window.holes);
+        let area: u32 = cut.iter().map(|[l, t, r, b]| (r - l) * (b - t)).sum();
+        assert_eq!(
+            area,
+            400 * 300 - (100 * 100 - 20 * 20) - 50 * 50,
+            "the menu over the first grid is the window's"
+        );
+        let only_grids = order_the_jobs(vec![job(0, 0, 10, 10, Vec::new(), false)]);
+        assert_eq!(only_grids.len(), 1, "no window pass when none was recorded");
+        let two = order_the_jobs(vec![
+            job(0, 0, 10, 10, Vec::new(), true),
+            job(0, 0, 10, 10, Vec::new(), true),
+        ]);
+        assert_eq!(two.len(), 1, "one window pass a frame");
     }
 
     #[test]

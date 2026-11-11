@@ -668,6 +668,10 @@ pub(crate) fn show(ui: &mut egui::Ui, area: Rect, grid: LayerGrid<'_>) -> GridOu
     }
     if focused {
         WITH_KEYBOARD.with(|holder| holder.set(Some((serial, ui.ctx().cumulative_pass_nr()))));
+        // The window's cursor effect follows the terminal's cursor while the terminal has the keyboard (`task-2612`).
+        if let Some(cursor) = outcome.cursor {
+            crate::services::window_shader::note_the_caret(ui.ctx(), cursor);
+        }
     }
     // Termoil's shader and cursor effect over the whole terminal, panes and all, as Termoil draws them over its
     // window. Not while the right click menu or another modal is open, because a modal's backdrop is a picture of

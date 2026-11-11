@@ -211,6 +211,9 @@ impl UnluminousApp {
         crate::theme::glass::glaze_the_popups(ui.ctx());
         crate::components::designer::kit::end_frame(ui.ctx());
         crate::components::word::kit::end_frame(ui.ctx());
+        // After everything, popups and modals included: the window's shader is drawn over the whole window
+        // (`task-2612`).
+        crate::services::window_shader::shade_the_window(ui.ctx());
         self.end_the_frame(ui);
     }
 

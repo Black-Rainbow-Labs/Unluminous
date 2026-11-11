@@ -388,6 +388,14 @@ pub trait AfterTheFrame: Send + Sync {
         scene: &wgpu::Texture,
         target: &wgpu::Texture,
     );
+
+    /// A copy of the whole of the last frame as egui drew it, before this hook drew over it, when the hook kept one
+    /// (Unluminous `task-2612`). Handed to paint callbacks as the [`SceneTexture`] in place of the frame itself, so a
+    /// modal's backdrop blurred from it does not have the window's shader in it twice. It has the surface's size and
+    /// format.
+    fn unshaded(&self) -> Option<wgpu::Texture> {
+        None
+    }
 }
 
 /// The [`AfterTheFrame`] the renderer runs, kept in its callback resources.

@@ -2012,6 +2012,7 @@ impl UnluminousApp {
         crate::services::terminal_shader::preview(None);
         crate::services::terminal_cursor_effect::choose("");
         crate::services::terminal_cursor_effect::preview(None);
+        crate::services::window_shader::choose("", "", false);
         theme::apply(ctx);
         self.themed = true;
         // What the plugins contribute, read from their manifests. Here rather than only in
@@ -2175,6 +2176,7 @@ impl UnluminousApp {
         crate::services::terminal_colours::choose(&self.settings.terminal_theme);
         crate::services::terminal_shader::choose(&self.settings.terminal_shader);
         crate::services::terminal_cursor_effect::choose(&self.settings.terminal_cursor_effect);
+        self.choose_the_window_shader();
         self.install_the_interface_font();
     }
 

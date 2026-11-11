@@ -131,7 +131,8 @@ The choices are the `terminal.theme`, `terminal.shader` and `terminal.cursor_eff
 the rest. `unluminous-cli terminal shader neon` sets one. The shader covers the whole terminal, panes and all, the
 way Termoil draws one over its window, and combines with any theme. A shader that moves, such as neon glow,
 redraws the window while a terminal is showing. Anything drawn over a terminal, such as a modal, a menu or a
-tooltip, is left out of the shader, so it keeps its own colors.
+tooltip, is left out of the shader, so it keeps its own colors. While `Settings -> Theme` has a window shader, the
+window shader is drawn over the terminals instead, unless **Terminals keep their own shader** is on there.
 
 **Termoil's 20 cursor effects** are drawn around the cursor of the pane with the keyboard: a glow, sonar rings, a
 spotlight, an orbit and the rest. They run after the shader in the same pass, so any cursor effect goes with any

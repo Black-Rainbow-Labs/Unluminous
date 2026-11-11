@@ -1807,6 +1807,65 @@ fn a_right_click_on_a_terminal_opens_termoil_s_menu_and_its_rows_run() {
     assert!(harness.query_by_label("Split Pane Right").is_none(), "the menu went away");
 }
 
+/// `task-2612`: *"if termoil has a shader, and unluminous has a shader, the termoil shader should not be used, unless
+/// that toggle is on, in which case that part of the window shouldn't have the unluminous shader on top of it, and
+/// the termoil shader should be shown instead."* The window's pass is recorded over the whole window every frame.
+/// With `--terminals cover`, the default, the terminal records no pass of its own, so the window's shader is what is
+/// drawn there. With `--terminals keep` the terminal records its own pass, which the hook cuts out of the window's
+/// (`terminal_shader::order_the_jobs`).
+#[test]
+fn a_window_shader_covers_a_terminal_s_own_unless_the_terminals_keep_it() {
+    use unluminous_app::services::{terminal_shader, window_shader};
+    let mut harness = a_terminal_with_the_keyboard();
+    did(&mut harness, "terminal shader amber");
+    let _ = terminal_shader::take_the_last_shaded();
+    steady(&mut harness);
+    assert!(
+        terminal_shader::take_the_last_shaded().is_some(),
+        "the terminal's own shader with no window shader"
+    );
+    assert!(window_shader::take_the_last_shaded().is_none(), "no window pass with nothing chosen");
+
+    did(&mut harness, "theme shader crt");
+    assert!(!harness.state().settings.terminals_keep_their_shader, "off by default");
+    let _ = terminal_shader::take_the_last_shaded();
+    steady(&mut harness);
+    let window = window_shader::take_the_last_shaded().expect("the window pass");
+    assert_eq!(window.shader, "crt");
+    assert_eq!(window.rect, harness.ctx.content_rect(), "the whole window");
+    assert!(
+        terminal_shader::take_the_last_shaded().is_none(),
+        "the window's shader is drawn over the terminal instead"
+    );
+
+    did(&mut harness, "theme shader crt --terminals keep");
+    assert!(harness.state().settings.terminals_keep_their_shader);
+    steady(&mut harness);
+    assert!(terminal_shader::take_the_last_shaded().is_some(), "the terminal keeps its own shader");
+    assert!(
+        window_shader::take_the_last_shaded().is_some(),
+        "and the window pass still runs round it"
+    );
+
+    // A cursor effect on the window follows the terminal's cursor while the terminal has the keyboard, and does not
+    // take the terminal's own look away.
+    did(&mut harness, "theme shader none --terminals cover");
+    did(&mut harness, "theme cursor-effect sonar");
+    steady(&mut harness);
+    let window =
+        window_shader::take_the_last_shaded().expect("the window pass for the cursor effect");
+    assert_eq!((window.shader.as_str(), window.cursor_effect.as_str()), ("", "sonar"));
+    let caret = window.caret.expect("the terminal's cursor");
+    let grid = harness.get_by_label("Grid: terminal-grid").rect();
+    assert!(grid.expand(1.0).contains(caret), "the caret {caret:?} is in the terminal {grid:?}");
+    assert!(
+        terminal_shader::take_the_last_shaded().is_some(),
+        "a window cursor effect alone leaves the terminal its look"
+    );
+    did(&mut harness, "theme cursor-effect none");
+    did(&mut harness, "terminal shader none");
+}
+
 #[test]
 fn a_shader_chosen_from_the_command_line_is_drawn_and_none_turns_it_off() {
     use unluminous_app::services::terminal_shader;
@@ -1816,4 +1875,188 @@ fn a_shader_chosen_from_the_command_line_is_drawn_and_none_turns_it_off() {
     assert_eq!(terminal_shader::in_use().map(|shader| shader.name), Some("neon-glow"));
     did(&mut harness, "terminal shader none");
     assert!(terminal_shader::in_use().is_none());
+}
+
+/// One frame of `harness` with the hook the window runs after egui (`AfterTheFrameHook`) drawn over it, the way the
+/// window's painter runs it (`vendor/egui-wgpu/src/winit.rs`). A test harness renders without the scene texture, so
+/// the hook is taken out of the renderer's resources after a frame has recorded its jobs, run over a copy of that
+/// frame, and put back. Answers the frame before the hook and after it.
+fn a_frame_with_the_hook(
+    harness: &mut Harness<'static, UnluminousApp>,
+    render_state: &eframe::egui_wgpu::RenderState,
+) -> (image::RgbaImage, image::RgbaImage) {
+    use eframe::egui_wgpu::{wgpu, AfterTheFrameHook};
+    let before = harness.render().expect("a frame");
+    let (width, height) = before.dimensions();
+    let device = &render_state.device;
+    let frame = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("the frame the hook draws over"),
+        size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING
+            | wgpu::TextureUsages::COPY_DST
+            | wgpu::TextureUsages::COPY_SRC
+            | wgpu::TextureUsages::RENDER_ATTACHMENT,
+        view_formats: &[],
+    });
+    render_state.queue.write_texture(
+        frame.as_image_copy(),
+        before.as_raw(),
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(4 * width),
+            rows_per_image: None,
+        },
+        wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+    );
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    let mut hook = render_state.renderer.write().callback_resources.remove::<AfterTheFrameHook>();
+    if let Some(hook) = hook.as_mut() {
+        hook.0.draw(device, &render_state.queue, &mut encoder, &frame, &frame);
+    }
+    if let Some(hook) = hook {
+        render_state.renderer.write().callback_resources.insert(hook);
+    }
+    let row = (4 * width).div_ceil(256) * 256;
+    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("the frame read back"),
+        size: u64::from(row * height),
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+    encoder.copy_texture_to_buffer(
+        frame.as_image_copy(),
+        wgpu::TexelCopyBufferInfo {
+            buffer: &buffer,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(row),
+                rows_per_image: None,
+            },
+        },
+        wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+    );
+    render_state.queue.submit([encoder.finish()]);
+    buffer.slice(..).map_async(wgpu::MapMode::Read, |_| {});
+    device
+        .poll(wgpu::PollType::Wait { submission_index: None, timeout: None })
+        .expect("the frame was read back");
+    let mapped = buffer.slice(..).get_mapped_range().expect("the mapped frame");
+    let pixels: Vec<u8> =
+        mapped.chunks(row as usize).flat_map(|line| line[..4 * width as usize].to_vec()).collect();
+    drop(mapped);
+    (before, image::RgbaImage::from_raw(width, height, pixels).expect("a whole frame"))
+}
+
+/// Whether every pixel of `a` and `b` inside `rect` (or outside it, when `inside` is false) is the same.
+fn same_pixels(a: &image::RgbaImage, b: &image::RgbaImage, rect: egui::Rect, inside: bool) -> bool {
+    a.enumerate_pixels().all(|(x, y, pixel)| {
+        let here = rect.contains(egui::pos2(x as f32 + 0.5, y as f32 + 0.5));
+        here != inside || b.get_pixel(x, y) == pixel
+    })
+}
+
+/// `task-2612`: the window's shader, drawn by the real hook over real frames, for the three cases the ticket names.
+///
+/// 1. A terminal with its own shader and no window shader: only the terminal changes.
+/// 2. A window shader with `--terminals cover`, the default: the window changes, and the terminal is drawn with the
+///    window's shader rather than its own.
+/// 3. The same with `--terminals keep`: the terminal is exactly what it was in 1, and the rest of the window is
+///    exactly what it was in 2.
+///
+/// `UNLUMINOUS_SHADER_PICTURES=<folder>` writes each frame there as well.
+#[test]
+fn the_window_shader_is_drawn_over_the_window_and_the_terminal_keeps_its_own_only_when_asked() {
+    use unluminous_app::services::terminal_shader;
+    let render_state = shared_render_state();
+    let folder = sample_folder();
+    let mut harness = builder_on(render_state.clone())
+        .with_size(vec2(WINDOW[0], WINDOW[1]))
+        .build_eframe(move |cc| {
+            let mut app = UnluminousApp::with_text(
+                folder,
+                "fn main() {\n    println!(\"Unluminous window shaders\");\n}\n",
+            );
+            app.prepare(&cc.egui_ctx);
+            app.draw_deterministically();
+            app
+        });
+    harness.state_mut().new_detached_terminal_tab(16, 90);
+    steady(&mut harness);
+    feed(
+        &mut harness,
+        b"\x1b[1;32m~/sample\x1b[0m $ ls -la\r\n\x1b[34mchapters\x1b[0m  \x1b[34mnotes\x1b[0m  person.sqlite3  welcome.md\r\n\x1b[1;32m~/sample\x1b[0m $ echo task-2612\r\ntask-2612\r\n",
+    );
+    harness.state_mut().focus = unluminous_app::app::Focus::Terminal;
+    steady(&mut harness);
+    let pixels_per_point = harness.ctx.pixels_per_point();
+    let to_pixels = |rect: egui::Rect| rect * pixels_per_point;
+    let pictures = std::env::var_os("UNLUMINOUS_SHADER_PICTURES").map(std::path::PathBuf::from);
+    let keep = |name: &str, picture: &image::RgbaImage| {
+        if let Some(folder) = &pictures {
+            std::fs::create_dir_all(folder).expect("the pictures folder");
+            picture.save(folder.join(name)).expect("write the picture");
+        }
+    };
+
+    did(&mut harness, "terminal shader amber");
+    steady(&mut harness);
+    let (plain, terminal_only) = a_frame_with_the_hook(&mut harness, &render_state);
+    let (terminal, _) = terminal_shader::take_the_last_shaded().expect("the terminal was shaded");
+    let terminal = to_pixels(terminal);
+    keep("0-no-shader.png", &plain);
+    keep("1-terminal-amber-no-window-shader.png", &terminal_only);
+    assert!(
+        same_pixels(&plain, &terminal_only, terminal.expand(1.0), false),
+        "only the terminal changes"
+    );
+    assert!(
+        !same_pixels(&plain, &terminal_only, terminal.shrink(2.0), true),
+        "the terminal is amber"
+    );
+
+    did(&mut harness, "theme shader crt");
+    steady(&mut harness);
+    let (_, covered) = a_frame_with_the_hook(&mut harness, &render_state);
+    keep("2-window-crt-covers-the-terminal.png", &covered);
+    assert!(!same_pixels(&plain, &covered, terminal, false), "the window has the crt shader");
+    assert!(
+        !same_pixels(&terminal_only, &covered, terminal.shrink(2.0), true),
+        "the terminal is drawn with the window's shader, not amber"
+    );
+
+    did(&mut harness, "theme shader crt --terminals keep");
+    steady(&mut harness);
+    let (_, kept) = a_frame_with_the_hook(&mut harness, &render_state);
+    keep("3-window-crt-terminal-keeps-amber.png", &kept);
+    assert!(
+        same_pixels(&terminal_only, &kept, terminal.shrink(1.0), true),
+        "the terminal is amber, as in 1"
+    );
+    assert!(
+        same_pixels(&covered, &kept, terminal.expand(1.0), false),
+        "the rest of the window is crt, as in 2"
+    );
+
+    // A window cursor effect with no window shader, around the editor's caret once the editor has the keyboard.
+    did(&mut harness, "theme shader none --terminals cover");
+    did(&mut harness, "terminal shader none");
+    did(&mut harness, "theme cursor-effect neon-halo");
+    harness.state_mut().focus = unluminous_app::app::Focus::Editor;
+    steady(&mut harness);
+    let (unshaded, haloed) = a_frame_with_the_hook(&mut harness, &render_state);
+    keep("4-window-cursor-effect-at-the-editor-caret.png", &haloed);
+    let caret = unluminous_app::services::window_shader::take_the_last_shaded()
+        .and_then(|shaded| shaded.caret)
+        .expect("the editor's caret");
+    assert!(
+        !terminal.contains(caret * pixels_per_point),
+        "the caret is the editor's, not the terminal's"
+    );
+    let around = egui::Rect::from_center_size(caret * pixels_per_point, vec2(40.0, 40.0));
+    assert!(!same_pixels(&unshaded, &haloed, around, true), "the effect is drawn around the caret");
+    did(&mut harness, "theme cursor-effect none");
 }
