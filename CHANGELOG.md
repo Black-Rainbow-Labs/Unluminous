@@ -6,6 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.31.0 — 2026-11-12
+
+- Paste a picture into Markdown, Start Work on a new ticket, sequence bands that hold their notes (`task-2634`)
+- Write a pasted picture through write_atomically, and a clippy fix in block_reach (`task-2634`)
+- Drive editor paste-picture both ways, and accept the new ticket and ZenUML pictures (`task-2634`)
+
 ## 1.30.0 — 2026-11-11
 
 - A strength for the window and terminal shaders (70% by default), the pointer bent through the crt and retro curve, and the window's rounded corners kept under a shader (`task-2622`)
