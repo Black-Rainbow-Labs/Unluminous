@@ -19,7 +19,7 @@
        package an executable with no version block, compiles the Inno Setup installer, closes a
        running Unluminous politely and installs it with every optional task on. The rebuild is what moves
        the build date the About box shows.
-    4. Copies the installer into releases\.
+    4. Copies the installer into releases\, where it waits until it is published.
     5. Commits Cargo.toml and Cargo.lock on their own as `Unluminous <version>`, tags `v<version>`, and
        pushes the branch and the tag.
     6. Creates the GitHub release with the installer attached, on BOTH repositories: the private one
@@ -27,7 +27,11 @@
        first with tools/publish-open-source.mjs.
     7. Publishes both sites. unluminous.com gets the new installer and puts the version at the top of
        the nightly channel, /releases/nightly.json; blackrainbowlabs.com reads /releases/latest.json for
-       the version it prints.
+       the version it prints. In the same step unluminous.com's public/downloads is pruned to this version
+       and the 3 versions before it, keeping the version the page links (the task-2720 prune).
+    8. Asks every destination what it serves, and once all of them have this release, deletes the
+       installer and the macOS archive from releases\. The GitHub release is the permanent record of
+       what was built (task-2721); a copy kept here for ever was 182 files and 5.4 GB.
 
   **Every release is a nightly (task-2328).** The GitHub releases are created as prereleases and the
   site adds the version to the nightly channel only, so the page, /releases/latest.json and GitHub's
@@ -154,6 +158,55 @@ $SitePublishers = @(
     @{ Name = 'unluminous.com'; Script = (Join-Path $SiteRepo 'scripts/publish.ps1'); Versioned = $true },
     @{ Name = 'blackrainbowlabs.com'; Script = (Join-Path $ParentSiteRepo 'scripts/publish.ps1'); Versioned = $false }
 )
+# The shared prune the sites repository keeps (task-2720). It deletes the installers in a site's
+# `public/downloads` older than the current version and the 3 before it, and never the version the page links.
+$PruneScript = $env:UNLUMINOUS_PRUNE_SCRIPT
+if (-not $PruneScript) { $PruneScript = [System.IO.Path]::GetFullPath((Join-Path $SiteRepo '../scripts/prune-downloads.mjs')) }
+
+<#
+.SYNOPSIS
+  Prunes unluminous.com's `public/downloads` to this release and the 3 releases before it.
+.DESCRIPTION
+  task-2721. Nothing removed an old installer from the site, so `public/downloads` reached 314 files and
+  31.9 GB, and the static export doubled that in `out/downloads`. The prune runs just before the site is
+  published, so the build the publish makes exports the pruned folder. `--current` names this release,
+  whose files the publish has not copied in yet, so it counts as the newest version. A machine without
+  the prune script says so and carries on, because a release is not refused over the disk.
+.PARAMETER Version
+  The version being released.
+.PARAMETER DryRun
+  Print what would be deleted and delete nothing.
+#>
+function Invoke-DownloadsPrune([string] $Version, [switch] $DryRun) {
+    if (-not (Test-Path -LiteralPath $PruneScript)) {
+        Write-Host "There is no prune script at $PruneScript (task-2720), so unluminous.com's public/downloads is not pruned." -ForegroundColor Yellow
+        return
+    }
+    $arguments = @($PruneScript, '--site', 'unluminous', '--current', $Version)
+    if ($DryRun) { $arguments += '--dry-run' }
+    & node @arguments
+    if ($LASTEXITCODE -ne 0) { throw "The downloads prune ($PruneScript) failed with exit code $LASTEXITCODE." }
+}
+
+<#
+.SYNOPSIS
+  Deletes this release's installer and macOS archive from `releases\` once every destination serves them.
+.DESCRIPTION
+  task-2721. The GitHub release on both repositories is the permanent record of what was built, and
+  unluminous.com hosts its own copy, so the one in `releases\` is a third copy that nothing reads after
+  this. Kept for ever, `releases\` reached 182 files and 5.4 GB. Only the files this release names are
+  deleted; anything else in the folder is left as it is.
+.PARAMETER Paths
+  The files this release published.
+#>
+function Remove-PublishedBuilds([string[]] $Paths) {
+    foreach ($path in $Paths) {
+        if (-not $path -or -not (Test-Path -LiteralPath $path)) { continue }
+        $bytes = (Get-Item -LiteralPath $path).Length
+        Remove-Item -LiteralPath $path -Force -Confirm:$false
+        Write-Host ("Deleted {0} ({1:N1} MB); the GitHub release and unluminous.com have it." -f $path, ($bytes / 1MB))
+    }
+}
 
 # Each step's name and when it started, so the release can say where its time went (`task-2240`).
 $script:Steps = [System.Collections.Generic.List[object]]::new()
@@ -453,11 +506,15 @@ if ($WhatIf) {
         Write-Host "  5. the GitHub release with the installers attached, on jasonmcaffee/unluminous"
         Write-Host "  6. node tools\publish-open-source.mjs --push --ref v$next, then the same release on $PublicRepository"
         if (-not $SkipSite) {
-            $lead = '  7.'
+            Write-Host "  7. prune unluminous.com's public/downloads down to $next and the 3 versions before it, keeping the version the page links:"
+            Write-Host "     node $PruneScript --site unluminous --current $next"
+            Invoke-DownloadsPrune $next -DryRun | ForEach-Object { Write-Host "       $_" }
             foreach ($site in $SitePublishers) {
-                Write-Host "$lead pwsh $($site.Script)$(if ($site.Versioned) { " -Version $next -Channel nightly" })"
-                $lead = '    '
+                Write-Host "     pwsh $($site.Script)$(if ($site.Versioned) { " -Version $next -Channel nightly" })"
             }
+            Write-Host '  8. ask every destination what it serves; when all of them have this release, delete the local copies:'
+            Write-Host "     delete releases\UnluminousSetup-$next-x64.exe"
+            if (-not $SkipMacos) { Write-Host "     delete releases\Unluminous-$next-macos.zip" }
         }
     }
     return
@@ -477,9 +534,11 @@ if ($dirty) {
 # the macOS build this release started. It does nothing before `$script:Writing` is set, so a person's own
 # change to `Cargo.toml` is never thrown away, and nothing after the commit, when the files are the release's.
 #
-# **What was built is kept (`task-2312`).** The installers stay in `releases\` and the record of the release
-# names them with their hashes, so the next start reuses them when the source has not changed. After the tag
-# the trap says that starting again carries on from the step that failed.
+# **What was built is kept until it is published (`task-2312`, `task-2721`).** The installers stay in
+# `releases\` while the release is unfinished, and the record of the release names them with their hashes, so
+# the next start reuses them when the source has not changed. After the tag the trap says that starting again
+# carries on from the step that failed. Once GitHub and unluminous.com both serve this release, the copies in
+# `releases\` are deleted: the GitHub release is the permanent record, and `releases\` had grown to 182 files.
 $script:Writing = $false
 $script:Tagged = $false
 $script:MacosChild = $null
@@ -911,6 +970,10 @@ if (-not $SkipSite) {
     if (-not $env:UNLUMINOUS_CHANGELOG) { $env:UNLUMINOUS_CHANGELOG = Join-Path $Repo 'CHANGELOG.md' }
     foreach ($site in $SitePublishers) {
         if (Test-JournalStep "site:$($site.Name)") { continue }
+        if ($site.Versioned) {
+            Write-Step "Pruning $($site.Name)'s downloads to $next and the 3 versions before it"
+            Invoke-DownloadsPrune $next
+        }
         Write-Step "Publishing $($site.Name)"
         $arguments = @('-NoProfile', '-File', $site.Script)
         # Only the product site is told which version: the parent page reads it out of the manifest
@@ -1031,6 +1094,18 @@ if (-not $SkipInstall) {
 Write-StepTimes $next
 
 if ($script:MissedDestinations.Count -eq 0) { Add-JournalStep 'done' }
+
+# **The local copies go once every destination has them (`task-2721`).** Not before: a release that missed a
+# destination is started again, and carrying on reads the installer out of `releases\`. Not with `-SkipSite`
+# either, because then the site has not copied it yet and its publish reads it from here.
+if ($script:MissedDestinations.Count -eq 0) {
+    if ($SkipSite) {
+        Write-Host "The sites were not published, so $kept is kept for their publish to copy." -ForegroundColor Yellow
+    } else {
+        Write-Step 'Deleting the published installers from releases\'
+        Remove-PublishedBuilds @($kept, $macosZip)
+    }
+}
 
 if ($script:MissedDestinations.Count -gt 0) {
     Write-Host ''

@@ -4,6 +4,7 @@
 The same file is attached to a release on both repositories: <https://github.com/Black-Rainbow-Labs/Unluminous/releases>,
 which is public and is what `update check` falls back to, and the private one where releases are cut.
 This folder is where the file is staged on its way to all three, and the site (`sites/unluminous` in the black-rainbow-labs-sites repository) copies it from here.
+Once all three serve it, `tools/release.ps1` deletes it from this folder (`task-2721`): the GitHub release is the permanent record.
 
 ```
 releases/

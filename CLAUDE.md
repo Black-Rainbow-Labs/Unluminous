@@ -301,6 +301,21 @@ ticket needs to know:
   release with no record.
 - `pwsh tools/release-steps.test.ps1` checks the retry, the record and the GitHub steps with nothing published.
 
+### A release deletes its `releases\` copy and prunes the site's downloads (`task-2721`)
+
+`releases\` had 182 installers (5.4 GB) and unluminous.com's `public/downloads` 314 (31.9 GB, twice over with
+`out/downloads`), because nothing ever removed one. Two rules:
+
+- **`releases\` holds an installer only until it is published.** Once every destination in the release's report
+  serves it, `tools/release.ps1` deletes this release's installer and macOS archive from `releases\`. The GitHub
+  release on both repositories is the permanent record. A release that missed a destination keeps them, because
+  carrying on reads them from there, and so does `-SkipSite`. `tools/promote.ps1` never reads `releases\`: it
+  publishes the files already in the site's `public/downloads`.
+- **The site keeps this version and the 3 before it.** Just before unluminous.com is published, the release runs
+  the sites repository's prune (`sites/scripts/prune-downloads.mjs --site unluminous --current <version>`,
+  task-2720), which never deletes the version the page links. Only those four nightlies can be promoted
+  afterwards. `-WhatIf` prints the prune's dry run and the two files it would delete from `releases\`.
+
 ### A release reclaims the build output it just superseded
 
 **Cargo never removes anything from `target`.** Every build writes a fresh hash-suffixed copy of each

@@ -24,6 +24,11 @@
 
   Running it twice is harmless: a version already at the top of stable stays there.
 
+  It reads the files from the site's public/downloads and never from the checkout's releases\, which
+  `tools/release.ps1` empties once a release is published (task-2721). The release also prunes the site to
+  the newest nightly and the 3 before it, so only those four (and the stable version the page already links)
+  can still be promoted.
+
 .PARAMETER Version
   The version to promote. The newest on the nightly channel when left out.
 
