@@ -158,34 +158,31 @@ $SitePublishers = @(
     @{ Name = 'unluminous.com'; Script = (Join-Path $SiteRepo 'scripts/publish.ps1'); Versioned = $true },
     @{ Name = 'blackrainbowlabs.com'; Script = (Join-Path $ParentSiteRepo 'scripts/publish.ps1'); Versioned = $false }
 )
-# The shared prune the sites repository keeps (task-2720). It deletes the installers in a site's
-# `public/downloads` older than the current version and the 3 before it, and never the version the page links.
+# The shared prune the sites repository keeps (task-2720). The site's `scripts/sync-release.mjs` runs it in
+# the same step that copies the new installer into `public/downloads`, so the publish below prunes the site
+# itself. The release calls it directly only for `-WhatIf`, to say which files that publish would delete.
 $PruneScript = $env:UNLUMINOUS_PRUNE_SCRIPT
 if (-not $PruneScript) { $PruneScript = [System.IO.Path]::GetFullPath((Join-Path $SiteRepo '../scripts/prune-downloads.mjs')) }
 
 <#
 .SYNOPSIS
-  Prunes unluminous.com's `public/downloads` to this release and the 3 releases before it.
+  Prints which installers the unluminous.com publish would prune from `public/downloads`, deleting nothing.
 .DESCRIPTION
   task-2721. Nothing removed an old installer from the site, so `public/downloads` reached 314 files and
-  31.9 GB, and the static export doubled that in `out/downloads`. The prune runs just before the site is
-  published, so the build the publish makes exports the pruned folder. `--current` names this release,
-  whose files the publish has not copied in yet, so it counts as the newest version. A machine without
-  the prune script says so and carries on, because a release is not refused over the disk.
-.PARAMETER Version
-  The version being released.
-.PARAMETER DryRun
-  Print what would be deleted and delete nothing.
+  31.9 GB, and the static export doubled that in `out/downloads`. The publish prunes it to the release it
+  copies in and the 3 releases before it, never deleting the version the page links. `-WhatIf` runs before
+  this release is built, so its files are not in the folder yet: the dry run is asked to keep 3 of the
+  versions already there, which is the same set the publish keeps once the new one is copied in.
 #>
-function Invoke-DownloadsPrune([string] $Version, [switch] $DryRun) {
+function Show-DownloadsPrune {
     if (-not (Test-Path -LiteralPath $PruneScript)) {
-        Write-Host "There is no prune script at $PruneScript (task-2720), so unluminous.com's public/downloads is not pruned." -ForegroundColor Yellow
+        Write-Host "There is no prune script at $PruneScript (task-2720), so the publish would not prune unluminous.com's downloads."
         return
     }
-    $arguments = @($PruneScript, '--site', 'unluminous', '--current', $Version)
-    if ($DryRun) { $arguments += '--dry-run' }
-    & node @arguments
-    if ($LASTEXITCODE -ne 0) { throw "The downloads prune ($PruneScript) failed with exit code $LASTEXITCODE." }
+    $output = & node $PruneScript --site-dir $SiteRepo --keep 3 --dry-run 2>&1
+    $code = $LASTEXITCODE
+    $output | ForEach-Object { Write-Host "       $_" }
+    if ($code -ne 0) { Write-Host "       The prune's dry run failed with exit code $code." -ForegroundColor Yellow }
 }
 
 <#
@@ -506,12 +503,14 @@ if ($WhatIf) {
         Write-Host "  5. the GitHub release with the installers attached, on jasonmcaffee/unluminous"
         Write-Host "  6. node tools\publish-open-source.mjs --push --ref v$next, then the same release on $PublicRepository"
         if (-not $SkipSite) {
-            Write-Host "  7. prune unluminous.com's public/downloads down to $next and the 3 versions before it, keeping the version the page links:"
-            Write-Host "     node $PruneScript --site unluminous --current $next"
-            Invoke-DownloadsPrune $next -DryRun | ForEach-Object { Write-Host "       $_" }
+            $lead = '  7.'
             foreach ($site in $SitePublishers) {
-                Write-Host "     pwsh $($site.Script)$(if ($site.Versioned) { " -Version $next -Channel nightly" })"
+                Write-Host "$lead pwsh $($site.Script)$(if ($site.Versioned) { " -Version $next -Channel nightly" })"
+                $lead = '    '
             }
+            Write-Host "     the unluminous.com publish copies $next into public/downloads and prunes it to $next and the 3 versions"
+            Write-Host "     before it, keeping the version the page links ($PruneScript). It would delete:"
+            Show-DownloadsPrune
             Write-Host '  8. ask every destination what it serves; when all of them have this release, delete the local copies:'
             Write-Host "     delete releases\UnluminousSetup-$next-x64.exe"
             if (-not $SkipMacos) { Write-Host "     delete releases\Unluminous-$next-macos.zip" }
@@ -970,10 +969,6 @@ if (-not $SkipSite) {
     if (-not $env:UNLUMINOUS_CHANGELOG) { $env:UNLUMINOUS_CHANGELOG = Join-Path $Repo 'CHANGELOG.md' }
     foreach ($site in $SitePublishers) {
         if (Test-JournalStep "site:$($site.Name)") { continue }
-        if ($site.Versioned) {
-            Write-Step "Pruning $($site.Name)'s downloads to $next and the 3 versions before it"
-            Invoke-DownloadsPrune $next
-        }
         Write-Step "Publishing $($site.Name)"
         $arguments = @('-NoProfile', '-File', $site.Script)
         # Only the product site is told which version: the parent page reads it out of the manifest

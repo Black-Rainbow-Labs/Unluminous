@@ -311,10 +311,12 @@ ticket needs to know:
   release on both repositories is the permanent record. A release that missed a destination keeps them, because
   carrying on reads them from there, and so does `-SkipSite`. `tools/promote.ps1` never reads `releases\`: it
   publishes the files already in the site's `public/downloads`.
-- **The site keeps this version and the 3 before it.** Just before unluminous.com is published, the release runs
-  the sites repository's prune (`sites/scripts/prune-downloads.mjs --site unluminous --current <version>`,
-  task-2720), which never deletes the version the page links. Only those four nightlies can be promoted
-  afterwards. `-WhatIf` prints the prune's dry run and the two files it would delete from `releases\`.
+- **The site keeps this version and the 3 before it.** The unluminous.com publish runs the sites repository's
+  prune (`sites/scripts/prune-downloads.mjs`, task-2720) in the same step that copies the new installer in, and it
+  never deletes the version the page links. Only those four nightlies can be promoted afterwards, because their
+  files are gone from both the site and `releases\`. `-WhatIf` prints the prune's dry run
+  (`--site-dir <site> --keep 3 --dry-run`, since the new version is not staged yet) and the two files it would
+  delete from `releases\`.
 
 ### A release reclaims the build output it just superseded
 
