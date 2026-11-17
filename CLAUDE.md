@@ -2885,6 +2885,15 @@ its own custom layout (same behavior as if they were open in different windows).
 - **Agent-Chat's menu has no motion entry**, and the tools entry says what it switches: whether the model may
   use Unluminous's own commands.
 
+## What `task-2737` changed (GitHub issue 4)
+
+- **Claude Code says on its `init` line which permission mode it is really in**, and a settings file that sets
+  `permissions.disableBypassPermissionsMode` (a company's managed settings) makes `bypassPermissions` run as `default`
+  with no error. `agent::Decoder::asked_mode` is compared with it (`mode_was_refused`, which reads `manual` and
+  `default` as one), and a difference is `Reply::ModeRefused`. The pane raises one notice saying why, and later turns
+  in that folder ask for `acceptEdits` (`AgentChat::bypass_refused`, `instead_of_a_refused_bypass`), kept for the
+  life of the window only. `tasks/task-2737-claude-bypass-refused-tdd.md` has the measurements.
+
 ## What `task-2392` changed, and the rules it left
 
 - **An endpoint has a mode, in the agent's own words** (`Provider::mode`, `ai.provider.<n>.mode`), chosen from

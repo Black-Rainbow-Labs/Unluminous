@@ -907,6 +907,10 @@ pub struct AgentChat {
     may_retry_without_the_session: bool,
     /// The dictation filling the draft, while there is one. See [`Dictating`].
     dictating: Option<Dictating>,
+    /// The working folders in which Claude Code refused `bypassPermissions` this session, so later turns there ask for
+    /// [`unluminous_chat::agent::INSTEAD_OF_BYPASS`] (`task-2737`). Not written down, so a policy that is lifted
+    /// takes effect at the next start.
+    pub bypass_refused: Vec<Option<PathBuf>>,
 }
 
 /// The request that runs `voice <verb> [state]` through `UnluminousApp::run_cli`. `task-2290`.
@@ -1031,6 +1035,7 @@ impl AgentChat {
             shapes: Vec::new(),
             shapes_taken: None,
             dictating: None,
+            bypass_refused: Vec::new(),
         }
     }
 
@@ -1908,7 +1913,8 @@ impl AgentChat {
         }
         if provider.is_a_program() {
             let ask = self.what_to_ask_the_agent();
-            self.client.ask(provider, ask);
+            let provider = self.instead_of_a_refused_bypass(provider, &ask);
+            self.client.ask(&provider, ask);
             return;
         }
         let tools = match self.configuration.tools {
@@ -1923,6 +1929,51 @@ impl AgentChat {
             true,
         );
         self.client.send(provider, body.to_string(), true, &Self::the_environment());
+    }
+
+    /// The row a turn runs, with `acceptEdits` in place of `bypassPermissions` where Claude Code has refused the
+    /// latter in this folder (`task-2737`). Any other row, and any other mode, is run as it is.
+    pub fn instead_of_a_refused_bypass(
+        &self,
+        provider: &Provider,
+        ask: &unluminous_chat::Ask,
+    ) -> Provider {
+        let mut provider = provider.clone();
+        let refused = self.bypass_refused.contains(&ask.folder);
+        if refused
+            && provider.wire == unluminous_chat::Wire::ClaudeCli
+            && unluminous_chat::agent::mode_of(&provider, ask.permission) == "bypassPermissions"
+        {
+            provider.mode = unluminous_chat::agent::INSTEAD_OF_BYPASS.to_owned();
+        }
+        provider
+    }
+
+    /// The notice for a turn whose agent did not run in the mode it was asked for (`task-2737`), and whether later
+    /// turns will ask for `acceptEdits` instead.
+    pub fn mode_refused_notice(
+        asked: &str,
+        running: &str,
+        asking: bool,
+        falls_back: bool,
+    ) -> String {
+        let mut text = format!(
+            "Claude Code was asked for the {asked} mode and is running in {running}. A Claude Code settings file on this \
+             machine refuses it, usually permissions.disableBypassPermissionsMode in a company's managed-settings.json \
+             (/Library/Application Support/ClaudeCode on macOS, C:\\Program Files\\ClaudeCode on Windows)."
+        );
+        if falls_back {
+            text.push_str(
+                " Later turns in this folder use acceptEdits, so edits run without asking.",
+            );
+        }
+        match asking {
+            true => text.push_str(" What the mode does not allow is asked about here."),
+            false => text.push_str(
+                " What the mode does not allow is refused: turn on \"Ask me before what it may not do\" in Settings -> Agent-Chat to be asked instead.",
+            ),
+        }
+        text
     }
 
     /// What one turn asks a command-line agent.
@@ -2223,6 +2274,20 @@ impl AgentChat {
             // conversation back as data — the pane showed an answer with no words in it and said nothing
             // about why. The server's words are carried verbatim, which is `unluminous_git`'s rule about
             // never inventing an error message.
+            // **The agent is not in the mode it was asked for** (`task-2737`, GitHub issue 4). Said once, and later
+            // turns in this folder ask for a mode the machine allows.
+            if let unluminous_chat::Reply::ModeRefused { asked, running } = &reply {
+                let folder = self.working_folder();
+                let falls_back = asked == "bypassPermissions";
+                if falls_back && !self.bypass_refused.contains(&folder) {
+                    self.bypass_refused.push(folder);
+                }
+                let asking = self.configuration.ask;
+                self.asking.push(Request::Notice {
+                    text: Self::mode_refused_notice(asked, running, asking, falls_back),
+                    kind: crate::components::toast::Kind::Problem,
+                });
+            }
             if let unluminous_chat::Reply::Failed(why) = &reply {
                 self.asking.push(Request::Notice {
                     text: why.clone(),
@@ -3932,3 +3997,5 @@ mod tests_task_2261 {
 mod tests_task_2285;
 #[cfg(test)]
 mod tests_task_2317;
+#[cfg(test)]
+mod tests_task_2737;

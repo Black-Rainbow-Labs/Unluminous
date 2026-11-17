@@ -268,6 +268,8 @@ impl Session {
             // rate limit came out as a short answer with nothing to say why. The failure is the news
             // and the end is not; `Decoder::finish` stops saying it as well, and this is the half that
             // holds whatever the transport does.
+            // The window says what this means and chooses the next turn's mode. The conversation has nothing to keep.
+            Reply::ModeRefused { .. } => {}
             Reply::Asked(question) => {
                 self.asking.retain(|asked| asked.id != question.id);
                 self.asking.push(question);
