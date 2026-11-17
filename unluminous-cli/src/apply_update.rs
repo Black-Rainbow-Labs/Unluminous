@@ -36,6 +36,10 @@ pub struct Plan {
     /// Whether Unluminous was installed for everybody on this machine, which the installer has to be
     /// told again or it installs a second copy for this person alone.
     pub all_users: bool,
+    /// Where a failed install is written for the window started afterwards, normally [`failure_note`].
+    /// `None` writes nothing, which is what a test asks for so it never leaves a note for the person's
+    /// own Unluminous to show.
+    pub note: Option<PathBuf>,
 }
 
 /// The arguments that start the helper on `plan`, in the order [`asked_for`] reads them.
@@ -50,6 +54,10 @@ pub fn command_line(plan: &Plan) -> Vec<String> {
     ];
     if plan.all_users {
         words.push("--all-users".to_owned());
+    }
+    if let Some(note) = &plan.note {
+        words.push("--note".to_owned());
+        words.push(note.display().to_string());
     }
     words
 }
@@ -69,6 +77,7 @@ pub fn asked_for(words: &[String]) -> Option<Plan> {
         wait: value("--wait")?.parse().ok()?,
         relaunch: PathBuf::from(value("--relaunch")?),
         all_users: words.iter().any(|word| word == "--all-users"),
+        note: value("--note").map(PathBuf::from),
     })
 }
 
@@ -77,9 +86,15 @@ pub fn asked_for(words: &[String]) -> Option<Plan> {
 const PATIENCE: Duration = Duration::from_secs(60);
 
 /// Wait for the window, install, start the new one, and answer the exit code.
+///
+/// A failed install is written to the plan's note, [`failure_note`], before the old copy is started again, because this
+/// helper has no window: the Unluminous that comes back reads the note at startup and says what went
+/// wrong (`task-2730`). Before that, a failed install started the old copy with nothing on the screen,
+/// and the only trace was a line in `apply-update.log` in the temporary folder.
 pub fn run(plan: &Plan) -> i32 {
     let folder = plan.installer.parent().map(Path::to_path_buf).unwrap_or_default();
-    let mut log = Log::at(&folder.join("apply-update.log"));
+    let log_path = folder.join("apply-update.log");
+    let mut log = Log::at(&log_path);
     log.say(&format!("waiting for process {} to close", plan.wait));
     let started = Instant::now();
     while crate::instances::is_running(plan.wait) && started.elapsed() < PATIENCE {
@@ -88,8 +103,21 @@ pub fn run(plan: &Plan) -> i32 {
     log.say(&format!("waited {:.1} s", started.elapsed().as_secs_f32()));
     let installed = install(plan, &folder, &mut log);
     match &installed {
-        Ok(()) => log.say("installed"),
-        Err(problem) => log.say(&format!("the install failed: {problem}")),
+        Ok(()) => {
+            log.say("installed");
+            if let Some(note) = &plan.note {
+                let _ = std::fs::remove_file(note);
+            }
+        }
+        Err(problem) => {
+            log.say(&format!("the install failed: {problem}"));
+            if let Some(note) = &plan.note {
+                let sentence = failure_sentence(version_of(&folder).as_deref(), problem, &log_path);
+                if let Err(written) = std::fs::write(note, sentence) {
+                    log.say(&format!("could not write {}: {written}", note.display()));
+                }
+            }
+        }
     }
     // Started whether or not the install worked: a person who pressed Install & Restart gets an
     // Unluminous back either way, and the old one is what is there when it did not.
@@ -101,6 +129,41 @@ pub fn run(plan: &Plan) -> i32 {
         Ok(()) => 0,
         Err(_) => 1,
     }
+}
+
+/// The file a failed install is written to, for the window that is started afterwards to read.
+///
+/// It is in the temporary folder, which on both platforms is the person's own: the helper inherits it
+/// from the window, and on macOS a window started by `open` is given the same per-user folder by
+/// launchd. One file and not one per version, because only the last attempt is worth saying.
+pub fn failure_note() -> PathBuf {
+    std::env::temp_dir().join("unluminous-update-failed.txt")
+}
+
+/// Read and remove what [`run`] wrote to `path` after a failed install, so it is said once.
+pub fn take_the_failure(path: &Path) -> Option<String> {
+    let note = std::fs::read_to_string(path).ok()?;
+    let _ = std::fs::remove_file(path);
+    let note = note.trim();
+    (!note.is_empty()).then(|| note.to_owned())
+}
+
+/// The sentence the relaunched window shows.
+fn failure_sentence(version: Option<&str>, problem: &str, log: &Path) -> String {
+    let what = match version {
+        Some(version) => format!("Unluminous {version}"),
+        None => "the update".to_owned(),
+    };
+    format!(
+        "Could not install {what}, so this is still the version you had: {problem}. The steps are in {}.",
+        log.display()
+    )
+}
+
+/// The version a download folder holds, from its name, `unluminous-update-<version>`.
+fn version_of(folder: &Path) -> Option<String> {
+    let name = folder.file_name()?.to_str()?;
+    name.strip_prefix("unluminous-update-").filter(|version| !version.is_empty()).map(str::to_owned)
 }
 
 /// Run Inno Setup with no window and no questions, and wait for it.
@@ -129,8 +192,8 @@ fn install(plan: &Plan, folder: &Path, log: &mut Log) -> Result<(), String> {
     }
 }
 
-/// Unzip the new bundle beside the old one and swap them. `ditto` is what keeps a bundle's signature
-/// and its extended attributes whole, which `unzip` does not.
+/// Unzip the new bundle and swap it for the old one. `ditto` is what keeps a bundle's signature and its
+/// extended attributes whole, which `unzip` does not.
 #[cfg(target_os = "macos")]
 fn install(plan: &Plan, folder: &Path, log: &mut Log) -> Result<(), String> {
     let unpacked = folder.join("unpacked");
@@ -144,21 +207,88 @@ fn install(plan: &Plan, folder: &Path, log: &mut Log) -> Result<(), String> {
     if !status.success() {
         return Err(format!("ditto answered {status}"));
     }
-    let name = plan.relaunch.file_name().ok_or("the bundle has no name")?;
-    let fresh = unpacked.join(name);
-    if !fresh.exists() {
-        return Err(format!("the zip holds no {}", Path::new(name).display()));
+    let fresh = the_one_bundle_in(&unpacked)?;
+    swap_in(&fresh, &plan.relaunch, log)
+}
+
+/// The single `.app` folder the zip unpacked, whatever it is called.
+///
+/// It used to be looked for under the running bundle's own name, so a copy somebody renamed, such as
+/// `Unluminous - company install.app` put there by a company's software portal, found nothing in a zip
+/// that holds `Unluminous.app` (`task-2730`).
+pub fn the_one_bundle_in(unpacked: &Path) -> Result<PathBuf, String> {
+    let mut bundles = std::fs::read_dir(unpacked)
+        .map_err(|problem| format!("could not read {}: {problem}", unpacked.display()))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.is_dir() && path.extension().is_some_and(|extension| extension == "app")
+        });
+    match (bundles.next(), bundles.next()) {
+        (Some(bundle), None) => Ok(bundle),
+        _ => Err("the zip does not hold exactly one .app bundle".to_owned()),
     }
-    let old = folder.join("previous.app");
-    let _ = std::fs::remove_dir_all(&old);
-    std::fs::rename(&plan.relaunch, &old).map_err(|problem| problem.to_string())?;
-    if let Err(problem) = std::fs::rename(&fresh, &plan.relaunch) {
+}
+
+/// The prefix of the name the old bundle is moved to, beside itself, while the new one takes its place.
+const PARKED_PREFIX: &str = ".unluminous-previous-";
+
+/// Put `fresh` where `target` is, and try to delete the old copy.
+///
+/// **The old copy is renamed inside the folder it is in, never moved to another folder** (`task-2730`).
+/// On macOS a folder moved to a different parent has its own `..` entry rewritten, which needs write
+/// permission on the folder being moved. A bundle a company's software portal installed is owned by
+/// root with mode `drwxr-x---`, so moving it into the temporary folder failed with `EACCES`. A rename
+/// inside one folder needs write permission on that folder only, and `/Applications` is `root:admin`
+/// with mode `drwxrwxr-x`, so an administrator's account can rename a bundle owned by root there.
+///
+/// The parked name starts with a dot and has no `.app` extension, so LaunchServices does not list it as
+/// a second Unluminous. A bundle owned by root cannot be deleted without administrator rights, so a
+/// failed delete leaves it and says so in the log. `remove_dir_all` does not follow symbolic links, and
+/// a parked symbolic link is removed as a link, so the delete cannot reach outside the folder.
+pub fn swap_in(fresh: &Path, target: &Path, log: &mut Log) -> Result<(), String> {
+    let parent = target.parent().ok_or("the bundle has no folder")?;
+    forget_older_parked_copies(parent, log);
+    let parked = parent.join(format!("{PARKED_PREFIX}{}", std::process::id()));
+    let _ = remove_parked(&parked);
+    std::fs::rename(target, &parked)
+        .map_err(|problem| format!("could not move {} aside: {problem}", target.display()))?;
+    if let Err(problem) = std::fs::rename(fresh, target) {
         // Put the old one back, so the relaunch still finds an Unluminous.
-        let _ = std::fs::rename(&old, &plan.relaunch);
-        return Err(problem.to_string());
+        let _ = std::fs::rename(&parked, target);
+        return Err(format!("could not move the new bundle to {}: {problem}", target.display()));
     }
     log.say("swapped the bundle");
+    if let Err(problem) = remove_parked(&parked) {
+        log.say(&format!("left the old bundle at {}: {problem}", parked.display()));
+    }
     Ok(())
+}
+
+/// Delete what an earlier update parked and could not delete, which a later attempt may be able to.
+fn forget_older_parked_copies(parent: &Path, log: &mut Log) {
+    let Ok(entries) = std::fs::read_dir(parent) else { return };
+    for entry in entries.filter_map(Result::ok) {
+        let name = entry.file_name();
+        if !name.to_string_lossy().starts_with(PARKED_PREFIX) {
+            continue;
+        }
+        if let Err(problem) = remove_parked(&entry.path()) {
+            log.say(&format!("left an older bundle at {}: {problem}", entry.path().display()));
+        }
+    }
+}
+
+/// Remove a parked bundle without following a symbolic link out of its folder.
+fn remove_parked(parked: &Path) -> std::io::Result<()> {
+    match std::fs::symlink_metadata(parked) {
+        Err(problem) if problem.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(problem) => Err(problem),
+        Ok(found) if found.file_type().is_symlink() || found.is_file() => {
+            std::fs::remove_file(parked)
+        }
+        Ok(_) => std::fs::remove_dir_all(parked),
+    }
 }
 
 #[cfg(not(any(windows, target_os = "macos")))]
@@ -186,16 +316,18 @@ fn relaunch(target: &Path) -> Result<(), String> {
 }
 
 /// A log that is appended to and never fails the work it describes.
-struct Log {
+pub struct Log {
     file: Option<std::fs::File>,
 }
 
 impl Log {
-    fn at(path: &Path) -> Self {
+    /// A log appended to `path`, or one that writes nowhere when the file cannot be opened.
+    pub fn at(path: &Path) -> Self {
         Self { file: std::fs::OpenOptions::new().create(true).append(true).open(path).ok() }
     }
 
-    fn say(&mut self, line: &str) {
+    /// Write one line.
+    pub fn say(&mut self, line: &str) {
         if let Some(file) = self.file.as_mut() {
             let _ = writeln!(file, "{line}");
         }
@@ -215,8 +347,11 @@ mod tests {
             wait: 4242,
             relaunch: PathBuf::from("C:/Users/me/AppData/Local/Programs/Unluminous/unluminous.exe"),
             all_users: true,
+            note: Some(PathBuf::from("C:/temp/unluminous-update-failed.txt")),
         };
         assert_eq!(asked_for(&command_line(&plan)), Some(plan.clone()));
+        let silent = Plan { note: None, ..plan.clone() };
+        assert_eq!(asked_for(&command_line(&silent)), Some(silent));
         let per_user = Plan { all_users: false, ..plan };
         assert_eq!(asked_for(&command_line(&per_user)), Some(per_user));
     }
@@ -249,16 +384,31 @@ mod tests {
         std::fs::copy(&cmd, &installer).expect("a program to stand in for the installer");
         let relaunch = folder.join("relaunched.exe");
         std::fs::copy(&cmd, &relaunch).expect("a program to stand in for Unluminous");
-        let plan = Plan { installer, wait: u32::MAX - 1, relaunch, all_users: false };
+        let note = folder.join("failed.txt");
+        let plan = Plan {
+            installer,
+            wait: u32::MAX - 1,
+            relaunch,
+            all_users: false,
+            note: Some(note.clone()),
+        };
         let code = run(&plan);
         let log = std::fs::read_to_string(folder.join("apply-update.log")).expect("a log");
+        // A failed install leaves a sentence for the window that is started afterwards, and taking it
+        // removes it, so it is said once.
+        if code != 0 {
+            let said = take_the_failure(&note).expect("a failed install leaves a note");
+            assert!(said.starts_with("Could not install"), "{said}");
+            assert!(said.contains("apply-update.log"), "{said}");
+            assert!(take_the_failure(&note).is_none(), "the note is said once");
+        }
         assert!(log.contains("the installer answered"), "{log}");
         assert!(log.contains("started"), "{log}");
         // `where.exe` with Inno's switches exits non-zero, which the helper reports rather than hides.
         assert!(code == 0 || log.contains("the install failed"), "{log}");
         // The stand-in that was relaunched may still be running for a moment, and a program that is
         // running cannot be deleted on Windows, so its file is asked for again until it goes.
-        for name in ["setup.exe", "relaunched.exe", "apply-update.log", "setup.log"] {
+        for name in ["setup.exe", "relaunched.exe", "apply-update.log", "setup.log", "failed.txt"] {
             for _ in 0..50 {
                 let path = folder.join(name);
                 if !path.exists() || std::fs::remove_file(&path).is_ok() {
@@ -268,5 +418,89 @@ mod tests {
             }
         }
         let _ = std::fs::remove_dir(&folder);
+    }
+
+    /// A scratch folder of its own for one test.
+    fn scratch(name: &str) -> PathBuf {
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-apply-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("a folder");
+        folder
+    }
+
+    #[test]
+    fn the_bundle_in_the_zip_is_found_whatever_it_is_called() {
+        let folder = scratch("one-bundle");
+        std::fs::create_dir_all(folder.join("Unluminous.app/Contents")).expect("a bundle");
+        std::fs::write(folder.join("readme.txt"), "x").expect("a file");
+        assert_eq!(the_one_bundle_in(&folder), Ok(folder.join("Unluminous.app")));
+        std::fs::create_dir_all(folder.join("Other.app")).expect("a second bundle");
+        assert!(the_one_bundle_in(&folder).is_err(), "two bundles is not one");
+        let _ = std::fs::remove_dir_all(&folder);
+        let empty = scratch("no-bundle");
+        assert!(the_one_bundle_in(&empty).is_err(), "no bundle is not one");
+        let _ = std::fs::remove_dir_all(&empty);
+    }
+
+    /// The new bundle takes the old one's name, even a renamed one, and the old copy is parked inside
+    /// the same folder and then deleted, so nothing is moved to another folder.
+    #[test]
+    fn the_new_bundle_replaces_a_renamed_one_and_the_old_copy_is_parked_beside_it() {
+        let folder = scratch("swap");
+        let applications = folder.join("Applications");
+        let target = applications.join("Unluminous - company install.app");
+        std::fs::create_dir_all(target.join("Contents")).expect("the old bundle");
+        std::fs::write(target.join("Contents/old"), "old").expect("an old file");
+        // A copy an earlier update could not delete.
+        std::fs::create_dir_all(applications.join(format!("{PARKED_PREFIX}1")))
+            .expect("a leftover");
+        let unpacked = folder.join("unpacked");
+        let fresh = unpacked.join("Unluminous.app");
+        std::fs::create_dir_all(fresh.join("Contents")).expect("the new bundle");
+        std::fs::write(fresh.join("Contents/new"), "new").expect("a new file");
+        let mut log = Log::at(&folder.join("log.txt"));
+        swap_in(&the_one_bundle_in(&unpacked).expect("one bundle"), &target, &mut log)
+            .expect("the swap works");
+        assert!(target.join("Contents/new").exists(), "the new bundle is in place");
+        assert!(!target.join("Contents/old").exists(), "the old one is not");
+        let left: Vec<String> = std::fs::read_dir(&applications)
+            .expect("the folder")
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            left,
+            vec!["Unluminous - company install.app".to_owned()],
+            "nothing parked is left"
+        );
+        let said = std::fs::read_to_string(folder.join("log.txt")).expect("the log");
+        assert!(said.contains("swapped the bundle"), "{said}");
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn a_swap_that_cannot_place_the_new_bundle_puts_the_old_one_back() {
+        let folder = scratch("swap-back");
+        let target = folder.join("Unluminous.app");
+        std::fs::create_dir_all(&target).expect("the old bundle");
+        std::fs::write(target.join("old"), "old").expect("an old file");
+        let mut log = Log::at(&folder.join("log.txt"));
+        let missing = folder.join("unpacked/Unluminous.app");
+        let refused = swap_in(&missing, &target, &mut log).expect_err("there is nothing to move");
+        assert!(refused.contains("could not move the new bundle"), "{refused}");
+        assert!(target.join("old").exists(), "the old bundle is back where it was");
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn a_failure_sentence_names_the_version_and_the_log() {
+        assert_eq!(
+            version_of(Path::new("/tmp/unluminous-update-1.31.0")).as_deref(),
+            Some("1.31.0")
+        );
+        assert_eq!(version_of(Path::new("/tmp/elsewhere")), None);
+        let said = failure_sentence(Some("1.31.0"), "permission denied", Path::new("/tmp/a.log"));
+        assert!(said.contains("Unluminous 1.31.0") && said.contains("/tmp/a.log"), "{said}");
     }
 }

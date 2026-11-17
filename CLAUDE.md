@@ -6968,6 +6968,17 @@ start that one.
 `unluminous-cli update install | skip | status` is the agent's half, and `update status` is the only way
 anything outside the window can see the notice and its buttons.
 
+**On macOS the old bundle is renamed aside inside its own folder, never moved out of it** (`task-2730`).
+A folder moved to another parent needs write permission on itself, and a bundle a company's software
+portal installed is owned by root with mode `drwxr-x---`, so moving it into the temporary folder failed
+with `EACCES`. `apply_update::swap_in` renames it to `.unluminous-previous-<pid>` beside itself, which
+needs write permission on `/Applications` only, puts the new bundle in its place, and deletes the old
+one when it can. The zip's bundle is the one `.app` in it, whatever the installed copy is called.
+`update_install::updatable_in_place` asks `access(W_OK)` of the bundle's folder before anything is
+downloaded, and every place that offers or starts `Install & Restart` asks it. A failed install is
+written to `apply_update::failure_note()` and the relaunched window shows it at startup
+(`say_a_failed_update`).
+
 ## On Windows the window answers its own hit test, so Windows resizes it
 
 `task-2063`: *"I still have issues resizing the window from time to time. e.g. can resize from left
