@@ -102,6 +102,12 @@ pub enum Reply {
         id: String,
         said: String,
     },
+    /// The agent is running in another permission mode than the one it was asked for (`task-2737`). Claude Code
+    /// does this without an error when a settings file disables `bypassPermissions`.
+    ModeRefused {
+        asked: String,
+        running: String,
+    },
     /// It did not work, in the server's own words.
     Failed(String),
 }

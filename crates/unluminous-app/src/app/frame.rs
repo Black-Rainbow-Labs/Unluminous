@@ -2208,7 +2208,7 @@ impl UnluminousApp {
             let installable =
                 matches!(&self.update_answer, Some(crate::services::update::Answer::Newer(_)))
                     && crate::services::update::PLATFORM_FIELD.is_some()
-                    && crate::services::update_install::installed_at().is_ok()
+                    && crate::services::update_install::updatable_in_place().is_ok()
                     && self.install.as_ref().is_none_or(|install| !install.is_running());
             let showing = about.clone().with_update(self.update_line()).installable(installable);
             let outcome = about_dialog::show(ui.ctx(), &showing);

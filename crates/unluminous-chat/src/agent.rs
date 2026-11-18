@@ -430,6 +430,22 @@ pub fn mode_of(provider: &Provider, permission: Permission) -> &str {
     }
 }
 
+/// Whether Claude Code is running in another mode than the one it was asked for (`task-2737`).
+///
+/// Claude Code reports `manual` as `default` on its `init` line, so the two are one mode here. An empty answer on
+/// either side is nothing to compare.
+pub fn mode_was_refused(asked: &str, running: &str) -> bool {
+    let same = |mode: &str| match mode.trim() {
+        "manual" => "default".to_owned(),
+        other => other.to_owned(),
+    };
+    !asked.trim().is_empty() && !running.trim().is_empty() && same(asked) != same(running)
+}
+
+/// The mode a turn asks Claude Code for instead of `bypassPermissions` once this machine has refused it
+/// (`task-2737`): edits run without asking, and anything else is asked about.
+pub const INSTEAD_OF_BYPASS: &str = "acceptEdits";
+
 /// What is written to the agent's standard input: the words, and any picture it takes no other way.
 ///
 /// Claude Code has no `--image`: it reads a picture when it is given the path of one, which is what
@@ -552,6 +568,7 @@ pub fn run(
         }
     }
     let mut decoder = Decoder::new(provider.wire);
+    decoder.asked_mode = mode_of(provider, ask.permission).to_owned();
     let mut carried_on = true;
     let lines = crate::approval::lines_of(output);
     'reading: loop {
@@ -736,6 +753,9 @@ pub struct Decoder {
     questions: Vec<(crate::approval::Question, serde_json::Value)>,
     /// Lines to write to the agent's standard input, which the thread running the turn writes and empties.
     pub outgoing: Vec<serde_json::Value>,
+    /// The permission mode the turn was started with, compared with the one Claude Code says it is running in
+    /// on its `init` line (`task-2737`). Empty when nothing is to be compared.
+    pub asked_mode: String,
 }
 
 impl Decoder {
@@ -751,6 +771,7 @@ impl Decoder {
             used: (0, 0),
             questions: Vec::new(),
             outgoing: Vec::new(),
+            asked_mode: String::new(),
         }
     }
 
@@ -836,6 +857,17 @@ impl Decoder {
                 // `init` names the model the session really started with, which is the honest answer
                 // to what is in the header chip — a row that names no model gets the agent's own.
                 if value["subtype"] == "init" => {
+                    // **The mode Claude Code is really in** (`task-2737`). A settings file that sets
+                    // `permissions.disableBypassPermissionsMode` makes `bypassPermissions` run as `default` with no
+                    // error, and in `--print` that refuses every tool no allow rule names.
+                    if let Some(running) = value["permissionMode"].as_str() {
+                        if mode_was_refused(&self.asked_mode, running) {
+                            out.push(Reply::ModeRefused {
+                                asked: self.asked_mode.clone(),
+                                running: running.to_owned(),
+                            });
+                        }
+                    }
                     if let Some(model) = value["model"].as_str().filter(|one| !one.is_empty()) {
                         if !self.started {
                             self.started = true;
@@ -1631,6 +1663,43 @@ mod tests {
             ],
         );
         assert_eq!(replies, vec![Reply::Compacted { before: 41_234 }]);
+    }
+
+    /// The `init` line Claude Code 2.1.326 wrote when `bypassPermissions` was refused by
+    /// `permissions.disableBypassPermissionsMode`, cut to the fields read (`task-2737`).
+    fn init_in(mode: &str) -> String {
+        format!(
+            r#"{{"type":"system","subtype":"init","session_id":"s-1","model":"claude-haiku-5-5","permissionMode":"{mode}"}}"#
+        )
+    }
+
+    #[test]
+    fn a_refused_bypass_is_reported_once_from_the_init_line() {
+        let mut decoder = Decoder::new(Wire::ClaudeCli);
+        decoder.asked_mode = "bypassPermissions".to_owned();
+        let replies = decoder.line(&init_in("default"));
+        assert!(replies.contains(&Reply::ModeRefused {
+            asked: "bypassPermissions".to_owned(),
+            running: "default".to_owned(),
+        }));
+    }
+
+    #[test]
+    fn a_mode_that_was_given_is_not_reported() {
+        for (asked, running) in [
+            ("bypassPermissions", "bypassPermissions"),
+            ("manual", "default"),
+            ("acceptEdits", "acceptEdits"),
+            ("", "default"),
+        ] {
+            let mut decoder = Decoder::new(Wire::ClaudeCli);
+            decoder.asked_mode = asked.to_owned();
+            let replies = decoder.line(&init_in(running));
+            assert!(
+                !replies.iter().any(|reply| matches!(reply, Reply::ModeRefused { .. })),
+                "{asked} running as {running}: {replies:?}"
+            );
+        }
     }
 
     #[test]

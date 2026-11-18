@@ -99,7 +99,7 @@ impl UnluminousApp {
             }
         );
         let skip = ("Don't Ask Again".to_owned(), Act::SkipUpdate(release.version.clone()));
-        let go = match (update::PLATFORM_FIELD, update_install::installed_at()) {
+        let go = match (update::PLATFORM_FIELD, update_install::updatable_in_place()) {
             (Some(_), Ok(_)) => {
                 ("Install & Restart".to_owned(), Act::InstallUpdate(release.version.clone()))
             }
@@ -107,6 +107,16 @@ impl UnluminousApp {
         };
         self.toasts.withdraw_the_offers();
         self.toasts.offer(text, vec![skip, go]);
+    }
+
+    /// Say what went wrong when the last `Install & Restart` could not install, which the helper wrote
+    /// down before it started this window again (`task-2730`). Called once, at startup, by the released
+    /// binary only, so a test's window never reads the person's note.
+    pub fn say_a_failed_update(&mut self) {
+        let note = unluminous_cli::apply_update::failure_note();
+        if let Some(said) = unluminous_cli::apply_update::take_the_failure(&note) {
+            self.toasts.say(said, Kind::Problem);
+        }
     }
 
     /// Carry out a button on a notice.
@@ -160,7 +170,7 @@ impl UnluminousApp {
             ));
         }
         if restart {
-            update_install::installed_at()
+            update_install::updatable_in_place()
                 .map_err(|problem| format!("Cannot update in place: {problem}."))?;
         }
         self.toasts.withdraw_the_offers();
@@ -197,7 +207,7 @@ impl UnluminousApp {
 
     /// Start the helper and close the window the ordinary way, so what the project remembers is written.
     fn hand_over_and_close(&mut self, installer: &std::path::Path) {
-        let handed = update_install::installed_at()
+        let handed = update_install::updatable_in_place()
             .and_then(|relaunch| update_install::hand_over(installer, &relaunch));
         if let Err(problem) = handed {
             self.toasts.say(format!("Could not install the update: {problem}"), Kind::Problem);
@@ -321,7 +331,7 @@ impl UnluminousApp {
             return Ok(said);
         }
         if restart {
-            update_install::installed_at()
+            update_install::updatable_in_place()
                 .map_err(|problem| format!("Cannot update in place: {problem}."))?;
         }
         let Some(download) = release.download.clone() else {
@@ -453,6 +463,10 @@ impl UnluminousApp {
             "install": install,
             "offered": offered,
             "installedAt": update_install::installed_at().ok().map(|path| path.display().to_string()),
+            "updatableInPlace": match update_install::updatable_in_place() {
+                Ok(_) => serde_json::json!(true),
+                Err(problem) => serde_json::json!(problem),
+            },
         })
     }
 }

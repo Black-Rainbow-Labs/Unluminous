@@ -2902,6 +2902,15 @@ its own custom layout (same behavior as if they were open in different windows).
 - **Agent-Chat's menu has no motion entry**, and the tools entry says what it switches: whether the model may
   use Unluminous's own commands.
 
+## What `task-2737` changed (GitHub issue 4)
+
+- **Claude Code says on its `init` line which permission mode it is really in**, and a settings file that sets
+  `permissions.disableBypassPermissionsMode` (a company's managed settings) makes `bypassPermissions` run as `default`
+  with no error. `agent::Decoder::asked_mode` is compared with it (`mode_was_refused`, which reads `manual` and
+  `default` as one), and a difference is `Reply::ModeRefused`. The pane raises one notice saying why, and later turns
+  in that folder ask for `acceptEdits` (`AgentChat::bypass_refused`, `instead_of_a_refused_bypass`), kept for the
+  life of the window only. `tasks/task-2737-claude-bypass-refused-tdd.md` has the measurements.
+
 ## What `task-2392` changed, and the rules it left
 
 - **An endpoint has a mode, in the agent's own words** (`Provider::mode`, `ai.provider.<n>.mode`), chosen from
@@ -6984,6 +6993,17 @@ start that one.
 
 `unluminous-cli update install | skip | status` is the agent's half, and `update status` is the only way
 anything outside the window can see the notice and its buttons.
+
+**On macOS the old bundle is renamed aside inside its own folder, never moved out of it** (`task-2730`).
+A folder moved to another parent needs write permission on itself, and a bundle a company's software
+portal installed is owned by root with mode `drwxr-x---`, so moving it into the temporary folder failed
+with `EACCES`. `apply_update::swap_in` renames it to `.unluminous-previous-<pid>` beside itself, which
+needs write permission on `/Applications` only, puts the new bundle in its place, and deletes the old
+one when it can. The zip's bundle is the one `.app` in it, whatever the installed copy is called.
+`update_install::updatable_in_place` asks `access(W_OK)` of the bundle's folder before anything is
+downloaded, and every place that offers or starts `Install & Restart` asks it. A failed install is
+written to `apply_update::failure_note()` and the relaunched window shows it at startup
+(`say_a_failed_update`).
 
 ## On Windows the window answers its own hit test, so Windows resizes it
 

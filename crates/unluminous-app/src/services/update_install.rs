@@ -268,6 +268,49 @@ pub fn installed_at() -> Result<PathBuf, String> {
     Err("there is no installer to run on this platform".to_owned())
 }
 
+/// Where the running Unluminous is installed, when it can also replace itself there.
+///
+/// `task-2730`: a copy a company's software portal installed is in a folder this account may not be
+/// able to write to, and the helper that does the install has no window, so finding that out after a
+/// 258 MB download meant the old copy came back with nothing said. This asks first, with the same
+/// question the operating system will ask the rename, so the window can say why before anything is
+/// downloaded. Every place that offers or starts `Install & Restart` asks this rather than
+/// [`installed_at`].
+pub fn updatable_in_place() -> Result<PathBuf, String> {
+    let installed = installed_at()?;
+    can_replace(&installed)?;
+    Ok(installed)
+}
+
+/// Whether the folder holding `installed` can be written to by this account.
+///
+/// On macOS the new bundle is renamed into that folder and the old one renamed aside inside it, which
+/// needs write permission on the folder and nothing else (see `unluminous_cli::apply_update::swap_in`).
+/// On Windows the installer asks for an administrator itself when the install is for every user, so
+/// there is nothing to ask here.
+pub fn can_replace(installed: &Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let folder = installed.parent().ok_or("the program has no folder")?;
+        let name = std::ffi::CString::new(folder.as_os_str().as_bytes()).map_err(|_| {
+            format!("{} is not a path the system can be asked about", folder.display())
+        })?;
+        // SAFETY: `name` is a valid, NUL terminated C string that lives for the length of the call.
+        let answer = unsafe { libc::access(name.as_ptr(), libc::W_OK) };
+        if answer != 0 {
+            return Err(format!(
+                "Unluminous is installed in {}, a folder you cannot write to, so it cannot update itself. Download the new version from {}, or ask whoever installed it to update it",
+                folder.display(),
+                update::RELEASES_PAGE
+            ));
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = installed;
+    Ok(())
+}
+
 /// Start the helper that installs `installer` once this process has gone, and starts `relaunch`.
 ///
 /// The window closes itself afterwards, the ordinary way, so what the project remembers is written
@@ -286,6 +329,7 @@ pub fn hand_over(installer: &Path, relaunch: &Path) -> Result<(), String> {
         wait: std::process::id(),
         relaunch: relaunch.to_path_buf(),
         all_users,
+        note: Some(unluminous_cli::apply_update::failure_note()),
     };
     let mut command = std::process::Command::new(&copy);
     command.args(unluminous_cli::apply_update::command_line(&plan)).current_dir(folder);
@@ -386,6 +430,28 @@ mod tests {
         assert!(refused.contains("bytes"), "{refused}");
         assert!(!place.join("UnluminousSetup-9.9.9-x64.exe").exists());
         let _ = std::fs::remove_dir(&place);
+    }
+
+    /// A folder this account cannot write to is refused before anything is downloaded, and one it can
+    /// write to is not.
+    #[cfg(unix)]
+    #[test]
+    fn a_bundle_in_a_folder_that_cannot_be_written_to_is_not_updated_in_place() {
+        use std::os::unix::fs::PermissionsExt;
+        let place = folder("writable");
+        let bundle = place.join("Unluminous.app");
+        std::fs::create_dir_all(&bundle).expect("a bundle");
+        assert_eq!(can_replace(&bundle), Ok(()));
+        std::fs::set_permissions(&place, std::fs::Permissions::from_mode(0o555))
+            .expect("read only");
+        let refused = can_replace(&bundle);
+        std::fs::set_permissions(&place, std::fs::Permissions::from_mode(0o755)).expect("writable");
+        // root can write anywhere, so the refusal is only asserted for an ordinary account.
+        if unsafe { libc::geteuid() } != 0 {
+            let refused = refused.expect_err("the folder is read only");
+            assert!(refused.contains("cannot update itself"), "{refused}");
+        }
+        let _ = std::fs::remove_dir_all(&place);
     }
 
     #[test]

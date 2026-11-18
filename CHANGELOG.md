@@ -6,7 +6,16 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.31.0 — 2026-11-12
+## 1.31.2 — 2026-11-17
+
+- Say when Claude Code refuses bypassPermissions, and use acceptEdits after (`task-2737`)
+- Let the bypass test write its scripted agent (`task-2737`)
+
+## 1.31.1 — 2026-11-17
+
+- Update an Unluminous installed by a company portal on macOS (`task-2730`)
+
+## 1.31.0 — 2026-11-11
 
 - Paste a picture into Markdown, Start Work on a new ticket, sequence bands that hold their notes (`task-2634`)
 - Write a pasted picture through write_atomically, and a clippy fix in block_reach (`task-2634`)
