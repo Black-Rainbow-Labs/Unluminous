@@ -2173,8 +2173,14 @@ fn drive_the_window_and_the_tabs(coverage: &mut Coverage) {
     // The page's zoom is the tab's own, so it is set with no native view behind it. `task-2255`.
     c.works(&mut harness, "browser zoom 1.5");
     c.refuses(&mut harness, "browser zoom big");
+    // The page's Find bar is the window's own, so it opens and closes with no native view behind it, and a
+    // hit test with no page placed answers that the click reaches the window. `task-2786`.
+    c.works(&mut harness, "browser find Example");
+    c.works(&mut harness, "browser find --close");
+    c.works(&mut harness, "browser hit 10 10");
     c.refuses(&mut harness, "browser open");
     c.sets_up(&mut harness, "tab open readme.md");
+    c.refuses(&mut harness, "browser find example");
     c.refuses(&mut harness, "browser status --json");
     c.refuses(&mut harness, "browser reload");
 

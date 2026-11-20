@@ -391,13 +391,17 @@ impl UnluminousApp {
                 // The editing area's dark ground was painted there, and with the menu's dark shadow over it that
                 // was a black box round every popup over a page. The page is asked for its colour, and white, which
                 // is what a page with none of its own is drawn on, stands in until it answers.
+                // Only on macOS: where a page can be photographed (Windows), a photograph that fails is a
+                // window with no native view, such as a test's, and keeps the editing area's ground.
                 let photographed = self.browser.photograph_even_if_plain(id);
-                if photographed.is_none() && self.page_ground(id).is_none() {
+                let unphotographable = cfg!(target_os = "macos");
+                if unphotographable && photographed.is_none() && self.page_ground(id).is_none() {
                     self.ask_for_the_page_ground(id, ctx);
                 }
-                let blank = self
-                    .browser_tab(id)
-                    .is_some_and(|tab| tab.current_url() == crate::services::browser::BLANK);
+                let blank = !unphotographable
+                    || self
+                        .browser_tab(id)
+                        .is_some_and(|tab| tab.current_url() == crate::services::browser::BLANK);
                 let ground = match blank {
                     true => crate::theme::color::editor().to_opaque(),
                     false => self.page_ground(id).unwrap_or(egui::Color32::WHITE),
