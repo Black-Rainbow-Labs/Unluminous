@@ -2122,6 +2122,9 @@ mod tests {
         //   48,372   `task-2597` adding Termoil's panes and themes to the terminal area (8 verbs: `split`, `panes`,
         //            `close-pane`, `focus-pane`, `zoom-pane`, `theme`, `themes` and `keys`, and `--pane` on `send` and
         //            `read`), each summary cut to one sentence first. The ceiling moves to 49,000.
+        //   49,003   `task-2786` adding `browser find` and `browser hit` (Find in a page, and asking the platform's
+        //            hit test where a click goes), each summary cut to one sentence first. The ceiling moves to
+        //            50,000.
         //
         // **The number being hard to hold is itself `task-1804` §4.2's finding**, and what
         // changed with it is that there is now an answer: `mcp serve --areas` equips an agent with
@@ -2129,7 +2132,7 @@ mod tests {
         // `editor,git` rather than 18,511 for all of it. This ceiling goes on saying when the
         // *default* has grown, which is what it is for; it is no longer the only lever there is.
         assert!(
-            grouped.len() / 4 < 49_000,
+            grouped.len() / 4 < 50_000,
             "grouped MCP schema exceeded budget: {} bytes",
             grouped.len()
         );

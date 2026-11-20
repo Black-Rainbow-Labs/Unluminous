@@ -676,15 +676,15 @@ unluminous-cli browser zoom 1.5
 unluminous-cli browser find [text] [--next] [--previous] [--case] [--word] [--close]
 ```
 
-Search the page that holds the keyboard, a browser tab's or a browser node's, or else the rendered tab that is showing, as `Ctrl`/`Cmd`+`F` over a page does: the page's own find selects the match and scrolls it into view, and the bar over the page says how many there are. With no words it says what the bar holds. Matches are counted a moment after the search, so ask again for the count.
+Find words in the page that holds the keyboard, or the browser tab showing, as `Ctrl`/`Cmd`+`F` over a page does; ask again with no words for the count.
 
 - `text` (optional) — The words to find. Everything after it on the line belongs to it.
 
-- `--next` — Go to the next match of what the bar holds.
+- `--next` — The next match.
 - `--previous` — Go to the previous match.
 - `--case` — Match case.
 - `--word` — Whole words only.
-- `--close` — Put the bar away, leaving the match selected.
+- `--close` — Put the bar away.
 
 ```sh
 unluminous-cli browser find example
@@ -698,7 +698,7 @@ unluminous-cli browser find --json
 unluminous-cli browser hit <x> <y>
 ```
 
-Say whether a real click at a place in the window would reach a page or the window, asked of the platform's own hit test, which is what decides where a click and the wheel go. A page is a native view, so what is drawn over it only gets its clicks where the page is cut round it; this is how to check that it is.
+Say whether a real click at a place in the window reaches a page or the window, asked of the platform's hit test.
 
 - `x` — Across the window, in its own points.
 - `y` — Down the window.
