@@ -575,7 +575,7 @@ beside the cross, an offer's in the quiet ink. An offer's buttons are `rux` pill
 ### What `task-2263` changed about links and the one native view
 
 - **A link's right click menu** is drawn by `markdown_text::show_the_link_menu`, once a frame, for every place
-  `markdown_text` draws a link: `Open in Unluminous Browser`, `Open in Default Browser` and `Copy Link Address`. A
+  `markdown_text` draws a link: `Open in New Unluminous Tab`, `Open in Default Browser` and `Copy Link Address`. A
   caller with a right click menu of its own asks `the_link_menu_opened_this_frame` first, so one right click opens
   one menu. `services::links::open_in_the_default_browser` is `ShellExecuteW` on Windows and `open` on macOS, for
   `http` and `https` only. `browser open --system <address>` is the agent's half.

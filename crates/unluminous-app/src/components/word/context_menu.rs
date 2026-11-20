@@ -82,7 +82,10 @@ fn entries(doc: &Doc, at: &Pos) -> Vec<MenuEntry> {
     match doc.session.hyperlink_at(at) {
         Some(_) => out.extend([
             item("Edit Hyperlink...", "edit-link"),
-            item("Open Hyperlink", "open-link"),
+            // Where to open it, as every other link's menu offers (`task-2786`). A link to a bookmark in the
+            // document goes to the bookmark from either.
+            item("Open in New Unluminous Tab", "open-link-in-a-tab"),
+            item("Open in Default Browser", "open-link"),
             item("Copy Hyperlink", "copy-link"),
             item("Remove Hyperlink", "remove-link"),
         ]),
@@ -353,7 +356,7 @@ fn enabled(doc: &Doc, id: &str) -> bool {
     match id {
         "cut" | "copy" => !doc.session.selection.is_empty(),
         id if id.starts_with("synonym:") => true,
-        "paste" | "open-link" | "copy-link" | "paste-text-only" => true,
+        "paste" | "open-link" | "open-link-in-a-tab" | "copy-link" | "paste-text-only" => true,
         id => crate::services::word::actions::applies(id, doc),
     }
 }
@@ -373,6 +376,11 @@ pub fn run(doc: &mut Doc, id: &str, menu: &ContextMenu, requests: &mut Vec<Reque
         "open-link" => {
             if let Some((address, _)) = doc.session.hyperlink_at(&menu.pos) {
                 super::page_view::follow_link(doc, &address, requests);
+            }
+        }
+        "open-link-in-a-tab" => {
+            if let Some((address, _)) = doc.session.hyperlink_at(&menu.pos) {
+                super::page_view::follow_link_in_a_tab(doc, &address, requests);
             }
         }
         "copy-link" => {

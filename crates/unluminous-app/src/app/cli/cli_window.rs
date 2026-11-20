@@ -440,6 +440,28 @@ impl UnluminousApp {
                 Err(problem) => no(request, code::FAILED, problem),
             };
         }
+        // Where a real click would go, asked of the platform's hit test. `task-2786`.
+        if verb == "hit" {
+            let (Some(x), Some(y)) = (request.number("x"), request.number("y")) else {
+                return no(
+                    request,
+                    code::USAGE,
+                    "Give a place in the window: `browser hit <x> <y>`.",
+                );
+            };
+            let zoom = self.context.as_ref().map(|ctx| ctx.zoom_factor()).unwrap_or(1.0);
+            let at = window_point(egui::pos2(x as f32, y as f32), zoom);
+            let page = self.browser.takes_the_click_at(at);
+            let summary = match page {
+                Some(id) => format!("A click at {x}, {y} reaches the page of browser tab {id}"),
+                None => format!("A click at {x}, {y} reaches the window"),
+            };
+            return ok(request, summary, json!({ "page": page, "window": page.is_none() }));
+        }
+        // Find in a page. `task-2786`.
+        if verb == "find" {
+            return self.cli_browser_find(request);
+        }
         let Some(tab) = self.files.active().browser.as_ref() else {
             return no(
                 request,
@@ -527,6 +549,49 @@ impl UnluminousApp {
             Some(problem) => no(request, code::NOT_APPLICABLE, problem),
             None => done(request, format!("Sent {verb} to browser tab {id}")),
         }
+    }
+}
+
+impl UnluminousApp {
+    /// `browser find`: search the page that holds the keyboard, or the rendered tab that is showing.
+    fn cli_browser_find(&mut self, request: &Request) -> Outcome {
+        let Some(id) = self
+            .page_with_the_keyboard()
+            .or_else(|| self.files.active().browser.as_ref().map(|tab| tab.id))
+        else {
+            return no(
+                request,
+                code::NOT_APPLICABLE,
+                "No page holds the keyboard and the tab that is showing is not a browser tab.",
+            );
+        };
+        if request.switch("close") {
+            self.close_the_find_in_the_page();
+            return done(request, "The page's Find bar is put away");
+        }
+        let words = request.text("text").unwrap_or_default();
+        if !words.is_empty() {
+            self.find_in_the_page(id, &words, request.switch("case"), request.switch("word"));
+        } else if request.switch("next") || request.switch("previous") {
+            if self.page_find_state().is_none_or(|(open, ..)| open != id) {
+                return no(request, code::NOT_APPLICABLE, "There is no search open on that page.");
+            }
+            self.step_the_find_in_the_page(request.switch("next"));
+        } else if self.page_find_state().is_none_or(|(open, ..)| open != id) {
+            self.open_the_find_in_the_page(id);
+        }
+        let (page, needle, count, index) =
+            self.page_find_state().unwrap_or((id, String::new(), 0, None));
+        let summary = match (needle.is_empty(), index) {
+            (true, _) => format!("Find is open over the page of browser tab {page}"),
+            (false, Some(index)) => format!("`{needle}`: {index} of {count} in the page"),
+            (false, None) => format!("`{needle}`: no matches counted in the page yet"),
+        };
+        ok(
+            request,
+            summary,
+            json!({ "page": page, "text": needle, "count": count, "index": index }),
+        )
     }
 }
 

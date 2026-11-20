@@ -979,6 +979,17 @@ pub(crate) fn carry_the_selection(doc: &mut Doc, target: Pos, copy: bool) {
 /// Follow a link: a `#bookmark` puts the caret at the bookmark, a web address opens in the default
 /// browser through the window's own `browser open --system`.
 pub(crate) fn follow_link(doc: &mut Doc, address: &str, requests: &mut Vec<Request>) {
+    follow(doc, address, true, requests);
+}
+
+/// Follow a hyperlink into a new Unluminous browser tab, or to a bookmark in the document. `task-2786`.
+pub(crate) fn follow_link_in_a_tab(doc: &mut Doc, address: &str, requests: &mut Vec<Request>) {
+    follow(doc, address, false, requests);
+}
+
+/// Go to a bookmark the address names, or open the address: in the system's browser when `system`, and in a new
+/// Unluminous browser tab otherwise.
+fn follow(doc: &mut Doc, address: &str, system: bool, requests: &mut Vec<Request>) {
     if let Some(name) = address.strip_prefix('#') {
         if let Some((_, at)) = doc.session.bookmarks().into_iter().find(|(n, _)| n == name) {
             doc.session.select(at.clone(), at);
@@ -990,7 +1001,7 @@ pub(crate) fn follow_link(doc: &mut Doc, address: &str, requests: &mut Vec<Reque
     }
     let mut arguments = serde_json::Map::new();
     arguments.insert("address".into(), serde_json::Value::String(address.to_owned()));
-    arguments.insert("system".into(), serde_json::Value::Bool(true));
+    arguments.insert("system".into(), serde_json::Value::Bool(system));
     requests.push(Request::RunCommand {
         id: format!("word-follow-{address}"),
         command: "browser.open".into(),

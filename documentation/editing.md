@@ -241,7 +241,7 @@ question and Unluminous holds no table of aliases.
 **Links open on a plain click.** A link in rendered Markdown opens in a browser tab, in the preview and
 in every place Unluminous draws Markdown: the chat, a ticket's description and comments, and the
 Designer's notes. `Ctrl` or `Cmd` with a click opens a web address in a file or in a terminal. Only
-`http` and `https` addresses open. A right click on a link offers `Open in Unluminous Browser`,
+`http` and `https` addresses open. A right click on a link offers `Open in New Unluminous Tab`,
 `Open in Default Browser` and `Copy Link Address`. Dragging over rendered Markdown selects it, and
 `Ctrl/Cmd+C` copies the rendered words, so a heading comes back without its hashes. Zooming the
 preview with `Ctrl/Cmd` and the wheel is anchored at the pointer.

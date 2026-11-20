@@ -58,6 +58,11 @@ pub struct Cached {
     pub laid_out_width: f32,
     /// Set when the layout has to be worked out again whatever the revision says.
     pub stale: bool,
+    /// The same for the Markdown preview, which is a flag of its own because only the source's layout
+    /// clears `stale`. A document shown as its preview alone never lays its source out, so with one flag
+    /// a preview whose tab had been resized was built again on every frame: a note node in the Realm cost
+    /// about 200 ms a frame (`task-2786`). Set both through [`Cached::mark_stale`].
+    pub preview_stale: bool,
     /// The Markdown preview, worked out from the source and kept until the source changes.
     pub preview: Option<Preview>,
     pub preview_layout: Layout,
@@ -106,7 +111,13 @@ pub struct Cached {
 impl Cached {
     /// Nothing has been worked out yet, so everything has to be.
     fn fresh() -> Self {
-        Self { stale: true, ..Self::default() }
+        Self { stale: true, preview_stale: true, ..Self::default() }
+    }
+
+    /// Everything worked out about the file is out of date: the source's layout and the preview's.
+    pub fn mark_stale(&mut self) {
+        self.stale = true;
+        self.preview_stale = true;
     }
 
     /// Releases the growth headroom of a completed layout once its tab has been put away.

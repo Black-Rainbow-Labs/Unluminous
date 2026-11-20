@@ -27,6 +27,7 @@ impl UnluminousApp {
     /// What the menus need to know about the window.
     pub fn menu_state(&self) -> MenuState {
         let plugin_tab = self.the_plugin_tab_with_the_keyboard().is_some();
+        let page = self.page_with_the_keyboard().is_some();
         MenuState {
             templates: Vec::new(),
             updates: self.update_menu(),
@@ -99,9 +100,11 @@ impl UnluminousApp {
             // A Word or workbook tab keeps its own undo and selection, which the empty document behind it
             // does not know about, so the entries stay on and are handed to the tab (`task-2383`). Turned
             // off, `Cmd+C` and `Cmd+Z` did nothing at all on a Mac, where they are the menu's.
-            can_undo: plugin_tab || self.document().can_undo(),
-            can_redo: plugin_tab || self.document().can_redo(),
-            has_selection: plugin_tab || !self.document().selection().is_empty(),
+            // **And while a page holds the keyboard** (`task-2786`): the empty document behind a browser tab or
+            // node has no selection, so `Cmd+C` on a page did nothing at all.
+            can_undo: plugin_tab || page || self.document().can_undo(),
+            can_redo: plugin_tab || page || self.document().can_redo(),
+            has_selection: plugin_tab || page || !self.document().selection().is_empty(),
             terminal_has_the_keyboard: self.terminal_holds_the_keyboard,
             // The same three questions the key chords and the command line ask, of the same
             // functions, so the menu cannot come to a different answer about the tab that is
@@ -638,6 +641,22 @@ impl UnluminousApp {
         match action {
             Action::Find | Action::Replace => {
                 let replacing = action == Action::Replace;
+                // **A page is searched in the page** (`task-2786`), when a browser tab or node holds the keyboard.
+                if let Some(id) = self.page_with_the_keyboard() {
+                    self.open_the_find_in_the_page(id);
+                    return;
+                }
+                // **The preview is searched in the preview** when it is what is showing (`task-2786`).
+                if self.find_is_in_the_preview() {
+                    match self.find.as_mut() {
+                        Some(find) => find.field = crate::services::find::Field::Find,
+                        None => self.open_the_find_in_the_preview(),
+                    }
+                    if self.focus != Focus::Realm {
+                        self.focus = Focus::Editor;
+                    }
+                    return;
+                }
                 // A bar already open is **reused** rather than replaced, so pressing the key twice
                 // does not throw away what is typed in it; what it does do is put the keyboard back
                 // in the box, which is what a person pressing it again is asking for.
@@ -666,7 +685,14 @@ impl UnluminousApp {
                         }
                     }
                 }
-                self.focus = Focus::Editor;
+                // The canvas keeps the keyboard, so Find works in a File Editor node on it. `task-2786`.
+                if self.focus != Focus::Realm {
+                    self.focus = Focus::Editor;
+                }
+            }
+            Action::FindNext if self.page_find.is_some() => self.step_the_find_in_the_page(true),
+            Action::FindPrevious if self.page_find.is_some() => {
+                self.step_the_find_in_the_page(false)
             }
             Action::FindNext => self.step_the_find(true),
             Action::FindPrevious => self.step_the_find(false),
@@ -904,13 +930,14 @@ impl UnluminousApp {
             // **A browser tab's edits are the page's** (`task-2255`). The tab holds an empty document so it can
             // live in the tab strip, and `Edit -> Paste` inserted the clipboard into that document: nothing on
             // the screen changed, the tab grew an unsaved-changes dot, and the page's field got nothing.
+            // **And a browser node's** (`task-2786`), whichever holds the keyboard.
             Action::Undo
             | Action::Redo
             | Action::Cut
             | Action::Copy
             | Action::Paste
             | Action::SelectAll
-                if self.focus == Focus::Editor && self.files.active().is_browser() =>
+                if self.page_with_the_keyboard().is_some() =>
             {
                 self.edit_in_the_page(action);
             }

@@ -670,7 +670,7 @@ impl UnluminousApp {
                 ..self.settings.as_style_change()
             };
             self.files.at_mut(index).document.set_base_style(change);
-            self.files.at_mut(index).cached.stale = true;
+            self.files.at_mut(index).cached.mark_stale();
             self.files.at_mut(index).sized_at = asked;
         }
     }
@@ -739,7 +739,7 @@ impl UnluminousApp {
         });
         if let Some(index) = self.files.tab_in_node(node) {
             self.files.at_mut(index).view_mode = crate::components::realm::view_mode_of(view);
-            self.files.at_mut(index).cached.stale = true;
+            self.files.at_mut(index).cached.mark_stale();
         }
         Ok(())
     }

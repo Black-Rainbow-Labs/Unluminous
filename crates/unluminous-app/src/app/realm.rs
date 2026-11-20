@@ -1002,7 +1002,7 @@ impl UnluminousApp {
                 });
                 // The tab in this node is laid out again at the new size, which is what makes it show.
                 if let Some(index) = self.files.tab_in_node(node) {
-                    self.files.at_mut(index).cached.stale = true;
+                    self.files.at_mut(index).cached.mark_stale();
                 }
             }
             // **The three kinds with no point size of their own walk a multiplier**, which is
@@ -2131,7 +2131,7 @@ impl UnluminousApp {
                 ..self.settings.as_style_change()
             };
             self.files.at_mut(index).document.set_base_style(change);
-            self.files.at_mut(index).cached.stale = true;
+            self.files.at_mut(index).cached.mark_stale();
             self.files.at_mut(index).sized_at = asked;
         }
         // **A document with a preview is drawn the way a tab in a pane is** (`task-2270`), in whichever of its

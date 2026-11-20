@@ -1059,7 +1059,7 @@ impl UnluminousApp {
                         _ => {}
                     });
                     if let Some(index) = self.files.tab_in_node(node) {
-                        self.files.at_mut(index).cached.stale = true;
+                        self.files.at_mut(index).cached.mark_stale();
                     }
                 }
                 Kind::Folder | Kind::Chat | Kind::Tasks => {

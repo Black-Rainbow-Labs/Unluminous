@@ -1159,7 +1159,7 @@ impl UnluminousApp {
             file.document.syntax_is_wholly_dirty();
             file.cached.preview = None;
             file.cached.preview_diagrams.clear();
-            file.cached.stale = true;
+            file.cached.mark_stale();
         }
         // A manifest edited by hand can take a tab away, so a reload closes an open tab whose contribution
         // has gone for the same reason switching a plugin off does: a tab whose plugin no longer offers it

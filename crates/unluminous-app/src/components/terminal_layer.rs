@@ -683,6 +683,15 @@ pub(crate) fn show(ui: &mut egui::Ui, area: Rect, grid: LayerGrid<'_>) -> GridOu
     if !covered || previewing {
         crate::services::terminal_shader::shade(ui, area, outcome.cursor);
     }
+    // A right click on a link opened the link's menu instead of the terminal's (`task-2786`).
+    if crate::components::markdown_text::the_link_menu_opened_this_frame(ui.ctx()) {
+        MENU.with(|menu| {
+            let mine = menu.borrow().as_ref().is_some_and(|(held, _, _)| *held == serial);
+            if mine {
+                *menu.borrow_mut() = None;
+            }
+        });
+    }
     show_the_menu(ui, serial, host, &mut split, owns_tabs, &mut outcome);
     put_back(serial, split);
     outcome

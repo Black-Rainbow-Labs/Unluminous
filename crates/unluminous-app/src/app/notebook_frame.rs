@@ -1585,7 +1585,7 @@ impl UnluminousApp {
         file.coloured_revision = Some(now);
         file.syntax_tokens_revision = None;
         file.cached.fold_tokens = None;
-        file.cached.stale = true;
+        file.cached.mark_stale();
     }
 }
 

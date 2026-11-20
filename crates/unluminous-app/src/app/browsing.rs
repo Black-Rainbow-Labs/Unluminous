@@ -387,9 +387,23 @@ impl UnluminousApp {
                 // A page that cannot be photographed (macOS) gets the editing area's own ground, opaque,
                 // so the hole round the popup never shows the background picture through it, and the
                 // page is not asked again on every frame the popup is open. `task-2320`.
-                let picture = self.browser.photograph_even_if_plain(id).unwrap_or_else(|| {
-                    egui::ColorImage::new([1, 1], vec![crate::theme::color::editor().to_opaque()])
-                });
+                // **Where the page cannot be photographed (macOS), the colour the page is drawn on** (`task-2786`).
+                // The editing area's dark ground was painted there, and with the menu's dark shadow over it that
+                // was a black box round every popup over a page. The page is asked for its colour, and white, which
+                // is what a page with none of its own is drawn on, stands in until it answers.
+                let photographed = self.browser.photograph_even_if_plain(id);
+                if photographed.is_none() && self.page_ground(id).is_none() {
+                    self.ask_for_the_page_ground(id, ctx);
+                }
+                let blank = self
+                    .browser_tab(id)
+                    .is_some_and(|tab| tab.current_url() == crate::services::browser::BLANK);
+                let ground = match blank {
+                    true => crate::theme::color::editor().to_opaque(),
+                    false => self.page_ground(id).unwrap_or(egui::Color32::WHITE),
+                };
+                let picture =
+                    photographed.unwrap_or_else(|| egui::ColorImage::new([1, 1], vec![ground]));
                 let texture = crate::services::picture::upload(
                     ctx,
                     "covered-page-still".to_owned(),
@@ -439,7 +453,8 @@ impl UnluminousApp {
         }
     }
 
-    /// Carry one of the `Edit` menu's six entries to the page the active browser tab shows.
+    /// Carry one of the `Edit` menu's six entries to the page that holds the keyboard, a browser tab's or a browser
+    /// node's.
     ///
     /// The page's own `document.execCommand` does what the browser's own menu would: it acts on the field or
     /// the selection that has the page's focus. A paste reads Unluminous's clipboard and inserts it as text,
@@ -448,12 +463,16 @@ impl UnluminousApp {
     /// @param action - which entry was chosen
     pub(crate) fn edit_in_the_page(&mut self, action: crate::app::actions::Action) {
         use crate::app::actions::Action;
-        let Some(id) = self.files.active().browser.as_ref().map(|tab| tab.id) else { return };
+        let Some(id) = self.page_with_the_keyboard() else { return };
         let script = match action {
             Action::Undo => "document.execCommand('undo')".to_owned(),
             Action::Redo => "document.execCommand('redo')".to_owned(),
-            Action::Cut => "document.execCommand('cut')".to_owned(),
-            Action::Copy => "document.execCommand('copy')".to_owned(),
+            // **Read out of the page and put on the clipboard here** (`task-2786`): WebKit refuses
+            // `execCommand('copy')` from a script, so Copy on a page did nothing.
+            Action::Cut | Action::Copy => {
+                self.copy_from_the_page(id, action == Action::Cut);
+                return;
+            }
             Action::SelectAll => "document.execCommand('selectAll')".to_owned(),
             Action::Paste => {
                 let Ok(text) = arboard::Clipboard::new().and_then(|mut board| board.get_text())
@@ -785,6 +804,13 @@ impl UnluminousApp {
                     // And a node showing one element of this page shows it again.
                     if let Some(node) = self.realm.live.node_of_browser(id) {
                         self.show_a_nodes_pin(node);
+                    }
+                    // The colour the page is drawn on, so a popup over it later stands on that colour on macOS,
+                    // where a page cannot be photographed. `task-2786`.
+                    if cfg!(target_os = "macos") {
+                        if let Some(ctx) = self.context.clone() {
+                            self.ask_for_the_page_ground(id, &ctx);
+                        }
                     }
                 }
             }

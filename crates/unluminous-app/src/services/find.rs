@@ -37,6 +37,9 @@ pub enum Field {
     #[default]
     Find,
     Replace,
+    /// Neither box: the keyboard is in what is being searched, which is a web page somebody clicked into while
+    /// its Find bar was open. `task-2786`.
+    Away,
 }
 
 /// What is being looked for in the open file, and where it was found.
@@ -59,6 +62,9 @@ pub struct Find {
     pub replacing: bool,
     /// Which field the keyboard is in.
     pub field: Field,
+    /// True when what is searched cannot be changed: a Markdown preview, which is worked out from the source,
+    /// or a web page. There is no Replace row then. `task-2786`.
+    pub read_only: bool,
     /// Where every match is, in bytes into the whole document.
     matches: Vec<Range<usize>>,
     /// Which of them is current, as an index into `matches`. Meaningless when there are none.
@@ -136,6 +142,35 @@ impl Find {
         };
         self.answered = Some(asking);
         search_changed
+    }
+
+    /// Take matches counted somewhere this cannot read, which is a web page (`task-2786`): `count` empty
+    /// ranges stand in for them, so the tally and the stepping work as they do for a file, and the needle and
+    /// the toggles are what they were counted for.
+    /// @param count - how many matches the page has
+    /// @param current - which of them the page has selected, counted from nought
+    pub fn counted_elsewhere(&mut self, count: usize, current: usize) {
+        self.matches = vec![0..0; count];
+        self.current = current.min(count.saturating_sub(1));
+        self.answered = Some(Question {
+            revision: u64::MAX,
+            needle: self.needle.clone(),
+            match_case: self.match_case,
+            whole_word: self.whole_word,
+        });
+    }
+
+    /// Whether the needle or a toggle moved since the matches were last counted, for a search whose matches
+    /// are counted elsewhere. See [`Self::counted_elsewhere`].
+    pub fn asks_something_new(&self) -> bool {
+        match &self.answered {
+            Some(answered) => {
+                answered.needle != self.needle
+                    || answered.match_case != self.match_case
+                    || answered.whole_word != self.whole_word
+            }
+            None => true,
+        }
     }
 
     /// How many matches there are.

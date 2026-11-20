@@ -63,6 +63,7 @@ pub mod notebook_files;
 pub mod notebook_frame;
 pub mod notebook_kernel;
 mod opening;
+pub mod page_find;
 mod panels;
 mod pasted_pictures;
 pub mod report;
@@ -73,6 +74,7 @@ mod templates;
 pub mod plugin_files;
 pub mod plugin_panes;
 mod preview;
+mod preview_find;
 // Several projects in one window, a project tab each. `task-2322`.
 pub mod project_tabs;
 pub mod realm;
@@ -921,6 +923,9 @@ pub struct UnluminousApp {
     /// `tasks/task-1813-performance-review-tdd.md` makes it an acceptance threshold. A counter is
     /// what turns it into a test, which is the shape `DebugState::reads` already has.
     layouts_built: u64,
+    /// How many Markdown previews have been built, which a test reads to see one is not built on every frame.
+    /// `task-2786`.
+    previews_built: u64,
     /// Set when a plugin asked for another frame, which a pane with a terminal in it does while that
     /// terminal is printing. Read and cleared once at the end of the frame.
     pub(crate) plugin_wants_a_repaint: bool,
@@ -1242,6 +1247,12 @@ pub struct UnluminousApp {
     /// says which of the two a copy is about — set by a press in a preview and cleared by a press in
     /// an editing area, which is what "the pane the pointer last pressed in" means.
     reading_preview: bool,
+    /// Set when a Find match in the preview was chosen, so the next drawing of the preview scrolls to it. `task-2786`.
+    preview_reveal: bool,
+    /// The Find bar over a web page, when one is open. `task-2786`.
+    page_find: Option<page_find::PageFind>,
+    /// The colour each page is drawn on, as the page said, for the stand in round a popup over it. `task-2786`.
+    page_grounds: page_find::PageGrounds,
     /// True while the editor drawn inside a plugin's modal holds the keyboard (`task-2556`). See `app::modal_editor`.
     modal_editor_has_the_keyboard: bool,
     /// Whether a terminal grid read the keyboard on the last frame, so the Edit menu's `Copy` and `Paste` stay
@@ -1707,6 +1718,7 @@ impl UnluminousApp {
         crate::services::frame_trace::mark("file-tree");
         Self {
             layouts_built: 0,
+            previews_built: 0,
             plugin_wants_a_repaint: false,
             plugin_wants_copied: None,
             plugins_ticked_at: None,
@@ -1802,6 +1814,9 @@ impl UnluminousApp {
             settling_the_maximise: false,
             maximise_wanted: false,
             reading_preview: false,
+            preview_reveal: false,
+            page_find: None,
+            page_grounds: Default::default(),
             modal_editor_has_the_keyboard: false,
             terminal_holds_the_keyboard: false,
             link_to_open: None,
@@ -2706,6 +2721,12 @@ impl UnluminousApp {
     /// place `raw_input_hook` puts them and for the same reason. See `services::input`.
     pub fn take_the_next_input_frame(&mut self) -> Option<Vec<egui::Event>> {
         self.input.next_frame()
+    }
+
+    /// How many Markdown previews have been built since the window opened, which a test reads to see that a
+    /// preview is not built again on every frame. `task-2786`.
+    pub fn previews_built(&self) -> u64 {
+        self.previews_built
     }
 
     /// How many times any file has been laid out since the window opened.

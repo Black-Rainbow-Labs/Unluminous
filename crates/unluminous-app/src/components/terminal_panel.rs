@@ -520,6 +520,16 @@ pub(crate) fn pane_grid(
             .then(|| screen.cell(row as usize, column as usize).and_then(|cell| cell.link))
             .flatten()
     });
+    // **A right click on a link opens the link menu** every other place a link is drawn opens (`task-2786`), in
+    // place of the terminal's own menu: where to open it, and its address.
+    if let Some(address) = hovered_link.and_then(|link| screen.links.get(link as usize)) {
+        let right = ui.input(|input| input.pointer.secondary_clicked());
+        if right {
+            if let Some(at) = response.interact_pointer_pos().or_else(|| response.hover_pos()) {
+                crate::components::markdown_text::open_the_link_menu(ui.ctx(), at, address);
+            }
+        }
+    }
     paint(
         &painter_ui,
         ScreenPaint {

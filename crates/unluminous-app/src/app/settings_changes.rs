@@ -299,7 +299,7 @@ impl UnluminousApp {
             file.document.syntax_is_wholly_dirty();
             file.cached.preview = None;
             file.cached.preview_diagrams.clear();
-            file.cached.stale = true;
+            file.cached.mark_stale();
         }
         self.mermaid_scenes.forget();
         // Every terminal reads its colours from the thread's palette the next time it is drawn, so this

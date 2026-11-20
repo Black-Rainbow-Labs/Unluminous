@@ -1003,6 +1003,13 @@ impl BrowserHost {
         self.native.page_holds_the_keyboard()
     }
 
+    /// The page a real click at `at`, one of egui's points, would reach, or `None` when the window would take
+    /// it. What `browser hit` answers. `task-2786`.
+    pub fn takes_the_click_at(&self, at: egui::Pos2) -> Option<u64> {
+        self.native
+            .takes_the_click_at(to_logical_points(Rect::from_min_size(at, egui::Vec2::ZERO)).min)
+    }
+
     /// The tab whose page somebody has clicked into: it holds the operating system's keyboard and the pointer
     /// is over it. See `UnluminousApp::settle_the_native_views_before_the_pass`. `task-2255`.
     pub fn the_page_clicked_into(&self) -> Option<u64> {
@@ -1048,6 +1055,18 @@ impl BrowserHost {
     /// The videos the realm's video nodes play. `task-2202`.
     pub fn media(&self) -> &MediaStore {
         self.resources.media()
+    }
+
+    /// Run a script in tab `id`'s page and hand its answer, as JSON, to `answer` when the engine has it. On the
+    /// main thread, a frame or more later. `task-2786`: how Find counts a page's matches and Copy reads its
+    /// selection.
+    pub fn evaluate_with_callback(
+        &self,
+        id: u64,
+        script: &str,
+        answer: impl Fn(String) + Send + 'static,
+    ) -> Result<(), String> {
+        self.native.evaluate_with_callback(id, script, answer)
     }
 
     /// Run a script in tab `id`'s page. `task-2202`: how `realm play` reaches a video.
@@ -2051,6 +2070,14 @@ mod native {
         first_page: Mutex<Option<cookies::FirstPage>>,
     }
 
+    /// A view going away takes its entry out of the hit test table with it. `task-2786`.
+    #[cfg(target_os = "macos")]
+    impl Drop for NativeView {
+        fn drop(&mut self) {
+            hits::forget(&self.webview);
+        }
+    }
+
     /// The platform objects, kept behind this module so the rest of Unluminous stays portable and testable.
     ///
     /// **One native view a rendered tab** (`task-2270`), made the first time the tab's page is placed and kept,
@@ -2186,6 +2213,20 @@ mod native {
             self.views
                 .iter()
                 .find(|(_, view)| view.visible && page_has_it(view) && pointer_over(view))
+                .map(|(id, _)| *id)
+        }
+
+        /// The page a click at `at`, in the window's logical points, would reach, or `None` when the window's
+        /// own view would take it. `task-2786`.
+        ///
+        /// **On macOS AppKit's own `hitTest:` is asked**, which is what decides where a real click goes, so this
+        /// answers for the hit test [`hits`] adds rather than for a copy of its arithmetic. On Windows a window
+        /// region cuts the hits with the picture, so the answer is the part of the page that is shown.
+        pub fn takes_the_click_at(&self, at: egui::Pos2) -> Option<u64> {
+            self.views
+                .iter()
+                .filter(|(_, view)| view.visible)
+                .find(|(_, view)| takes_the_click(view, at))
                 .map(|(id, _)| *id)
         }
 
@@ -3073,8 +3114,16 @@ mod native {
         }
     }
 
+    /// **On macOS the window's first responder is asked** (`task-2786`). A click on a page makes WebKit the
+    /// first responder by itself, so `has_the_focus` was false while the page held every key, and a click on a
+    /// chat node's prompt in front of the page never handed the keyboard back: typing went on reaching the page.
+    #[cfg(target_os = "macos")]
+    fn the_page_really_has_the_keyboard(view: &NativeView) -> bool {
+        hits::holds_the_keyboard(&view.webview)
+    }
+
     /// The same question where there is nothing to ask it of, which leaves the flag as the answer.
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "macos")))]
     fn the_page_really_has_the_keyboard(_view: &NativeView) -> bool {
         false
     }
@@ -3101,10 +3150,43 @@ mod native {
         at.x >= rect.left && at.x < rect.right && at.y >= rect.top && at.y < rect.bottom
     }
 
+    /// **On macOS the pointer is over the page only where the page is shown** (`task-2786`), which is the part
+    /// [`hits`] lets AppKit hit. A chat node in front of a page is not the page, though the pointer is inside its
+    /// frame.
+    #[cfg(target_os = "macos")]
+    fn pointer_over(view: &NativeView) -> bool {
+        hits::pointer_over(&view.webview)
+    }
+
     /// Nothing to ask on the other platforms, where the page's focus is not read back.
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "macos")))]
     fn pointer_over(_view: &NativeView) -> bool {
         false
+    }
+
+    /// Whether a click at `at`, in the window's logical points, reaches this view. See
+    /// [`NativeHost::takes_the_click_at`].
+    #[cfg(target_os = "macos")]
+    fn takes_the_click(view: &NativeView, at: egui::Pos2) -> bool {
+        hits::takes_the_click(&view.webview, at)
+    }
+
+    /// The same on Windows, from the part of the page that is shown.
+    #[cfg(windows)]
+    fn takes_the_click(view: &NativeView, at: egui::Pos2) -> bool {
+        let Some(bounds) = view.bounds else { return false };
+        let (position, size) =
+            (bounds.position.to_logical::<f32>(1.0), bounds.size.to_logical::<f32>(1.0));
+        let area = egui::Rect::from_min_size(
+            egui::pos2(position.x, position.y),
+            egui::vec2(size.width, size.height),
+        );
+        match &view.clip {
+            None => area.contains(at),
+            Some(clip) => {
+                clip.visible.contains(at) && !clip.over.iter().any(|over| over.contains(at))
+            }
+        }
     }
 
     /// Whether the page has the keyboard, by either of the two ways it can come to have it.
@@ -3230,6 +3312,7 @@ mod native {
                 // SAFETY: taking a layer's mask away is always allowed.
                 unsafe { layer.setMask(None) };
             }
+            hits::show_all_of(&view.webview);
             return;
         }
         if !webview.wantsLayer() {
@@ -3245,6 +3328,7 @@ mod native {
             CGSize::new(f64::from(area.width()), f64::from(area.height())),
         ));
         let opaque = CGColor::new_generic_gray(0.0, 1.0);
+        let mut parts = Vec::new();
         for piece in super::pieces_of(visible.intersect(area), over) {
             let x = f64::from(piece.left() - area.left());
             let y = match flipped {
@@ -3258,9 +3342,228 @@ mod native {
             ));
             part.setBackgroundColor(Some(&opaque));
             mask.addSublayer(&part);
+            parts.push(CGRect::new(
+                CGPoint::new(x, y),
+                CGSize::new(f64::from(piece.width()), f64::from(piece.height())),
+            ));
         }
         // SAFETY: the mask is a fresh layer that belongs to nothing else, which is what `setMask` asks.
         unsafe { layer.setMask(Some(&mask)) };
+        // **And the pointer goes where the picture is** (`task-2786`). AppKit sends a click and the wheel to a
+        // view by its frame and `hitTest:`, never by its layer's mask, so whatever egui drew over a page lost
+        // its pointer to it: a row of a tab's right click menu, a chat node's prompt, a File Editor node in
+        // front. The same rectangles the mask is made of are what the page may be hit in.
+        hits::show_only(&view.webview, parts);
+    }
+
+    /// Hit testing that follows the mask, on macOS (`task-2786`).
+    ///
+    /// `hitTest:` is added to `wry`'s `WryWebView` class the first time a view is cut, and answers nil for a point
+    /// outside the parts of the page that are shown, so AppKit gives the event to the view under the page, which
+    /// is the window's own and the one egui reads. A view with no entry in the table is shown whole and is hit
+    /// as AppKit would hit it. Everything here runs on the main thread, which is where AppKit hit tests.
+    #[cfg(target_os = "macos")]
+    mod hits {
+        use std::collections::HashMap;
+        use std::sync::{Mutex, Once, OnceLock};
+
+        use objc2::runtime::{AnyClass, AnyObject, Bool, Sel};
+        use objc2::{class, msg_send, sel};
+        use objc2_core_foundation::{CGPoint, CGRect};
+        use wry::WebViewExtMacOS as _;
+
+        /// The parts of each cut page that are shown, in the view's own coordinates, keyed by the view.
+        fn table() -> &'static Mutex<HashMap<usize, Vec<CGRect>>> {
+            static TABLE: OnceLock<Mutex<HashMap<usize, Vec<CGRect>>>> = OnceLock::new();
+            TABLE.get_or_init(|| Mutex::new(HashMap::new()))
+        }
+
+        /// `WKWebView`, the class `WryWebView` extends, which is where the hit test goes on to.
+        static SUPERCLASS: OnceLock<usize> = OnceLock::new();
+
+        /// The page as an Objective C object, and the number it is kept under.
+        fn object(webview: &wry::WebView) -> (objc2::rc::Retained<wry::WryWebView>, usize) {
+            let view = webview.webview();
+            let key = objc2::rc::Retained::as_ptr(&view) as usize;
+            (view, key)
+        }
+
+        /// Whether `at` is inside `rect`.
+        fn contains(rect: &CGRect, at: CGPoint) -> bool {
+            at.x >= rect.origin.x
+                && at.y >= rect.origin.y
+                && at.x < rect.origin.x + rect.size.width
+                && at.y < rect.origin.y + rect.size.height
+        }
+
+        /// Let the page be hit only in `parts`.
+        pub(super) fn show_only(webview: &wry::WebView, parts: Vec<CGRect>) {
+            let (view, key) = object(webview);
+            install(&view);
+            if let Ok(mut table) = table().lock() {
+                table.insert(key, parts);
+            }
+        }
+
+        /// Let the page be hit anywhere in its frame again.
+        pub(super) fn show_all_of(webview: &wry::WebView) {
+            let (_, key) = object(webview);
+            if let Ok(mut table) = table().lock() {
+                table.remove(&key);
+            }
+        }
+
+        /// Whether the point in the view's own coordinates is in a part of the page that is shown.
+        fn allows(key: usize, at: CGPoint) -> bool {
+            match table().lock().ok().and_then(|table| table.get(&key).cloned()) {
+                Some(parts) => parts.iter().any(|part| contains(part, at)),
+                None => true,
+            }
+        }
+
+        /// Add `hitTest:` to the page's class, once.
+        fn install(view: &wry::WryWebView) {
+            static ONCE: Once = Once::new();
+            ONCE.call_once(|| {
+                // **By name first**, because `wry` watches each view's title with key value observing, which
+                // gives the object a class of its own made for the observing. The method goes on `WryWebView`,
+                // which every such class extends.
+                let object: *const AnyObject = (view as *const wry::WryWebView).cast();
+                let class: *const AnyClass = match AnyClass::get(c"WryWebView") {
+                    Some(class) => class,
+                    // SAFETY: asking an object for its class is always allowed.
+                    None => unsafe { objc2::ffi::object_getClass(object) },
+                };
+                if class.is_null() {
+                    return;
+                }
+                let superclass: *const AnyClass = unsafe { msg_send![&*class, superclass] };
+                if superclass.is_null() {
+                    return;
+                }
+                let _ = SUPERCLASS.set(superclass as usize);
+                type HitTest = extern "C-unwind" fn(&AnyObject, Sel, CGPoint) -> *mut AnyObject;
+                let implementation: HitTest = hit_test;
+                // SAFETY: the implementation takes the receiver, the selector and an `NSPoint` and answers an
+                // `NSView *`, which is what the type encoding says and what `-[NSView hitTest:]` is.
+                unsafe {
+                    let _ = objc2::ffi::class_addMethod(
+                        class as *mut AnyClass,
+                        sel!(hitTest:),
+                        std::mem::transmute::<HitTest, objc2::runtime::Imp>(implementation),
+                        c"@@:{CGPoint=dd}".as_ptr(),
+                    );
+                }
+            });
+        }
+
+        /// `-[WryWebView hitTest:]`: nil outside the parts shown, and `WKWebView`'s own answer inside them.
+        extern "C-unwind" fn hit_test(
+            this: &AnyObject,
+            _cmd: Sel,
+            point: CGPoint,
+        ) -> *mut AnyObject {
+            let key = this as *const AnyObject as usize;
+            // The point is in the superview's coordinates, and the parts are in the view's own.
+            // SAFETY: both are ordinary `NSView` messages to a view that is alive while it is hit tested.
+            let local: CGPoint = unsafe {
+                let superview: *mut AnyObject = msg_send![this, superview];
+                msg_send![this, convertPoint: point, fromView: superview]
+            };
+            if !allows(key, local) {
+                return std::ptr::null_mut();
+            }
+            let Some(superclass) = SUPERCLASS.get() else { return std::ptr::null_mut() };
+            // SAFETY: the superclass is `WKWebView`, an `NSView`, which answers `hitTest:` with an `NSView *`.
+            unsafe {
+                let superclass: &AnyClass = &*(*superclass as *const AnyClass);
+                msg_send![super(this, superclass), hitTest: point]
+            }
+        }
+
+        /// Whether the window's first responder is the page or a view inside it.
+        pub(super) fn holds_the_keyboard(webview: &wry::WebView) -> bool {
+            let (view, _) = object(webview);
+            let this: &AnyObject =
+                unsafe { &*(objc2::rc::Retained::as_ptr(&view).cast::<AnyObject>()) };
+            // SAFETY: `window`, `firstResponder`, `isKindOfClass:` and `isDescendantOf:` are ordinary AppKit
+            // messages, sent on the main thread.
+            unsafe {
+                let window: *mut AnyObject = msg_send![this, window];
+                if window.is_null() {
+                    return false;
+                }
+                let responder: *mut AnyObject = msg_send![&*window, firstResponder];
+                if responder.is_null() {
+                    return false;
+                }
+                if std::ptr::eq(responder, this) {
+                    return true;
+                }
+                let is_a_view: Bool = msg_send![&*responder, isKindOfClass: class!(NSView)];
+                if !is_a_view.as_bool() {
+                    return false;
+                }
+                let inside: Bool = msg_send![&*responder, isDescendantOf: this];
+                inside.as_bool()
+            }
+        }
+
+        /// Whether the pointer is over a part of the page that is shown.
+        pub(super) fn pointer_over(webview: &wry::WebView) -> bool {
+            let (view, key) = object(webview);
+            let this: &AnyObject =
+                unsafe { &*(objc2::rc::Retained::as_ptr(&view).cast::<AnyObject>()) };
+            // SAFETY: ordinary AppKit messages, sent on the main thread.
+            unsafe {
+                let window: *mut AnyObject = msg_send![this, window];
+                if window.is_null() {
+                    return false;
+                }
+                let screen: CGPoint = msg_send![class!(NSEvent), mouseLocation];
+                let in_window: CGPoint = msg_send![&*window, convertPointFromScreen: screen];
+                let nothing: *mut AnyObject = std::ptr::null_mut();
+                let local: CGPoint = msg_send![this, convertPoint: in_window, fromView: nothing];
+                let bounds: CGRect = msg_send![this, bounds];
+                contains(&bounds, local) && allows(key, local)
+            }
+        }
+
+        /// Whether AppKit's hit test sends a click at `at`, in the window's logical points measured from its top
+        /// left, to this page.
+        pub(super) fn takes_the_click(webview: &wry::WebView, at: egui::Pos2) -> bool {
+            let (view, _) = object(webview);
+            let this: &AnyObject =
+                unsafe { &*(objc2::rc::Retained::as_ptr(&view).cast::<AnyObject>()) };
+            // SAFETY: ordinary AppKit messages, sent on the main thread.
+            unsafe {
+                let superview: *mut AnyObject = msg_send![this, superview];
+                if superview.is_null() {
+                    return false;
+                }
+                let flipped: Bool = msg_send![&*superview, isFlipped];
+                let bounds: CGRect = msg_send![&*superview, bounds];
+                let y = match flipped.as_bool() {
+                    true => f64::from(at.y),
+                    false => bounds.size.height - f64::from(at.y),
+                };
+                let point = CGPoint::new(f64::from(at.x), y);
+                let hit: *mut AnyObject = msg_send![this, hitTest: point];
+                if hit.is_null() {
+                    return false;
+                }
+                if std::ptr::eq(hit, this) {
+                    return true;
+                }
+                let inside: Bool = msg_send![&*hit, isDescendantOf: this];
+                inside.as_bool()
+            }
+        }
+
+        /// Forget a view that is going away, so a new view at the same address is not cut by its parts.
+        pub(super) fn forget(webview: &wry::WebView) {
+            show_all_of(webview);
+        }
     }
 
     /// Show or hide the native child and lower an inactive Windows renderer's memory target.
@@ -3356,6 +3659,10 @@ mod native {
         pub fn forget(&mut self) {}
         /// Nor one view of it.
         pub fn forget_one(&mut self, _id: u64) {}
+        /// There is no page to take a click.
+        pub fn takes_the_click_at(&self, _at: egui::Pos2) -> Option<u64> {
+            None
+        }
         /// There is nothing to hide.
         pub fn hide(&mut self) {}
         /// Nothing to move where there is no view.

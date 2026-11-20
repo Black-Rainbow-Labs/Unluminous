@@ -184,6 +184,7 @@ impl UnluminousApp {
 
         // The right click menu a link opened, over every pane and modal that could have drawn the link.
         self.show_the_link_menu(ui.ctx());
+        self.show_the_find_in_the_page(ui.ctx());
         self.show_the_notices(ui, &places);
         self.show_the_resize_grips(ui, &places);
         crate::services::frame_trace::phase("notices");
@@ -2929,6 +2930,8 @@ impl UnluminousApp {
         if let Some(id) = clicked_into {
             // egui never saw the click, so nothing it has open knows it was clicked outside of.
             crate::components::controls::close_every_menu(ctx);
+            // A Find bar open over the page lets the page keep the keyboard it was clicked for. `task-2786`.
+            self.the_page_took_the_keyboard_from_its_find();
             for placement in &mut placements {
                 placement.focused = placement.id == id;
             }
@@ -2950,6 +2953,13 @@ impl UnluminousApp {
                 placement.focused = placement.id == id;
             }
             self.give_the_keyboard_to_the_page(id);
+        }
+        // **While the page's Find bar is typed into, the window has the keyboard** (`task-2786`), or every letter
+        // typed into the box would go to the page.
+        if self.page_find_is_typed_into() {
+            for placement in &mut placements {
+                placement.focused = false;
+            }
         }
         // **`Escape` puts the element picker away** when the keys are Unluminous's rather than the page's, which
         // they are when the picker was opened from the toolbar's button. `task-2203`.

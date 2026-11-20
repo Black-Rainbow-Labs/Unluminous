@@ -301,7 +301,7 @@ impl UnluminousApp {
         // say nothing about this revision.
         file.syntax_tokens_revision = (!markup).then_some(now);
         file.cached.fold_tokens = Some((now, tokens));
-        file.cached.stale = true;
+        file.cached.mark_stale();
     }
 
     /// The raw text elements of a markup file, coloured by the plugin that claims each one's
@@ -640,7 +640,7 @@ impl UnluminousApp {
         let change = self.settings.as_style_change();
         for index in sized {
             self.files.at_mut(index).document.set_base_style(change.clone());
-            self.files.at_mut(index).cached.stale = true;
+            self.files.at_mut(index).cached.mark_stale();
             self.files.at_mut(index).sized_at = None;
         }
     }
@@ -711,7 +711,7 @@ impl UnluminousApp {
                 if focused {
                     self.editor_area = area;
                 }
-                self.show_preview(ui, area);
+                self.show_preview(ui, area, focused);
             }
             ViewMode::SideBySide => {
                 let fraction = self.panes.preview_fraction.clamp(0.15, 0.85);
@@ -721,7 +721,7 @@ impl UnluminousApp {
                     Rect::from_min_max(Pos2::new(area.left() + split, area.top()), area.max);
                 let before = self.where_both_halves_are();
                 let took = self.show_editor(ui, left, focused);
-                self.show_preview(ui, right);
+                self.show_preview(ui, right, false);
                 self.scroll_the_two_halves_together(before, area);
                 // The split between the source and the preview is a pane like any other, so it is dragged.
                 let edge = Rect::from_min_size(
@@ -1429,6 +1429,11 @@ impl UnluminousApp {
         let Some(at) = response.interact_pointer_pos() else { return };
         let local = at - origin;
         let offset = self.layout().offset_at(local.x, local.y);
+        // **On a web address, the link menu** every other place a link is drawn opens (`task-2786`).
+        if let Some(address) = self.address_at_the_offset(offset) {
+            crate::components::markdown_text::open_the_link_menu(&response.ctx, at, &address);
+            return;
+        }
         let selection = self.document().selection().range();
         if !selection.contains(&offset) {
             self.document_mut().apply(Command::PlaceCaret { offset, extend: false });

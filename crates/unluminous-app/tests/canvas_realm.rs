@@ -4910,3 +4910,50 @@ fn a_link_in_a_browser_nodes_page_navigates_that_node() {
     assert_eq!(page.id, tab, "the node kept its tab, and with it its history");
     assert!(page.current_url().starts_with("https://example.org"), "and went to the link");
 }
+
+/// `task-2786`: the Edit menu reaches the page that holds the keyboard, a browser tab's or a browser node's. The
+/// empty document behind a page has no selection, so Copy was off and `Cmd+C` on a page did nothing.
+#[test]
+fn the_edit_menu_is_on_for_a_page_that_holds_the_keyboard() {
+    if !unluminous_app::services::browser::SUPPORTED {
+        return;
+    }
+    let mut harness = harness("");
+    let quiet = harness.state().menu_state();
+    assert!(!quiet.has_selection, "an empty document has nothing to copy");
+    did(&mut harness, "browser open https://example.com/");
+    steady(&mut harness);
+    assert!(
+        harness.state().menu_state().has_selection,
+        "a browser tab's page may have a selection"
+    );
+    // And a browser node chosen on the canvas.
+    did(&mut harness, "tab close");
+    did(&mut harness, "realm show");
+    did(&mut harness, "realm add browser --url https://example.com/");
+    steady(&mut harness);
+    let node = harness.state().realm.realm.nodes.last().expect("a node").id;
+    did(&mut harness, &format!("realm focus {node}"));
+    steady(&mut harness);
+    assert!(
+        harness.state().menu_state().has_selection,
+        "a browser node's page may have a selection"
+    );
+}
+
+/// `task-2786`: `browser find` opens the page's Find bar with the words and puts it away again. The page itself is
+/// a native view a test window does not make, so this checks what the window holds rather than the page's count.
+#[test]
+fn browser_find_opens_and_closes_the_find_bar_over_a_page() {
+    if !unluminous_app::services::browser::SUPPORTED {
+        return;
+    }
+    let mut harness = harness("");
+    did(&mut harness, "browser open https://example.com/");
+    steady(&mut harness);
+    did(&mut harness, "browser find Example");
+    let (_, words, _, _) = harness.state().page_find_state().expect("the bar is open");
+    assert_eq!(words, "Example");
+    did(&mut harness, "browser find --close");
+    assert!(harness.state().page_find_state().is_none());
+}

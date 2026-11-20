@@ -77,6 +77,11 @@ impl UnluminousApp {
 
     /// Put the selection over `range` and scroll it into view.
     pub(crate) fn select_the_match(&mut self, range: std::ops::Range<usize>) {
+        // A match in the preview is a range of the preview's text, so it is selected there. `task-2786`.
+        if self.find_is_in_the_preview() {
+            self.select_a_preview_match(range);
+            return;
+        }
         let length = self.document().text().len_bytes();
         if range.end > length {
             return;
@@ -88,6 +93,10 @@ impl UnluminousApp {
 
     /// Replace the match the bar is on, as one undo step.
     pub(crate) fn replace_the_current_match(&mut self) {
+        // Text that cannot be changed, a preview or a page, has nothing to replace. `task-2786`.
+        if self.find.as_ref().is_some_and(|find| find.read_only) {
+            return;
+        }
         let Some((range, with)) =
             self.find.as_ref().and_then(|find| find.replacement_for_current())
         else {
@@ -111,6 +120,10 @@ impl UnluminousApp {
     /// for exactly this: undo restores a snapshot, so one snapshot and then every edit is one step.
     /// Forty occurrences replaced one at a time would be forty presses of `Ctrl+Z` to get back.
     pub(crate) fn replace_every_match(&mut self) {
+        // Text that cannot be changed, a preview or a page, has nothing to replace. `task-2786`.
+        if self.find.as_ref().is_some_and(|find| find.read_only) {
+            return;
+        }
         let Some(find) = self.find.as_ref() else {
             return;
         };
@@ -137,6 +150,10 @@ impl UnluminousApp {
     /// different and more serious thing -- it writes files nobody has open -- so it happens in the
     /// modal that already lists what it would touch, rather than behind a button on a bar.
     fn take_the_search_to_the_project(&mut self) {
+        // Text that cannot be changed, a preview or a page, has nothing to replace. `task-2786`.
+        if self.find.as_ref().is_some_and(|find| find.read_only) {
+            return;
+        }
         let Some(find) = self.find.as_ref() else {
             return;
         };
@@ -161,7 +178,11 @@ impl UnluminousApp {
     /// Put the bar away, leaving the caret on the match it was on.
     pub(crate) fn close_the_find(&mut self) {
         self.find = None;
-        self.focus = Focus::Editor;
+        // **The canvas keeps the keyboard** when the bar was over a node on it (`task-2786`): moving it to the
+        // editing area took it away from the very node that was being searched.
+        if self.focus != Focus::Realm {
+            self.focus = Focus::Editor;
+        }
         self.reveal_caret = true;
     }
 }

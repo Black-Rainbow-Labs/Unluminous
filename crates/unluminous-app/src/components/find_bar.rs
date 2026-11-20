@@ -52,7 +52,7 @@ pub struct Outcome {
 
 /// How tall the bar is, which the window needs before it draws it so the editing area can be told.
 pub fn height(find: &Find) -> f32 {
-    if find.replacing {
+    if find.replacing && !find.read_only {
         ROW * 2.0 + 8.0
     } else {
         ROW + 8.0
@@ -91,7 +91,7 @@ pub fn show(ui: &mut egui::Ui, area: Rect, find: &mut Find) -> Outcome {
         Vec2::new(bar.width() - 8.0, ROW),
     );
     outcome.close |= find_row(ui, first, find, &mut outcome);
-    if find.replacing {
+    if find.replacing && !find.read_only {
         let second = Rect::from_min_size(
             Pos2::new(bar.left() + 4.0, first.bottom()),
             Vec2::new(bar.width() - 8.0, ROW),
@@ -109,9 +109,14 @@ fn find_row(ui: &mut egui::Ui, row: Rect, find: &mut Find, outcome: &mut Outcome
     let toggle = Rect::from_min_size(Pos2::new(pen, row.top()), Vec2::splat(ROW));
     // Two function pointers rather than one closure over `find.replacing`, because `icon_button`
     // takes a `fn` -- a drawing is a fixed mark rather than something a caller builds.
-    let mark = if find.replacing { pointing_down } else { pointing_right };
-    if controls::icon_button(ui, toggle, "Show Replace", mark) {
-        find.replacing = !find.replacing;
+    // **Not over text that cannot be changed** (`task-2786`): a preview and a web page have no Replace.
+    if find.read_only {
+        find.replacing = false;
+    } else {
+        let mark = if find.replacing { pointing_down } else { pointing_right };
+        if controls::icon_button(ui, toggle, "Show Replace", mark) {
+            find.replacing = !find.replacing;
+        }
     }
     pen += ROW;
 

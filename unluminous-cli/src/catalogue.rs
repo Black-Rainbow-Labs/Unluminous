@@ -967,6 +967,30 @@ pub const COMMANDS: &[Command] = &[
         examples: &["unluminous-cli browser zoom 1.5"],
         local: false,
     },
+    Command {
+        area: "browser",
+        verb: "find",
+        summary: "Search the page that holds the keyboard, a browser tab's or a browser node's, or else the rendered tab that is showing, as `Ctrl`/`Cmd`+`F` over a page does: the page's own find selects the match and scrolls it into view, and the bar over the page says how many there are. With no words it says what the bar holds. Matches are counted a moment after the search, so ask again for the count.",
+        arguments: &[rest("text", false, "The words to find.")],
+        flags: &[
+            switch("next", "Go to the next match of what the bar holds."),
+            switch("previous", "Go to the previous match."),
+            switch("case", "Match case."),
+            switch("word", "Whole words only."),
+            switch("close", "Put the bar away, leaving the match selected."),
+        ],
+        examples: &["unluminous-cli browser find example", "unluminous-cli browser find --next", "unluminous-cli browser find --json"],
+        local: false,
+    },
+    Command {
+        area: "browser",
+        verb: "hit",
+        summary: "Say whether a real click at a place in the window would reach a page or the window, asked of the platform's own hit test, which is what decides where a click and the wheel go. A page is a native view, so what is drawn over it only gets its clicks where the page is cut round it; this is how to check that it is.",
+        arguments: &[number("x", true, "Across the window, in its own points."), number("y", true, "Down the window.")],
+        flags: NO_FLAGS,
+        examples: &["unluminous-cli browser hit 400 300 --json"],
+        local: false,
+    },
     // --------------------------------------------------------------------------------- the tabs
     Command {
         area: "tab",

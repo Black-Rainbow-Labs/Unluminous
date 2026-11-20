@@ -5403,7 +5403,7 @@ fn a_right_click_on_a_link_offers_where_to_open_it() {
     for dy in [14.0, 20.0, 26.0, 32.0, 38.0, 44.0] {
         right_click_at(&mut harness, egui::pos2(copy.left() + 40.0, copy.top() - dy));
         steady(&mut harness);
-        if harness.query_by_label("Open in Unluminous Browser").is_some() {
+        if harness.query_by_label("Open in New Unluminous Tab").is_some() {
             opened = true;
             break;
         }
@@ -5413,7 +5413,7 @@ fn a_right_click_on_a_link_offers_where_to_open_it() {
     assert!(harness.query_by_label("Copy Link Address").is_some());
     assert!(harness.query_by_label("Copy Message").is_none(), "not the message's own menu as well");
     harness.snapshot(shot("agent_chat_link_menu").as_str());
-    harness.get_by_label("Open in Unluminous Browser").click();
+    harness.get_by_label("Open in New Unluminous Tab").click();
     steady(&mut harness);
     let tabs = did(&mut harness, "tab list");
     assert!(tabs.to_string().contains("example.com"), "it opened in a browser tab: {tabs}");

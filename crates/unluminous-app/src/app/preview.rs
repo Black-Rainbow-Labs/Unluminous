@@ -185,7 +185,7 @@ impl UnluminousApp {
         let revision = self.document().text_revision();
         let cached = &self.files.active().cached;
         if cached.preview.is_some()
-            && !cached.stale
+            && !cached.preview_stale
             && revision == cached.preview_revision
             && (width - cached.preview_width).abs() < 0.5
         {
@@ -193,6 +193,7 @@ impl UnluminousApp {
         }
         let source = self.document().text().to_string();
         let size = self.document().active_style().size;
+        self.previews_built += 1;
         let mut preview = self.render_markdown(&source, width, size);
         let pictures = self.read_the_pictures(ctx, &mut preview, width);
         let diagrams = self.lay_the_diagrams_out(ctx, &mut preview, width);
@@ -218,6 +219,7 @@ impl UnluminousApp {
         cached.preview = Some(preview);
         cached.preview_revision = revision;
         cached.preview_width = width;
+        cached.preview_stale = false;
     }
 
     /// Read every picture the preview names, and give each one's paragraph the room it needs.
@@ -467,12 +469,15 @@ impl UnluminousApp {
     /// One function rather than branches spread through `show_editing_area`, so that the three view
     /// modes are the same three modes whichever kind of file is open and `SideBySide` needs no
     /// special case of its own at all.
-    pub(crate) fn show_preview(&mut self, ui: &mut egui::Ui, area: Rect) {
+    ///
+    /// `focused` is whether this preview is what the keyboard is in, which is when a Find bar is drawn over it
+    /// (`task-2786`). The preview beside the source never is: Find there searches the source.
+    pub(crate) fn show_preview(&mut self, ui: &mut egui::Ui, area: Rect, focused: bool) {
         if file_kind::is_mermaid(self.document().path()) {
             self.show_diagram(ui, area);
             return;
         }
-        self.show_markdown_preview(ui, area);
+        self.show_markdown_preview(ui, area, focused);
     }
 
     /// Draw the whole file as one diagram, which is what a `.mmd` file's preview is.
@@ -508,7 +513,7 @@ impl UnluminousApp {
 
     /// Draw the Markdown preview into `area`. It is read only, so it has no caret and no selection: there
     /// is nothing to type into, because what is shown is worked out from the source.
-    fn show_markdown_preview(&mut self, ui: &mut egui::Ui, area: Rect) {
+    fn show_markdown_preview(&mut self, ui: &mut egui::Ui, area: Rect, focused: bool) {
         // `click_and_drag` rather than `hover`: the preview is read only, but reading includes
         // taking a copy of what you are reading. See `UnluminousApp::reading_preview`.
         let response = ui.interact(area, ui.id().with("preview"), egui::Sense::click_and_drag());
@@ -558,6 +563,11 @@ impl UnluminousApp {
         // A drag held past the top or bottom edge scrolls the page, so a selection can reach past what is
         // on the screen. Before the selection is read below, which therefore reads the page where it is now.
         self.files.active_mut().preview_scroll += editor_view::drag_scroll(&response, area);
+        // The Find bar's matches, worked out against the page as it was built for this frame, and the match it
+        // is on scrolled into view before the scroll is clamped. `task-2786`.
+        let finding = focused && self.find.is_some() && self.find_is_in_the_preview();
+        let find_matches = if finding { self.find_in_the_preview() } else { Vec::new() };
+        self.reveal_the_preview_selection(view_height);
         let overflow = (self.preview_layout().height - view_height).max(0.0);
         let scroll = self.files.active().preview_scroll.clamp(0.0, overflow);
         self.files.active_mut().preview_scroll = scroll;
@@ -576,7 +586,13 @@ impl UnluminousApp {
         // button only, so the selection the menu is about is still there when the menu opens.
         if response.secondary_clicked() {
             if let Some(at) = response.interact_pointer_pos() {
-                self.preview_menu = Some(at);
+                // **On a link, the link's own menu** (`task-2786`): where to open it, and its address.
+                match self.link_under_the_pointer(&response, origin) {
+                    Some(target) => {
+                        crate::components::markdown_text::open_the_link_menu(ui.ctx(), at, &target)
+                    }
+                    None => self.preview_menu = Some(at),
+                }
             }
         }
         if response.hovered() {
@@ -590,6 +606,7 @@ impl UnluminousApp {
         self.open_a_link_in_the_preview(&painter_ui, &response, origin);
         self.paint_the_panels(&painter_ui, origin, text_width);
         self.paint_the_code_chips(&painter_ui, origin);
+        self.paint_the_preview_matches(&painter_ui, origin, &find_matches);
         editor_view::paint_behind(
             &painter_ui,
             self.preview_layout(),
@@ -608,6 +625,11 @@ impl UnluminousApp {
         );
         self.paint_the_pictures(&painter_ui, origin);
         self.paint_the_diagrams(&painter_ui, origin, text_width);
+        // Over the page at the top right, after it, for the reason the source draws its bar after the text: egui
+        // hands a point to the last widget that asked for it, and the page asks for all of its rectangle.
+        if finding {
+            self.show_the_find_bar(&mut painter_ui, area);
+        }
         // Drawn last, at the position the frame settled on rather than the one it opened with.
         if let Some(bar) =
             scrollbar::Bar::new(area, scroll, self.preview_layout().height, view_height)
@@ -821,7 +843,7 @@ impl UnluminousApp {
 
     /// Draw the right click menu a link opened, and do what its chosen row asks (`task-2263`).
     ///
-    /// `Open in Unluminous Browser` goes through [`Self::settle_the_link_click`]'s own rules by asking for the link the
+    /// `Open in New Unluminous Tab` goes through [`Self::settle_the_link_click`]'s own rules by asking for the link the
     /// way a click does, so both open exactly the same addresses. `Open in Default Browser` hands the address to the
     /// operating system, and only an `http` or `https` one.
     pub(crate) fn show_the_link_menu(&mut self, ctx: &egui::Context) {

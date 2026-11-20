@@ -200,7 +200,7 @@ there is something to send. `Enter` queues.
 
 A link in an answer opens on a plain click in a browser tab. `Ctrl` or `Cmd` with a click opens a web address
 in a file or a terminal where that applies. Only `http` and `https` open. A right click on a link offers
-`Open in Unluminous Browser`, `Open in Default Browser` and `Copy Link Address`.
+`Open in New Unluminous Tab`, `Open in Default Browser` and `Copy Link Address`.
 
 ### Speech to text
 

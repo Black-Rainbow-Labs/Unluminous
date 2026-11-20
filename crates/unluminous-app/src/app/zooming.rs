@@ -471,7 +471,7 @@ impl UnluminousApp {
         // one showing, which is what this used to do: with panes there is more than one on the
         // screen, and a cache now belongs to the tab it describes.
         for file in self.files.iter_mut() {
-            file.cached.stale = true;
+            file.cached.mark_stale();
             file.cached.preview = None;
         }
         // The frame that puts each view back where it was anchored is the frame after this one, and

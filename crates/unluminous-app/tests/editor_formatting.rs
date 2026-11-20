@@ -1950,3 +1950,115 @@ fn a_pathological_document_is_drawn_rather_than_ending_the_process() {
         assert!(rendered.height() > 0.0, "the answer was laid out rather than ending the process");
     }
 }
+
+// task-2786: Find in the Markdown preview, the preview built once rather than every frame, and the link menu.
+
+/// A Markdown document in Preview mode for the three tests below: a heading, a link, and a word to find near the top
+/// and far down the page.
+fn a_preview_to_search() -> Harness<'static, UnluminousApp> {
+    let mut text =
+        String::from("# Notes\n\nOne needle here, and a [link](https://example.com/page) too.\n\n");
+    for n in 0..120 {
+        text.push_str(&format!("Paragraph {n} of the page.\n\n"));
+    }
+    text.push_str("The last needle is at the end.\n");
+    let mut harness = harness(&text);
+    harness.state_mut().set_view_mode(ViewMode::Preview);
+    steady(&mut harness);
+    harness
+}
+
+/// `Cmd+F` over the preview opens the bar over the page and searches the words the page shows.
+///
+/// *"Find for MD preview should work just like in edit mode. currently no find box appears when I do CMD+F."* The
+/// bar was drawn only over the source, which the Preview mode does not draw.
+#[test]
+fn find_in_the_markdown_preview_searches_the_page_that_is_showing() {
+    let mut harness = a_preview_to_search();
+    let ctx = harness.ctx.clone();
+    harness.state_mut().run_action(Action::Find, &ctx);
+    steady(&mut harness);
+    assert!(
+        harness.state().find.as_ref().is_some_and(|find| find.read_only),
+        "a preview cannot be replaced in"
+    );
+    harness.get_by_label("Find text");
+    assert!(harness.query_by_label("Show Replace").is_none(), "no Replace row over a preview");
+
+    harness.state_mut().find.as_mut().expect("the bar").needle = "needle".to_owned();
+    steady(&mut harness);
+    let find = harness.state().find.as_ref().expect("the bar");
+    assert_eq!(find.count(), 2, "both needles in the page");
+    assert_eq!(find.index(), Some(1));
+    assert_eq!(harness.state().preview_selected_text().as_deref(), Some("needle"));
+    assert_eq!(
+        harness.state().files.active().preview_scroll,
+        0.0,
+        "the first one is on the screen already"
+    );
+
+    // The next one is at the bottom of a long page, so the page scrolls to it.
+    harness.state_mut().run_action(Action::FindNext, &ctx);
+    steady(&mut harness);
+    steady(&mut harness);
+    assert_eq!(harness.state().find.as_ref().expect("the bar").index(), Some(2));
+    assert_eq!(harness.state().preview_selected_text().as_deref(), Some("needle"));
+    assert!(
+        harness.state().files.active().preview_scroll > 500.0,
+        "scrolled down to the last needle"
+    );
+    assert_eq!(
+        harness.state().document().text().to_string().matches("needle").count(),
+        2,
+        "the source is untouched"
+    );
+
+    harness.key_press(egui::Key::Escape);
+    steady(&mut harness);
+    assert!(harness.state().find.is_none());
+}
+
+/// A document shown as its preview alone is not built again on every frame after its size changes.
+///
+/// The Realm measured 204 ms a frame with a note node in preview, because the preview shared the source's stale
+/// flag and only the source's layout clears it.
+#[test]
+fn a_preview_shown_alone_is_built_once_after_its_size_changes() {
+    let mut harness = a_preview_to_search();
+    let ctx = harness.ctx.clone();
+    harness.state_mut().run_action(Action::ChangeFontSize { larger: true }, &ctx);
+    steady(&mut harness);
+    let built = harness.state().previews_built();
+    for _ in 0..4 {
+        harness.run();
+    }
+    assert_eq!(
+        harness.state().previews_built(),
+        built,
+        "nothing changed, so nothing was built again"
+    );
+}
+
+/// A right click on a link in the preview opens the link menu, where every other link's right click does.
+#[test]
+fn a_right_click_on_a_link_in_the_preview_opens_the_link_menu() {
+    let mut harness = a_preview_to_search();
+    let link = harness.state().preview_links().into_iter().next().expect("a link in the preview");
+    let rect = harness.state().preview_layout().selection_rects(link.bytes.clone())[0];
+    let area = harness.state().editor_area();
+    let size = unluminous_app::theme::size::EDITOR_PADDING_X;
+    let down = unluminous_app::theme::size::EDITOR_PADDING_Y;
+    let at = egui::pos2(
+        area.left() + size + rect.x + rect.width / 2.0,
+        area.top() + down + rect.y + rect.height / 2.0,
+    );
+    right_click_at(&mut harness, at);
+    steady(&mut harness);
+    assert_eq!(
+        unluminous_app::components::markdown_text::the_link_menu_target(&harness.ctx).as_deref(),
+        Some("https://example.com/page")
+    );
+    harness.get_by_label("Open in New Unluminous Tab");
+    harness.get_by_label("Open in Default Browser");
+    harness.get_by_label("Copy Link Address");
+}

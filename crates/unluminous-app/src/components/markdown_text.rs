@@ -424,7 +424,11 @@ fn follow_a_link(ui: &egui::Ui, rendered: &Rendered, origin: Pos2) {
     // one whose owner had stopped drawing it, made every link in the chat do nothing while the pointer was a hand.
     let pointer = ctx.pointer_interact_pos().or_else(|| ctx.pointer_hover_pos());
     if let Some(top) = pointer.and_then(|at| ctx.layer_id_at(at)) {
-        if top != ui.layer_id() {
+        // **A canvas node's layer is a sublayer with no area of its own** (`task-2786`), so the layer egui finds at
+        // the pointer over a node is the pane's, the node's parent. Asked only about the node's own layer, every
+        // link in a chat node on the Realm was dead: no hand, no click and no right click menu.
+        let parent = ctx.memory(|memory| memory.areas().parent_layer(ui.layer_id()));
+        if top != ui.layer_id() && Some(top) != parent {
             return;
         }
     }
@@ -509,7 +513,7 @@ pub fn show_the_link_menu(ctx: &egui::Context) -> Option<LinkChoice> {
     let target = menu.target.clone();
     if let Some(response) = popup.show(|ui| {
         let rows = [
-            ("Open in Unluminous Browser", LinkChoice::InUnluminous(target.clone())),
+            ("Open in New Unluminous Tab", LinkChoice::InUnluminous(target.clone())),
             ("Open in Default Browser", LinkChoice::InTheDefaultBrowser(target.clone())),
             ("Copy Link Address", LinkChoice::Copy(target.clone())),
         ];

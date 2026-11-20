@@ -670,6 +670,43 @@ Zoom the page of the rendered tab that is showing, as Ctrl or Cmd with the wheel
 unluminous-cli browser zoom 1.5
 ```
 
+### browser find
+
+```
+unluminous-cli browser find [text] [--next] [--previous] [--case] [--word] [--close]
+```
+
+Search the page that holds the keyboard, a browser tab's or a browser node's, or else the rendered tab that is showing, as `Ctrl`/`Cmd`+`F` over a page does: the page's own find selects the match and scrolls it into view, and the bar over the page says how many there are. With no words it says what the bar holds. Matches are counted a moment after the search, so ask again for the count.
+
+- `text` (optional) — The words to find. Everything after it on the line belongs to it.
+
+- `--next` — Go to the next match of what the bar holds.
+- `--previous` — Go to the previous match.
+- `--case` — Match case.
+- `--word` — Whole words only.
+- `--close` — Put the bar away, leaving the match selected.
+
+```sh
+unluminous-cli browser find example
+unluminous-cli browser find --next
+unluminous-cli browser find --json
+```
+
+### browser hit
+
+```
+unluminous-cli browser hit <x> <y>
+```
+
+Say whether a real click at a place in the window would reach a page or the window, asked of the platform's own hit test, which is what decides where a click and the wheel go. A page is a native view, so what is drawn over it only gets its clicks where the page is cut round it; this is how to check that it is.
+
+- `x` — Across the window, in its own points.
+- `y` — Down the window.
+
+```sh
+unluminous-cli browser hit 400 300 --json
+```
+
 ## tab — the files that are open
 
 Open, show, save and close files. A tab holds a file. A relative path is resolved against the project folder, and every reply says which absolute path it used.
@@ -2957,7 +2994,7 @@ unluminous-cli input wheel 2 --ctrl
 
 ## terminal — the shells along the bottom
 
-`terminal send` types into the shell and presses Enter; `terminal read --wait-for` is how to wait for what it did. Both take `--tab` to name a tab other than the one showing, and naming a tab does not show it, so a build in one tab and a dev server in another can each be spoken to without the other being disturbed.
+`terminal send` types into the shell and presses Enter; `terminal read --wait-for` is how to wait for what it did. Both take `--tab` to name a tab other than the one showing, and naming a tab does not show it, so a build in one tab and a dev server in another can each be spoken to without the other being disturbed. A tab can be split into panes the way Termoil splits one: `terminal split` starts another shell beside the one there, `terminal panes` numbers them, and `--pane` on `send` and `read` speaks to one. `terminal theme` chooses which of Termoil's 894 themes every terminal is drawn in, and `terminal keys` lists Termoil's keys, which work in every terminal grid while it has the keyboard.
 
 ### terminal show
 
@@ -3199,7 +3236,7 @@ unluminous-cli terminal focus-pane <target> [--tab <index>]
 
 Give the keyboard to a pane of a terminal tab, by number or by side.
 
-- `target` (required) — A pane number, or left, right, up, down, next or previous.
+- `target` — A pane number, or left, right, up, down, next or previous.
 
 - `--tab <index>` — Which tab, counting from 0. The one that is showing when it is left out.
 
