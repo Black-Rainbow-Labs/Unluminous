@@ -6,7 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.31.3 — 2026-11-18
+## 1.31.4 — 2026-11-20
+
+- Find in the Markdown preview and in web pages, Copy on a page, one link menu everywhere, macOS clicks and keys over a page reach what is drawn over it, the page's colour round a popup, and a preview shown alone built once rather than every frame (`task-2786`)
+- Browser find and browser hit summaries cut to one sentence, and the grouped MCP ceiling moved to 50,000 tokens (`task-2786`)
+- The Windows window suite at the task-2786 commits (`task-2786`)
+
+## 1.31.3 — 2026-11-17
 
 - The release deletes its releases/ copy once every destination has it, and prunes the site's downloads (`task-2721`)
 - The site publish prunes the downloads itself; -WhatIf prints the prune's dry run (`task-2721`)
