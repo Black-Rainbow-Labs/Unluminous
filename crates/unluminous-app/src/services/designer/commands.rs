@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 use serde_json::json;
 
+use super::actions::Aim;
 use super::notes::NoteState;
 use super::page::Mode;
 use super::{library, Designer, Device, Modal};
@@ -21,22 +22,36 @@ pub const LIST: &[(&str, &str)] = unluminous_cli::plugins::DESIGNER;
 struct Parsed<'a> {
     design: Option<String>,
     author: String,
+    /// Whether `--as` was given, so a request can say who asked it.
+    named_author: bool,
+    /// What `prompt` is about when the window's own choice must not be used: `--element <selector>` or
+    /// `--whole` (task-19, for a request from the phone or the web).
+    aim: Option<Aim>,
     words: &'a [String],
 }
 
-/// Read `--design <name>` and `--as <name>` off the front of a command's arguments.
+/// Read `--design <name>`, `--as <name>`, `--element <selector>` and `--whole` off the front of a command's
+/// arguments.
 fn parse(arguments: &[String]) -> Parsed<'_> {
     let mut at = 0;
-    let (mut design, mut author) = (None, "agent".to_owned());
-    while let (Some(flag), Some(value)) = (argument(arguments, at), argument(arguments, at + 1)) {
+    let (mut design, mut author, mut named_author, mut aim) =
+        (None, "agent".to_owned(), false, None);
+    while let Some(flag) = argument(arguments, at) {
+        if flag == "--whole" {
+            aim = Some(Aim::Whole);
+            at += 1;
+            continue;
+        }
+        let Some(value) = argument(arguments, at + 1) else { break };
         match flag {
             "--design" => design = Some(value.to_owned()),
-            "--as" => author = value.to_owned(),
+            "--as" => (author, named_author) = (value.to_owned(), true),
+            "--element" => aim = Some(Aim::Selector(value.to_owned())),
             _ => break,
         }
         at += 2;
     }
-    Parsed { design, author, words: &arguments[at..] }
+    Parsed { design, author, named_author, aim, words: &arguments[at..] }
 }
 
 /// Answer one verb.
@@ -97,6 +112,11 @@ fn which_showing(designer: &mut Designer, named: &Option<String>) -> Result<Path
             designer.name_of(&design)
         )),
     }
+}
+
+/// Who asked, when `--as` named somebody.
+fn asker<'a>(parsed: &'a Parsed<'_>) -> Option<&'a str> {
+    parsed.named_author.then_some(parsed.author.as_str())
 }
 
 /// A note's number, written `3`, `#3` or `note-3`.
@@ -345,7 +365,7 @@ fn about_the_agent(
     match command {
         "ask" => {
             let id = note_id(argument(words, 0))?;
-            designer.ask_note(&design, id)?;
+            designer.ask_note_from(&design, id, asker(parsed))?;
             Ok(Answer::said(format!("Sent note {id} to the agent")).with(json!({ "note": id })))
         }
         "ask-all" => {
@@ -354,7 +374,8 @@ fn about_the_agent(
                 .with(json!({ "notes": sent })))
         }
         "prompt" => {
-            designer.ask_about_the_design(&design, &rest(words, 0))?;
+            let aim = parsed.aim.clone().unwrap_or(Aim::Chosen);
+            designer.ask_about(&design, &rest(words, 0), &aim, asker(parsed))?;
             Ok(Answer::said("Sent to the agent").with(json!({ "sent": true })))
         }
         "history" => {

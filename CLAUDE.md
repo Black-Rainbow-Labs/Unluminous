@@ -7603,6 +7603,21 @@ left, a menu, a Settings page and `explorer.shows = .designs`. Six rules to keep
   `_agent_output/task-2254-designer/mocks/`. `designer_tab`, `designer_tab_phone`, `designer_composer`,
   `designer_pane`, `designer_settings`, `designer_history` and `designer_tab_light` are the pictures.
 
+### A design is followed from the phone and the web through the board (`task-19`)
+
+`tasks/task-19-remote-design-tdd.md` is the design. agent-tasks-service's board reads the design files itself
+(designs, `<name>.comments.json`, `.unluminous/designs/<name>/`) and asks a running window over the control
+channel only for `plugins.view agent-chat` and to run Designer verbs. Three rules:
+
+- **The Designer's file layout is a contract with the board.** A change to where notes or history copies live,
+  or to the notes file's fields, is a change to `agent-tasks-service/crates/tasks-core/src/services/designs/`
+  too.
+- **A request from somewhere else names its element.** `prompt --element <selector>` or `--whole`, so it never
+  carries whatever is chosen in the window, and `--as <who>` on `prompt` and `ask` puts `Asked from <who>.` in
+  front of the request.
+- **The board sends a verb's words joined by spaces**, as `plugins run` splits them, so a design whose name
+  holds a space has its notes written into the file and cannot be sent a request from the phone.
+
 ### The Designer tab can be maximized, and the notes have a divider and a toggle (`task-2601`)
 
 - **`DesignView::maximised`** draws only a bar with the name and `Normal size` over the page, and `app::designer`

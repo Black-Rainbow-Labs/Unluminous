@@ -241,7 +241,7 @@ pub const DESIGNER: &[(&str, &str)] = &[
     ("move", "Pin a note to another element: move <note> <selector>."),
     ("ask", "Send one note to Agent-Chat, as its button does: ask <note>."),
     ("ask-all", "Send every open note to Agent-Chat in one message."),
-    ("prompt", "Send Agent-Chat a request about the chosen element, or the whole design: prompt <text>."),
+    ("prompt", "Send Agent-Chat a request about the chosen element, or the whole design: prompt <text>. --element <selector> names the element and --whole names none, whatever is chosen."),
     ("history", "The copies taken before each request, newest first."),
     ("restore", "Put a copy back as the design: restore <copy>, by name or by place in the list."),
     ("reload", "Load the page again."),

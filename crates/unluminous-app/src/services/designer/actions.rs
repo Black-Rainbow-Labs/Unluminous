@@ -475,12 +475,27 @@ impl Designer {
     /// @param design - the design, relative to the project
     /// @param id - the note
     pub fn ask_note(&mut self, design: &Path, id: u32) -> Result<(), String> {
+        self.ask_note_from(design, id, None)
+    }
+
+    /// Hand one note to the agent, saying who asked when it was not the window (task-19).
+    ///
+    /// @param design - the design, relative to the project
+    /// @param id - the note
+    /// @param asker - who asked, such as `jason@phone`, or nothing for the window's own button
+    pub fn ask_note_from(
+        &mut self,
+        design: &Path,
+        id: u32,
+        asker: Option<&str>,
+    ) -> Result<(), String> {
         let send_html = self.config.send_html;
         let said = history::said(design);
         let view = self.loaded(design)?;
         let note = view.notes.get(id).ok_or_else(|| super::notes::no_such_note(id))?;
         let element = known_element(view, &note.anchor.selector);
-        let words = prompt::for_a_note(&said, note, element.as_ref(), send_html);
+        let words =
+            prompt::asked_from(asker, prompt::for_a_note(&said, note, element.as_ref(), send_html));
         let about = note.first_words().to_owned();
         self.send_to_the_agent(design, words, &about)?;
         let view = self.loaded(design)?;
@@ -525,6 +540,24 @@ impl Designer {
     /// @param design - the design, relative to the project
     /// @param words - what is asked
     pub fn ask_about_the_design(&mut self, design: &Path, words: &str) -> Result<(), String> {
+        self.ask_about(design, words, &Aim::Chosen, None)
+    }
+
+    /// Send a request about a design: about the chosen element, a named one, or the whole design, saying who
+    /// asked when it was not the window (task-19). A request from the phone or the web names its element, so
+    /// it does not quietly carry whatever happens to be chosen in the window.
+    ///
+    /// @param design - the design, relative to the project
+    /// @param words - what to change
+    /// @param aim - which element it is about
+    /// @param asker - who asked, such as `jason@phone`, or nothing for the window's own prompt box
+    pub fn ask_about(
+        &mut self,
+        design: &Path,
+        words: &str,
+        aim: &Aim,
+        asker: Option<&str>,
+    ) -> Result<(), String> {
         let words = words.trim();
         if words.is_empty() {
             return Err("Say what to change.".to_owned());
@@ -532,8 +565,18 @@ impl Designer {
         let send_html = self.config.send_html;
         let said = history::said(design);
         let view = self.loaded(design)?;
-        let request = prompt::free(&said, view.selection.as_ref(), words, send_html);
-        view.prompt.clear();
+        let element = match aim {
+            Aim::Chosen => view.selection.clone(),
+            Aim::Whole => None,
+            Aim::Selector(selector) => {
+                Some(known_element(view, selector).unwrap_or_else(|| element_named(selector)))
+            }
+        };
+        let request =
+            prompt::asked_from(asker, prompt::free(&said, element.as_ref(), words, send_html));
+        if matches!(aim, Aim::Chosen) {
+            view.prompt.clear();
+        }
         self.send_to_the_agent(design, request, words)
     }
 
@@ -724,6 +767,29 @@ fn begin_a_note(view: &mut DesignView, element: Element, fx: f32, fy: f32) {
 }
 
 /// What the page has said about the element a selector finds, when it has said.
+/// Which element a request is about.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Aim {
+    /// The element chosen in the window, or the whole design when nothing is chosen.
+    Chosen,
+    /// The whole design, whatever is chosen.
+    Whole,
+    /// The element a selector finds.
+    Selector(String),
+}
+
+/// An element known only by its selector, which is all a request from the phone or the web has.
+fn element_named(selector: &str) -> Element {
+    Element {
+        selector: selector.to_owned(),
+        tag: selector.rsplit('>').next().unwrap_or(selector).trim().to_owned(),
+        excerpt: String::new(),
+        html: String::new(),
+        styles: Vec::new(),
+        rect: Default::default(),
+    }
+}
+
 fn known_element(view: &DesignView, selector: &str) -> Option<Element> {
     view.selection
         .iter()

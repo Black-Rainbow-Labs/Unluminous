@@ -143,3 +143,15 @@ pub fn free(design: &str, element: Option<&Element>, words: &str, send_html: boo
     ));
     out
 }
+
+/// A request with a line in front saying who asked, when it was asked from somewhere other than the window
+/// (task-19). The agent and the transcript then show that a request came from the phone or the web.
+///
+/// @param asker - who asked, or nothing
+/// @param request - the request
+pub fn asked_from(asker: Option<&str>, request: String) -> String {
+    match asker.map(str::trim).filter(|who| !who.is_empty()) {
+        Some(who) => format!("Asked from {who}.\n{request}"),
+        None => request,
+    }
+}

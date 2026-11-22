@@ -902,3 +902,61 @@ fn a_command_names_a_tab_by_its_number_or_its_design() {
     designer.command("close-tab", &[]).unwrap();
     assert_eq!(designer.tabs().len(), 1, "close-tab with nothing closes the one showing");
 }
+
+/// The words a request put in front of Agent-Chat, from the second of the two commands it queued.
+fn words_sent(designer: &mut Designer) -> String {
+    let asked = designer.asking();
+    let sent = asked
+        .iter()
+        .find_map(|request| match request {
+            Request::RunCommand { arguments, .. } if arguments["command"] == "send" => {
+                arguments["arguments"].as_str().map(str::to_owned)
+            }
+            _ => None,
+        })
+        .expect("a send to Agent-Chat");
+    sent
+}
+
+#[test]
+fn a_request_from_the_phone_names_its_element_or_none_and_says_who_asked() {
+    let (mut designer, _project, design) = with_a_design("commands-remote-prompt");
+    designer.page_reported(&design, Report::Selected(an_element("h1.hero-title")));
+
+    designer.command("prompt", &words("--as jason@phone --whole Make it darker")).unwrap();
+    let whole = words_sent(&mut designer);
+    assert!(whole.starts_with("Asked from jason@phone.\n"), "{whole}");
+    assert!(
+        whole.contains("about the whole design"),
+        "the window's chosen element is not sent: {whole}"
+    );
+    assert!(!whole.contains("h1.hero-title"), "{whole}");
+
+    designer
+        .command(
+            "prompt",
+            &words("--design landing.html --as jason@web --element main>p.lede Shorter"),
+        )
+        .unwrap();
+    let named = words_sent(&mut designer);
+    assert!(named.contains("selector `main>p.lede`"), "{named}");
+    assert!(named.starts_with("Asked from jason@web.\n"), "{named}");
+
+    designer.command("prompt", &words("Bigger")).unwrap();
+    let chosen = words_sent(&mut designer);
+    assert!(
+        chosen.contains("selector `h1.hero-title`"),
+        "the window's own prompt keeps its choice: {chosen}"
+    );
+    assert!(!chosen.starts_with("Asked from"), "{chosen}");
+}
+
+#[test]
+fn a_note_sent_from_the_phone_says_who_asked() {
+    let (mut designer, _project, design) = with_a_design("commands-remote-ask");
+    let id = designer.comment(&design, "h1", "Darker.", "you").unwrap();
+    designer.command("ask", &words(&format!("--as jason@phone {id}"))).unwrap();
+    let sent = words_sent(&mut designer);
+    assert!(sent.starts_with("Asked from jason@phone.\n"), "{sent}");
+    assert!(sent.contains("Darker."), "{sent}");
+}
