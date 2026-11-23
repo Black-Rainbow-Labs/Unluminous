@@ -243,8 +243,8 @@ Reasons:
 - The chat is then the same conversation every time, with its images, its stop button and its history, and
   it does not change shape when the Mac's window opens or closes.
 - The Designer's verbs that `POST /tasks/designs/request` uses for a phone request (`--element`, `--whole`,
-  `--as`) are in task-19's unluminous worktree and not in the released desktop, so sending to the window
-  does not work for the request kinds the phone sends today.
+  `--as`) reached unluminous main with task-19 on 2026-11-22. A desktop built before that answers those verbs
+  with an error, so sending to the window would work only on a desktop released after task-19.
 - The window's Designer takes words only. It cannot carry an image.
 
 **Keeping the two from editing the same design at once.**
