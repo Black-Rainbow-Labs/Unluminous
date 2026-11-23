@@ -6,7 +6,16 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.31.4 — 2026-11-20
+## 1.32.0 — 2026-11-23
+
+- Follow a Designer design from the phone and the web (`task-19`)
+- TDD for the phone Design tab without desktop Unluminous: the board runs the design agent, a chat like Agent-Chat, images (`task-26`)
+- The TDD says the Designer verbs for phone requests are on main since task-19 (`task-26`)
+- TDD for pairing the phone app with desktop Unluminous by QR code, with Tailscale setup and connection tests (`task-29`)
+- Pair a phone from desktop Unluminous: the Pair a Phone dialog (QR code, typed code, connections with a test of each, Tailscale steps, confirm and reject), the Phones settings page, Unluminous -> Pair a Phone..., and the pair commands, all as a view of the Tasks board's pairing routes (`task-30`)
+- Closing the Pair a Phone dialog deletes every offer that was not confirmed, so a renewal racing the close cannot leave the new offer alive on the board; cargo fmt on the files the pairing change touched (`task-30`)
+
+## 1.31.4 — 2026-11-19
 
 - Find in the Markdown preview and in web pages, Copy on a page, one link menu everywhere, macOS clicks and keys over a page reach what is drawn over it, the page's colour round a popup, and a preview shown alone built once rather than every frame (`task-2786`)
 - Browser find and browser hit summaries cut to one sentence, and the grouped MCP ceiling moved to 50,000 tokens (`task-2786`)
