@@ -61,6 +61,7 @@ pub mod mcp;
 pub mod mermaid_scene;
 pub mod native_menu;
 pub mod pasted_picture;
+pub mod pairing;
 pub mod paths;
 pub mod picture;
 pub mod plugin_settings;
@@ -69,6 +70,7 @@ pub mod plugins;
 pub mod preview_images;
 pub mod project_state;
 pub mod project_symbols;
+pub mod qr;
 /// The Realm: the canvas of nodes `task-1904` asks for.
 pub mod realm;
 pub mod recycle;

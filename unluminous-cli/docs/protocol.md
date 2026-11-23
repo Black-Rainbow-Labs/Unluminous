@@ -149,7 +149,7 @@ why a screenshot taken straight after a command shows what the command did. Thir
 answered later than the frame they arrived on — each one waits for something that is not the window's
 to decide, so the answer belongs to whichever frame it arrives on. They are: `status`, `window
 screenshot`, `input move`, `input click`, `input drag`, `input key`, `input text`, `input wheel`,
-`realm browser`, `editor references`, `editor rename`, `editor complete`, `editor signature`, `update check`, `update versions`, `settings acp-registry`, `settings acp-add`, `settings acp-update`, `voice transcribe`, `report screenshot`, `terminal
+`realm browser`, `editor references`, `editor rename`, `editor complete`, `editor signature`, `update check`, `update versions`, `settings acp-registry`, `settings acp-add`, `settings acp-update`, `voice transcribe`, `pair status`, `pair network`, `pair test`, `pair tailscale-serve`, `pair offer`, `pair wait`, `pair confirm`, `pair reject`, `pair cancel`, `pair devices`, `pair rename`, `pair revoke`, `report screenshot`, `terminal
 read`, `run output`, `debug start`, `debug continue`, `debug step-over`, `debug step-into`, `debug
 step-out`, `debug run-to`, `debug hover`, `debug evaluate`, `debug status`, `modal results`, `notebook
 run`, `notebook variables`, `notebook complete`, `notebook kernel`, `git status`, `git action` and

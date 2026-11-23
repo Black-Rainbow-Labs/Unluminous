@@ -1078,7 +1078,6 @@ unluminous-cli editor paste-picture [--path <file>] [--from-file <path>]
 Paste a picture into the Markdown file that is showing: it is written into the images folder beside the file, as <file name>-<n>.png, and a link to it is typed at the caret as a paragraph of its own, which the preview draws. The same as Ctrl+V or Cmd+V with a picture on the clipboard.
 
 - `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
-
 - `--from-file <path>` — Copy this picture file instead of the picture on the clipboard.
 
 ```sh
@@ -1693,6 +1692,186 @@ Microphone access and every input device, with the one dictation uses; choose an
 
 ```sh
 unluminous-cli voice microphone
+```
+
+## pair — pairing the phone app with the Tasks board on this computer
+
+The desktop is a view of the Tasks board's pairing routes on this computer, and stores nothing: phones, offers and codes live in the board. It finds the board through the `boards` folder in Unluminous's settings folder, or the one conf file `UNLUMINOUS_BOARD_CONF` names. `pair offer` then `pair wait`, `pair confirm` pairs a phone with no dialog; `modal open pair-phone` shows the same offer as a QR code.
+
+### pair status
+
+```
+unluminous-cli pair status [--timeout <milliseconds>]
+```
+
+The Tasks board this computer found, and what it says about pairing: whether it listens on the home network, its port, its name, how many phones are paired and how many offers are live.
+
+- `--timeout <milliseconds>` — How long to wait for the board. 45000 by default.
+
+```sh
+unluminous-cli pair status --json
+```
+
+### pair network
+
+```
+unluminous-cli pair network [--timeout <milliseconds>]
+```
+
+The addresses a phone can be given (home network, local name, Tailscale name and address) and what Tailscale is doing on this computer: installed, signed in, whether `tailscale serve` is needed and done, and the phones on the tailnet.
+
+- `--timeout <milliseconds>` — How long to wait for the board. 45000 by default.
+
+```sh
+unluminous-cli pair network --json
+```
+
+### pair test
+
+```
+unluminous-cli pair test [--timeout <milliseconds>]
+```
+
+Ask the board to connect to each of its own addresses and say how each went. These results are from this computer; a phone tests each address itself after pairing.
+
+- `--timeout <milliseconds>` — How long to wait for the board. 45000 by default.
+
+```sh
+unluminous-cli pair test --json
+```
+
+### pair tailscale-serve
+
+```
+unluminous-cli pair tailscale-serve [--timeout <milliseconds>]
+```
+
+Run the `tailscale serve` command that passes the board's device port through Tailscale, which is needed when Tailscale runs in userspace mode. Answers with the command and what it printed.
+
+- `--timeout <milliseconds>` — How long to wait for the board. 45000 by default.
+
+```sh
+unluminous-cli pair tailscale-serve
+```
+
+### pair offer
+
+```
+unluminous-cli pair offer [--user <name>] [--ttl <seconds>] [--timeout <milliseconds>]
+```
+
+Make a pairing offer with no dialog and answer with the `link`, the `webLink`, the typed `code` and when it expires, so an agent can hand them to a phone. The offer is the one `modal open pair-phone` shows, and `pair wait`, `pair confirm`, `pair reject` and `pair cancel` act on it.
+
+- `--user <name>` — The account the phone signs in as. The board owner's by default.
+- `--ttl <seconds>` — How long the offer lives, 60 to 900. The board's default is 300.
+- `--timeout <milliseconds>` — How long to wait for the board. 45000 by default.
+
+```sh
+unluminous-cli pair offer --json
+unluminous-cli pair offer --user jason --ttl 600
+```
+
+### pair wait
+
+```
+unluminous-cli pair wait [--timeout <milliseconds>]
+```
+
+Wait until a phone has claimed the offer, and answer with the phone's name and model and the six digits both screens show. Nothing is paired until `pair confirm`.
+
+- `--timeout <milliseconds>` — How long to wait for a phone. 10000 by default.
+
+```sh
+unluminous-cli pair wait --timeout 120000
+```
+
+### pair confirm
+
+```
+unluminous-cli pair confirm [--timeout <milliseconds>]
+```
+
+Confirm the phone that claimed the offer, after checking the six digits match. This is what issues its token.
+
+- `--timeout <milliseconds>` — How long to wait for the board. 45000 by default.
+
+```sh
+unluminous-cli pair confirm
+```
+
+### pair reject
+
+```
+unluminous-cli pair reject [--timeout <milliseconds>]
+```
+
+Refuse the phone that claimed the offer. No token is made and the offer ends.
+
+- `--timeout <milliseconds>` — How long to wait for the board. 45000 by default.
+
+```sh
+unluminous-cli pair reject
+```
+
+### pair cancel
+
+```
+unluminous-cli pair cancel [--timeout <milliseconds>]
+```
+
+Delete the offer, so its code and link stop working.
+
+- `--timeout <milliseconds>` — How long to wait for the board. 45000 by default.
+
+```sh
+unluminous-cli pair cancel
+```
+
+### pair devices
+
+```
+unluminous-cli pair devices [--timeout <milliseconds>]
+```
+
+Every paired phone: id, name, platform, model, account, when it was paired, when and through which address it was last seen, and the results of its own last test.
+
+- `--timeout <milliseconds>` — How long to wait for the board. 45000 by default.
+
+```sh
+unluminous-cli pair devices --json
+```
+
+### pair rename
+
+```
+unluminous-cli pair rename <device> <name> [--timeout <milliseconds>]
+```
+
+Rename a paired phone.
+
+- `device` — The phone's id or its name.
+- `name` — The new name.
+
+- `--timeout <milliseconds>` — How long to wait for the board. 45000 by default.
+
+```sh
+unluminous-cli pair rename 3 Office-iPad
+```
+
+### pair revoke
+
+```
+unluminous-cli pair revoke <device> [--timeout <milliseconds>]
+```
+
+Remove a paired phone. Its token stops working at once and it can pair again.
+
+- `device` — The phone's id or its name.
+
+- `--timeout <milliseconds>` — How long to wait for the board. 45000 by default.
+
+```sh
+unluminous-cli pair revoke 3
 ```
 
 ## report — telling the people who make Unluminous about a bug, or asking for a feature
@@ -4544,22 +4723,23 @@ unluminous-cli modal list --json
 ### modal open
 
 ```
-unluminous-cli modal open <command-palette|terminal-appearance|go-to-file|find-in-files|settings|about|new-file|rename> [--query <text>] [--path <path>] [--page <name>]
+unluminous-cli modal open <command-palette|terminal-appearance|go-to-file|find-in-files|settings|about|pair-phone|new-file|rename> [--query <text>] [--path <path>] [--page <name>]
 ```
 
 Open a modal, and put something in its box in the same breath.
 
-- `name` — command-palette, terminal-appearance, go-to-file, find-in-files, settings, about, new-file or rename.
+- `name` — command-palette, terminal-appearance, go-to-file, find-in-files, settings, about, pair-phone, new-file or rename.
 
 - `--query <text>` — Type this into the modal's box as it opens.
 - `--path <path>` — The folder a new file goes in, or the file being renamed. Needed by new-file and rename.
-- `--page <name>` — Which page the Settings modal shows: appearance, theme, keymap, editor, plugins, terminal, mcp or ai (AI Configuration).
+- `--page <name>` — Which page the Settings modal shows: appearance, theme, keymap, editor, plugins, terminal, mcp, ai (AI Configuration), voice or phones.
 
 ```sh
 unluminous-cli modal open go-to-file --query mdrs
 unluminous-cli modal open find-in-files --query "fn main"
 unluminous-cli modal open settings --page terminal
 unluminous-cli modal open about
+unluminous-cli modal open pair-phone
 unluminous-cli modal open new-file --path notes
 ```
 

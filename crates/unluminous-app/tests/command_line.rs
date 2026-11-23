@@ -597,6 +597,7 @@ fn the_settings_modal_opens_on_the_page_it_is_asked_for() {
         ("plugins", settings::Page::Plugins),
         ("mcp", settings::Page::Mcp),
         ("voice", settings::Page::Voice),
+        ("phones", settings::Page::Phones),
     ] {
         did(&mut harness, &format!("modal open settings --page {named}"));
         assert_eq!(harness.state().settings_window.page, page, "--page {named}");
@@ -1896,7 +1897,7 @@ type Drive = (&'static str, fn(&mut Coverage));
 /// driven. It calls those tests itself now, so it gives the same answer run alone or with the whole binary.
 #[test]
 fn every_catalogue_command_is_driven_both_ways() {
-    let drives: [Drive; 16] = [
+    let drives: [Drive; 17] = [
         ("refuse a value no command has a name for", refuse_a_value_no_command_has_a_name_for),
         (
             "refuse a word where a command takes a number",
@@ -1916,6 +1917,7 @@ fn every_catalogue_command_is_driven_both_ways() {
         ("the voice", drive_the_voice),
         ("the search area", drive_the_search),
         ("the updates", drive_the_updates),
+        ("pairing a phone", drive_the_pairing),
     ];
     let mut coverage = Coverage::default();
     std::thread::scope(|scope| {
@@ -3076,6 +3078,48 @@ fn drive_the_project(coverage: &mut Coverage) {
     coverage.refuses(&mut harness, "project tab-show 1");
     coverage.refuses(&mut harness, "project tab-close");
     drive_the_project_tabs(coverage, &second);
+}
+
+/// The `pair` commands, against a scripted board for the successes and a window with no board for the
+/// refusals. `task-30`. These are held until the board answers, so they are driven through `did` and
+/// `refused`, which wait for the reply the way a client does.
+fn drive_the_pairing(_: &mut Coverage) {
+    use common::board::*;
+    use unluminous_app::services::pairing::Source;
+    let board = ScriptedBoard::start("dispatch-coverage");
+    standard_answers(&board, "running");
+    board.answer("POST", "/pair/test", 200, serde_json::json!({ "results": [] }));
+    board.answer("POST", "/pair/tailscale/serve", 200, serde_json::json!({ "ok": true, "command": "tailscale serve", "output": "" }));
+    board.answer("GET", "/pair/devices", 200, serde_json::json!([a_device(3, "Jason's iPhone")]));
+    board.answer("PATCH", "/pair/devices/3", 200, a_device(3, "Desk"));
+    board.answer("DELETE", "/pair/devices/3", 204, serde_json::Value::Null);
+    board.answer("POST", "/pair/offers/offer-1/confirm", 200, serde_json::json!({ "device": a_device(3, "Jason's iPhone") }));
+    board.answer("POST", "/pair/offers/offer-1/reject", 204, serde_json::Value::Null);
+    let mut harness = harness_in(&dispatch_folder());
+    harness.state_mut().pairing.use_source(Source { folder: None, file: Some(board.conf.clone()) });
+    harness.state_mut().pairing.hold_the_clock_at(Some(NOW_MS));
+    for line in ["pair status", "pair network", "pair test", "pair tailscale-serve", "pair devices", "pair offer"] {
+        did(&mut harness, line);
+    }
+    board.answer(
+        "GET",
+        "/pair/offers/offer-1",
+        200,
+        serde_json::json!({ "state": "claimed", "expiresAt": iso_after(300), "claim": a_claim() }),
+    );
+    did(&mut harness, "pair wait --timeout 20000");
+    for line in ["pair confirm", "pair rename 3 Desk", "pair revoke 3", "pair offer", "pair reject", "pair offer", "pair cancel"] {
+        did(&mut harness, line);
+    }
+    let mut empty = harness_in(&dispatch_folder());
+    let nowhere = std::env::temp_dir().join(format!("unluminous-dispatch-no-board-{}.conf", std::process::id()));
+    empty.state_mut().pairing.use_source(Source { folder: None, file: Some(nowhere) });
+    for line in [
+        "pair status", "pair network", "pair test", "pair tailscale-serve", "pair devices", "pair offer",
+        "pair wait", "pair confirm", "pair reject", "pair cancel", "pair rename 3 Desk", "pair revoke 3",
+    ] {
+        refused(&mut empty, line);
+    }
 }
 
 /// The `search` verbs, which `every_search_verb_answers_from_the_window` drives, for the walk's record.

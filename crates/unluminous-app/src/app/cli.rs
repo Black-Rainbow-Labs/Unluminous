@@ -227,6 +227,8 @@ pub enum Waiting {
     Signature { answer_by: Instant, until: Instant },
     /// `voice transcribe` waiting for the words of the dictation with this tag. `task-2290`.
     VoiceTranscribe { tag: u64, until: Instant },
+    /// A `pair` command waiting for the Tasks board, or for a phone to claim an offer. `task-30`.
+    Pairing { step: crate::app::pairing::PairStep, until: Instant, command: String },
 }
 
 /// Who asked for a tool call to be run, which is who its answer goes back to.
@@ -281,6 +283,7 @@ impl Waiting {
             | Waiting::Completion { until, .. }
             | Waiting::Signature { until, .. }
             | Waiting::VoiceTranscribe { until, .. }
+            | Waiting::Pairing { until, .. }
             | Waiting::DebugPause { until, .. }
             | Waiting::DebugEvaluate { until, .. }
             | Waiting::DebugHover { until, .. } => *until,
@@ -640,6 +643,7 @@ impl UnluminousApp {
                 self.notebook_kernels_answer(request, &python)
             }
             Waiting::ReportShot { count, .. } => self.report_shot_answer(request, *count),
+            Waiting::Pairing { step, .. } => self.pair_ready(request, step),
             Waiting::VoiceTranscribe { tag, .. } => {
                 let tag = *tag;
                 self.voice_transcribe_answer(request, tag)
@@ -815,6 +819,9 @@ impl UnluminousApp {
                 "voice.transcribe",
                 "The words had not come back when the time ran out. `voice status` says what the engine is doing.".to_owned(),
             ),
+            Waiting::Pairing { step, command, .. } => {
+                return Reply::failed(command, code::TIMED_OUT, Self::pair_timed_out(step));
+            }
             Waiting::ReportShot { .. } => (
                 "report.screenshot",
                 "The window had not been photographed when the time ran out.".to_owned(),
@@ -1176,6 +1183,7 @@ impl UnluminousApp {
             "setup" => self.cli_setup(request, verb),
             "search" => self.cli_search(request, verb),
             "voice" => self.cli_voice(request, verb),
+            "pair" => self.cli_pair(request, verb),
             _ => no(
                 request,
                 code::UNKNOWN_COMMAND,

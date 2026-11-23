@@ -744,6 +744,8 @@ pub enum Page {
     Ai,
     /// Speech to text for the Agent-Chat prompt, and always listen for "Sable" (`task-2290`).
     Voice,
+    /// The phones paired with the Tasks board on this computer, and `Pair a Phone...`. `task-30`.
+    Phones,
     /// A page a plugin contributed, by its place in `plugins::Surfaces::pages`.
     ///
     /// A slot rather than a name, so `Page` stays `Copy` — it is passed by value through the dialog and
@@ -757,7 +759,7 @@ pub enum Page {
 impl Page {
     /// Unluminous's own seven. A plugin's page is not in it, because there is no compile time list of them;
     /// [`Page::all`] is the one that includes them.
-    pub const ALL: [Page; 9] = [
+    pub const ALL: [Page; 10] = [
         Page::Appearance,
         Page::Theme,
         Page::Keymap,
@@ -767,6 +769,7 @@ impl Page {
         Page::Mcp,
         Page::Ai,
         Page::Voice,
+        Page::Phones,
     ];
 
     /// Unluminous's own seven, then one per plugin that contributed a page, in the order the plugins are
@@ -797,6 +800,7 @@ impl Page {
             Page::Mcp => "MCP",
             Page::Ai => "AI Configuration",
             Page::Voice => "Voice",
+            Page::Phones => "Phones",
             // A contributed page's real name is `settings.page` in its manifest, which this function has
             // no way to reach. `settings_dialog::title_of` is what draws it, asking the surfaces; this is
             // the answer for a slot with no plugin in it, which nothing draws.
@@ -824,6 +828,8 @@ impl Page {
             Page::Ai => "Tools",
             // Under Tools beside the AI endpoints, because an endpoint can be where speech goes.
             Page::Voice => "Tools",
+            // Under Tools too: it is about how the phone app reaches the board that Unluminous shows.
+            Page::Phones => "Tools",
             // A contributed page is listed under `Plugins`, so a person looking for what a plugin added
             // finds it under the heading that says where it came from.
             Page::Plugin(_) => "Plugins",
@@ -845,6 +851,7 @@ impl Page {
             Page::Voice => {
                 &["Speech to text", "Endpoint", "Microphone", "Listen for Sable", "Dictation"]
             }
+            Page::Phones => &["Pair a Phone", "Paired phones"],
             // A contributed page's headings are its own, and a manifest does not name them: the plugin
             // draws its page. So it has none here, which means the search box finds it by its name.
             Page::Plugin(_) => &[],

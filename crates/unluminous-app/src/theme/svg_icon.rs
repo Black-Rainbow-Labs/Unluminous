@@ -99,6 +99,17 @@ pub static VOICE_OVER: SvgMark = SvgMark {
     ],
 };
 
+/// Lucide `smartphone` (MIT), as a line mark in a 24 unit view box: a phone with a dot where the home bar is.
+/// The Phones page in Settings (`task-30`).
+pub static SMARTPHONE: SvgMark = SvgMark {
+    view: 24.0,
+    stroke: 1.8,
+    parts: &[
+        Part::Path("M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1 -2 2H7a2 2 0 0 1 -2 -2V4a2 2 0 0 1 2 -2z"),
+        Part::Path("M12 18h.01"),
+    ],
+};
+
 /// VS Code codicon `debug-continue` (CC BY 4.0), 16 unit view box.
 ///
 /// The codicon is a filled outline: a bar 1.5 wide at the left and a play triangle drawn as a ring 1.5

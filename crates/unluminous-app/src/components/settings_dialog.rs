@@ -114,6 +114,8 @@ pub struct SettingsWindow {
     pub plugins: PluginsState,
     /// What the MCP page is showing.
     pub mcp: McpState,
+    /// Which paired phone the Phones page is renaming. `task-30`.
+    pub phones: crate::components::phones_page::PhonesState,
     /// What the Keymap page is showing, and which row is recording a chord. `task-2286`.
     pub keymap: crate::components::keymap_page::KeymapState,
     /// How far the list of pages down the left is scrolled, and how tall it came out when it was last drawn.
@@ -170,6 +172,8 @@ pub enum PageOutcome {
     EndpointsChanged,
     /// The Voice page asked for something that is not a setting. `task-2290`.
     Voice(crate::components::voice_page::VoiceAsk),
+    /// The Phones page asked to pair a phone, or to rename or remove one. `task-30`.
+    Phones(crate::components::phones_page::PhonesAsk),
 }
 
 /// What happened in the Settings window this frame.
@@ -206,6 +210,8 @@ pub struct SettingsContext<'a> {
     pub plugin_page_marks: &'a [String],
     /// What the window knows about speech to text, for the Voice page. `task-2290`.
     pub voice: &'a crate::components::voice_page::VoiceFacts,
+    /// The phones paired with the board, for the Phones page. `task-30`.
+    pub phones: &'a crate::components::phones_page::PhonesFacts,
 }
 
 /// Draw the Settings window. Does nothing when it is not open.
@@ -430,6 +436,15 @@ fn draw_the_page(
                 (Some(ask), _) => PageOutcome::Voice(ask),
                 (None, true) => PageOutcome::Changed,
                 (None, false) => PageOutcome::Nothing,
+            };
+            (outcome, page.drawn.height)
+        }
+        Page::Phones => {
+            let page =
+                crate::components::phones_page::show(ui, area, &mut state.phones, context.phones);
+            let outcome = match page.ask {
+                Some(ask) => PageOutcome::Phones(ask),
+                None => PageOutcome::Nothing,
             };
             (outcome, page.drawn.height)
         }
@@ -677,6 +692,7 @@ fn mark_of(page: Page, plugin_page_marks: &[String]) -> PageMark {
         Page::Mcp => PageMark::Line(Icon::Plug),
         Page::Ai => PageMark::Line(Icon::Spark),
         Page::Voice => PageMark::Svg(&svg_icon::VOICE_OVER),
+        Page::Phones => PageMark::Svg(&svg_icon::SMARTPHONE),
         Page::Plugin(slot) => match plugin_page_marks.get(slot as usize).map(String::as_str) {
             Some("chat") => PageMark::Line(Icon::Bubble),
             Some("board") => PageMark::Svg(&svg_icon::LIST_TODO),
@@ -1679,6 +1695,7 @@ mod tests {
             plugin_pages: &[],
             plugin_page_marks: &[],
             voice: &crate::components::voice_page::VoiceFacts::default(),
+            phones: &crate::components::phones_page::PhonesFacts::default(),
         };
         let egui = fonted();
         let mut shapes = Vec::new();
@@ -1772,6 +1789,7 @@ mod tests {
             plugin_pages: &[],
             plugin_page_marks: &[],
             voice: &crate::components::voice_page::VoiceFacts::default(),
+            phones: &crate::components::phones_page::PhonesFacts::default(),
         };
         let egui = fonted();
         let mut once = |state: &mut SettingsWindow| {

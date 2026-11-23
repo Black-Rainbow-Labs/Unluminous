@@ -18,6 +18,7 @@
 //! and a warning about that would be a warning about the split rather than about the code.
 #![allow(dead_code)]
 
+pub mod board;
 pub mod receipt;
 pub mod turn;
 

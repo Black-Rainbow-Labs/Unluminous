@@ -128,6 +128,9 @@ inillucent-driver = { version = "2.8.1", features = ["embed"] }
 # for the reason `inillucent-driver` is.
 rux = { git = "https://github.com/Black-Rainbow-Labs/black-rainbow-labs-rux.git", rev = "d451baba34d6deec62a58938e3865a6d253ea97e" }
 url = "2.5"
+# The QR code the Pair a Phone dialog draws (`task-30`). No image feature: it gives a square of booleans and
+# `services::qr` and the dialog paint the squares themselves.
+qrcode = { version = "0.14", default-features = false }
 percent-encoding = "2.3"
 mime_guess = "2.0"
 wry = { version = "0.56.1", default-features = false, features = ["os-webview"] }

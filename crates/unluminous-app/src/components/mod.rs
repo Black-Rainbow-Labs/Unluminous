@@ -66,6 +66,8 @@ pub mod prompt_dialog;
 /// The Realm — `task-1904`.
 pub mod realm;
 pub mod references;
+pub mod pair_dialog;
+pub mod phones_page;
 pub mod report_dialog;
 pub mod resize_edges;
 pub mod run_dialog;

@@ -367,6 +367,9 @@ pub enum Action {
     /// Open the Report an Issue modal, which the flag at the bottom right of the window also opens.
     /// `task-2276`.
     ReportIssue,
+    /// Open the Pair a Phone modal: a QR code and a typed code a phone scans to pair with the Tasks board on
+    /// this computer, with the connections it can use and how to set up Tailscale. `task-30`.
+    PairPhone,
     /// The Agent-Chat prompt's microphone: start dictation, or stop it and send. `task-2290`.
     Dictate,
     Quit,
@@ -1945,6 +1948,9 @@ fn unluminous_menu(state: &MenuState) -> Menu {
             Entry::item("Set Up Unluminous...", Action::OpenSetup),
             // The flag at the bottom right of the window is the same entry. `task-2276`.
             Entry::item("Report an Issue...", Action::ReportIssue),
+            // The phone and iPad app signs in to the Tasks board on this computer by scanning a code.
+            // `task-30`.
+            Entry::item("Pair a Phone...", Action::PairPhone),
             Entry::Separator,
             Entry::item("Settings", Action::Settings),
             Entry::Separator,

@@ -4403,6 +4403,7 @@ const EVERY_VARIANT: &[&str] = &[
     "Fold",
     "About",
     "ReportIssue",
+    "PairPhone",
     "OpenSetup",
     "Dictate",
     "Quit",
@@ -4542,6 +4543,7 @@ fn variant_name(action: &Action) -> &'static str {
         Action::Fold(_) => "Fold",
         Action::About => "About",
         Action::ReportIssue => "ReportIssue",
+        Action::PairPhone => "PairPhone",
         Action::OpenSetup => "OpenSetup",
         Action::Dictate => "Dictate",
         Action::Quit => "Quit",
@@ -5407,6 +5409,7 @@ fn every_step() -> Vec<Step> {
         Step::new(Action::ClearHighlights).after(&["highlight add --from-line 3 --to-line 3"]),
         Step::new(Action::About),
         Step::new(Action::ReportIssue),
+        Step::new(Action::PairPhone),
         Step::new(Action::OpenSetup),
         Step::new(Action::PluginPane { pane: "agent-tasks/board".to_owned() }),
         // A plugin command that changes the window rather than one that answers with data: this is

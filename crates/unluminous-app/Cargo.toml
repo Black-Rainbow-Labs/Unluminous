@@ -67,6 +67,8 @@ sha2.workspace = true
 # through `unluminous-db`. See `services/telemetry`.
 getrandom.workspace = true
 url.workspace = true
+# The QR code in the Pair a Phone dialog. `task-30`.
+qrcode.workspace = true
 percent-encoding.workspace = true
 mime_guess.workspace = true
 egui.workspace = true
@@ -194,3 +196,5 @@ unluminous-jupyter.workspace = true
 unluminous-word.workspace = true
 unluminous-git.workspace = true
 image.workspace = true
+# Reads the QR code back out of a rendered picture, so a test proves the picture holds the link. `task-30`.
+rqrr = "0.9"

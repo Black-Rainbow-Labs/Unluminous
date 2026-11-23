@@ -66,6 +66,7 @@ mod opening;
 pub mod page_find;
 mod panels;
 mod pasted_pictures;
+pub mod pairing;
 pub mod report;
 pub mod servers;
 pub mod signature;
@@ -1515,6 +1516,14 @@ pub struct UnluminousApp {
     /// The report being written in the Report an Issue modal, whether or not the modal is showing. See
     /// `app::report`. `task-2276`.
     pub report: Option<crate::app::report::ReportDraft>,
+    /// Pairing a phone with the Tasks board: what the board last answered, the offer being shown, and the
+    /// requests in flight. Shared by the Pair a Phone dialog, the Phones page and the `pair` commands.
+    /// `task-30`.
+    pub pairing: crate::services::pairing::PairingState,
+    /// Whether the Pair a Phone dialog is showing, and the QR code it draws.
+    pub pair_dialog: crate::app::pairing::PairDialog,
+    /// When the Phones page last asked the board for the paired devices.
+    pub(crate) phones_read_at: Option<std::time::Instant>,
     /// Whether sending a report may open the browser and write to the system clipboard, which only the
     /// released binary may: `use_the_system_clipboard` sets it, and a test never calls that.
     pub(crate) report_reaches_out: bool,
@@ -1882,6 +1891,12 @@ impl UnluminousApp {
             forward: Vec::new(),
             about: None,
             report: None,
+            pairing: crate::services::pairing::PairingState::new(
+                crate::services::pairing::Source::for_the_settings_folder(None),
+                std::sync::Arc::new(|| {}),
+            ),
+            pair_dialog: crate::app::pairing::PairDialog::default(),
+            phones_read_at: None,
             report_reaches_out: false,
             reveal_caret: false,
             reveal_at_the_top: false,

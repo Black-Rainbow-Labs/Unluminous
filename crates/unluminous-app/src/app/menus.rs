@@ -376,6 +376,7 @@ impl UnluminousApp {
             | Action::LoadVersions
             | Action::FollowChannel(_)
             | Action::ReportIssue
+            | Action::PairPhone
             | Action::OpenSetup => self.an_unluminous_entry(action),
             // The microphone, as a chord: the same toggle the button is, and a second press sends.
             Action::Dictate => self.press_the_microphone(),
@@ -1398,6 +1399,7 @@ impl UnluminousApp {
                 self.fetch_the_version_lists();
             }
             Action::ReportIssue => self.open_the_report(),
+            Action::PairPhone => self.open_the_pair_dialog(),
             Action::OpenSetup => self.open_the_setup(),
             other => unreachable!("{other:?} is not handled by an_unluminous_entry"),
         }

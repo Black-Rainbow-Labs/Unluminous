@@ -63,6 +63,9 @@ impl UnluminousApp {
         if self.report.as_ref().is_some_and(|report| report.showing) {
             return Some("report".to_owned());
         }
+        if self.pair_dialog.showing {
+            return Some(crate::app::pairing::MODAL.to_owned());
+        }
         if self.setup.showing {
             return Some("setup".to_owned());
         }
@@ -307,6 +310,10 @@ impl UnluminousApp {
             "report" => {
                 self.open_the_report();
                 ok(request, "Report an Issue is open", json!({ "open": "report" }))
+            }
+            crate::app::pairing::MODAL => {
+                self.open_the_pair_dialog();
+                ok(request, "Pair a Phone is open", json!({ "open": crate::app::pairing::MODAL }))
             }
             "setup" => {
                 self.open_the_setup();
@@ -979,6 +986,10 @@ impl UnluminousApp {
         if let Some(report) = self.report.as_mut() {
             report.showing = false;
         }
+        // The offer the dialog showed is deleted on the board when the dialog goes. `task-30`.
+        if self.pair_dialog.showing {
+            self.close_the_pair_dialog();
+        }
         // A setup run carries on while its dialog is put away. `task-2301`.
         self.setup.showing = false;
         self.settings_window.open = false;
@@ -1094,6 +1105,7 @@ const MODALS: &[(&str, &str)] = &[
     ),
     ("about", "Who wrote Unluminous, what version this is and when it was built."),
     ("report", "Report an issue or ask for a feature on GitHub. The `report` commands drive it in full."),
+    ("pair-phone", "Pair a Phone: a QR code and a typed code for the phone app, the addresses it can use with a test of each, and how to set up Tailscale. The `pair` commands drive it in full."),
     ("setup", "Set Up Unluminous: the command line tool, the coding agents, the speech model and the microphone. The `setup` commands drive it in full."),
     ("new-file", "Make an empty file in a folder. Takes --path."),
     (
@@ -1125,6 +1137,7 @@ fn modal_id(name: &str) -> Option<&'static str> {
         "settings" => "unluminous-settings",
         "about" => "unluminous-about",
         "report" => crate::components::report_dialog::ID,
+        "pair-phone" => crate::components::pair_dialog::ID,
         "setup" => crate::components::setup_dialog::ID,
         "new-file" | "rename" | "prompt" => "unluminous-prompt",
         "save" => crate::components::save_dialog::ID,
@@ -1159,6 +1172,7 @@ fn settings_page(name: &str) -> Option<crate::settings::Page> {
         "mcp" => Page::Mcp,
         "ai" | "ai-configuration" | "endpoints" => Page::Ai,
         "voice" | "speech" | "dictation" | "microphone" => Page::Voice,
+        "phones" | "phone" | "pairing" | "pair" => Page::Phones,
         _ => return None,
     })
 }

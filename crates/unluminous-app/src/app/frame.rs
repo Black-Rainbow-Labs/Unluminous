@@ -174,6 +174,7 @@ impl UnluminousApp {
         self.show_the_references(ui);
         self.show_the_about_box(ui);
         self.show_the_report(ui);
+        self.show_the_pair_dialog(ui);
         self.show_the_setup(ui);
         // The two debug modals, beside the other project-wide dialogs and for the same reason: only
         // one is ever open, so where they are drawn among the others decides nothing.
@@ -1892,6 +1893,8 @@ impl UnluminousApp {
         if self.take_the_install_progress() {
             ui.ctx().request_repaint();
         }
+        // What the board answered about a pairing, and the long poll of the offer. `task-30`.
+        self.pump_the_pairing(ui.ctx());
         // Whether setup is finished, as the window starts, and what a setup run did. `task-2301`.
         self.decide_whether_to_open_the_setup();
         if self.take_the_setup_news() {
@@ -2388,6 +2391,11 @@ impl UnluminousApp {
             }
             _ => crate::components::voice_page::VoiceFacts::default(),
         };
+        // Asked only while the Phones page is the one showing, because it asks the board for the devices.
+        let phones_facts = match self.settings_window.page {
+            crate::settings::Page::Phones => self.phones_facts(),
+            _ => crate::components::phones_page::PhonesFacts::default(),
+        };
         let page_look = crate::services::plugin_ui::Look::of(&self.settings, &self.renderer);
         let plugins_ui = &mut self.plugin_ui;
         let mut page_asked: Vec<(String, crate::services::plugin_ui::Request)> = Vec::new();
@@ -2409,6 +2417,7 @@ impl UnluminousApp {
             plugin_pages: &page_names,
             plugin_page_marks: &page_marks,
             voice: &voice_facts,
+            phones: &phones_facts,
         };
         let settings_outcome = settings_dialog::show(
             ui.ctx(),
@@ -2463,6 +2472,7 @@ impl UnluminousApp {
             settings_dialog::PageOutcome::OpenBackgrounds => self.background_grid = Some(None),
             settings_dialog::PageOutcome::EndpointsChanged => self.the_endpoints_changed(),
             settings_dialog::PageOutcome::Voice(ask) => self.voice_page_asked(ask),
+            settings_dialog::PageOutcome::Phones(ask) => self.phones_page_asked(ask),
             settings_dialog::PageOutcome::Nothing | settings_dialog::PageOutcome::Changed => {}
         }
         if page_changed || self.settings != before {
