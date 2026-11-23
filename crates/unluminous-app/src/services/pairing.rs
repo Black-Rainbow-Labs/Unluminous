@@ -1349,8 +1349,14 @@ impl PairingState {
     }
 
     /// Put the offer away when the dialog closes: delete it on the board and forget it here.
+    ///
+    /// Every offer but a confirmed one is deleted. The state the window last heard can belong to the offer a
+    /// renewal just replaced, so deciding by it sometimes left the new offer alive on the board after the
+    /// dialog closed; deleting an offer that has already ended does nothing on the board.
     pub fn close_the_offer(&mut self) {
-        if self.offer.as_ref().is_some_and(|_| self.watching()) {
+        let confirmed =
+            self.offer_status.as_ref().is_some_and(|status| status.state == OfferState::Confirmed);
+        if self.offer.is_some() && !confirmed {
             self.cancel(false);
         }
         self.offer = None;

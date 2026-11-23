@@ -3089,16 +3089,33 @@ fn drive_the_pairing(_: &mut Coverage) {
     let board = ScriptedBoard::start("dispatch-coverage");
     standard_answers(&board, "running");
     board.answer("POST", "/pair/test", 200, serde_json::json!({ "results": [] }));
-    board.answer("POST", "/pair/tailscale/serve", 200, serde_json::json!({ "ok": true, "command": "tailscale serve", "output": "" }));
+    board.answer(
+        "POST",
+        "/pair/tailscale/serve",
+        200,
+        serde_json::json!({ "ok": true, "command": "tailscale serve", "output": "" }),
+    );
     board.answer("GET", "/pair/devices", 200, serde_json::json!([a_device(3, "Jason's iPhone")]));
     board.answer("PATCH", "/pair/devices/3", 200, a_device(3, "Desk"));
     board.answer("DELETE", "/pair/devices/3", 204, serde_json::Value::Null);
-    board.answer("POST", "/pair/offers/offer-1/confirm", 200, serde_json::json!({ "device": a_device(3, "Jason's iPhone") }));
+    board.answer(
+        "POST",
+        "/pair/offers/offer-1/confirm",
+        200,
+        serde_json::json!({ "device": a_device(3, "Jason's iPhone") }),
+    );
     board.answer("POST", "/pair/offers/offer-1/reject", 204, serde_json::Value::Null);
     let mut harness = harness_in(&dispatch_folder());
     harness.state_mut().pairing.use_source(Source { folder: None, file: Some(board.conf.clone()) });
     harness.state_mut().pairing.hold_the_clock_at(Some(NOW_MS));
-    for line in ["pair status", "pair network", "pair test", "pair tailscale-serve", "pair devices", "pair offer"] {
+    for line in [
+        "pair status",
+        "pair network",
+        "pair test",
+        "pair tailscale-serve",
+        "pair devices",
+        "pair offer",
+    ] {
         did(&mut harness, line);
     }
     board.answer(
@@ -3108,15 +3125,34 @@ fn drive_the_pairing(_: &mut Coverage) {
         serde_json::json!({ "state": "claimed", "expiresAt": iso_after(300), "claim": a_claim() }),
     );
     did(&mut harness, "pair wait --timeout 20000");
-    for line in ["pair confirm", "pair rename 3 Desk", "pair revoke 3", "pair offer", "pair reject", "pair offer", "pair cancel"] {
+    for line in [
+        "pair confirm",
+        "pair rename 3 Desk",
+        "pair revoke 3",
+        "pair offer",
+        "pair reject",
+        "pair offer",
+        "pair cancel",
+    ] {
         did(&mut harness, line);
     }
     let mut empty = harness_in(&dispatch_folder());
-    let nowhere = std::env::temp_dir().join(format!("unluminous-dispatch-no-board-{}.conf", std::process::id()));
+    let nowhere = std::env::temp_dir()
+        .join(format!("unluminous-dispatch-no-board-{}.conf", std::process::id()));
     empty.state_mut().pairing.use_source(Source { folder: None, file: Some(nowhere) });
     for line in [
-        "pair status", "pair network", "pair test", "pair tailscale-serve", "pair devices", "pair offer",
-        "pair wait", "pair confirm", "pair reject", "pair cancel", "pair rename 3 Desk", "pair revoke 3",
+        "pair status",
+        "pair network",
+        "pair test",
+        "pair tailscale-serve",
+        "pair devices",
+        "pair offer",
+        "pair wait",
+        "pair confirm",
+        "pair reject",
+        "pair cancel",
+        "pair rename 3 Desk",
+        "pair revoke 3",
     ] {
         refused(&mut empty, line);
     }

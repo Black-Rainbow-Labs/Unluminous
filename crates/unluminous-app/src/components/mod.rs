@@ -58,6 +58,8 @@ pub mod microphone_dialog;
 pub mod modal;
 pub mod new_project_dialog;
 pub mod notebook_view;
+pub mod pair_dialog;
+pub mod phones_page;
 pub mod picture_view;
 pub mod plugins_page;
 /// The project tabs in the title bar and the dropdown the plus opens - `task-2322`.
@@ -66,8 +68,6 @@ pub mod prompt_dialog;
 /// The Realm — `task-1904`.
 pub mod realm;
 pub mod references;
-pub mod pair_dialog;
-pub mod phones_page;
 pub mod report_dialog;
 pub mod resize_edges;
 pub mod run_dialog;
