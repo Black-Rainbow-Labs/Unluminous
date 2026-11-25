@@ -116,7 +116,13 @@ pub const AGENT_TASKS: &[(&str, &str)] = &[
         "create",
         "Finish the new ticket that is open and close the modal; it was saved as it was typed. Refused while it          has no title, and the title field is then outlined in red; `isNew` and `titleMissing` in the ticket's          JSON say which. `start` on the new ticket finishes it the same way and launches its agent.",
     ),
-    ("reload", "Read the board again from its file."),
+    ("reload", "Read the board again from its file, or from agent-tasks-service when that is the board."),
+    (
+        "board-source",
+        "Where the board comes from: `board-source file` for this plugin's own board file, the default, or \
+         `board-source service` for the board agent-tasks-service keeps, which the phone and the iPad show. Says \
+         which when asked with nothing. Refused while an agent runs in this window.",
+    ),
     (
         "clear",
         "Delete every ticket with its todos and comments, leaving the epics and the sprints. Copies the \

@@ -96,6 +96,8 @@ rusqlite.workspace = true
 # somebody asks for it. `services::update` uses `unluminous-chat`'s own TLS configuration rather than
 # a second one -- see the note at the top of that file.
 ureq = { workspace = true }
+tasks-client.workspace = true
+tungstenite.workspace = true
 libc.workspace = true
 
 # The application menu on macOS takes its name from the running program, and the program is `unluminous`. Setting

@@ -7618,6 +7618,34 @@ channel only for `plugins.view agent-chat` and to run Designer verbs. Three rule
 - **The board sends a verb's words joined by spaces**, as `plugins run` splits them, so a design whose name
   holds a space has its notes written into the file and cannot be sent a request from the phone.
 
+### Agent-Tasks can read the board through agent-tasks-service
+
+`tasks/agent-tasks-through-the-service-tdd.md` is the design. `board-source` in the plugin's `settings.conf` is
+`file` (the default) or `service`, set by `Settings -> Agent-Tasks -> The board -> Board` and by
+`plugins run agent-tasks board-source`. Five rules:
+
+- **`AgentTasks::store()` answers a `BoardStore`**, which is `File(Store)` or `Service(ServiceBoard)` and has every
+  method `Store` has with the same signature. A new `Store` method is added to `BoardStore` too, with its service
+  half in `service_board.rs`. A method only the desktop's launcher and watchdog use goes in `file_only!` and
+  answers `THE_SERVICE_RUNS_THE_AGENTS` on the service's board.
+- **The HTTP is `tasks-client`, the phone app's crate**, from the `unluminous-mobile` repository with default
+  features off and `native-tls` on. Do not write a request to agent-tasks-service in Unluminous. Add the call to
+  `tasks-client`, with a test in its `tests/full_board.rs` against a real `tasks-api`, so the phone and the
+  desktop call the service the same way.
+- **`ServiceBoard` keeps a copy of `GET /tasks/board`** and answers every read from it. A write is a request and
+  then `read_again`. `notice_the_service` reads again when `GET /tasks/events` said the board changed, and every
+  30 seconds otherwise.
+- **On the service's board the service runs the agents.** `start`, `resume`, `send`, `escape` and `interrupt` go
+  to `service.rs`, which calls the service. A ticket's terminal is a `TicketTerminal::a_view` running
+  `unluminous --board-terminal <id>` (`board_terminal.rs`), which joins the service's relay to the pseudoterminal.
+  `main` reads that switch before anything else. Closing a view leaves the agent running.
+- **The service's words are mapped in `service_mapping.rs`**: `done` is Agent Done, `local_ai` and `umbra` are
+  OpenCode, and any other assignee or author, such as `jason`, is a person. Its tests cover each word.
+
+`tests_service_board.rs` starts a real `tasks-api` for each test and is skipped when none is built. It gives the
+service a `HOME` of its own, because the service reads `~/.claude` transcripts when it starts, and the first
+`GET /health` then took longer than the second and a half `pairing::find_board` allows.
+
 ### The Designer tab can be maximized, and the notes have a divider and a toggle (`task-2601`)
 
 - **`DesignView::maximised`** draws only a bar with the name and `Normal size` over the page, and `app::designer`

@@ -14,7 +14,7 @@
 //! the default project has `Copy` for the same reason.
 //!
 use crate::components::settings_kit::{self as kit, Column};
-use crate::services::agent_tasks::{AgentTasks, EFFORTS};
+use crate::services::agent_tasks::{AgentTasks, BoardSource, EFFORTS};
 use crate::services::plugin_ui::{Look, Request};
 
 /// What a select says for a setting that is left to the agent.
@@ -30,8 +30,23 @@ fn cards(board: &mut AgentTasks, ui: &mut egui::Ui, column: &mut Column) -> Vec<
     let mut requests = Vec::new();
     let configuration = board.configuration().clone();
     let mut changed = configuration.clone();
+    let mut source_picked = None;
 
     kit::card(ui, column, "The board", None, |card| {
+        // Where the board comes from (`tasks/agent-tasks-through-the-service-tdd.md`). A change opens the other board
+        // at once, so it is applied after the card rather than written with the rest of the page.
+        let sources: Vec<String> = BoardSource::ALL.iter().map(|source| source.label().to_owned()).collect();
+        let now = BoardSource::ALL.iter().position(|source| *source == configuration.board_source);
+        let picked = card.row(
+            "Board",
+            Some(
+                "Which board this pane shows. This computer's board file is the default. agent-tasks-service is the \
+                 board the phone and the iPad show, and its agents run in the service.",
+            ),
+            |row| row.select("Board", &sources, now, 300.0),
+        );
+        source_picked = picked.map(|index| BoardSource::ALL[index]);
+
         // The board file. Read only here, because moving a database is a thing to do to a file rather than a
         // thing to type: what this offers is the path, so it can be pasted into a backup script or a terminal.
         let where_it_is = board.board_where();
@@ -50,8 +65,9 @@ fn cards(board: &mut AgentTasks, ui: &mut egui::Ui, column: &mut Column) -> Vec<
             requests.push(Request::Copy(where_it_is.clone()));
             requests.push(Request::Message("copied".to_owned()));
         }
-        // A board in memory has no file to show anybody, so there is nothing to reveal.
-        if revealed {
+        // A board in memory has no file to show anybody, and the service's board is not a file here, so there is
+        // nothing to reveal.
+        if revealed && configuration.board_source == BoardSource::File {
             if let Some(path) = board.database_path() {
                 requests.push(Request::Reveal(path));
             }
@@ -193,7 +209,16 @@ fn cards(board: &mut AgentTasks, ui: &mut egui::Ui, column: &mut Column) -> Vec<
     supervisor_card(board, ui, column, &configuration, &mut changed);
 
     // Written once anything above changed, on the same terms the window's own settings are.
-    if changed != configuration {
+    if let Some(source) = source_picked {
+        let said = match board.set_board_source(source) {
+            Ok(answer) => answer.message,
+            Err(problem) => problem,
+        };
+        requests.push(Request::Message(said));
+        // What `set_board_source` left in place, so a refused change is not written by the line below.
+        changed.board_source = board.configuration().board_source;
+    }
+    if changed != board.configuration().clone() {
         if let Err(problem) = board.change_the_configuration(changed) {
             requests.push(Request::Message(problem));
         }

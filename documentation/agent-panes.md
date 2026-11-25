@@ -257,6 +257,26 @@ the whole height of the board and a card is as tall as its title. A card's round
 ticket that can be started or resumed, and pause while its agent is running, which interrupts the agent and
 keeps the terminal.
 
+### The board agent-tasks-service keeps
+
+`Settings -> Agent-Tasks -> The board -> Board` chooses which board the pane shows:
+
+- **This computer's board file** is `board.rdb`, described above. It is the default.
+- **agent-tasks-service (the board the phone shows)** is the board kept by agent-tasks-service on this
+  computer, which the Unluminous phone and iPad apps show. Unluminous finds the service through
+  `boards/<port>.conf` in its settings folder, the file the Pair a Phone dialog reads.
+
+`plugins run agent-tasks board-source [file|service]` is the same choice, and with nothing after it the command
+says which board is showing. The choice is the `board-source` line in the plugin's `settings.conf`. A window
+that has an agent running refuses the change, because a ticket's id names a different ticket on the other
+board. When the service is chosen and does not answer, the pane says so and does not show the file instead.
+
+On the service's board, the service runs the agents and the watchdog. Start, Resume session, Send and the
+pause button ask the service. The ticket modal's Terminal tab shows the agent's terminal from the service, and
+closing it in Unluminous leaves the agent running. The pane reads the board again when the service says it
+changed, and every 30 seconds otherwise. Unluminous and the phone app talk to the service through the same
+client code, the `tasks-client` crate in the `unluminous-mobile` repository.
+
 ### The ticket's agent
 
 The ticket modal's Agent section has two tabs, **Chat** and **Terminal**. Chat is the default for a Claude

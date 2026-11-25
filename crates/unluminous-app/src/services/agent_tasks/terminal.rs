@@ -68,6 +68,9 @@ pub struct TicketTerminal {
     /// See [`pieces_of`] for why a line is not one write.
     pub(super) pieces: Vec<Vec<u8>>,
     pub(super) next_piece_at: Option<std::time::Instant>,
+    /// True for a view of a ticket's terminal on agent-tasks-service, where the agent runs in the service and
+    /// this session is `unluminous --board-terminal`. Closing a view leaves the agent running.
+    pub(super) is_a_view: bool,
 }
 
 /// The most bytes a line is written in at once.
@@ -166,6 +169,35 @@ impl std::fmt::Debug for TicketTerminal {
 }
 
 impl TicketTerminal {
+    /// A view of a ticket's terminal on agent-tasks-service. Nothing is queued for it: the service typed the
+    /// ticket's command into its own agent.
+    /// @param task_id - the ticket
+    /// @param session - the session running `unluminous --board-terminal`
+    /// @param session_id - the agent's session on the service
+    /// @param now - the time now
+    pub fn a_view(task_id: i64, session: unluminous_terminal::Session, session_id: String, now: String) -> Self {
+        let at = std::time::Instant::now();
+        Self {
+            task_id,
+            session,
+            session_id,
+            last_output_at: now,
+            paused: false,
+            pending: Vec::new(),
+            ready_at: at,
+            give_up_at: at,
+            submit_at: None,
+            written: 0,
+            has_printed: false,
+            quiet_since: None,
+            keys: Vec::new(),
+            next_key_at: None,
+            pieces: Vec::new(),
+            next_piece_at: None,
+            is_a_view: true,
+        }
+    }
+
     /// Read whatever the agent has written, send the handoff line once its prompt is ready, and record
     /// whether anything was printed.
     ///

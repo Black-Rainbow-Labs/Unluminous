@@ -113,7 +113,19 @@ fn print_menus() {
     }
 }
 
+/// `unluminous --board-terminal <task id>`: the program a ticket's terminal runs when Agent-Tasks reads its
+/// board through agent-tasks-service. It opens no window. Read before anything else, because it is a terminal
+/// program and the rest of `main` is the window's.
+fn board_terminal_or_continue() {
+    let mut line = std::env::args().skip(1);
+    if line.next().as_deref() == Some(unluminous_app::services::agent_tasks::board_terminal::SWITCH) {
+        let task = line.next().unwrap_or_default();
+        std::process::exit(unluminous_app::services::agent_tasks::board_terminal::run(&task));
+    }
+}
+
 fn main() -> eframe::Result {
+    board_terminal_or_continue();
     let arguments = settings_or_stop();
     unluminous_app::services::frame_trace::mark("arguments");
     // The heap by call site, in a diagnostic build run with `UNLUMINOUS_HEAP_PROFILE` (`task-2279`).

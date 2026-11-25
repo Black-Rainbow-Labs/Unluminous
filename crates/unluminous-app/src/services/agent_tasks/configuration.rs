@@ -57,6 +57,44 @@ impl View {
     }
 }
 
+/// Where the board comes from: the plugin's own file, or agent-tasks-service.
+///
+/// `tasks/agent-tasks-through-the-service-tdd.md` is the design. `board-source` in `settings.conf` is the word.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BoardSource {
+    /// The plugin's own `board.rdb`, or the file `database` names. What every board was before the setting.
+    #[default]
+    File,
+    /// The board agent-tasks-service keeps on this machine, which the phone and the iPad show.
+    Service,
+}
+
+impl BoardSource {
+    pub const ALL: [BoardSource; 2] = [BoardSource::File, BoardSource::Service];
+
+    /// The word in `settings.conf` and on the command line.
+    pub fn name(self) -> &'static str {
+        match self {
+            BoardSource::File => "file",
+            BoardSource::Service => "service",
+        }
+    }
+
+    /// What the settings page calls it.
+    pub fn label(self) -> &'static str {
+        match self {
+            BoardSource::File => "This computer's board file",
+            BoardSource::Service => "agent-tasks-service (the board the phone shows)",
+        }
+    }
+
+    /// The word read back. `None` for a word that is neither.
+    /// @param word - `file` or `service`
+    pub fn parse(word: &str) -> Option<BoardSource> {
+        BoardSource::ALL.into_iter().find(|source| source.name() == word.trim())
+    }
+}
+
 /// The plugin's own settings, in `plugins/agent-tasks/settings.conf` beside its manifest.
 ///
 /// Read by the same `store::Values` the window's own settings are read by, in the same `name = value`
@@ -68,6 +106,8 @@ impl View {
 /// and what the file holds is the *name* of the keychain entry rather than what is in it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Configuration {
+    /// Where the board comes from. A file with no `board-source` line is [`BoardSource::File`].
+    pub board_source: BoardSource,
     /// Where the board is. Empty means [`store::Store::default_path`].
     pub database: Option<PathBuf>,
     /// The project folder a ticket's agent is launched in when the ticket names none.
@@ -112,6 +152,7 @@ pub struct Configuration {
 impl Default for Configuration {
     fn default() -> Self {
         Self {
+            board_source: BoardSource::File,
             database: None,
             project: None,
             agent: Assignee::Claude,
@@ -150,6 +191,7 @@ impl Configuration {
             values.text(name).map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned)
         };
         Self {
+            board_source: said("board-source").and_then(|word| BoardSource::parse(&word)).unwrap_or_default(),
             database: path("database"),
             project: path("project"),
             agent: values
@@ -184,6 +226,8 @@ impl Configuration {
                 values.set(name, value);
             }
         };
+        // Written only when it is not the default, so a file nobody changed stays the file it was.
+        set("board-source", (self.board_source != BoardSource::File).then(|| self.board_source.name().to_owned()));
         set("database", self.database.clone().map(|path| path.display().to_string()));
         set("project", self.project.clone().map(|path| path.display().to_string()));
         set("model", self.model.clone());
@@ -208,7 +252,8 @@ impl Configuration {
                  it a ticket's agent is launched with, and the ticket's own model, effort and session flag are \
                  added after them; empty means the command Unluminous builds itself. `supervisor-endpoint`, \
                  `supervisor-model` and `supervisor-effort` are what the board's supervisor is started with; empty \
-                 means the board's endpoint and that endpoint's model.",
+                 means the board's endpoint and that endpoint's model. `board-source` is `file`, this plugin's own board \
+                 file and the default, or `service`, the board agent-tasks-service keeps, which the phone shows.",
                 )
                 .as_bytes(),
         )

@@ -17,7 +17,7 @@ use crate::services::plugin_ui::{self, Answer, Request, UiProvider};
 use super::model::{Author, Priority, Status};
 use super::store::{NewTask, TaskEdit};
 use super::{
-    agent, clock, model, split_off_a_name, AgentTasks, SkillLayout, SupervisorView, View, SWATCHES,
+    agent, clock, model, BoardSource, split_off_a_name, AgentTasks, SkillLayout, SupervisorView, View, SWATCHES,
     TAIL_LINES,
 };
 
@@ -86,10 +86,22 @@ fn board_and_pane(
             Ok(Answer::said("showing the lanes"))
         }
         "reload" => (|| {
+            if let Some(board) = tasks.service_board() {
+                board.read_again()?;
+            }
             tasks.refresh()?;
             Ok(Answer::said("the board was read again"))
         })(),
         "clear" => clear(tasks, argument(0)),
+        // Where the board comes from: this plugin's own file, or agent-tasks-service, the board the phone shows.
+        "board-source" => match argument(0).trim() {
+            "" => Ok(Answer::said(format!("Agent-Tasks reads {}", tasks.board_source().label()))
+                .with(json!({"boardSource": tasks.board_source().name(), "board": tasks.board_where()}))),
+            word => match BoardSource::parse(word) {
+                Some(source) => tasks.set_board_source(source),
+                None => Err(format!("`{word}` is not a board source: `file` or `service`")),
+            },
+        },
         // One command that is about the window rather than about the board. The provider cannot open a
         // tab itself — only the window can — so it answers and `UnluminousApp` acts, which is the rule every
         // request in `plugin_ui::Request` follows.
@@ -822,6 +834,10 @@ fn agent_commands(
         "to-side-pane" => tasks.to_the_side_pane(argument(0)),
         "interrupt" => (|| {
             let task = tasks.by_key(argument(0))?;
+            let viewing = tasks.terminal_for(task.id).is_some_and(|terminal| terminal.session.is_running());
+            if tasks.service_board().is_some() && !viewing {
+                return tasks.press_on_the_service(&task, true);
+            }
             let terminal = tasks
                 .terminal_for_mut(task.id)
                 .ok_or_else(|| format!("{} has no terminal", task.key))?;
@@ -833,6 +849,7 @@ fn agent_commands(
             let had = tasks.terminals.iter().any(|terminal| terminal.task_id == task.id);
             tasks.terminals.retain(|terminal| terminal.task_id != task.id);
             match had {
+                true if tasks.service_board().is_some() => Ok(Answer::said(format!("{}'s terminal was closed in this window. Its agent keeps running on agent-tasks-service", task.key))),
                 true => Ok(Answer::said(format!("{}'s terminal was closed", task.key))),
                 false => Err(format!("{} has no terminal", task.key)),
             }

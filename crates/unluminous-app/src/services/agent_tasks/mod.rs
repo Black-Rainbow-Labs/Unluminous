@@ -19,17 +19,23 @@
 //! way `symbols::Hover` keeps it. [`AgentTasks::refresh`] is the one place a read happens, so there is
 //! no second path that could start reading per frame by accident.
 
+mod board_store;
 mod configuration;
+mod service;
+mod service_board;
+pub mod service_mapping;
 mod supervisor;
 mod terminal;
 
-pub use configuration::{Configuration, View};
+pub use board_store::BoardStore;
+pub use configuration::{BoardSource, Configuration, View};
 pub use supervisor::{default_skill, SkillEditor, SkillLayout, SupervisorView, DEFAULT_SKILL};
 pub use terminal::TicketTerminal;
 use terminal::{AGENT_SESSION_MARKERS, PROMPT_CEILING};
 
 pub mod agent;
 pub mod board;
+pub mod board_terminal;
 pub mod clock;
 pub mod commands;
 pub mod db;
@@ -408,7 +414,10 @@ pub struct AgentTasks {
     menus_seen: Vec<(i64, screen_choice::Choice)>,
     /// When the terminals were last looked at for a menu.
     menus_looked_at: Option<std::time::Instant>,
-    store: Option<Store>,
+    store: Option<BoardStore>,
+    /// One `boards/<port>.conf` naming agent-tasks-service, used instead of the settings folder's. See
+    /// [`AgentTasks::find_the_service_through`].
+    board_conf: Option<PathBuf>,
     configuration: Configuration,
     /// The plugin's own folder, once it has been opened.
     folder: Option<PathBuf>,
@@ -895,6 +904,7 @@ impl AgentTasks {
     /// what keeps this machine's own path out of an accepted screenshot.
     pub fn board_where(&self) -> String {
         match self.store.as_ref() {
+            Some(BoardStore::Service(board)) => format!("agent-tasks-service at {}", board.address()),
             Some(store) if store.path() == std::path::Path::new(":memory:") => {
                 "in memory \u{2014} this window has no settings folder, so nothing is written"
                     .to_owned()
@@ -908,7 +918,7 @@ impl AgentTasks {
     ///
     /// Every command goes through this rather than unwrapping, because a provider whose `open` failed is
     /// a provider whose pane draws the reason rather than one that panics on the first click.
-    fn store(&self) -> Result<&Store, String> {
+    fn store(&self) -> Result<&BoardStore, String> {
         self.store.as_ref().ok_or_else(|| "the board is not open".to_owned())
     }
 
@@ -1145,6 +1155,9 @@ impl AgentTasks {
             self.finish_the_new_ticket()?;
         }
         let task = self.by_key(key)?;
+        if self.service_board().is_some() {
+            return self.start_on_the_service(&task);
+        }
         let (agent, endpoint) = match task.assignee.is_an_agent() {
             true => (task.assignee, task.endpoint.clone()),
             // A ticket the JIRA sync wrote is assigned to a person. Handing it to the configured endpoint
@@ -1277,6 +1290,11 @@ impl AgentTasks {
     /// Agent Done, because resuming a conversation is not a claim on the work.
     pub fn resume(&mut self, key: &str) -> Result<Answer, String> {
         let task = self.by_key(key)?;
+        // The service's start reattaches a live session and resumes a stopped one, so the two buttons are one
+        // request there.
+        if self.service_board().is_some() {
+            return self.start_on_the_service(&task);
+        }
         let agent = match task.assignee.is_an_agent() {
             true => task.assignee,
             false => return Err(format!("{key} is assigned to a person, so there is no session")),
@@ -1333,6 +1351,9 @@ impl AgentTasks {
     /// with "has never had a session" and the comment was not posted.
     pub fn send(&mut self, key: &str, line: &str) -> Result<Answer, String> {
         let task = self.by_key(key)?;
+        if self.service_board().is_some() {
+            return self.send_on_the_service(&task, line);
+        }
         // **Running**, not merely present. Typing at a session that has exited wrote into a closed pipe and
         // reported `sent`, which is the one thing a send must never do.
         let alive =
@@ -1502,6 +1523,7 @@ impl AgentTasks {
             next_key_at: None,
             pieces: Vec::new(),
             next_piece_at: None,
+            is_a_view: false,
         });
         Ok(())
     }
@@ -1540,6 +1562,10 @@ impl AgentTasks {
         // `Done`. Without this, a ticket opened after a new one had been closed still read as an editor.
         self.detail.is_new = false;
         self.modal_open = true;
+        // On the service's board the agent runs in the service, so the modal shows its terminal through the relay.
+        if let Some(task) = self.detail.task.clone() {
+            self.show_the_terminal_of_an_opened_ticket(&task);
+        }
         Ok(())
     }
 
@@ -1805,7 +1831,14 @@ impl AgentTasks {
         self.configuration_written = written;
         let mut fresh = Configuration::read(&folder);
         fresh.database = self.configuration.database.clone();
+        let source_changed = fresh.board_source != self.configuration.board_source;
         self.configuration = fresh;
+        // `board-source` changed in another window or by hand, so the board this window shows is the other one now.
+        if source_changed {
+            if let Err(problem) = self.reopen_the_board() {
+                self.message = problem;
+            }
+        }
     }
 
     /// Write a changed configuration to the plugin's own settings file.
@@ -2474,6 +2507,10 @@ impl AgentTasks {
     /// modal's Chat tab sends.
     pub fn escape(&mut self, key: &str) -> Result<Answer, String> {
         let task = self.by_key(key)?;
+        let viewing = self.terminal_for(task.id).is_some_and(|terminal| terminal.session.is_running());
+        if self.service_board().is_some() && !viewing {
+            return self.press_on_the_service(&task, false);
+        }
         let terminal = self
             .terminal_for_mut(task.id)
             .ok_or_else(|| format!("{} has no agent running to stop", task.key))?;
@@ -2531,6 +2568,9 @@ impl AgentTasks {
     /// one listing of the plugin's folder, and the board is read again when they differ from what they were the
     /// last time it was read. True when it was read again, so the window draws it.
     fn notice_another_window(&mut self) -> bool {
+        if self.service_board().is_some() {
+            return self.notice_the_service();
+        }
         let Some(path) = self.store.as_ref().map(|store| store.path().to_path_buf()) else {
             return false;
         };
@@ -2841,17 +2881,13 @@ impl UiProvider for AgentTasks {
                 self.configuration_written = std::fs::metadata(folder.join(Configuration::FILE))
                     .and_then(|metadata| metadata.modified())
                     .ok();
-                let path = self
-                    .configuration
-                    .database_path(Some(&folder))
-                    .expect("a folder was named, so there is a path");
                 self.folder = Some(folder);
-                self.store = Some(Store::open(path)?);
+                self.store = Some(self.open_the_board()?);
             }
             None => {
                 self.configuration = Configuration::default();
                 self.folder = None;
-                self.store = Some(Store::in_memory()?);
+                self.store = Some(BoardStore::File(Store::in_memory()?));
             }
         }
         self.refresh()
@@ -2907,7 +2943,11 @@ impl UiProvider for AgentTasks {
     fn view(&self) -> serde_json::Value {
         json!({
             "open": self.is_open(),
-            "database": self.configuration.database_said(self.folder.as_deref()),
+            "database": match self.service_board() {
+                Some(board) => format!("agent-tasks-service at {}", board.address()),
+                None => self.configuration.database_said(self.folder.as_deref()),
+            },
+            "boardSource": self.configuration.board_source.name(),
             "view": self.view.name(),
             "modal": self.modal_open,
             // Which way the open ticket is being read, so an agent can see what a person is looking at rather
@@ -3378,3 +3418,5 @@ mod tests_task_28 {
 
 #[cfg(test)]
 mod tests_task_2285;
+#[cfg(test)]
+mod tests_service_board;
