@@ -1833,17 +1833,18 @@ fn field_column(
         }
     }
 
-    // The projects this window knows about, which is the list `File -> Open Recent` draws. A ticket may still
-    // name one this window has never opened, so whatever the row says is kept in the list the way a model is.
+    // On agent-tasks-service's board, the service's projects, which every client offers and which include every
+    // folder in its projects folder. On the plugin's own board, the folders `File -> Open Recent` draws. A ticket may
+    // name one neither knows, so whatever the row says is kept in the list the way a model is.
     let project = task.project.clone().unwrap_or_default();
-    let mut projects: Vec<(String, String)> = board
-        .known_projects(task.project.as_deref())
-        .into_iter()
-        .map(|path| (path.clone(), crate::services::folder_choice::named(&path)))
-        .collect();
+    let mut projects = board.project_choices(task.project.as_deref());
     // **And any other folder at all** (`task-2270`), last, through the window's folder picker. The row's value is
-    // not a path, so it can never be written to the ticket as one.
-    projects.push((OTHER_FOLDER.to_owned(), crate::services::folder_choice::OTHER.to_owned()));
+    // not a path, so it can never be written to the ticket as one. The service starts an agent only in one of its own
+    // projects, so its board has no such row.
+    if board.service_board().is_none() {
+        projects.push((OTHER_FOLDER.to_owned(), crate::services::folder_choice::OTHER.to_owned()));
+    }
+    let no_project = board.no_project_words();
     if let Some(chosen) = choice(
         rux,
         selects,
@@ -1854,7 +1855,7 @@ fn field_column(
         SelectLead::Mark(Icon::Folder, theme.ink.i400),
         &projects,
         &project,
-        Some("The folder this window has open"),
+        Some(no_project),
         gap,
     ) {
         match chosen == OTHER_FOLDER {

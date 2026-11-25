@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use tasks_client::{CreateTask, Credential, EventListener, FullBoard, StreamEvent, TasksClient, UpdateTask, UpdateTodo};
+use tasks_client::{AgentProject, CreateTask, Credential, EventListener, FullBoard, StreamEvent, TasksClient, UpdateTask, UpdateTodo};
 
 use super::model::{Author, Board, Comment, Epic, Sprint, SprintStatus, Status, Task, Todo};
 use super::service_mapping::{self as mapping, assignee_word, author_word};
@@ -33,6 +33,10 @@ pub struct ServiceBoard {
     address: String,
     token: String,
     copy: RefCell<FullBoard>,
+    /// `GET /tasks/agent-projects`, read with the board: the projects a ticket can be in, the same list the phone has.
+    projects: RefCell<Vec<AgentProject>>,
+    /// `GET /tasks/agent-projects/root`, read with the projects.
+    root: RefCell<Option<String>>,
     read_at: RefCell<Instant>,
     changed: Arc<AtomicBool>,
     _events: EventListener,
@@ -69,7 +73,9 @@ impl ServiceBoard {
                 }
             }
         });
-        Ok(Self { client, address, token: token.to_owned(), copy: RefCell::new(copy), read_at: RefCell::new(Instant::now()), changed, _events: events })
+        let projects = RefCell::new(client.agent_projects().unwrap_or_default());
+        let root = RefCell::new(client.agent_projects_root().ok().and_then(|answer| answer.root));
+        Ok(Self { client, address, token: token.to_owned(), copy: RefCell::new(copy), projects, root, read_at: RefCell::new(Instant::now()), changed, _events: events })
     }
 
     /// The service's address, as the pane names the board.
@@ -91,8 +97,47 @@ impl ServiceBoard {
     pub fn read_again(&self) -> Result<(), String> {
         let copy = self.client.full_board().map_err(said("the board could not be read from agent-tasks-service"))?;
         *self.copy.borrow_mut() = copy;
+        // A list that fails to load keeps the one before, so a dropdown does not empty itself on one bad read.
+        if let Ok(projects) = self.client.agent_projects() {
+            *self.projects.borrow_mut() = projects;
+        }
+        if let Ok(answer) = self.client.agent_projects_root() {
+            *self.root.borrow_mut() = answer.root;
+        }
         *self.read_at.borrow_mut() = Instant::now();
         Ok(())
+    }
+
+    /// The projects a ticket can be in, as of the last read: every project the service lists, which includes every
+    /// folder in its projects folder.
+    pub fn projects(&self) -> Vec<AgentProject> {
+        self.projects.borrow().clone()
+    }
+
+    /// The service's projects folder, as of the last read. Every folder in it is a project, and a ticket with no
+    /// project runs in it.
+    pub fn projects_root(&self) -> Result<Option<String>, String> {
+        Ok(self.root.borrow().clone())
+    }
+
+    /// Change the service's projects folder for every client, then read the board and its projects again.
+    /// @param root - the folder's full path on this machine
+    pub fn set_projects_root(&self, root: &str) -> Result<Option<String>, String> {
+        let saved = self.then_read(|client| client.set_agent_projects_root(root).map_err(said("the projects folder was not saved")))?;
+        Ok(saved.root)
+    }
+
+    /// The id of the project a value names: a project's id, its name, or the folder it is in. `None` when no
+    /// project matches.
+    /// @param value - what a person or an agent typed or chose
+    pub fn project_id_for(&self, value: &str) -> Option<String> {
+        let value = value.trim();
+        let folder = value.trim_end_matches('/');
+        self.projects
+            .borrow()
+            .iter()
+            .find(|project| project.id == value || project.name == value || project.dir.as_deref().map(|dir| dir.trim_end_matches('/')) == Some(folder))
+            .map(|project| project.id.clone())
     }
 
     /// Whether the board should be read again: the service said it changed, or it has been a while.

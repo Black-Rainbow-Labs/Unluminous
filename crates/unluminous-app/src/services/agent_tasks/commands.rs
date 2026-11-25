@@ -94,6 +94,20 @@ fn board_and_pane(
         })(),
         "clear" => clear(tasks, argument(0)),
         // Where the board comes from: this plugin's own file, or agent-tasks-service, the board the phone shows.
+        // The projects a ticket can be in, and on agent-tasks-service's board the folder whose every folder is one.
+        "projects" => Ok(projects_answer(tasks)),
+        "projects-root" => (|| {
+            let service = tasks.service_board().ok_or_else(|| {
+                "The projects folder is agent-tasks-service's. Run `plugins run agent-tasks board-source service` first.".to_owned()
+            })?;
+            let root = match plugin_ui::rest(arguments, 0).trim() {
+                "" => service.projects_root()?,
+                folder => service.set_projects_root(folder)?,
+            };
+            tasks.refresh()?;
+            let words = root.clone().unwrap_or_else(|| "not set".to_owned());
+            Ok(Answer::said(format!("The projects folder is {words}")).with(json!({ "root": root })))
+        })(),
         "board-source" => match argument(0).trim() {
             "" => Ok(Answer::said(format!("Agent-Tasks reads {}", tasks.board_source().label()))
                 .with(json!({"boardSource": tasks.board_source().name(), "board": tasks.board_where()}))),
@@ -577,6 +591,10 @@ fn task_commands(
                 "" => {}
                 "default" | "none" => {
                     tasks.edit_field(task.id, super::Field::Project(String::new()))?
+                }
+                named if tasks.service_board().is_some() => {
+                    let id = service_project(tasks, named)?;
+                    tasks.edit_field(task.id, super::Field::Project(id))?;
                 }
                 folder => {
                     if !std::path::Path::new(folder).is_dir() {
@@ -1461,4 +1479,29 @@ mod tests {
         let problem = run(&mut board, "chat", &[ticket]).expect_err("no conversation yet");
         assert!(problem.contains("no conversation"), "{problem}");
     }
+}
+
+/// The id of the service project a person or an agent named, by its id, its name or its folder.
+/// @param tasks - the board, which must be agent-tasks-service's
+/// @param named - what was typed
+fn service_project(tasks: &AgentTasks, named: &str) -> Result<String, String> {
+    let service = tasks.service_board().ok_or_else(|| "this board is not agent-tasks-service's".to_owned())?;
+    service.project_id_for(named).ok_or_else(|| {
+        let ids: Vec<String> = service.projects().into_iter().map(|project| project.id).collect();
+        format!("`{named}` is not a project on agent-tasks-service. Use `none` or one of: {}", ids.join(", "))
+    })
+}
+
+/// `projects`: every project a ticket's `Project` field offers, as (value, words), and the projects folder when the
+/// board is agent-tasks-service's.
+/// @param tasks - the board
+fn projects_answer(tasks: &AgentTasks) -> Answer {
+    let rows = tasks.project_choices(None);
+    let listed: Vec<serde_json::Value> = rows.iter().map(|(value, words)| json!({ "project": value, "name": words })).collect();
+    let root = tasks.service_board().and_then(|service| service.projects_root().ok().flatten());
+    let place = match &root {
+        Some(root) => format!(", and a ticket with no project runs in {root}"),
+        None => String::new(),
+    };
+    Answer::said(format!("{} projects{place}", rows.len())).with(json!({ "projects": listed, "root": root }))
 }

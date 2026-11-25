@@ -101,7 +101,7 @@ ureq = { version = "3.4", default-features = false, features = ["native-tls"] }
 # made once and both apps take it. Pinned to a commit of the `unluminous-mobile` repository. Agent-Tasks reads the board through it when `board-source` is `service`
 # (`tasks/agent-tasks-through-the-service-tdd.md`). Default features off and `native-tls` on, so the binary keeps
 # the one TLS stack above. It turns on ureq's `gzip` and `json`, which the comment above leaves off.
-tasks-client = { git = "https://github.com/Black-Rainbow-Labs/unluminous-mobile.git", rev = "2531d3a61763521b9c26203945fa1adbbea3da06", default-features = false, features = ["native-tls"] }
+tasks-client = { git = "https://github.com/Black-Rainbow-Labs/unluminous-mobile.git", rev = "78bb57833adbc42416bfdcffaf9e3630380d4623", default-features = false, features = ["native-tls"] }
 # The ticket terminal's attach client (`services/agent_tasks/board_terminal.rs`) speaks the board's terminal
 # relay, a WebSocket on loopback, so the handshake is all it needs and there is no TLS.
 tungstenite = { version = "0.24", default-features = false, features = ["handshake"] }

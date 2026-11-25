@@ -271,6 +271,12 @@ says which board is showing. The choice is the `board-source` line in the plugin
 that has an agent running refuses the change, because a ticket's id names a different ticket on the other
 board. When the service is chosen and does not answer, the pane says so and does not show the file instead.
 
+On agent-tasks-service's board the ticket's `Project` field lists the service's projects, the same list the phone
+shows: every folder in the service's projects folder, which is `~/Documents/dev` on the MacBook Pro, plus the
+projects in its own list. `No project` is a choice, and a ticket with no project runs in the projects folder.
+`Settings -> Agent-Tasks -> Projects folder` changes that folder for every client, and so does
+`plugins run agent-tasks projects-root <folder>`. `plugins run agent-tasks projects` lists the projects.
+
 On the service's board, the service runs the agents and the watchdog. Start, Resume session, Send and the
 pause button ask the service. The ticket modal's Terminal tab shows the agent's terminal from the service, and
 closing it in Unluminous leaves the agent running. The pane reads the board again when the service says it

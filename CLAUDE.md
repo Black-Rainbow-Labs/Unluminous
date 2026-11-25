@@ -7642,6 +7642,14 @@ channel only for `plugins.view agent-chat` and to run Designer verbs. Three rule
 - **The service's words are mapped in `service_mapping.rs`**: `done` is Agent Done, `local_ai` and `umbra` are
   OpenCode, and any other assignee or author, such as `jason`, is a person. Its tests cover each word.
 
+- **On the service's board a ticket's project is one of the service's projects, by id, or none.** The `Project`
+  dropdown is `AgentTasks::project_choices`: the service's `GET /tasks/agent-projects`, read with the board, which
+  has every folder in the service's projects folder (`~/Documents/dev` on the Mac), plus `No project`. Never write a
+  folder path to a service ticket; `project <key> <folder>` maps a folder to its project id through
+  `ServiceBoard::project_id_for`. A ticket with no project runs in the projects folder. The projects folder is the
+  service's setting, changed by `Settings -> Agent-Tasks -> Projects folder` and `projects-root <folder>` for every
+  client at once.
+
 `tests_service_board.rs` starts a real `tasks-api` for each test and is skipped when none is built. It gives the
 service a `HOME` of its own, because the service reads `~/.claude` transcripts when it starts, and the first
 `GET /health` then took longer than the second and a half `pairing::find_board` allows.

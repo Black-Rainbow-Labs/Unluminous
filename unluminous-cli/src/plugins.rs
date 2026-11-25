@@ -124,6 +124,18 @@ pub const AGENT_TASKS: &[(&str, &str)] = &[
          which when asked with nothing. Refused while an agent runs in this window.",
     ),
     (
+        "projects",
+        "Every project a ticket's Project field offers. On agent-tasks-service's board that is the service's list, which \
+         the phone offers too and which has every folder in the projects folder, and the answer says the projects folder \
+         a ticket with no project runs in. On this plugin's own board it is the folders this window knows.",
+    ),
+    (
+        "projects-root",
+        "agent-tasks-service's projects folder: every folder in it is a project, and a ticket with no project runs in \
+         it. `projects-root` says which folder; `projects-root <folder>` changes it for every client of the service, \
+         the phone too. The folder must exist. Only on agent-tasks-service's board.",
+    ),
+    (
         "clear",
         "Delete every ticket with its todos and comments, leaving the epics and the sprints. Copies the \
          board file first and says where the copy is. Takes the word `confirm`; without it, it says what \
@@ -157,7 +169,7 @@ pub const AGENT_TASKS: &[(&str, &str)] = &[
     ("delete-task", "Delete a ticket, its todos and its comments."),
     ("priority", "Set a ticket's priority to low, medium or high."),
     ("assign", "Assign a ticket to an AI endpoint that runs an agent, by its name, or to human."),
-    ("project", "The folder a ticket's agent starts in: `project task-3 C:/dev/app`, or `project task-3 default` for the board's default. Says which when asked with only the key. The ticket modal's `Project` field, whose `Other folder...` opens the system's folder picker."),
+    ("project", "The project a ticket's agent starts in. On this plugin's own board it is a folder: `project task-3 C:/dev/app`, or `project task-3 default` for the board's default. On agent-tasks-service's board it is one of the service's projects, named by its id, its name or its folder (`project task-3 chordical-daw`), and `project task-3 none` leaves it with no project, so it runs in the projects folder. Says which when asked with only the key. The ticket modal's `Project` field."),
     ("todo-add", "Add a todo to a ticket."),
     ("todo-done", "Tick a ticket's nth todo."),
     ("todo-undone", "Untick a ticket's nth todo."),

@@ -58,6 +58,9 @@ fn start_the_service() -> Option<Service> {
     let home = std::env::temp_dir().join(format!("unluminous-service-board-{port}-{}", std::process::id()));
     let database = std::env::temp_dir().join(format!("unluminous-service-board-{port}-{}.rdb", std::process::id()));
     let token = format!("test-token-{port}-0123456789abcdef");
+    for folder in ["dev/alpha", "dev/beta", "other/gamma"] {
+        std::fs::create_dir_all(home.join(folder)).expect("a project folder");
+    }
     let process = Command::new(binary)
         .env("AGENT_TASKS_PORT", port.to_string())
         .env("AGENT_TASKS_TOKEN", &token)
@@ -70,6 +73,11 @@ fn start_the_service() -> Option<Service> {
         .env("AGENT_TASKS_TAILSCALE", "/nonexistent/tailscale")
         .env("AGENT_TASKS_WORKTREES", "0")
         .env("AGENT_PTY_URL", "ws://127.0.0.1:1")
+        // A projects folder of its own, `<home>/dev`, holding the folders `alpha` and `beta`.
+        .env("AGENT_PROJECTS_ROOT", home.join("dev"))
+        .env("AGENT_PROJECTS_ROOT_FILE", home.join("projects-root.txt"))
+        .env_remove("AGENT_PROJECTS_FILE")
+        .env_remove("AGENT_PROJECTS_JSON")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
@@ -192,4 +200,56 @@ fn a_service_that_is_not_running_is_said_rather_than_replaced_by_the_file() {
     let refused = UiProvider::command(&mut tasks, "board-source", &["service".to_owned()]).expect_err("there is no service to read");
     assert!(refused.contains("agent-tasks-service"), "the refusal names the service: {refused}");
     assert!(tasks.store.is_none(), "the file board is not shown in its place");
+}
+
+/// Run a command the way `plugins run agent-tasks` does, and answer its refusal.
+/// @param tasks - the board
+/// @param command - the command
+/// @param arguments - its words
+fn refused(tasks: &mut AgentTasks, command: &str, arguments: &[&str]) -> String {
+    let words: Vec<String> = arguments.iter().map(|word| (*word).to_owned()).collect();
+    match UiProvider::command(tasks, command, &words) {
+        Ok(answer) => panic!("`{command} {}` was not refused: {}", arguments.join(" "), answer.message),
+        Err(problem) => problem,
+    }
+}
+
+#[test]
+fn the_project_field_offers_the_services_projects_and_no_project() {
+    let Some(service) = start_the_service() else { return };
+    let mut tasks = a_board_on(&service);
+    let ids: Vec<String> = tasks.project_choices(None).into_iter().map(|(id, _)| id).collect();
+    assert!(ids.contains(&"alpha".to_owned()) && ids.contains(&"beta".to_owned()), "every folder in the projects folder: {ids:?}");
+    assert_eq!(tasks.no_project_words(), "No project");
+
+    run(&mut tasks, "new-task", &["Pick", "a", "project"]);
+    let card = tasks.board.tasks().find(|task| task.title == "Pick a project").expect("the pane shows it").clone();
+    assert_eq!(card.project, None, "a new ticket has no project");
+    let folder = service.home.join("dev/beta").display().to_string();
+    run(&mut tasks, "project", &[&card.key, &folder]);
+    let on_the_service = |service: &Service| service.client.full_board().unwrap().tasks.into_iter().find(|full| full.task.title == "Pick a project").unwrap().agent_project_id;
+    assert_eq!(on_the_service(&service).as_deref(), Some("beta"), "a folder is written as the service's project id");
+    run(&mut tasks, "project", &[&card.key, "alpha"]);
+    assert_eq!(on_the_service(&service).as_deref(), Some("alpha"));
+    let problem = refused(&mut tasks, "project", &[&card.key, "/nowhere/at/all"]);
+    assert!(problem.contains("alpha"), "a refusal names the projects: {problem}");
+    run(&mut tasks, "project", &[&card.key, "none"]);
+    assert_eq!(on_the_service(&service), None, "none leaves the ticket with no project");
+}
+
+#[test]
+fn the_projects_folder_is_read_and_changed_through_the_service() {
+    let Some(service) = start_the_service() else { return };
+    let mut tasks = a_board_on(&service);
+    let said = run(&mut tasks, "projects-root", &[]);
+    assert!(said.ends_with(&service.home.join("dev").display().to_string()), "{said}");
+    let other = service.home.join("other").display().to_string();
+    run(&mut tasks, "projects-root", &[&other]);
+    assert_eq!(service.client.agent_projects_root().unwrap().root.as_deref(), Some(other.as_str()), "the service has the new folder");
+    let ids: Vec<String> = tasks.project_choices(None).into_iter().map(|(id, _)| id).collect();
+    assert!(ids.contains(&"gamma".to_owned()) && !ids.contains(&"alpha".to_owned()), "the list follows the folder at once: {ids:?}");
+    let problem = refused(&mut tasks, "projects-root", &["/nonexistent/dev"]);
+    assert!(problem.contains("not a folder"), "{problem}");
+    let listed = run(&mut tasks, "projects", &[]);
+    assert!(listed.contains(&other), "{listed}");
 }

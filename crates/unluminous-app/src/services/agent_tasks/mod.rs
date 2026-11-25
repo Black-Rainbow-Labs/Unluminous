@@ -106,6 +106,38 @@ impl AgentTasks {
         }
         offered
     }
+
+    /// The rows of a ticket's `Project` dropdown, as (value, words), not counting the empty row.
+    ///
+    /// On agent-tasks-service's board they are the service's projects, by id, which are the ones the phone offers
+    /// and the only ones a ticket can start in. On the plugin's own board they are folders, from [`Self::known_projects`].
+    /// Either way, whatever the ticket already says is kept, so drawing the dropdown never changes the ticket.
+    /// @param holding - the ticket's project as it is now
+    pub fn project_choices(&self, holding: Option<&str>) -> Vec<(String, String)> {
+        let Some(service) = self.service_board() else {
+            return self
+                .known_projects(holding)
+                .into_iter()
+                .map(|path| (path.clone(), crate::services::folder_choice::named(&path)))
+                .collect();
+        };
+        let mut rows: Vec<(String, String)> = service.projects().into_iter().map(|project| (project.id, project.name)).collect();
+        if let Some(holding) = holding.map(str::trim).filter(|value| !value.is_empty()) {
+            if !rows.iter().any(|(id, _)| id == holding) {
+                rows.insert(0, (holding.to_owned(), format!("{holding} (not a project here)")));
+            }
+        }
+        rows
+    }
+
+    /// What the empty row of a ticket's `Project` dropdown says: the service's board runs a ticket with no project in
+    /// its projects folder, and the plugin's board runs it in the folder this window has open.
+    pub fn no_project_words(&self) -> &'static str {
+        match self.service_board() {
+            Some(_) => "No project",
+            None => "The folder this window has open",
+        }
+    }
 }
 
 /// A program that ships beside the running one, by its full path.
@@ -426,6 +458,8 @@ pub struct AgentTasks {
     /// The folders this machine has had open, from `plugin_ui::Context`, which are the choices a ticket's
     /// `Project` dropdown offers.
     recent_projects: Vec<PathBuf>,
+    /// The projects folder as typed into `Settings -> Agent-Tasks` and not saved yet.
+    pub projects_root_typed: Option<String>,
     board: Board,
     view: View,
     /// The ticket showing in the detail, or nothing while the lanes are showing.

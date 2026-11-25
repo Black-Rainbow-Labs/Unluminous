@@ -73,31 +73,9 @@ fn cards(board: &mut AgentTasks, ui: &mut egui::Ui, column: &mut Column) -> Vec<
             }
         }
 
-        let mut project = configuration
-            .project
-            .clone()
-            .map(|path| path.display().to_string())
-            .unwrap_or_default();
-        let copy = card.row(
-            "Default project",
-            Some("Where an agent is launched when a ticket names no project of its own."),
-            |row| {
-                if row.text(
-                    "Default project",
-                    &mut project,
-                    "the folder this window has open",
-                    300.0,
-                ) {
-                    changed.project = Some(project.clone())
-                        .filter(|value: &String| !value.trim().is_empty())
-                        .map(std::path::PathBuf::from);
-                }
-                row.ghost("Copy")
-            },
-        );
-        if copy {
-            requests.push(Request::Copy(project.clone()));
-            requests.push(Request::Message("copied".to_owned()));
+        match board.service_board().is_some() {
+            true => requests.extend(projects_folder_row(board, card)),
+            false => requests.extend(default_project_row(&configuration, &mut changed, card)),
         }
 
         let mut lease = configuration.lease_minutes.to_string();
@@ -318,4 +296,76 @@ fn choose(
             at => options[at].clone(),
         })
     })
+}
+
+/// The `Default project` row of the plugin's own board: the folder an agent starts in when a ticket names none.
+/// @param configuration - the settings as they are
+/// @param changed - the settings the page writes
+/// @param card - the card the row is in
+fn default_project_row(configuration: &crate::services::agent_tasks::Configuration, changed: &mut crate::services::agent_tasks::Configuration, card: &mut kit::Card<'_, '_>) -> Vec<Request> {
+    let mut requests = Vec::new();
+        let mut project = configuration
+        .project
+        .clone()
+        .map(|path| path.display().to_string())
+        .unwrap_or_default();
+    let copy = card.row(
+        "Default project",
+        Some("Where an agent is launched when a ticket names no project of its own."),
+        |row| {
+            if row.text(
+                "Default project",
+                &mut project,
+                "the folder this window has open",
+                300.0,
+            ) {
+                changed.project = Some(project.clone())
+                    .filter(|value: &String| !value.trim().is_empty())
+                    .map(std::path::PathBuf::from);
+            }
+            row.ghost("Copy")
+        },
+    );
+    if copy {
+        requests.push(Request::Copy(project.clone()));
+        requests.push(Request::Message("copied".to_owned()));
+    }
+    requests
+}
+
+/// The `Projects folder` row of agent-tasks-service's board. Every folder in it is a project, and a ticket with no
+/// project runs in it. It is the service's setting, so `Save` changes it for the phone too, and the same change is
+/// `plugins run agent-tasks projects-root <folder>`. What is typed is kept on the board until it is saved.
+/// @param board - the board, which is agent-tasks-service's
+/// @param card - the card the row is in
+fn projects_folder_row(board: &mut AgentTasks, card: &mut kit::Card<'_, '_>) -> Vec<Request> {
+    let saved = board.service_board().and_then(|service| service.projects_root().ok().flatten()).unwrap_or_default();
+    let mut typed = board.projects_root_typed.clone().unwrap_or_else(|| saved.clone());
+    let mut edited = false;
+    let pressed = card.row(
+        "Projects folder",
+        Some(
+            "Every folder in this folder is a project a ticket can be in, on this board, the phone and the iPad. A \
+             ticket with no project runs in this folder.",
+        ),
+        |row| {
+            edited = row.text("Projects folder", &mut typed, "~/Documents/dev", 300.0);
+            row.button("Save")
+        },
+    );
+    if edited {
+        board.projects_root_typed = Some(typed.clone());
+    }
+    if !pressed {
+        return Vec::new();
+    }
+    let said = match board.service_board().map(|service| service.set_projects_root(&typed)) {
+        Some(Ok(root)) => {
+            board.projects_root_typed = None;
+            format!("The projects folder is {}", root.unwrap_or_default())
+        }
+        Some(Err(problem)) => problem,
+        None => "The projects folder is agent-tasks-service's".to_owned(),
+    };
+    vec![Request::Message(said)]
 }
