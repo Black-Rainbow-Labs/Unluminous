@@ -2928,7 +2928,7 @@ impl UiProvider for AgentTasks {
             None => {
                 self.configuration = Configuration::default();
                 self.folder = None;
-                self.store = Some(BoardStore::File(Store::in_memory()?));
+                self.store = Some(BoardStore::File(Box::new(Store::in_memory()?)));
             }
         }
         self.refresh()

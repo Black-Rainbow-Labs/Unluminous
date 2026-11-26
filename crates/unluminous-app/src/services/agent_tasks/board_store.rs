@@ -16,10 +16,10 @@ use super::store::{Candidate, NewTask, Schedule, Store, TaskEdit};
 /// The board that is open.
 #[derive(Debug)]
 pub enum BoardStore {
-    /// The plugin's own Inillucent file.
-    File(Store),
+    /// The plugin's own Inillucent file. Both boards are boxed because they differ in size by about 250 bytes.
+    File(Box<Store>),
     /// The board agent-tasks-service keeps, which the phone and the iPad show.
-    Service(ServiceBoard),
+    Service(Box<ServiceBoard>),
 }
 
 /// Methods both boards answer the same way: the call is passed to whichever is open.

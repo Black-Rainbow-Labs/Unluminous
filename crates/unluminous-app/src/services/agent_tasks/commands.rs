@@ -1228,6 +1228,38 @@ fn supervisor_setting(tasks: &mut AgentTasks, which: &str, rest: &str) -> Result
     }
 }
 
+/// The id of the service project a person or an agent named, by its id, its name or its folder.
+/// @param tasks - the board, which must be agent-tasks-service's
+/// @param named - what was typed
+fn service_project(tasks: &AgentTasks, named: &str) -> Result<String, String> {
+    let service = tasks
+        .service_board()
+        .ok_or_else(|| "this board is not agent-tasks-service's".to_owned())?;
+    service.project_id_for(named).ok_or_else(|| {
+        let ids: Vec<String> = service.projects().into_iter().map(|project| project.id).collect();
+        format!(
+            "`{named}` is not a project on agent-tasks-service. Use `none` or one of: {}",
+            ids.join(", ")
+        )
+    })
+}
+
+/// `projects`: every project a ticket's `Project` field offers, as (value, words), and the projects folder when the
+/// board is agent-tasks-service's.
+/// @param tasks - the board
+fn projects_answer(tasks: &AgentTasks) -> Answer {
+    let rows = tasks.project_choices(None);
+    let listed: Vec<serde_json::Value> =
+        rows.iter().map(|(value, words)| json!({ "project": value, "name": words })).collect();
+    let root = tasks.service_board().and_then(|service| service.projects_root().ok().flatten());
+    let place = match &root {
+        Some(root) => format!(", and a ticket with no project runs in {root}"),
+        None => String::new(),
+    };
+    Answer::said(format!("{} projects{place}", rows.len()))
+        .with(json!({ "projects": listed, "root": root }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1494,36 +1526,4 @@ mod tests {
         let problem = run(&mut board, "chat", &[ticket]).expect_err("no conversation yet");
         assert!(problem.contains("no conversation"), "{problem}");
     }
-}
-
-/// The id of the service project a person or an agent named, by its id, its name or its folder.
-/// @param tasks - the board, which must be agent-tasks-service's
-/// @param named - what was typed
-fn service_project(tasks: &AgentTasks, named: &str) -> Result<String, String> {
-    let service = tasks
-        .service_board()
-        .ok_or_else(|| "this board is not agent-tasks-service's".to_owned())?;
-    service.project_id_for(named).ok_or_else(|| {
-        let ids: Vec<String> = service.projects().into_iter().map(|project| project.id).collect();
-        format!(
-            "`{named}` is not a project on agent-tasks-service. Use `none` or one of: {}",
-            ids.join(", ")
-        )
-    })
-}
-
-/// `projects`: every project a ticket's `Project` field offers, as (value, words), and the projects folder when the
-/// board is agent-tasks-service's.
-/// @param tasks - the board
-fn projects_answer(tasks: &AgentTasks) -> Answer {
-    let rows = tasks.project_choices(None);
-    let listed: Vec<serde_json::Value> =
-        rows.iter().map(|(value, words)| json!({ "project": value, "name": words })).collect();
-    let root = tasks.service_board().and_then(|service| service.projects_root().ok().flatten());
-    let place = match &root {
-        Some(root) => format!(", and a ticket with no project runs in {root}"),
-        None => String::new(),
-    };
-    Answer::said(format!("{} projects{place}", rows.len()))
-        .with(json!({ "projects": listed, "root": root }))
 }

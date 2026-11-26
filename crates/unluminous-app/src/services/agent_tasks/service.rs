@@ -42,15 +42,15 @@ pub fn open_a_board(
             let path = configuration
                 .database_path(Some(folder))
                 .expect("a folder was named, so there is a path");
-            Ok(BoardStore::File(Store::open(path)?))
+            Ok(BoardStore::File(Box::new(Store::open(path)?)))
         }
-        (BoardSource::File, None) => Ok(BoardStore::File(Store::in_memory()?)),
+        (BoardSource::File, None) => Ok(BoardStore::File(Box::new(Store::in_memory()?))),
         (BoardSource::Service, _) if configuration.board_url.is_some() => {
             let address = configuration.board_url.clone().unwrap_or_default();
             let session = super::keychain::read(super::configuration::BOARD_SESSION_KEY).ok_or_else(|| {
                 format!("Agent-Tasks is set to read agent-tasks-service at {address}, and this computer has not signed in to it. Run `plugins run agent-tasks sign-in {address} <username> <password>`.")
             })?;
-            ServiceBoard::connect_to(&address, &session, wake).map(BoardStore::Service).map_err(|why| format!("Agent-Tasks is set to read agent-tasks-service at {address}, and it could not be read. {why}"))
+            ServiceBoard::connect_to(&address, &session, wake).map(|board| BoardStore::Service(Box::new(board))).map_err(|why| format!("Agent-Tasks is set to read agent-tasks-service at {address}, and it could not be read. {why}"))
         }
         (BoardSource::Service, folder) => {
             let mut source = pairing::Source::for_the_settings_folder(
@@ -60,7 +60,11 @@ pub fn open_a_board(
                 source.file = Some(conf.to_path_buf());
             }
             let found = pairing::find_board(&source).map_err(|why| format!("Agent-Tasks is set to read agent-tasks-service, and it could not be reached. {why}"))?;
-            Ok(BoardStore::Service(ServiceBoard::connect(found.port, &found.token, wake)?))
+            Ok(BoardStore::Service(Box::new(ServiceBoard::connect(
+                found.port,
+                &found.token,
+                wake,
+            )?)))
         }
     }
 }
