@@ -74,11 +74,7 @@ mod tests {
     fn the_matrix_for_a_fixed_link_is_the_stored_one() {
         let made = matrix("unluminous://pair?v=1&o=a").expect("a short link fits").to_text();
         // Git checks the file out with CRLF line endings on Windows (task-2879).
-        let stored = include_str!("qr_fixed_matrix.txt").replace(
-            "
-", "
-",
-        );
+        let stored = include_str!("qr_fixed_matrix.txt").replace("\r\n", "\n");
         assert_eq!(made, stored, "the code made for the fixed link changed:\n{made}");
     }
 
