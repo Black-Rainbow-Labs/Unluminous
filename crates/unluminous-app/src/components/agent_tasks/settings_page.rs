@@ -35,7 +35,8 @@ fn cards(board: &mut AgentTasks, ui: &mut egui::Ui, column: &mut Column) -> Vec<
     kit::card(ui, column, "The board", None, |card| {
         // Where the board comes from (`tasks/agent-tasks-through-the-service-tdd.md`). A change opens the other board
         // at once, so it is applied after the card rather than written with the rest of the page.
-        let sources: Vec<String> = BoardSource::ALL.iter().map(|source| source.label().to_owned()).collect();
+        let sources: Vec<String> =
+            BoardSource::ALL.iter().map(|source| source.label().to_owned()).collect();
         let now = BoardSource::ALL.iter().position(|source| *source == configuration.board_source);
         let picked = card.row(
             "Board",
@@ -71,6 +72,10 @@ fn cards(board: &mut AgentTasks, ui: &mut egui::Ui, column: &mut Column) -> Vec<
             if let Some(path) = board.database_path() {
                 requests.push(Request::Reveal(path));
             }
+        }
+
+        if configuration.board_source == BoardSource::Service {
+            requests.extend(remote_board_row(board, &configuration, card));
         }
 
         match board.service_board().is_some() {
@@ -302,23 +307,19 @@ fn choose(
 /// @param configuration - the settings as they are
 /// @param changed - the settings the page writes
 /// @param card - the card the row is in
-fn default_project_row(configuration: &crate::services::agent_tasks::Configuration, changed: &mut crate::services::agent_tasks::Configuration, card: &mut kit::Card<'_, '_>) -> Vec<Request> {
+fn default_project_row(
+    configuration: &crate::services::agent_tasks::Configuration,
+    changed: &mut crate::services::agent_tasks::Configuration,
+    card: &mut kit::Card<'_, '_>,
+) -> Vec<Request> {
     let mut requests = Vec::new();
-        let mut project = configuration
-        .project
-        .clone()
-        .map(|path| path.display().to_string())
-        .unwrap_or_default();
+    let mut project =
+        configuration.project.clone().map(|path| path.display().to_string()).unwrap_or_default();
     let copy = card.row(
         "Default project",
         Some("Where an agent is launched when a ticket names no project of its own."),
         |row| {
-            if row.text(
-                "Default project",
-                &mut project,
-                "the folder this window has open",
-                300.0,
-            ) {
+            if row.text("Default project", &mut project, "the folder this window has open", 300.0) {
                 changed.project = Some(project.clone())
                     .filter(|value: &String| !value.trim().is_empty())
                     .map(std::path::PathBuf::from);
@@ -333,13 +334,63 @@ fn default_project_row(configuration: &crate::services::agent_tasks::Configurati
     requests
 }
 
+/// The `Board on another computer` row (task-2879): the address of agent-tasks-service when it is not on this
+/// computer, such as `https://tasks.jasonmcaffee.com` for the PC board, with a username and a password to sign in.
+/// `Sign in` keeps the session in the keychain and reads that board; an empty address goes back to the board on this
+/// computer. The same is `plugins run agent-tasks sign-in <address> <username> <password>` and `board-url none`.
+/// @param board - the board
+/// @param configuration - the settings as they are saved
+/// @param card - the card the row is in
+fn remote_board_row(
+    board: &mut AgentTasks,
+    configuration: &crate::services::agent_tasks::Configuration,
+    card: &mut kit::Card<'_, '_>,
+) -> Vec<Request> {
+    let (typed_address, mut username, mut password) = board.sign_in_typed.clone();
+    let mut address =
+        typed_address.unwrap_or_else(|| configuration.board_url.clone().unwrap_or_default());
+    if username.is_empty() {
+        username = "jason".to_owned();
+    }
+    let mut edited = false;
+    let pressed = card.row(
+        "Board on another computer",
+        Some(
+            "The address of agent-tasks-service when it runs on another computer, such as https://tasks.jasonmcaffee.com              for the PC board, which every computer, the phone and the iPad share. Leave it empty for the board on this              computer. The password is used once and not kept; the session is kept in the keychain.",
+        ),
+        |row| {
+            edited |= row.text("Board address", &mut address, "https://tasks.jasonmcaffee.com", 240.0);
+            edited |= row.text("Username", &mut username, "jason", 90.0);
+            edited |= row.password("Password", &mut password, "password", 120.0);
+            row.button("Sign in")
+        },
+    );
+    if edited {
+        board.sign_in_typed = (Some(address.clone()), username.clone(), password.clone());
+    }
+    if !pressed {
+        return Vec::new();
+    }
+    let said = match address.trim() {
+        "" => board.set_board_url(None).map(|answer| answer.message),
+        typed => {
+            board.sign_in_to_a_board(typed, username.trim(), &password).map(|answer| answer.message)
+        }
+    };
+    board.sign_in_typed = (None, username, String::new());
+    vec![Request::Message(said.unwrap_or_else(|problem| problem))]
+}
+
 /// The `Projects folder` row of agent-tasks-service's board. Every folder in it is a project, and a ticket with no
 /// project runs in it. It is the service's setting, so `Save` changes it for the phone too, and the same change is
 /// `plugins run agent-tasks projects-root <folder>`. What is typed is kept on the board until it is saved.
 /// @param board - the board, which is agent-tasks-service's
 /// @param card - the card the row is in
 fn projects_folder_row(board: &mut AgentTasks, card: &mut kit::Card<'_, '_>) -> Vec<Request> {
-    let saved = board.service_board().and_then(|service| service.projects_root().ok().flatten()).unwrap_or_default();
+    let saved = board
+        .service_board()
+        .and_then(|service| service.projects_root().ok().flatten())
+        .unwrap_or_default();
     let mut typed = board.projects_root_typed.clone().unwrap_or_else(|| saved.clone());
     let mut edited = false;
     let pressed = card.row(

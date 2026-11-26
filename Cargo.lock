@@ -6468,7 +6468,7 @@ checksum = "61c41af27dd6d1e27b1b16b489db798443478cef1f06a660c96db617ba5de3b1"
 [[package]]
 name = "tasks-client"
 version = "0.1.0"
-source = "git+https://github.com/Black-Rainbow-Labs/unluminous-mobile.git?rev=78bb57833adbc42416bfdcffaf9e3630380d4623#78bb57833adbc42416bfdcffaf9e3630380d4623"
+source = "git+https://github.com/Black-Rainbow-Labs/unluminous-mobile.git?rev=2a6131db5d030b5a8c5e0be374a9d2c51ac59a15#2a6131db5d030b5a8c5e0be374a9d2c51ac59a15"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.3.4",
@@ -7162,6 +7162,7 @@ dependencies = [
  "mime_guess",
  "muda",
  "naga",
+ "native-tls",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
  "objc2-core-foundation",

@@ -56,8 +56,10 @@ const WAIT_TIMEOUT: Duration = Duration::from_secs(WAIT_SECONDS + 10);
 /// How long the board's own connection test and the Tailscale command are given.
 const SLOW_TIMEOUT: Duration = Duration::from_secs(40);
 
-/// How long a `GET /health` is given when choosing a board.
-const HEALTH_TIMEOUT: Duration = Duration::from_millis(1500);
+/// How long a `GET /health` is given when choosing a board. It was 1.5 seconds, and on Windows a board's health
+/// check took 2.05 seconds while it asked a stopped terminal daemon, so Unluminous on the PC said no board was running
+/// (task-2879). A board that is not running is refused at once, so the longer wait only costs time on a slow board.
+const HEALTH_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The gap between two long polls of an offer, so a board that answers at once is not asked in a loop.
 const POLL_GAP_MS: i64 = 400;

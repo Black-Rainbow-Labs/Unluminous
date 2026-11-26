@@ -124,6 +124,17 @@ pub const AGENT_TASKS: &[(&str, &str)] = &[
          which when asked with nothing. Refused while an agent runs in this window.",
     ),
     (
+        "board-url",
+        "Where agent-tasks-service is when it is on another computer: `board-url https://tasks.jasonmcaffee.com` reads \
+         the PC board from anywhere, and `board-url none` goes back to the board on this computer. Needs a session from \
+         `sign-in`. Says which when asked with nothing.",
+    ),
+    (
+        "sign-in",
+        "`sign-in <address> <username> <password>` signs in to agent-tasks-service at the address, keeps the session in \
+         the keychain (the password is not kept), sets `board-url` and `board-source service`, and opens that board.",
+    ),
+    (
         "projects",
         "Every project a ticket's Project field offers. On agent-tasks-service's board that is the service's list, which \
          the phone offers too and which has every folder in the projects folder, and the answer says the projects folder \

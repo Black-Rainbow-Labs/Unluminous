@@ -31,15 +31,31 @@ fn settings_folder_of(plugin_folder: &Path) -> Option<PathBuf> {
 /// @param plugin_folder - the plugin's own folder, or `None` for a window with no settings folder
 /// @param conf - one `boards/<port>.conf` to use instead of looking in the settings folder
 /// @param wake - asks the window to draw again when the service says the board changed
-pub fn open_a_board(configuration: &super::Configuration, plugin_folder: Option<&Path>, conf: Option<&Path>, wake: Option<unluminous_terminal::Waker>) -> Result<BoardStore, String> {
+pub fn open_a_board(
+    configuration: &super::Configuration,
+    plugin_folder: Option<&Path>,
+    conf: Option<&Path>,
+    wake: Option<unluminous_terminal::Waker>,
+) -> Result<BoardStore, String> {
     match (configuration.board_source, plugin_folder) {
         (BoardSource::File, Some(folder)) => {
-            let path = configuration.database_path(Some(folder)).expect("a folder was named, so there is a path");
+            let path = configuration
+                .database_path(Some(folder))
+                .expect("a folder was named, so there is a path");
             Ok(BoardStore::File(Store::open(path)?))
         }
         (BoardSource::File, None) => Ok(BoardStore::File(Store::in_memory()?)),
+        (BoardSource::Service, _) if configuration.board_url.is_some() => {
+            let address = configuration.board_url.clone().unwrap_or_default();
+            let session = super::keychain::read(super::configuration::BOARD_SESSION_KEY).ok_or_else(|| {
+                format!("Agent-Tasks is set to read agent-tasks-service at {address}, and this computer has not signed in to it. Run `plugins run agent-tasks sign-in {address} <username> <password>`.")
+            })?;
+            ServiceBoard::connect_to(&address, &session, wake).map(BoardStore::Service).map_err(|why| format!("Agent-Tasks is set to read agent-tasks-service at {address}, and it could not be read. {why}"))
+        }
         (BoardSource::Service, folder) => {
-            let mut source = pairing::Source::for_the_settings_folder(folder.and_then(settings_folder_of).as_deref());
+            let mut source = pairing::Source::for_the_settings_folder(
+                folder.and_then(settings_folder_of).as_deref(),
+            );
             if let Some(conf) = conf {
                 source.file = Some(conf.to_path_buf());
             }
@@ -52,7 +68,12 @@ pub fn open_a_board(configuration: &super::Configuration, plugin_folder: Option<
 impl AgentTasks {
     /// Open the board this provider's configuration names.
     pub(super) fn open_the_board(&self) -> Result<BoardStore, String> {
-        open_a_board(&self.configuration, self.folder.as_deref(), self.board_conf.as_deref(), self.waker.clone())
+        open_a_board(
+            &self.configuration,
+            self.folder.as_deref(),
+            self.board_conf.as_deref(),
+            self.waker.clone(),
+        )
     }
 
     /// Find agent-tasks-service through this one conf file rather than the settings folder, which is how a test
@@ -100,14 +121,79 @@ impl AgentTasks {
         if source == self.configuration.board_source {
             return Ok(Answer::said(format!("the board is already {}", source.label())));
         }
-        if self.terminals.iter().any(|terminal| terminal.session.is_running() && !terminal.is_a_view) {
+        if self
+            .terminals
+            .iter()
+            .any(|terminal| terminal.session.is_running() && !terminal.is_a_view)
+        {
             return Err("an agent is running in this window. Stop it before choosing another board, because a ticket's id names a different ticket on the other board".to_owned());
         }
         let mut changed = self.configuration.clone();
         changed.board_source = source;
         self.change_the_configuration(changed)?;
         self.reopen_the_board()?;
-        Ok(Answer::said(format!("Agent-Tasks now reads {}", source.label())).with(json!({"boardSource": source.name(), "board": self.board_where()})))
+        Ok(Answer::said(format!("Agent-Tasks now reads {}", source.label()))
+            .with(json!({"boardSource": source.name(), "board": self.board_where()})))
+    }
+
+    /// Read agent-tasks-service on another computer, or on this one with `None` (task-2879). Saved to `settings.conf`
+    /// as `board-url`, and the board is opened again when it is the one shown.
+    /// @param address - the board's address, such as `https://tasks.jasonmcaffee.com`, or `None`
+    pub fn set_board_url(&mut self, address: Option<String>) -> Result<Answer, String> {
+        let address = address
+            .map(|text| text.trim().trim_end_matches('/').to_owned())
+            .filter(|text| !text.is_empty() && text != "none" && text != "local");
+        if let Some(text) = &address {
+            if !text.starts_with("http://") && !text.starts_with("https://") {
+                return Err(format!(
+                    "`{text}` is not an address: it starts with https:// or http://"
+                ));
+            }
+        }
+        let mut changed = self.configuration.clone();
+        changed.board_url = address.clone();
+        self.change_the_configuration(changed)?;
+        if self.configuration.board_source == BoardSource::Service {
+            self.reopen_the_board()?;
+        }
+        let words = address.clone().unwrap_or_else(|| "the board on this computer".to_owned());
+        Ok(Answer::said(format!("Agent-Tasks reads agent-tasks-service at {words}"))
+            .with(json!({"boardUrl": address, "board": self.board_where()})))
+    }
+
+    /// Sign in to agent-tasks-service at an address, keep the session in the keychain, and read that board.
+    ///
+    /// The password is used for this one request and is not kept anywhere. The session is what the board answers,
+    /// and the board can revoke it from its session list.
+    /// @param address - the board's address
+    /// @param username - the account
+    /// @param password - its password
+    pub fn sign_in_to_a_board(
+        &mut self,
+        address: &str,
+        username: &str,
+        password: &str,
+    ) -> Result<Answer, String> {
+        let address = address.trim().trim_end_matches('/').to_owned();
+        let label = format!(
+            "Unluminous on {}",
+            std::env::var("COMPUTERNAME")
+                .or_else(|_| std::env::var("HOSTNAME"))
+                .unwrap_or_else(|_| "a desktop".to_owned())
+        );
+        let answer = tasks_client::TasksClient::anonymous(&address)
+            .login(username, password, &label)
+            .map_err(|problem| format!("signing in to {address} failed: {problem}"))?;
+        super::keychain::write(super::configuration::BOARD_SESSION_KEY, &answer.token)?;
+        let mut changed = self.configuration.clone();
+        changed.board_url = Some(address.clone());
+        changed.board_source = BoardSource::Service;
+        self.change_the_configuration(changed)?;
+        self.reopen_the_board()?;
+        Ok(Answer::said(format!(
+            "signed in to agent-tasks-service at {address}, and Agent-Tasks reads it"
+        ))
+        .with(json!({"boardUrl": address, "board": self.board_where()})))
     }
 
     /// Open the board the configuration now names, dropping the terminals and the open ticket of the old one.
@@ -126,7 +212,9 @@ impl AgentTasks {
     /// @param task - the ticket
     pub(super) fn start_on_the_service(&mut self, task: &Task) -> Result<Answer, String> {
         let board = self.service_board().ok_or("the board is not agent-tasks-service's")?;
-        let state = board.client().start_work(task.id).map_err(|problem| format!("{} could not be started on agent-tasks-service: {problem}", task.key))?;
+        let state = board.client().start_work(task.id).map_err(|problem| {
+            format!("{} could not be started on agent-tasks-service: {problem}", task.key)
+        })?;
         board.read_again()?;
         self.refresh()?;
         self.show_the_service_terminal(task.id)?;
@@ -137,9 +225,16 @@ impl AgentTasks {
     /// Type a line into a ticket's agent on the service, which starts a stopped agent first.
     /// @param task - the ticket
     /// @param line - what to type
-    pub(super) fn send_on_the_service(&mut self, task: &Task, line: &str) -> Result<Answer, String> {
+    pub(super) fn send_on_the_service(
+        &mut self,
+        task: &Task,
+        line: &str,
+    ) -> Result<Answer, String> {
         let board = self.service_board().ok_or("the board is not agent-tasks-service's")?;
-        board.client().send_terminal_message(task.id, line).map_err(|problem| format!("the line could not be sent to {}: {problem}", task.key))?;
+        board
+            .client()
+            .send_terminal_message(task.id, line)
+            .map_err(|problem| format!("the line could not be sent to {}: {problem}", task.key))?;
         self.message = format!("sent to {}", task.key);
         Ok(Answer::said(self.message.clone()).with(json!({"task": task.key, "queued": false})))
     }
@@ -148,13 +243,19 @@ impl AgentTasks {
     /// `interrupt` with no terminal open.
     /// @param task - the ticket
     /// @param interrupt - Ctrl+C when true, Escape when false
-    pub(super) fn press_on_the_service(&mut self, task: &Task, interrupt: bool) -> Result<Answer, String> {
+    pub(super) fn press_on_the_service(
+        &mut self,
+        task: &Task,
+        interrupt: bool,
+    ) -> Result<Answer, String> {
         let board = self.service_board().ok_or("the board is not agent-tasks-service's")?;
         let sent = match interrupt {
             true => board.client().interrupt_terminal(task.id),
             false => board.client().type_into_terminal(task.id, "\u{1b}", false),
         };
-        sent.map_err(|problem| format!("{} could not be reached on agent-tasks-service: {problem}", task.key))?;
+        sent.map_err(|problem| {
+            format!("{} could not be reached on agent-tasks-service: {problem}", task.key)
+        })?;
         Ok(Answer::said(match interrupt {
             true => format!("interrupted {}", task.key),
             false => format!("pressed Escape in {}", task.key),
@@ -170,17 +271,31 @@ impl AgentTasks {
             return Ok(());
         }
         let board = self.service_board().ok_or("the board is not agent-tasks-service's")?;
-        let program = std::env::current_exe().map_err(|problem| format!("Unluminous could not find its own program: {problem}"))?;
+        let program = std::env::current_exe()
+            .map_err(|problem| format!("Unluminous could not find its own program: {problem}"))?;
         let settings = unluminous_terminal::SessionSettings {
             shell: Some(program.display().to_string()),
             args: vec![board_terminal::SWITCH.to_owned(), task_id.to_string()],
             working_directory: std::env::var_os("HOME").map(PathBuf::from),
-            env: vec![(board_terminal::URL_VARIABLE.to_owned(), board.address().to_owned()), (board_terminal::TOKEN_VARIABLE.to_owned(), board.token().to_owned())],
+            env: vec![
+                (board_terminal::URL_VARIABLE.to_owned(), board.address().to_owned()),
+                (board_terminal::TOKEN_VARIABLE.to_owned(), board.token().to_owned()),
+                (
+                    board_terminal::SESSION_VARIABLE.to_owned(),
+                    if board.uses_a_session() { "1" } else { "0" }.to_owned(),
+                ),
+            ],
             name: None,
         };
         let waker = self.waker.clone().unwrap_or_else(|| std::sync::Arc::new(|| {}));
-        let session = unluminous_terminal::Session::spawn(&settings, unluminous_terminal::Size::new(40, 120), waker).map_err(|problem| format!("the ticket's terminal could not be opened: {problem}"))?;
-        let session_id = self.store()?.task(task_id)?.and_then(|task| task.session_id).unwrap_or_default();
+        let session = unluminous_terminal::Session::spawn(
+            &settings,
+            unluminous_terminal::Size::new(40, 120),
+            waker,
+        )
+        .map_err(|problem| format!("the ticket's terminal could not be opened: {problem}"))?;
+        let session_id =
+            self.store()?.task(task_id)?.and_then(|task| task.session_id).unwrap_or_default();
         self.terminals.retain(|terminal| terminal.task_id != task_id);
         self.terminals.push(TicketTerminal::a_view(task_id, session, session_id, clock::now()));
         Ok(())

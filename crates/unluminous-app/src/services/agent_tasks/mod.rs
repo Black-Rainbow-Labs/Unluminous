@@ -121,7 +121,8 @@ impl AgentTasks {
                 .map(|path| (path.clone(), crate::services::folder_choice::named(&path)))
                 .collect();
         };
-        let mut rows: Vec<(String, String)> = service.projects().into_iter().map(|project| (project.id, project.name)).collect();
+        let mut rows: Vec<(String, String)> =
+            service.projects().into_iter().map(|project| (project.id, project.name)).collect();
         if let Some(holding) = holding.map(str::trim).filter(|value| !value.is_empty()) {
             if !rows.iter().any(|(id, _)| id == holding) {
                 rows.insert(0, (holding.to_owned(), format!("{holding} (not a project here)")));
@@ -460,6 +461,9 @@ pub struct AgentTasks {
     recent_projects: Vec<PathBuf>,
     /// The projects folder as typed into `Settings -> Agent-Tasks` and not saved yet.
     pub projects_root_typed: Option<String>,
+    /// The address, username and password typed into the `Board on another computer` row and not signed in with
+    /// yet (task-2879). The password is cleared as soon as the sign in is sent.
+    pub sign_in_typed: (Option<String>, String, String),
     board: Board,
     view: View,
     /// The ticket showing in the detail, or nothing while the lanes are showing.
@@ -938,7 +942,9 @@ impl AgentTasks {
     /// what keeps this machine's own path out of an accepted screenshot.
     pub fn board_where(&self) -> String {
         match self.store.as_ref() {
-            Some(BoardStore::Service(board)) => format!("agent-tasks-service at {}", board.address()),
+            Some(BoardStore::Service(board)) => {
+                format!("agent-tasks-service at {}", board.address())
+            }
             Some(store) if store.path() == std::path::Path::new(":memory:") => {
                 "in memory \u{2014} this window has no settings folder, so nothing is written"
                     .to_owned()
@@ -2541,7 +2547,8 @@ impl AgentTasks {
     /// modal's Chat tab sends.
     pub fn escape(&mut self, key: &str) -> Result<Answer, String> {
         let task = self.by_key(key)?;
-        let viewing = self.terminal_for(task.id).is_some_and(|terminal| terminal.session.is_running());
+        let viewing =
+            self.terminal_for(task.id).is_some_and(|terminal| terminal.session.is_running());
         if self.service_board().is_some() && !viewing {
             return self.press_on_the_service(&task, false);
         }
@@ -3451,6 +3458,6 @@ mod tests_task_28 {
 }
 
 #[cfg(test)]
-mod tests_task_2285;
-#[cfg(test)]
 mod tests_service_board;
+#[cfg(test)]
+mod tests_task_2285;

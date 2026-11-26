@@ -7,7 +7,9 @@
 
 use std::path::{Path, PathBuf};
 
-use super::model::{Assignee, Author, Board, Comment, Epic, Sprint, SprintStatus, Status, Task, Todo};
+use super::model::{
+    Assignee, Author, Board, Comment, Epic, Sprint, SprintStatus, Status, Task, Todo,
+};
 use super::service_board::{ServiceBoard, THE_SERVICE_RUNS_THE_AGENTS};
 use super::store::{Candidate, NewTask, Schedule, Store, TaskEdit};
 
@@ -148,7 +150,11 @@ impl BoardStore {
     /// The tickets the desktop's watchdog looks at. None on the service's board, whose own watchdog runs.
     /// @param now - the time now
     /// @param default_lease_minutes - the lease a ticket that names none has
-    pub fn watchdog_candidates(&self, now: &str, default_lease_minutes: i64) -> Result<Vec<Candidate>, String> {
+    pub fn watchdog_candidates(
+        &self,
+        now: &str,
+        default_lease_minutes: i64,
+    ) -> Result<Vec<Candidate>, String> {
         match self {
             BoardStore::File(store) => store.watchdog_candidates(now, default_lease_minutes),
             BoardStore::Service(_) => Ok(Vec::new()),

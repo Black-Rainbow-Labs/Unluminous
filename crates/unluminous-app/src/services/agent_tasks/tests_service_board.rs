@@ -16,6 +16,9 @@ use super::{AgentTasks, BoardSource};
 use crate::services::pairing;
 use crate::services::plugin_ui::{Context, UiProvider};
 
+/// The owner password every test service is started with, for the tests that sign in.
+const PASSWORD: &str = "ServiceBoardTest!2026";
+
 /// A `tasks-api` that is stopped and whose files are removed when it is dropped.
 struct Service {
     process: Child,
@@ -39,7 +42,8 @@ fn the_service_binary() -> Option<PathBuf> {
     if let Ok(named) = std::env::var("AGENT_TASKS_BIN") {
         return Some(PathBuf::from(named)).filter(|path| path.exists());
     }
-    let sibling = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../agent-tasks-service/target/release/tasks-api");
+    let sibling = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../agent-tasks-service/target/release/tasks-api");
     sibling.exists().then_some(sibling)
 }
 
@@ -55,8 +59,10 @@ fn start_the_service() -> Option<Service> {
         return None;
     };
     let port = free_port();
-    let home = std::env::temp_dir().join(format!("unluminous-service-board-{port}-{}", std::process::id()));
-    let database = std::env::temp_dir().join(format!("unluminous-service-board-{port}-{}.rdb", std::process::id()));
+    let home = std::env::temp_dir()
+        .join(format!("unluminous-service-board-{port}-{}", std::process::id()));
+    let database = std::env::temp_dir()
+        .join(format!("unluminous-service-board-{port}-{}.rdb", std::process::id()));
     let token = format!("test-token-{port}-0123456789abcdef");
     for folder in ["dev/alpha", "dev/beta", "other/gamma"] {
         std::fs::create_dir_all(home.join(folder)).expect("a project folder");
@@ -70,7 +76,12 @@ fn start_the_service() -> Option<Service> {
         // A home of its own, so the service does not read this machine's Claude Code transcripts while the test
         // waits on it.
         .env("HOME", &home)
+        // Windows reads USERPROFILE before HOME (task-2879). Without it each test board read every transcript of the
+        // person running the tests, and its health check waited seconds behind that.
+        .env("USERPROFILE", &home)
         .env("AGENT_TASKS_TAILSCALE", "/nonexistent/tailscale")
+        .env("AGENT_TASKS_OWNER_USERNAME", "jason")
+        .env("AGENT_TASKS_OWNER_PASSWORD", PASSWORD)
         .env("AGENT_TASKS_WORKTREES", "0")
         .env("AGENT_PTY_URL", "ws://127.0.0.1:1")
         // A projects folder of its own, `<home>/dev`, holding the folders `alpha` and `beta`.
@@ -83,12 +94,21 @@ fn start_the_service() -> Option<Service> {
         .spawn()
         .expect("tasks-api starts");
     let client = TasksClient::new(&format!("http://127.0.0.1:{port}"), Credential::Machine(token));
-    let service = Service { process, client, conf: home.join("boards").join(format!("{port}.conf")), database, home };
+    let service = Service {
+        process,
+        client,
+        conf: home.join("boards").join(format!("{port}.conf")),
+        database,
+        home,
+    };
     // The first `GET /health` after the service starts took 1.1 to 1.3 seconds on the MacBook Pro, and four
     // services starting at once took longer than the second and a half `find_board` gives it. Later ones take
     // under two milliseconds, so the wait is for `find_board` itself to accept the service.
     let named = pairing::Source { folder: None, file: Some(service.conf.clone()) };
-    wait_until(|| pairing::find_board(&named).is_ok(), "tasks-api answers and writes its conf file");
+    wait_until(
+        || pairing::find_board(&named).is_ok(),
+        "tasks-api answers and writes its conf file",
+    );
     Some(service)
 }
 
@@ -129,7 +149,14 @@ fn run(tasks: &mut AgentTasks, command: &str, arguments: &[&str]) -> String {
 /// The titles on the service's board, read by the service's own client.
 /// @param service - the service
 fn titles_on(service: &Service) -> Vec<String> {
-    service.client.full_board().expect("the service's board").tasks.into_iter().map(|full| full.task.title).collect()
+    service
+        .client
+        .full_board()
+        .expect("the service's board")
+        .tasks
+        .into_iter()
+        .map(|full| full.task.title)
+        .collect()
 }
 
 #[test]
@@ -137,9 +164,17 @@ fn a_ticket_made_in_the_pane_is_on_the_service_and_its_changes_reach_it() {
     let Some(service) = start_the_service() else { return };
     let mut tasks = a_board_on(&service);
     let key = run(&mut tasks, "new-task", &["Draw", "the", "lanes"]);
-    assert!(titles_on(&service).contains(&"Draw the lanes".to_owned()), "the service has the ticket, made as {key}");
+    assert!(
+        titles_on(&service).contains(&"Draw the lanes".to_owned()),
+        "the service has the ticket, made as {key}"
+    );
 
-    let card = tasks.board.tasks().find(|task| task.title == "Draw the lanes").expect("the pane shows it").clone();
+    let card = tasks
+        .board
+        .tasks()
+        .find(|task| task.title == "Draw the lanes")
+        .expect("the pane shows it")
+        .clone();
     run(&mut tasks, "comment", &[&card.key, "Started", "on", "it"]);
     run(&mut tasks, "todo-add", &[&card.key, "Read", "the", "design"]);
     run(&mut tasks, "todo-done", &[&card.key, "1"]);
@@ -149,15 +184,24 @@ fn a_ticket_made_in_the_pane_is_on_the_service_and_its_changes_reach_it() {
     let full = service.client.task_by_key(&card.key).expect("the service has the ticket");
     assert_eq!(full.task.status, "qa_failed");
     assert_eq!(full.task.priority, "high");
-    assert_eq!(full.task.comments.iter().map(|comment| comment.body.as_str()).collect::<Vec<&str>>(), ["Started on it"]);
-    assert!(full.task.todos.iter().all(|todo| todo.done) && full.task.todos.len() == 1, "the todo is there and ticked");
+    assert_eq!(
+        full.task.comments.iter().map(|comment| comment.body.as_str()).collect::<Vec<&str>>(),
+        ["Started on it"]
+    );
+    assert!(
+        full.task.todos.iter().all(|todo| todo.done) && full.task.todos.len() == 1,
+        "the todo is there and ticked"
+    );
 }
 
 #[test]
 fn a_ticket_made_on_the_service_shows_in_the_pane_after_the_service_says_so() {
     let Some(service) = start_the_service() else { return };
     let mut tasks = a_board_on(&service);
-    service.client.create_task(&CreateTask { title: "Filed from the phone".into(), ..Default::default() }).expect("the phone files a ticket");
+    service
+        .client
+        .create_task(&CreateTask { title: "Filed from the phone".into(), ..Default::default() })
+        .expect("the phone files a ticket");
     wait_until(
         || {
             tasks.notice_the_service();
@@ -174,7 +218,11 @@ fn sprints_and_epics_made_in_the_pane_are_the_services() {
     run(&mut tasks, "new-sprint", &["Sprint", "A"]);
     run(&mut tasks, "new-epic", &["infra"]);
     let board = service.client.full_board().expect("the service's board");
-    assert_eq!(board.active_sprint.map(|sprint| sprint.name), Some("Sprint A".to_owned()), "a new sprint is the active one");
+    assert_eq!(
+        board.active_sprint.map(|sprint| sprint.name),
+        Some("Sprint A".to_owned()),
+        "a new sprint is the active one"
+    );
     assert!(board.epics.iter().any(|epic| epic.name == "infra"));
     run(&mut tasks, "new-task", &["In", "the", "sprint"]);
     assert_eq!(tasks.board.total(), 1, "the pane shows the active sprint's ticket");
@@ -188,16 +236,21 @@ fn choosing_the_file_again_shows_the_file_board() {
     run(&mut tasks, "board-source", &["file"]);
     assert_eq!(tasks.board_source(), BoardSource::File);
     assert_eq!(tasks.board.total(), 0, "a test window's file board is in memory and empty");
-    assert!(titles_on(&service).contains(&"Only on the service".to_owned()), "the service keeps its ticket");
+    assert!(
+        titles_on(&service).contains(&"Only on the service".to_owned()),
+        "the service keeps its ticket"
+    );
 }
 
 #[test]
 fn a_service_that_is_not_running_is_said_rather_than_replaced_by_the_file() {
     let mut tasks = AgentTasks::default();
     tasks.open(&Context::default()).expect("a board in memory opens");
-    let missing = std::env::temp_dir().join(format!("unluminous-no-such-board-{}.conf", std::process::id()));
+    let missing =
+        std::env::temp_dir().join(format!("unluminous-no-such-board-{}.conf", std::process::id()));
     tasks.find_the_service_through(missing);
-    let refused = UiProvider::command(&mut tasks, "board-source", &["service".to_owned()]).expect_err("there is no service to read");
+    let refused = UiProvider::command(&mut tasks, "board-source", &["service".to_owned()])
+        .expect_err("there is no service to read");
     assert!(refused.contains("agent-tasks-service"), "the refusal names the service: {refused}");
     assert!(tasks.store.is_none(), "the file board is not shown in its place");
 }
@@ -209,7 +262,9 @@ fn a_service_that_is_not_running_is_said_rather_than_replaced_by_the_file() {
 fn refused(tasks: &mut AgentTasks, command: &str, arguments: &[&str]) -> String {
     let words: Vec<String> = arguments.iter().map(|word| (*word).to_owned()).collect();
     match UiProvider::command(tasks, command, &words) {
-        Ok(answer) => panic!("`{command} {}` was not refused: {}", arguments.join(" "), answer.message),
+        Ok(answer) => {
+            panic!("`{command} {}` was not refused: {}", arguments.join(" "), answer.message)
+        }
         Err(problem) => problem,
     }
 }
@@ -219,16 +274,38 @@ fn the_project_field_offers_the_services_projects_and_no_project() {
     let Some(service) = start_the_service() else { return };
     let mut tasks = a_board_on(&service);
     let ids: Vec<String> = tasks.project_choices(None).into_iter().map(|(id, _)| id).collect();
-    assert!(ids.contains(&"alpha".to_owned()) && ids.contains(&"beta".to_owned()), "every folder in the projects folder: {ids:?}");
+    assert!(
+        ids.contains(&"alpha".to_owned()) && ids.contains(&"beta".to_owned()),
+        "every folder in the projects folder: {ids:?}"
+    );
     assert_eq!(tasks.no_project_words(), "No project");
 
     run(&mut tasks, "new-task", &["Pick", "a", "project"]);
-    let card = tasks.board.tasks().find(|task| task.title == "Pick a project").expect("the pane shows it").clone();
+    let card = tasks
+        .board
+        .tasks()
+        .find(|task| task.title == "Pick a project")
+        .expect("the pane shows it")
+        .clone();
     assert_eq!(card.project, None, "a new ticket has no project");
-    let folder = service.home.join("dev/beta").display().to_string();
+    let folder = service.home.join("dev").join("beta").display().to_string();
     run(&mut tasks, "project", &[&card.key, &folder]);
-    let on_the_service = |service: &Service| service.client.full_board().unwrap().tasks.into_iter().find(|full| full.task.title == "Pick a project").unwrap().agent_project_id;
-    assert_eq!(on_the_service(&service).as_deref(), Some("beta"), "a folder is written as the service's project id");
+    let on_the_service = |service: &Service| {
+        service
+            .client
+            .full_board()
+            .unwrap()
+            .tasks
+            .into_iter()
+            .find(|full| full.task.title == "Pick a project")
+            .unwrap()
+            .agent_project_id
+    };
+    assert_eq!(
+        on_the_service(&service).as_deref(),
+        Some("beta"),
+        "a folder is written as the service's project id"
+    );
     run(&mut tasks, "project", &[&card.key, "alpha"]);
     assert_eq!(on_the_service(&service).as_deref(), Some("alpha"));
     let problem = refused(&mut tasks, "project", &[&card.key, "/nowhere/at/all"]);
@@ -245,11 +322,114 @@ fn the_projects_folder_is_read_and_changed_through_the_service() {
     assert!(said.ends_with(&service.home.join("dev").display().to_string()), "{said}");
     let other = service.home.join("other").display().to_string();
     run(&mut tasks, "projects-root", &[&other]);
-    assert_eq!(service.client.agent_projects_root().unwrap().root.as_deref(), Some(other.as_str()), "the service has the new folder");
+    assert_eq!(
+        service.client.agent_projects_root().unwrap().root.as_deref(),
+        Some(other.as_str()),
+        "the service has the new folder"
+    );
     let ids: Vec<String> = tasks.project_choices(None).into_iter().map(|(id, _)| id).collect();
-    assert!(ids.contains(&"gamma".to_owned()) && !ids.contains(&"alpha".to_owned()), "the list follows the folder at once: {ids:?}");
+    assert!(
+        ids.contains(&"gamma".to_owned()) && !ids.contains(&"alpha".to_owned()),
+        "the list follows the folder at once: {ids:?}"
+    );
     let problem = refused(&mut tasks, "projects-root", &["/nonexistent/dev"]);
     assert!(problem.contains("not a folder"), "{problem}");
     let listed = run(&mut tasks, "projects", &[]);
     assert!(listed.contains(&other), "{listed}");
+}
+
+/// The service's port, from its conf file's name.
+fn port_of(service: &Service) -> u16 {
+    service
+        .conf
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .and_then(|stem| stem.parse().ok())
+        .expect("the conf file is named after the port")
+}
+
+#[test]
+fn the_board_is_read_as_summaries_and_a_ticket_in_full_when_it_is_asked_for() {
+    let Some(service) = start_the_service() else { return };
+    let created = service
+        .client
+        .create_task(&CreateTask {
+            title: "Heavy ticket".into(),
+            description: Some("a long description".into()),
+            ..Default::default()
+        })
+        .expect("the ticket is filed");
+    service.client.add_todo(created.id, "one").expect("the todo is added");
+    service.client.add_comment(created.id, "first", "human").expect("the comment is added");
+    let tasks = a_board_on(&service);
+    let card = tasks
+        .board
+        .tasks()
+        .find(|task| task.title == "Heavy ticket")
+        .expect("the pane shows it")
+        .clone();
+    assert_eq!(
+        (card.todo_count, card.comment_count),
+        (1, 1),
+        "a card counts what a summary says it has"
+    );
+    let board = tasks.service_board().expect("the service's board");
+    assert_eq!(
+        board.task(created.id).expect("read").expect("there").description,
+        "a long description",
+        "the ticket is read in full when asked for"
+    );
+    assert_eq!(board.comments(created.id).expect("read").len(), 1);
+}
+
+#[test]
+fn a_comment_made_on_the_service_reaches_a_ticket_the_pane_has_read() {
+    let Some(service) = start_the_service() else { return };
+    let created = service
+        .client
+        .create_task(&CreateTask { title: "Talked about".into(), ..Default::default() })
+        .expect("the ticket is filed");
+    let mut tasks = a_board_on(&service);
+    assert!(tasks
+        .service_board()
+        .expect("the service's board")
+        .comments(created.id)
+        .expect("read")
+        .is_empty());
+    service.client.add_comment(created.id, "from the phone", "human").expect("the phone comments");
+    wait_until(
+        || {
+            tasks.notice_the_service();
+            tasks
+                .service_board()
+                .expect("the service's board")
+                .comments(created.id)
+                .expect("read")
+                .iter()
+                .any(|comment| comment.body == "from the phone")
+        },
+        "the pane reads the ticket the event named",
+    );
+}
+
+#[test]
+fn a_board_on_another_computer_is_read_and_written_with_a_password_session() {
+    let Some(service) = start_the_service() else { return };
+    let address = format!("http://127.0.0.1:{}", port_of(&service));
+    let session = TasksClient::anonymous(&address)
+        .login("jason", PASSWORD, "test")
+        .expect("the owner signs in")
+        .token;
+    let board = super::service_board::ServiceBoard::connect_to(&address, &session, None)
+        .expect("the board opens with a session");
+    assert!(board.uses_a_session());
+    service
+        .client
+        .create_task(&CreateTask { title: "Seen from afar".into(), ..Default::default() })
+        .expect("a ticket is filed");
+    board.read_again().expect("the board is read again");
+    let seen = board.board().expect("the board").tasks().any(|task| task.title == "Seen from afar");
+    assert!(seen, "the remote board shows a ticket filed on the service");
+    let refused = super::service_board::ServiceBoard::connect_to(&address, "not-a-session", None);
+    assert!(refused.is_err(), "a session the board does not know is refused");
 }

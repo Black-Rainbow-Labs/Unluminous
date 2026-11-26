@@ -175,7 +175,12 @@ impl TicketTerminal {
     /// @param session - the session running `unluminous --board-terminal`
     /// @param session_id - the agent's session on the service
     /// @param now - the time now
-    pub fn a_view(task_id: i64, session: unluminous_terminal::Session, session_id: String, now: String) -> Self {
+    pub fn a_view(
+        task_id: i64,
+        session: unluminous_terminal::Session,
+        session_id: String,
+        now: String,
+    ) -> Self {
         let at = std::time::Instant::now();
         Self {
             task_id,

@@ -98,6 +98,9 @@ rusqlite.workspace = true
 ureq = { workspace = true }
 tasks-client.workspace = true
 tungstenite.workspace = true
+# TLS for the ticket terminal of a board on another computer, such as https://tasks.jasonmcaffee.com (task-2879).
+# Already in the tree through `ureq`.
+native-tls.workspace = true
 libc.workspace = true
 
 # The application menu on macOS takes its name from the running program, and the program is `unluminous`. Setting

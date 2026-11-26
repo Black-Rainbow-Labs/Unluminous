@@ -271,6 +271,31 @@ says which board is showing. The choice is the `board-source` line in the plugin
 that has an agent running refuses the change, because a ticket's id names a different ticket on the other
 board. When the service is chosen and does not answer, the pane says so and does not show the file instead.
 
+#### The board on another computer
+
+agent-tasks-service can be on another computer. Since task-2879 the Tasks board on the Windows PC is the one
+board that ai-service, Unluminous on the PC and the Mac, the phone and the iPad all read and write, and it is at
+`https://tasks.jasonmcaffee.com` from anywhere. `Settings -> Agent-Tasks -> The board -> Board on another
+computer` takes its address, a username and a password, and `Sign in` opens it. The password is used for that one
+request; the session the board answers is kept in the system keychain, and the address is the `board-url` line in
+`settings.conf`. An empty address goes back to the board on this computer.
+
+The command line does the same:
+
+```
+plugins run agent-tasks sign-in https://tasks.jasonmcaffee.com jason <password>
+plugins run agent-tasks board-url             # which board is showing
+plugins run agent-tasks board-url none        # the board on this computer again
+```
+
+Every change Unluminous makes is sent as a person's (`x-board-actor: human`). On the PC the board hands it to
+ai-service, so a change made in Unluminous does what the same change does on the Tasks page: a status change
+drives the agent's terminal, Start makes the ticket's worktree, and a card dragged off a working agent stops it.
+
+The pane keeps the board as cards: `GET /tasks/board?view=summary`, which is 1.3 MB on the PC board where the
+whole board is 33.8 MB. A ticket is read in full when it is opened, and when the service says it changed only the
+tickets it named are read again.
+
 On agent-tasks-service's board the ticket's `Project` field lists the service's projects, the same list the phone
 shows: every folder in the service's projects folder, which is `~/Documents/dev` on the MacBook Pro, plus the
 projects in its own list. `No project` is a choice, and a ticket with no project runs in the projects folder.
@@ -280,7 +305,7 @@ projects in its own list. `No project` is a choice, and a ticket with no project
 On the service's board, the service runs the agents and the watchdog. Start, Resume session, Send and the
 pause button ask the service. The ticket modal's Terminal tab shows the agent's terminal from the service, and
 closing it in Unluminous leaves the agent running. The pane reads the board again when the service says it
-changed, and every 30 seconds otherwise. Unluminous and the phone app talk to the service through the same
+changed, and the whole board every 30 seconds otherwise. Unluminous and the phone app talk to the service through the same
 client code, the `tasks-client` crate in the `unluminous-mobile` repository.
 
 ### The ticket's agent

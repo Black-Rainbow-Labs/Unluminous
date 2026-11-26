@@ -57,6 +57,9 @@ impl View {
     }
 }
 
+/// The keychain entry that holds the password session for the board at [`Configuration::board_url`] (task-2879).
+pub const BOARD_SESSION_KEY: &str = "agent-tasks-board-session";
+
 /// Where the board comes from: the plugin's own file, or agent-tasks-service.
 ///
 /// `tasks/agent-tasks-through-the-service-tdd.md` is the design. `board-source` in `settings.conf` is the word.
@@ -108,6 +111,10 @@ impl BoardSource {
 pub struct Configuration {
     /// Where the board comes from. A file with no `board-source` line is [`BoardSource::File`].
     pub board_source: BoardSource,
+    /// The address of agent-tasks-service when it is on another computer, such as `https://tasks.jasonmcaffee.com`
+    /// (task-2879). `None` is the board on this computer, found through `boards/<port>.conf`. The session that opens
+    /// it is in the keychain under [`BOARD_SESSION_KEY`], never in this file.
+    pub board_url: Option<String>,
     /// Where the board is. Empty means [`store::Store::default_path`].
     pub database: Option<PathBuf>,
     /// The project folder a ticket's agent is launched in when the ticket names none.
@@ -153,6 +160,7 @@ impl Default for Configuration {
     fn default() -> Self {
         Self {
             board_source: BoardSource::File,
+            board_url: None,
             database: None,
             project: None,
             agent: Assignee::Claude,
@@ -191,7 +199,10 @@ impl Configuration {
             values.text(name).map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned)
         };
         Self {
-            board_source: said("board-source").and_then(|word| BoardSource::parse(&word)).unwrap_or_default(),
+            board_source: said("board-source")
+                .and_then(|word| BoardSource::parse(&word))
+                .unwrap_or_default(),
+            board_url: said("board-url"),
             database: path("database"),
             project: path("project"),
             agent: values
@@ -227,7 +238,11 @@ impl Configuration {
             }
         };
         // Written only when it is not the default, so a file nobody changed stays the file it was.
-        set("board-source", (self.board_source != BoardSource::File).then(|| self.board_source.name().to_owned()));
+        set(
+            "board-source",
+            (self.board_source != BoardSource::File).then(|| self.board_source.name().to_owned()),
+        );
+        set("board-url", self.board_url.clone());
         set("database", self.database.clone().map(|path| path.display().to_string()));
         set("project", self.project.clone().map(|path| path.display().to_string()));
         set("model", self.model.clone());

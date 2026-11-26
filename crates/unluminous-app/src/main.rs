@@ -118,7 +118,8 @@ fn print_menus() {
 /// program and the rest of `main` is the window's.
 fn board_terminal_or_continue() {
     let mut line = std::env::args().skip(1);
-    if line.next().as_deref() == Some(unluminous_app::services::agent_tasks::board_terminal::SWITCH) {
+    if line.next().as_deref() == Some(unluminous_app::services::agent_tasks::board_terminal::SWITCH)
+    {
         let task = line.next().unwrap_or_default();
         std::process::exit(unluminous_app::services::agent_tasks::board_terminal::run(&task));
     }

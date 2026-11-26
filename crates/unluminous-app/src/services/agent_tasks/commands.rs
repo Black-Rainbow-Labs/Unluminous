@@ -17,8 +17,8 @@ use crate::services::plugin_ui::{self, Answer, Request, UiProvider};
 use super::model::{Author, Priority, Status};
 use super::store::{NewTask, TaskEdit};
 use super::{
-    agent, clock, model, BoardSource, split_off_a_name, AgentTasks, SkillLayout, SupervisorView, View, SWATCHES,
-    TAIL_LINES,
+    agent, clock, model, split_off_a_name, AgentTasks, BoardSource, SkillLayout, SupervisorView,
+    View, SWATCHES, TAIL_LINES,
 };
 
 /// Every command, with the one line `plugins show agent-tasks` prints for each.
@@ -108,6 +108,20 @@ fn board_and_pane(
             let words = root.clone().unwrap_or_else(|| "not set".to_owned());
             Ok(Answer::said(format!("The projects folder is {words}")).with(json!({ "root": root })))
         })(),
+        // agent-tasks-service on another computer (task-2879): `board-url <address>`, `board-url none` for this computer's,
+        // and `sign-in <address> <username> <password>`, which keeps the session in the keychain.
+        "board-url" => match argument(0).trim() {
+            "" => Ok(Answer::said(format!("Agent-Tasks reads agent-tasks-service at {}", tasks.configuration().board_url.clone().unwrap_or_else(|| "the board on this computer".to_owned())))
+                .with(json!({"boardUrl": tasks.configuration().board_url}))),
+            word => tasks.set_board_url(Some(word.to_owned())),
+        },
+        "sign-in" => match (argument(0).trim(), argument(1).trim(), plugin_ui::rest(arguments, 2).trim()) {
+            (address, username, password) if !address.is_empty() && !username.is_empty() && !password.is_empty() => {
+                let (address, username, password) = (address.to_owned(), username.to_owned(), password.to_owned());
+                tasks.sign_in_to_a_board(&address, &username, &password)
+            }
+            _ => Err("sign-in takes an address, a username and a password: `sign-in https://tasks.jasonmcaffee.com jason <password>`".to_owned()),
+        },
         "board-source" => match argument(0).trim() {
             "" => Ok(Answer::said(format!("Agent-Tasks reads {}", tasks.board_source().label()))
                 .with(json!({"boardSource": tasks.board_source().name(), "board": tasks.board_where()}))),
@@ -852,7 +866,8 @@ fn agent_commands(
         "to-side-pane" => tasks.to_the_side_pane(argument(0)),
         "interrupt" => (|| {
             let task = tasks.by_key(argument(0))?;
-            let viewing = tasks.terminal_for(task.id).is_some_and(|terminal| terminal.session.is_running());
+            let viewing =
+                tasks.terminal_for(task.id).is_some_and(|terminal| terminal.session.is_running());
             if tasks.service_board().is_some() && !viewing {
                 return tasks.press_on_the_service(&task, true);
             }
@@ -1485,10 +1500,15 @@ mod tests {
 /// @param tasks - the board, which must be agent-tasks-service's
 /// @param named - what was typed
 fn service_project(tasks: &AgentTasks, named: &str) -> Result<String, String> {
-    let service = tasks.service_board().ok_or_else(|| "this board is not agent-tasks-service's".to_owned())?;
+    let service = tasks
+        .service_board()
+        .ok_or_else(|| "this board is not agent-tasks-service's".to_owned())?;
     service.project_id_for(named).ok_or_else(|| {
         let ids: Vec<String> = service.projects().into_iter().map(|project| project.id).collect();
-        format!("`{named}` is not a project on agent-tasks-service. Use `none` or one of: {}", ids.join(", "))
+        format!(
+            "`{named}` is not a project on agent-tasks-service. Use `none` or one of: {}",
+            ids.join(", ")
+        )
     })
 }
 
@@ -1497,11 +1517,13 @@ fn service_project(tasks: &AgentTasks, named: &str) -> Result<String, String> {
 /// @param tasks - the board
 fn projects_answer(tasks: &AgentTasks) -> Answer {
     let rows = tasks.project_choices(None);
-    let listed: Vec<serde_json::Value> = rows.iter().map(|(value, words)| json!({ "project": value, "name": words })).collect();
+    let listed: Vec<serde_json::Value> =
+        rows.iter().map(|(value, words)| json!({ "project": value, "name": words })).collect();
     let root = tasks.service_board().and_then(|service| service.projects_root().ok().flatten());
     let place = match &root {
         Some(root) => format!(", and a ticket with no project runs in {root}"),
         None => String::new(),
     };
-    Answer::said(format!("{} projects{place}", rows.len())).with(json!({ "projects": listed, "root": root }))
+    Answer::said(format!("{} projects{place}", rows.len()))
+        .with(json!({ "projects": listed, "root": root }))
 }
