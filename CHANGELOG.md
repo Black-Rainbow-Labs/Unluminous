@@ -6,6 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.34.0 — 2026-11-26
+
+- Agent-Tasks reads the PC board from any computer, as cards, a ticket in full when it is opened (`task-2879`)
+- The release gate passes on Windows: both boards boxed, the commands' helpers before their tests, and the QR fixture read without CRLF (`task-2879`)
+- The QR fixture test strips CRLF with an escape, not a literal line break (`task-2879`)
+- Windows baselines for the pairing dialog, the Phones page and the settings pages the Phones entry moved (`task-2879`)
+
 ## 1.33.0 — 2026-11-25
 
 - No ticketed work; a rebuild of the version before it.
