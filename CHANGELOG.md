@@ -6,6 +6,10 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.34.1 — 2026-11-26
+
+- Tasks-client pinned to the commit that names its TLS provider, so signing Agent-Tasks in to https://tasks.jasonmcaffee.com no longer closes the window with a ureq panic ('provider is Rustls but feature is not enabled') (`task-2927`)
+
 ## 1.34.0 — 2026-11-26
 
 - Agent-Tasks reads the PC board from any computer, as cards, a ticket in full when it is opened (`task-2879`)
