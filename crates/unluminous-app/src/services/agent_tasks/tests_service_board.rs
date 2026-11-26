@@ -42,8 +42,10 @@ fn the_service_binary() -> Option<PathBuf> {
     if let Ok(named) = std::env::var("AGENT_TASKS_BIN") {
         return Some(PathBuf::from(named)).filter(|path| path.exists());
     }
-    let sibling = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../agent-tasks-service/target/release/tasks-api");
+    let sibling = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!(
+        "../../../agent-tasks-service/target/release/tasks-api{}",
+        std::env::consts::EXE_SUFFIX
+    ));
     sibling.exists().then_some(sibling)
 }
 

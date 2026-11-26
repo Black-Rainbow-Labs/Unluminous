@@ -7654,6 +7654,21 @@ channel only for `plugins.view agent-chat` and to run Designer verbs. Three rule
 service a `HOME` of its own, because the service reads `~/.claude` transcripts when it starts, and the first
 `GET /health` then took longer than the second and a half `pairing::find_board` allows.
 
+### A board that cannot be opened does not stop Agent-Tasks opening (`task-2930`)
+
+- **`AgentTasks::open` keeps going with no board** when `open_the_board` fails, and keeps the reason in
+  `board_problem`. The pane draws it where the lanes would be, `board_where` and every refusal from `store()` say it,
+  and `sign-in`, `board-url`, `board-source` and `projects-root` still answer. Any other command tries the board again
+  first (`try_the_board_again`), and so does any change to `settings.conf` (`follow_the_configuration_while_closed`).
+- **`UiProvider::is_open` is true while a provider holds only the reason**, so its `catch_up` still runs;
+  `plugins view agent-tasks` says `open` (a board is open) and `problem`.
+- **A provider whose `open` failed is opened again**: on every command (`PluginUi::opened_for_a_command`, used by
+  `run` and `plugins view`), and from a frame when a file in its folder changed, asked once a second.
+- **`UNLUMINOUS_BOARD_SESSION_KEY`** names the keychain entry the board session is kept in, so a test signs in
+  without replacing the person's own session. `tests/agent_tasks_unreachable.rs` is the window tests, and the
+  service tests now find `tasks-api.exe` on Windows, where they used to skip.
+- `modal open settings --page <plugin id>` opens a plugin's own Settings page.
+
 ### The Designer tab can be maximized, and the notes have a divider and a toggle (`task-2601`)
 
 - **`DesignView::maximised`** draws only a bar with the name and `Normal size` over the page, and `app::designer`

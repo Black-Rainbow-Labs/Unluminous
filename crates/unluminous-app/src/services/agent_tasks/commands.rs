@@ -24,12 +24,20 @@ use super::{
 /// Every command, with the one line `plugins show agent-tasks` prints for each.
 pub const LIST: &[(&str, &str)] = unluminous_cli::plugins::AGENT_TASKS;
 
+/// The commands that choose the board, which answer whether or not a board is open (task-2930).
+const CHANGES_WHERE_THE_BOARD_IS: &[&str] = &["sign-in", "board-url", "board-source"];
+
 /// Run one.
 ///
 /// A thin dispatcher over the verb groups below: each answers `None` for a verb that is not its own, so
 /// the next group is tried, and `Some(result)` once one of them recognises it. `search` is the one verb
 /// with nowhere else to live, and stays here.
 pub fn run(tasks: &mut AgentTasks, command: &str, arguments: &[String]) -> Result<Answer, String> {
+    // A board that could not be opened is tried again on the next command that would read it (task-2930). The
+    // three that change where the board is open it themselves.
+    if !CHANGES_WHERE_THE_BOARD_IS.contains(&command) {
+        tasks.try_the_board_again();
+    }
     if let Some(answer) = board_and_pane(tasks, command, arguments) {
         return answer;
     }
@@ -97,7 +105,11 @@ fn board_and_pane(
         // The projects a ticket can be in, and on agent-tasks-service's board the folder whose every folder is one.
         "projects" => Ok(projects_answer(tasks)),
         "projects-root" => (|| {
+            let problem = tasks.board_problem().map(str::to_owned);
             let service = tasks.service_board().ok_or_else(|| {
+                if let Some(problem) = problem {
+                    return format!("The projects folder is agent-tasks-service's, and that board is not open. {problem}");
+                }
                 "The projects folder is agent-tasks-service's. Run `plugins run agent-tasks board-source service` first.".to_owned()
             })?;
             let root = match plugin_ui::rest(arguments, 0).trim() {

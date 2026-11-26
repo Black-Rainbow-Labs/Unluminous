@@ -47,7 +47,7 @@ pub fn open_a_board(
         (BoardSource::File, None) => Ok(BoardStore::File(Box::new(Store::in_memory()?))),
         (BoardSource::Service, _) if configuration.board_url.is_some() => {
             let address = configuration.board_url.clone().unwrap_or_default();
-            let session = super::keychain::read(super::configuration::BOARD_SESSION_KEY).ok_or_else(|| {
+            let session = super::keychain::read(&super::configuration::board_session_key()).ok_or_else(|| {
                 format!("Agent-Tasks is set to read agent-tasks-service at {address}, and this computer has not signed in to it. Run `plugins run agent-tasks sign-in {address} <username> <password>`.")
             })?;
             ServiceBoard::connect_to(&address, &session, wake).map(|board| BoardStore::Service(Box::new(board))).map_err(|why| format!("Agent-Tasks is set to read agent-tasks-service at {address}, and it could not be read. {why}"))
@@ -123,6 +123,12 @@ impl AgentTasks {
     /// @param source - the board to read
     pub fn set_board_source(&mut self, source: BoardSource) -> Result<Answer, String> {
         if source == self.configuration.board_source {
+            // Choosing the source a board that could not be opened already names tries it again (task-2930).
+            if self.store.is_none() && self.board_problem.is_some() {
+                self.reopen_the_board()?;
+                return Ok(Answer::said(format!("Agent-Tasks now reads {}", source.label()))
+                    .with(json!({"boardSource": source.name(), "board": self.board_where()})));
+            }
             return Ok(Answer::said(format!("the board is already {}", source.label())));
         }
         if self
@@ -188,7 +194,7 @@ impl AgentTasks {
         let answer = tasks_client::TasksClient::anonymous(&address)
             .login(username, password, &label)
             .map_err(|problem| format!("signing in to {address} failed: {problem}"))?;
-        super::keychain::write(super::configuration::BOARD_SESSION_KEY, &answer.token)?;
+        super::keychain::write(&super::configuration::board_session_key(), &answer.token)?;
         let mut changed = self.configuration.clone();
         changed.board_url = Some(address.clone());
         changed.board_source = BoardSource::Service;
@@ -207,8 +213,27 @@ impl AgentTasks {
         self.close_detail();
         self.modal_open = false;
         self.store = None;
-        self.store = Some(self.open_the_board()?);
-        self.refresh()
+        match self.open_the_board() {
+            Ok(store) => {
+                self.store = Some(store);
+                self.board_problem = None;
+                self.refresh()
+            }
+            // Kept, so the pane, `board_where` and every board command say why (task-2930).
+            Err(problem) => {
+                self.board = Default::default();
+                self.board_problem = Some(problem.clone());
+                Err(problem)
+            }
+        }
+    }
+
+    /// Open the board again when it could not be opened, before a command that needs it (task-2930). Nothing is
+    /// done when a board is open. The reason is kept either way, so the command's refusal says it.
+    pub(super) fn try_the_board_again(&mut self) {
+        if self.store.is_none() && self.board_problem.is_some() {
+            let _ = self.reopen_the_board();
+        }
     }
 
     /// Start or resume a ticket's agent on the service, which reattaches a live session rather than starting a

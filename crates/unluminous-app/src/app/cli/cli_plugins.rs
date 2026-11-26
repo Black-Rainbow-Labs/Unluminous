@@ -370,7 +370,7 @@ impl UnluminousApp {
         };
         // Opened rather than refused when it has not been looked at yet, because "what is on the
         // board" is a fair question to ask of a board nobody has opened in this window.
-        if let Err(problem) = self.plugin_ui.opened(&id, &provider) {
+        if let Err(problem) = self.plugin_ui.opened_for_a_command(&id, &provider) {
             return no(request, code::FAILED, problem);
         }
         match self.plugin_ui.view_of(&id) {

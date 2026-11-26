@@ -178,10 +178,32 @@ fn page(board: &mut AgentTasks, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Reque
     let (said, chosen, spare) = header_row(board, &state, ui, look, header);
     requests.extend(said);
     let body = Rect::from_min_max(Pos2::new(area.min.x, header.max.y), area.max);
-    requests.extend(body_for(board, &state, ui, look, body, spare));
+    match board.board_problem().map(str::to_owned) {
+        Some(problem) => say_why_there_is_no_board(ui, look, body, &problem),
+        None => requests.extend(body_for(board, &state, ui, look, body, spare)),
+    }
     take_the_chosen_view(board, chosen);
     kit::give_back(board, state);
     requests
+}
+
+/// Where the lanes would be, when the board the configuration names could not be opened (task-2930): the reason,
+/// and the two ways to choose another board. A label, so a person and an agent read the same words.
+fn say_why_there_is_no_board(ui: &mut egui::Ui, look: &Look<'_>, area: Rect, problem: &str) {
+    let inside = area.shrink2(Vec2::new(16.0, 14.0));
+    if inside.width() <= 0.0 || inside.height() <= 0.0 {
+        return;
+    }
+    let words = format!(
+        "The board could not be opened.
+
+{problem}
+
+Settings -> Agent-Tasks -> The board chooses another board or signs in,          and so do `plugins run agent-tasks board-source`, `board-url` and `sign-in`."
+    );
+    let text = egui::RichText::new(words).size(look.font_size).color(look.palette.text_dim);
+    let mut words_ui = ui.new_child(egui::UiBuilder::new().max_rect(inside));
+    words_ui.add(egui::Label::new(text).wrap());
 }
 
 /// Act on a press in the view switch, once the drawing that read the board is over.

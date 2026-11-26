@@ -280,11 +280,19 @@ impl UnluminousApp {
                 self.close_every_modal();
                 self.settings_window.open();
                 if let Some(page) = request.text("page") {
-                    let Some(chosen) = settings_page(&page) else {
+                    // A plugin's page is named by its plugin's id, such as `agent-tasks` (task-2930).
+                    let contributed = self
+                        .plugin_ui
+                        .surfaces()
+                        .pages
+                        .iter()
+                        .position(|surface| surface.plugin.eq_ignore_ascii_case(page.trim()))
+                        .map(|slot| crate::settings::Page::Plugin(slot as u8));
+                    let Some(chosen) = settings_page(&page).or(contributed) else {
                         return no(
                             request,
                             code::USAGE,
-                            format!("{page} is not a Settings page. Say appearance, editor, plugins, terminal or mcp."),
+                            format!("{page} is not a Settings page. Say appearance, editor, plugins, terminal or mcp, or the id of a plugin with a page such as agent-tasks."),
                         );
                     };
                     self.settings_window.page = chosen;

@@ -4732,7 +4732,7 @@ Open a modal, and put something in its box in the same breath.
 
 - `--query <text>` — Type this into the modal's box as it opens.
 - `--path <path>` — The folder a new file goes in, or the file being renamed. Needed by new-file and rename.
-- `--page <name>` — Which page the Settings modal shows: appearance, theme, keymap, editor, plugins, terminal, mcp, ai (AI Configuration), voice or phones.
+- `--page <name>` — Which page the Settings modal shows: appearance, theme, keymap, editor, plugins, terminal, mcp, ai (AI Configuration), voice or phones, or the id of a plugin that contributes a page, such as agent-tasks.
 
 ```sh
 unluminous-cli modal open go-to-file --query mdrs

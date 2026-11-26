@@ -448,6 +448,10 @@ pub struct AgentTasks {
     /// When the terminals were last looked at for a menu.
     menus_looked_at: Option<std::time::Instant>,
     store: Option<BoardStore>,
+    /// Why the board the configuration names could not be opened, while `store` is `None` because of it
+    /// (task-2930). The provider still opens, so `sign-in`, `board-url`, `board-source` and `projects-root` and
+    /// the Settings page can change the configuration, and every command that needs the board refuses with this.
+    board_problem: Option<String>,
     /// One `boards/<port>.conf` naming agent-tasks-service, used instead of the settings folder's. See
     /// [`AgentTasks::find_the_service_through`].
     board_conf: Option<PathBuf>,
@@ -950,8 +954,16 @@ impl AgentTasks {
                     .to_owned()
             }
             Some(store) => store.path().display().to_string(),
-            None => "not open".to_owned(),
+            None => match &self.board_problem {
+                Some(problem) => format!("not open: {problem}"),
+                None => "not open".to_owned(),
+            },
         }
+    }
+
+    /// Why the board the configuration names could not be opened, when it could not. See `board_problem`.
+    pub fn board_problem(&self) -> Option<&str> {
+        self.board_problem.as_deref()
     }
 
     /// The store, or a sentence saying the board is not open.
@@ -959,7 +971,10 @@ impl AgentTasks {
     /// Every command goes through this rather than unwrapping, because a provider whose `open` failed is
     /// a provider whose pane draws the reason rather than one that panics on the first click.
     fn store(&self) -> Result<&BoardStore, String> {
-        self.store.as_ref().ok_or_else(|| "the board is not open".to_owned())
+        self.store.as_ref().ok_or_else(|| match &self.board_problem {
+            Some(problem) => format!("the board is not open. {problem}"),
+            None => "the board is not open".to_owned(),
+        })
     }
 
     /// The sprint a command named, by its name or by its id.
@@ -1871,10 +1886,13 @@ impl AgentTasks {
         self.configuration_written = written;
         let mut fresh = Configuration::read(&folder);
         fresh.database = self.configuration.database.clone();
-        let source_changed = fresh.board_source != self.configuration.board_source;
+        let source_changed = fresh.board_source != self.configuration.board_source
+            || fresh.board_url != self.configuration.board_url;
         self.configuration = fresh;
         // `board-source` changed in another window or by hand, so the board this window shows is the other one now.
-        if source_changed {
+        // A board that could not be opened is tried again on any change to the file (task-2930), which is what
+        // makes editing `settings.conf` by hand work without a restart.
+        if source_changed || self.store.is_none() {
             if let Err(problem) = self.reopen_the_board() {
                 self.message = problem;
             }
@@ -2613,7 +2631,7 @@ impl AgentTasks {
             return self.notice_the_service();
         }
         let Some(path) = self.store.as_ref().map(|store| store.path().to_path_buf()) else {
-            return false;
+            return self.follow_the_configuration_while_closed();
         };
         let now = std::time::Instant::now();
         if self.files_asked.is_some_and(|asked| now.duration_since(asked) < FILES_EVERY) {
@@ -2633,6 +2651,21 @@ impl AgentTasks {
                 true
             }
         }
+    }
+
+    /// With no board open, look at the settings file once every [`FILES_EVERY`] and open the board again when it
+    /// changed (task-2930). True when a board was opened, so the window draws it.
+    fn follow_the_configuration_while_closed(&mut self) -> bool {
+        if self.board_problem.is_none() {
+            return false;
+        }
+        let now = std::time::Instant::now();
+        if self.files_asked.is_some_and(|asked| now.duration_since(asked) < FILES_EVERY) {
+            return false;
+        }
+        self.files_asked = Some(now);
+        self.follow_the_configuration_file();
+        self.store.is_some()
     }
 
     /// How the terminals ask the window to draw again. Set once, when the provider is opened.
@@ -2923,7 +2956,19 @@ impl UiProvider for AgentTasks {
                     .and_then(|metadata| metadata.modified())
                     .ok();
                 self.folder = Some(folder);
-                self.store = Some(self.open_the_board()?);
+                // **A board that cannot be opened does not stop the provider opening** (task-2930). Refusing here
+                // left the window answering every command, `sign-in` included, with this sentence, so the one
+                // command that would fix the configuration could never run. The pane and every board command say
+                // why instead.
+                match self.open_the_board() {
+                    Ok(store) => self.store = Some(store),
+                    Err(problem) => {
+                        self.store = None;
+                        self.message = problem.clone();
+                        self.board_problem = Some(problem);
+                        return Ok(());
+                    }
+                }
             }
             None => {
                 self.configuration = Configuration::default();
@@ -2949,8 +2994,10 @@ impl UiProvider for AgentTasks {
     fn draws_chrome(&self) -> bool {
         true
     }
+    /// Opened, with a board or with the reason there is none (task-2930). A provider holding only the reason still
+    /// has its `catch_up` called, which is what reads its settings file again and opens the board once it changes.
     fn is_open(&self) -> bool {
-        self.store.is_some()
+        self.store.is_some() || self.board_problem.is_some()
     }
 
     fn pane(&mut self, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request> {
@@ -2983,7 +3030,9 @@ impl UiProvider for AgentTasks {
 
     fn view(&self) -> serde_json::Value {
         json!({
-            "open": self.is_open(),
+            // Whether a board is open, and why not when it is not (task-2930).
+            "open": self.store.is_some(),
+            "problem": self.board_problem,
             "database": match self.service_board() {
                 Some(board) => format!("agent-tasks-service at {}", board.address()),
                 None => self.configuration.database_said(self.folder.as_deref()),

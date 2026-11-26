@@ -60,6 +60,15 @@ impl View {
 /// The keychain entry that holds the password session for the board at [`Configuration::board_url`] (task-2879).
 pub const BOARD_SESSION_KEY: &str = "agent-tasks-board-session";
 
+/// The keychain entry the board session is kept in: [`BOARD_SESSION_KEY`], or `UNLUMINOUS_BOARD_SESSION_KEY` when
+/// it is set, which is how a test signs in without replacing the session of the person running it (task-2930).
+pub fn board_session_key() -> String {
+    std::env::var("UNLUMINOUS_BOARD_SESSION_KEY")
+        .ok()
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or_else(|| BOARD_SESSION_KEY.to_owned())
+}
+
 /// Where the board comes from: the plugin's own file, or agent-tasks-service.
 ///
 /// `tasks/agent-tasks-through-the-service-tdd.md` is the design. `board-source` in `settings.conf` is the word.

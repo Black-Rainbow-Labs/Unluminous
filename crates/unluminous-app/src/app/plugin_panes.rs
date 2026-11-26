@@ -43,6 +43,20 @@ struct Loaded {
     provider: Box<dyn UiProvider>,
     /// What went wrong when it was opened, if it did. Drawn in the pane rather than thrown away.
     problem: Option<String>,
+    /// When a failed `open` was last looked at again, and the newest modified time of the files in the plugin's
+    /// folder then. See [`PluginUi::opened`].
+    retry: Option<(std::time::Instant, Option<std::time::SystemTime>)>,
+}
+
+/// How often a provider whose `open` failed has its folder looked at for a changed configuration (task-2930).
+const RETRY_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// The newest modified time of the files directly inside a plugin's folder, which is what changes when its
+/// configuration file is written by another window, by a command or by hand.
+/// @param folder - the plugin's own folder, or `None` for a window with no settings folder
+fn newest_file_in(folder: Option<&std::path::Path>) -> Option<std::time::SystemTime> {
+    let entries = std::fs::read_dir(folder?).ok()?;
+    entries.filter_map(|entry| entry.ok()?.metadata().ok()?.modified().ok()).max()
 }
 
 /// Every plugin that draws, and what is showing.
@@ -246,30 +260,83 @@ impl PluginUi {
     ///
     /// The one place a provider is built and the one place `open` is called, so "opened" cannot mean two
     /// different things in two places, and a provider that failed to open keeps its reason.
+    ///
+    /// **A provider whose `open` failed is opened again** when a file in its own folder has changed since it
+    /// failed, which is asked at most once every [`RETRY_EVERY`] (task-2930). It used to keep the reason for the
+    /// life of the window, so a corrected `settings.conf` did nothing until Unluminous was restarted.
+    /// [`Self::run`] opens it again on every command, through [`Self::opened_for_a_command`].
     pub fn opened(
         &mut self,
         plugin: &str,
         provider: &str,
     ) -> Result<&mut (dyn UiProvider + 'static), String> {
+        self.opened_again_if(plugin, provider, false)
+    }
+
+    /// [`Self::opened`], trying a provider whose `open` failed again whatever its folder says, which is what a
+    /// command does: a person or an agent asking for something is the moment the reason may have gone.
+    pub fn opened_for_a_command(
+        &mut self,
+        plugin: &str,
+        provider: &str,
+    ) -> Result<&mut (dyn UiProvider + 'static), String> {
+        self.opened_again_if(plugin, provider, true)
+    }
+
+    /// The two above: `now` tries a failed provider again at once.
+    fn opened_again_if(
+        &mut self,
+        plugin: &str,
+        provider: &str,
+        now: bool,
+    ) -> Result<&mut (dyn UiProvider + 'static), String> {
         if let Some(index) = self.loaded.iter().position(|one| one.plugin == plugin) {
             if let Some(problem) = self.loaded[index].problem.clone() {
-                return Err(problem);
+                if !self.worth_opening_again(index, now) {
+                    return Err(problem);
+                }
+                let mut failed = self.loaded.remove(index);
+                failed.provider.close();
+            } else {
+                return Ok(self.loaded[index].provider.as_mut());
             }
-            return Ok(self.loaded[index].provider.as_mut());
         }
         let mut built = plugin_ui::provider(provider)
             .ok_or_else(|| format!("this version of Unluminous has no `{provider}` provider"))?;
         let context = self.context_for(plugin);
         let problem = built.open(&context).err();
+        let retry = problem
+            .as_ref()
+            .map(|_| (std::time::Instant::now(), newest_file_in(context.folder.as_deref())));
         self.loaded.push(Loaded {
             plugin: plugin.to_owned(),
             provider: built,
             problem: problem.clone(),
+            retry,
         });
         match problem {
             Some(problem) => Err(problem),
             None => Ok(self.loaded.last_mut().expect("just pushed").provider.as_mut()),
         }
+    }
+
+    /// Whether a provider whose `open` failed should be opened again: always for a command, otherwise when a file
+    /// in its folder changed, looked at no more than once every [`RETRY_EVERY`].
+    /// @param index - the failed provider's place in `loaded`
+    /// @param now - true for a command
+    fn worth_opening_again(&mut self, index: usize, now: bool) -> bool {
+        if now {
+            return true;
+        }
+        let folder =
+            self.settings_folder.as_ref().map(|folder| folder.join(&self.loaded[index].plugin));
+        let Some((asked, files)) = self.loaded[index].retry else { return false };
+        if asked.elapsed() < RETRY_EVERY {
+            return false;
+        }
+        let newest = newest_file_in(folder.as_deref());
+        self.loaded[index].retry = Some((std::time::Instant::now(), files));
+        newest.is_some() && newest != files
     }
 
     /// What a provider for `plugin` is opened with: the project, the file showing, the recent folders, its
@@ -350,7 +417,7 @@ impl PluginUi {
         let provider = self.surfaces.provider_of(plugin).ok_or_else(|| {
             format!("`{plugin}` is not a plugin that draws, or it is switched off")
         })?;
-        let opened = self.opened(plugin, &provider)?;
+        let opened = self.opened_for_a_command(plugin, &provider)?;
         opened.command(command, arguments)
     }
 
@@ -1574,6 +1641,73 @@ impl UnluminousApp {
 mod tests {
     use super::*;
     use crate::services::plugins::{PaneContribution, RailGroup, Surface};
+
+    /// A provider whose `open` failed, planted as the window keeps one.
+    #[derive(Debug)]
+    struct Failed;
+
+    impl UiProvider for Failed {
+        fn id(&self) -> &'static str {
+            "failed"
+        }
+        fn open(&mut self, _context: &Context) -> Result<(), String> {
+            Err("it failed".to_owned())
+        }
+        fn is_open(&self) -> bool {
+            false
+        }
+        fn pane(
+            &mut self,
+            _ui: &mut egui::Ui,
+            _look: &plugin_ui::Look<'_>,
+        ) -> Vec<plugin_ui::Request> {
+            Vec::new()
+        }
+        fn settings(
+            &mut self,
+            _ui: &mut egui::Ui,
+            _look: &plugin_ui::Look<'_>,
+        ) -> Vec<plugin_ui::Request> {
+            Vec::new()
+        }
+        fn command(
+            &mut self,
+            command: &str,
+            _arguments: &[String],
+        ) -> Result<plugin_ui::Answer, String> {
+            Err(self.refuse(command))
+        }
+        fn commands(&self) -> Vec<(&'static str, &'static str)> {
+            Vec::new()
+        }
+        fn view(&self) -> serde_json::Value {
+            serde_json::Value::Null
+        }
+        fn close(&mut self) {}
+    }
+
+    /// task-2930: a provider whose `open` failed kept the reason for the life of the window. A frame with nothing
+    /// changed in its folder still answers the reason, and a command opens it again.
+    #[test]
+    fn a_provider_that_failed_to_open_is_opened_again_by_a_command() {
+        let mut plugins = PluginUi::default();
+        plugins.loaded.push(Loaded {
+            plugin: "agent-tasks".to_owned(),
+            provider: Box::new(Failed),
+            problem: Some("it failed".to_owned()),
+            retry: Some((std::time::Instant::now(), None)),
+        });
+        assert_eq!(
+            plugins.opened("agent-tasks", "agent-tasks").err().as_deref(),
+            Some("it failed")
+        );
+        assert!(
+            plugins.opened_for_a_command("agent-tasks", "agent-tasks").is_ok(),
+            "a command opens the provider again, which with no settings folder opens a board in memory"
+        );
+        assert!(plugins.problem_with("agent-tasks").is_none(), "the old reason is gone");
+        assert_eq!(plugins.loaded.len(), 1, "the failed provider was replaced, not kept beside");
+    }
 
     /// A pane a fictional plugin contributed, so the visibility slots can be exercised without
     /// loading a real manifest. `provider` deliberately names nothing in `UI_PROVIDERS`, because
