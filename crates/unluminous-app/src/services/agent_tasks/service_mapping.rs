@@ -227,6 +227,9 @@ mod tests {
         assert_eq!(status_of("qa_failed"), Status::QaFailed);
         assert_eq!(status_of("in_progress"), Status::InProgress);
         assert_eq!(status_of("agent_done"), Status::AgentDone);
+        // task-2932: these two were read as New, so a ticket parked in Wait was drawn where it could be started.
+        assert_eq!(status_of("wait"), Status::Wait);
+        assert_eq!(status_of("github"), Status::GitHub);
         assert_eq!(
             status_of("done"),
             Status::AgentDone,

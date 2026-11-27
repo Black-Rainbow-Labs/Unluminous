@@ -942,6 +942,7 @@ fn lane_chip(painter: &egui::Painter, look: &Look<'_>, at: Pos2, status: Status)
         Status::QaFailed => look.palette.unsaved,
         Status::InProgress => look.palette.modified,
         Status::AgentDone => look.palette.added,
+        Status::Wait | Status::GitHub => look.palette.text_dim,
     };
     let galley = painter.crisp_layout_no_wrap(
         status.label().to_owned(),

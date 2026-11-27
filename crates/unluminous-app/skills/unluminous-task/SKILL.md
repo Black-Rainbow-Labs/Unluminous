@@ -50,6 +50,8 @@ reads that as an agent at work.
 | `qa_failed` | Finished once and sent back by a person; their newest comment says why. Fix that first. |
 | `in_progress` | An agent is on it now. |
 | `agent_done` | Finished and checked by the agent, waiting for a person. |
+| `wait` | Parked by a person. Never start it; a person moves it back to `new` when it is ready. |
+| `github` | Filed for an open GitHub issue or pull request. Only a person starts it. |
 
 ## Useful verbs
 

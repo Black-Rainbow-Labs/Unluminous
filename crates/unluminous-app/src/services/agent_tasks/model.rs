@@ -12,22 +12,33 @@
 
 use std::fmt;
 
-/// A lane on the board. Four, in the order they are drawn.
+/// A lane on the board. Six, in the order they are drawn, the same six the web Tasks page has.
 ///
-/// `AgentDone` is the last lane and means the work is finished and waiting on human review. There is
-/// deliberately no fifth `done`: a person moving a card out of Agent Done is the review.
+/// `AgentDone` means the work is finished and waiting on human review. There is deliberately no `done`: a
+/// person moving a card out of Agent Done is the review. `Wait` (task-2932) is where a person parks a
+/// ticket that must not be worked yet, and `GitHub` holds the tickets ai-service files for open GitHub issues
+/// and pull requests. Neither is ever started by a supervisor. Before task-2932 the board's `wait` and
+/// `github` tickets were drawn in New, where a supervisor or a person could start them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Status {
     New,
     QaFailed,
     InProgress,
     AgentDone,
+    Wait,
+    GitHub,
 }
 
 impl Status {
     /// Left to right, which is the order the lanes are drawn in and the order the design image shows.
-    pub const ALL: [Status; 4] =
-        [Status::New, Status::QaFailed, Status::InProgress, Status::AgentDone];
+    pub const ALL: [Status; 6] = [
+        Status::New,
+        Status::QaFailed,
+        Status::InProgress,
+        Status::AgentDone,
+        Status::Wait,
+        Status::GitHub,
+    ];
 
     /// The word the database, the command line and the manifest use.
     pub fn name(self) -> &'static str {
@@ -36,6 +47,8 @@ impl Status {
             Status::QaFailed => "qa_failed",
             Status::InProgress => "in_progress",
             Status::AgentDone => "agent_done",
+            Status::Wait => "wait",
+            Status::GitHub => "github",
         }
     }
 
@@ -46,6 +59,8 @@ impl Status {
             Status::QaFailed => "QA FAILED",
             Status::InProgress => "IN PROGRESS",
             Status::AgentDone => "AGENT DONE",
+            Status::Wait => "WAIT",
+            Status::GitHub => "GITHUB",
         }
     }
 
@@ -476,7 +491,7 @@ mod tests {
     fn a_word_the_board_does_not_know_is_refused_rather_than_defaulted() {
         // A row nobody can explain is worse than an error. A status that quietly became `new` would
         // draw in the wrong lane, and somebody would move it back and watch it move again.
-        assert_eq!(Status::parse("done"), None, "there is no fifth lane");
+        assert_eq!(Status::parse("done"), None, "there is no done lane");
         assert_eq!(Status::parse(""), None);
         assert_eq!(Priority::parse("urgent"), None);
         assert_eq!(Assignee::parse("gemini"), None);
@@ -486,7 +501,7 @@ mod tests {
     #[test]
     fn the_lanes_are_in_the_order_they_are_drawn() {
         let names: Vec<&str> = Status::ALL.iter().map(|status| status.name()).collect();
-        assert_eq!(names, ["new", "qa_failed", "in_progress", "agent_done"]);
+        assert_eq!(names, ["new", "qa_failed", "in_progress", "agent_done", "wait", "github"]);
     }
 
     #[test]

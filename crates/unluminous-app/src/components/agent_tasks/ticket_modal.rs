@@ -1963,6 +1963,8 @@ fn status_name(status: Status) -> &'static str {
         Status::QaFailed => "QA failed",
         Status::InProgress => "In progress",
         Status::AgentDone => "Agent done",
+        Status::Wait => "Wait",
+        Status::GitHub => "GitHub",
     }
 }
 
@@ -1973,6 +1975,7 @@ fn lane_mark(status: Status) -> rux::components::LaneMark {
         Status::QaFailed => rux::components::LaneMark::Failed,
         Status::InProgress => rux::components::LaneMark::Running,
         Status::AgentDone => rux::components::LaneMark::Done,
+        Status::Wait | Status::GitHub => rux::components::LaneMark::New,
     }
 }
 

@@ -60,12 +60,16 @@ use super::model::{
 /// Bumped when a column is added. Version 2 added `task.owner`, which [`migrate`] adds to a board that was
 /// written at version 1. Version 3 (`task-2247`) added `task.endpoint` and lets `assignee` and a comment's
 /// `author` be `opencode`. Version 4 (`task-2302`) lets them be `pi`. [`Store::let_every_agent_in`] rebuilds the
-/// two tables of a board written before either.
-pub const SCHEMA_VERSION: i64 = 4;
+/// two tables of a board written before either. Version 5 (`task-2932`) lets a ticket's `status` be `wait` or
+/// `github`, and the same rebuild makes a `task` table written before it.
+pub const SCHEMA_VERSION: i64 = 5;
 
 /// The agents the two check constraints have to let in, quoted the way `SCHEMA` writes them. A table whose
 /// check leaves one of these out was made by an older Unluminous and is rebuilt.
 const AGENT_VALUES: &[&str] = &["'opencode'", "'pi'"];
+
+/// The statuses `task_status_check` has to let in since version 5, quoted the way `SCHEMA` writes them.
+const STATUS_VALUES: &[&str] = &["'wait'", "'github'"];
 
 /// The file name inside the plugin's own folder.
 pub const FILE: &str = "board.rdb";
@@ -229,9 +233,14 @@ impl Store {
     /// Read from what the file says it was created with, because that is the constraint that is enforced.
     fn tables_refusing_an_agent(&self) -> Result<Vec<&'static str>, String> {
         let mut refusing = Vec::new();
-        for (table, check) in
-            [("task", "CHECK (assignee IN ("), ("task_comment", "CHECK (author IN (")]
-        {
+        for (table, check, values) in [
+            ("task", "CHECK (assignee IN (", AGENT_VALUES),
+            ("task", "CHECK (status IN (", STATUS_VALUES),
+            ("task_comment", "CHECK (author IN (", AGENT_VALUES),
+        ] {
+            if refusing.contains(&table) {
+                continue;
+            }
             let sql: Option<String> = self
                 .connection
                 .query_row(
@@ -243,10 +252,16 @@ impl Store {
                 .map_err(|problem| {
                     format!("the board's {table} table could not be read: {problem}")
                 })?;
-            // Only a table whose check names the values it may hold and leaves one of the agents out. A table
-            // something else made with no check at all refuses nothing, and is left as it was.
+            // Only a table whose check names the values it may hold and leaves one of them out. A table
+            // something else made with no check at all refuses nothing, and is left as it was. The check is
+            // read from its own clause to its closing parenthesis, so a value named in another check does
+            // not count.
             let refuses = |sql: &String| {
-                sql.contains(check) && AGENT_VALUES.iter().any(|value| !sql.contains(value))
+                sql.find(check).is_some_and(|start| {
+                    let clause = &sql[start..];
+                    let clause = &clause[..clause.find(')').unwrap_or(clause.len())];
+                    values.iter().any(|value| !clause.contains(value))
+                })
             };
             if sql.as_ref().is_some_and(refuses) {
                 refusing.push(table);
@@ -1859,7 +1874,7 @@ CREATE TABLE IF NOT EXISTS task (
   updated_at             TEXT NOT NULL,
   endpoint               TEXT,
   CONSTRAINT task_priority_check CHECK (priority IN ('low','medium','high')),
-  CONSTRAINT task_status_check   CHECK (status IN ('new','in_progress','agent_done','qa_failed')),
+  CONSTRAINT task_status_check   CHECK (status IN ('new','in_progress','agent_done','qa_failed','wait','github')),
   CONSTRAINT task_assignee_check CHECK (assignee IN ('claude','codex','opencode','pi','human'))
 );
 CREATE INDEX IF NOT EXISTS task_status_idx ON task(status);
@@ -2142,7 +2157,10 @@ mod tests {
         }
 
         let store = Store::open(&path).expect("the same board");
-        assert!(folder.join("board-before-schema-4").join(FILE).is_file(), "a copy is kept first");
+        assert!(
+            folder.join(format!("board-before-schema-{SCHEMA_VERSION}")).join(FILE).is_file(),
+            "a copy is kept first"
+        );
         let edit = TaskEdit {
             assignee: Some(Assignee::OpenCode),
             endpoint: Some(Some("local-agent".to_owned())),
@@ -2226,7 +2244,10 @@ mod tests {
             assert!(refused.is_err(), "schema 3's check has to refuse pi for this to be the fault");
         }
         let store = Store::open(&path).expect("the same board");
-        assert!(folder.join("board-before-schema-4").join(FILE).is_file(), "a copy is kept first");
+        assert!(
+            folder.join(format!("board-before-schema-{SCHEMA_VERSION}")).join(FILE).is_file(),
+            "a copy is kept first"
+        );
         let edit = TaskEdit { assignee: Some(Assignee::Pi), ..TaskEdit::default() };
         store.edit_task(kept.id, &edit, NOW).expect("pi is a value it may hold now");
         let read = store.task(kept.id).expect("a read").expect("the ticket");
@@ -2243,7 +2264,76 @@ mod tests {
             .connection
             .query_row("SELECT value FROM meta WHERE name = 'schema_version'", [], |row| row.get(0))
             .expect("the version");
-        assert_eq!(version, 4);
+        assert_eq!(version, SCHEMA_VERSION);
+        drop(store);
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// `task-2932`: a board at schema 4 refuses a ticket in `wait` or `github`, the web board's two lanes after
+    /// Agent Done. Opening it rebuilds `task` with a copy kept first, every row and id kept, and the version
+    /// written as 5, after which a ticket moves into either lane.
+    #[test]
+    fn a_board_at_schema_4_lets_wait_and_github_in_and_keeps_every_row_and_id() {
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-board-wait-{}", std::process::id()));
+        let path = folder.join(FILE);
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("a folder");
+        let kept = {
+            let store = Store::open(&path).expect("a board");
+            let kept = store
+                .create_task(NewTask { title: "Parked".to_owned(), ..NewTask::default() }, NOW)
+                .expect("a ticket");
+            store.add_comment(kept.id, Author::Human, "a comment", NOW).expect("a comment");
+            kept
+        };
+        // Put back the task table schema 4 wrote, whose status check names four lanes.
+        {
+            let db = Db::open(&path).expect("the file");
+            let old = SCHEMA.replace(",'wait','github'", "");
+            let made = old[old.find("CREATE TABLE IF NOT EXISTS task (").expect("the table")..]
+                .split(
+                    "
+);",
+                )
+                .next()
+                .expect("the table")
+                .replace("CREATE TABLE IF NOT EXISTS task (", "CREATE TABLE task_old (")
+                + "
+)";
+            db.execute_batch(&format!(
+                "{made};
+                 INSERT INTO task_old SELECT * FROM task;
+                 DROP TABLE task;
+                 ALTER TABLE task_old RENAME TO task;
+                 DELETE FROM sqlite_sequence WHERE name = 'task_old';
+                 UPDATE meta SET value = 4 WHERE name = 'schema_version';"
+            ))
+            .expect("a task table from schema 4");
+            let refused =
+                db.execute("UPDATE task SET status = 'wait' WHERE id = ?1", params![kept.id]);
+            assert!(
+                refused.is_err(),
+                "schema 4's check has to refuse wait for this to be the fault"
+            );
+        }
+        let store = Store::open(&path).expect("the same board");
+        assert!(folder.join("board-before-schema-5").join(FILE).is_file(), "a copy is kept first");
+        store.move_task(kept.id, Status::Wait, 0, NOW).expect("wait is a lane now");
+        let read = store.task(kept.id).expect("a read").expect("the ticket");
+        assert_eq!(read.title, "Parked");
+        assert_eq!(read.status, Status::Wait);
+        assert_eq!(store.comments(kept.id).expect("comments").len(), 1, "the comment was kept");
+        store.move_task(kept.id, Status::GitHub, 0, NOW).expect("github is a lane now");
+        assert_eq!(
+            store.task(kept.id).expect("a read").expect("the ticket").status,
+            Status::GitHub
+        );
+        let version: i64 = store
+            .connection
+            .query_row("SELECT value FROM meta WHERE name = 'schema_version'", [], |row| row.get(0))
+            .expect("the version");
+        assert_eq!(version, 5);
         drop(store);
         let _ = std::fs::remove_dir_all(&folder);
     }
@@ -2570,12 +2660,16 @@ mod tests {
     }
 
     #[test]
-    fn the_board_has_four_lanes_even_when_three_are_empty() {
+    fn the_board_has_six_lanes_even_when_five_are_empty() {
         let (store, _) = filled();
         let read = store.board().expect("the board");
-        assert_eq!(read.lanes.len(), 4);
+        assert_eq!(read.lanes.len(), 6);
         let names: Vec<&str> = read.lanes.iter().map(|lane| lane.status.name()).collect();
-        assert_eq!(names, ["new", "qa_failed", "in_progress", "agent_done"], "in drawn order");
+        assert_eq!(
+            names,
+            ["new", "qa_failed", "in_progress", "agent_done", "wait", "github"],
+            "in drawn order"
+        );
         assert_eq!(read.lane(Status::New).expect("New").count(), 3);
         assert_eq!(read.lane(Status::QaFailed).expect("QA Failed").count(), 0);
         assert_eq!(read.sprint.expect("the active sprint").name, "Current Sprint");

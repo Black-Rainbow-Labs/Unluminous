@@ -36,7 +36,7 @@ terminal. They are the same commands.
 - **One ticket at a time in one project folder**, unless the tickets plainly touch different parts of it.
 - **Never move a ticket to `agent_done` yourself.** That is the ticket agent's statement that it checked its own
   work.
-- **Never start a ticket in the `wait` lane** or one assigned to `human`.
+- **Never start a ticket in the `wait` or `github` lane** or one assigned to `human`.
 - **A ticket that cannot go on** is moved back to `new` with a comment that names what is in the way, so it does
   not sit in `in_progress` with nobody on it.
 - `interrupt task-12` stops an agent that is doing something wrong; `escape task-12` stops only its current turn.

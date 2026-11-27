@@ -47,6 +47,8 @@ fn lane_name(status: Status) -> &'static str {
         Status::QaFailed => "QA failed",
         Status::InProgress => "In progress",
         Status::AgentDone => "Agent done",
+        Status::Wait => "Wait",
+        Status::GitHub => "GitHub",
     }
 }
 
@@ -57,6 +59,8 @@ fn lane_mark(status: Status) -> rux::components::LaneMark {
         Status::QaFailed => rux::components::LaneMark::Failed,
         Status::InProgress => rux::components::LaneMark::Running,
         Status::AgentDone => rux::components::LaneMark::Done,
+        // A clock, the not started mark: a ticket in either lane is waiting for a person to start it.
+        Status::Wait | Status::GitHub => rux::components::LaneMark::New,
     }
 }
 
@@ -159,7 +163,7 @@ pub fn show(
     let room = area.width() - side * 2.0;
     let lanes = Status::ALL.len() as f32;
     let gap = GAP * scale;
-    // The four share the width, which is what the design's grid does, and are squeezed no narrower than
+    // The lanes share the width, which is what the design's grid does, and are squeezed no narrower than
     // `LANE_MIN`: past that the board scrolls sideways.
     let lane_width = ((room - gap * (lanes - 1.0)) / lanes).max(LANE_MIN * scale);
     let content = lane_width * lanes + gap * (lanes - 1.0);
