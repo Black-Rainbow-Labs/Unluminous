@@ -6,6 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.35.2 — 2026-11-27
+
+- The Mac label goes in front of the card's title, since the key was cut to 'task-2934 · M…' (`task-2932`)
+- Format the card title line (`task-2932`)
+
 ## 1.35.1 — 2026-11-27
 
 - A card for a ticket the board runs on the Mac says so (`task-2932`)
