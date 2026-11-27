@@ -380,7 +380,9 @@ impl Task {
     pub fn card_title(&self) -> String {
         match self.machine.as_deref().map(str::trim) {
             Some("macbook-pro") => format!("Mac \u{00B7} {}", self.display_title()),
-            Some(other) if !other.is_empty() => format!("{other} \u{00B7} {}", self.display_title()),
+            Some(other) if !other.is_empty() => {
+                format!("{other} \u{00B7} {}", self.display_title())
+            }
             _ => self.display_title().to_owned(),
         }
     }
