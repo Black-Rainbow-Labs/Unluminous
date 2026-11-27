@@ -6,7 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.35.0 — 2026-11-27
+## 1.35.1 — 2026-11-27
+
+- A card for a ticket the board runs on the Mac says so (`task-2932`)
+
+## 1.35.0 — 2026-11-26
 
 - Agent-Tasks has the Wait and GitHub lanes the web board has (`task-2932`)
 - The board pictures with six lanes, and the command line test reads six (`task-2932`)
