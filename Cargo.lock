@@ -6468,7 +6468,7 @@ checksum = "61c41af27dd6d1e27b1b16b489db798443478cef1f06a660c96db617ba5de3b1"
 [[package]]
 name = "tasks-client"
 version = "0.1.0"
-source = "git+https://github.com/Black-Rainbow-Labs/unluminous-mobile.git?rev=b81fe2a8fa206c7d8960f105544fce1b36e19ad9#b81fe2a8fa206c7d8960f105544fce1b36e19ad9"
+source = "git+https://github.com/Black-Rainbow-Labs/unluminous-mobile.git?rev=57ac83bfdf0bc9ae0188be931c015f5a58d80e03#57ac83bfdf0bc9ae0188be931c015f5a58d80e03"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.3.4",

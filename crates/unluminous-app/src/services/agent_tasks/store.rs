@@ -1676,6 +1676,7 @@ fn read_task(row: &Row<'_>) -> Outcome<Task> {
         jira_url: row.get(21)?,
         jira_status: row.get(22)?,
         jira_issue_type: row.get(23)?,
+        machine: None,
         created_at: row.get(24)?,
         updated_at: row.get(25)?,
         todo_count: row.get(26)?,

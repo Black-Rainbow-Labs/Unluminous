@@ -314,6 +314,9 @@ pub struct Task {
     pub jira_url: Option<String>,
     pub jira_status: Option<String>,
     pub jira_issue_type: Option<String>,
+    /// The computer the board runs the ticket on: None for the PC, `macbook-pro` for the Mac (task-2932). Only a
+    /// board in agent-tasks-service sends it; the card says Mac when it is set.
+    pub machine: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     /// How many todos it has, and how many are done. Counted by the board's own read rather than
@@ -353,6 +356,7 @@ impl Task {
             jira_url: None,
             jira_status: None,
             jira_issue_type: None,
+            machine: None,
             created_at: String::new(),
             updated_at: String::new(),
             todo_count: 0,
@@ -367,6 +371,16 @@ impl Task {
         match self.title.trim().is_empty() {
             true => "Untitled",
             false => self.title.trim(),
+        }
+    }
+
+    /// The key as the card shows it: `task-2933 · Mac` for a ticket the board runs on the Mac (task-2932), so it is
+    /// not mistaken for one this PC will start, and the key alone otherwise.
+    pub fn card_key(&self) -> String {
+        match self.machine.as_deref().map(str::trim) {
+            Some("macbook-pro") => format!("{} \u{00B7} Mac", self.key),
+            Some(other) if !other.is_empty() => format!("{} \u{00B7} {other}", self.key),
+            _ => self.key.clone(),
         }
     }
 
@@ -496,6 +510,16 @@ mod tests {
         assert_eq!(Priority::parse("urgent"), None);
         assert_eq!(Assignee::parse("gemini"), None);
         assert_eq!(Source::parse("github"), None);
+    }
+
+    #[test]
+    fn a_card_on_the_mac_says_so_and_one_on_the_pc_shows_its_key_alone() {
+        let mut task = Task::for_tests("task-2933");
+        assert_eq!(task.card_key(), "task-2933");
+        task.machine = Some("macbook-pro".to_owned());
+        assert_eq!(task.card_key(), "task-2933 \u{00B7} Mac");
+        task.machine = Some(String::new());
+        assert_eq!(task.card_key(), "task-2933", "an empty machine is the PC");
     }
 
     #[test]

@@ -1579,6 +1579,7 @@ mod tests {
             jira_url: None,
             jira_status: None,
             jira_issue_type: None,
+            machine: None,
             created_at: String::new(),
             updated_at: String::new(),
             todo_count: 0,

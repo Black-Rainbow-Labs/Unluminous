@@ -550,6 +550,8 @@ impl ServiceBoard {
             epic_id: draft.epic_id,
             sprint_id: draft.sprint_id,
             agent_project_id: None,
+            // The PC: a ticket filed here runs here. The Mac is chosen on the web board or the phone (task-2931).
+            machine: None,
         };
         let created =
             self.client.create_task(&body).map_err(said("the ticket could not be filed"))?;

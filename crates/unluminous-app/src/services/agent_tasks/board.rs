@@ -102,6 +102,7 @@ mod tests {
             jira_url: None,
             jira_status: None,
             jira_issue_type: None,
+            machine: None,
             created_at: "2026-08-29T12:00:00Z".to_owned(),
             updated_at: "2026-08-29T12:00:00Z".to_owned(),
             todo_count: 0,

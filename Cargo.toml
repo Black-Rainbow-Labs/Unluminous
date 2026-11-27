@@ -101,7 +101,7 @@ ureq = { version = "3.4", default-features = false, features = ["native-tls"] }
 # made once and both apps take it. Pinned to a commit of the `unluminous-mobile` repository. Agent-Tasks reads the board through it when `board-source` is `service`
 # (`tasks/agent-tasks-through-the-service-tdd.md`). Default features off and `native-tls` on, so the binary keeps
 # the one TLS stack above. It turns on ureq's `gzip` and `json`, which the comment above leaves off.
-tasks-client = { git = "https://github.com/Black-Rainbow-Labs/unluminous-mobile.git", rev = "b81fe2a8fa206c7d8960f105544fce1b36e19ad9", default-features = false, features = ["native-tls"] }
+tasks-client = { git = "https://github.com/Black-Rainbow-Labs/unluminous-mobile.git", rev = "57ac83bfdf0bc9ae0188be931c015f5a58d80e03", default-features = false, features = ["native-tls"] }
 # The ticket terminal's attach client (`services/agent_tasks/board_terminal.rs`) speaks the board's terminal
 # relay, a WebSocket, so the handshake is all it needs. A board on another computer is reached over TLS with
 # `native-tls`, wrapped around the stream by hand (task-2879).

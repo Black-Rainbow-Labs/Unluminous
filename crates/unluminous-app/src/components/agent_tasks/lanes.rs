@@ -349,7 +349,8 @@ pub fn show(
                     Assignee::Human => rux::components::Assignee::Person,
                     _ => rux::components::Assignee::Agent(agent),
                 };
-                let pressed = rux::components::TaskCard::new(task.display_title(), &task.key)
+                let key = task.card_key();
+                let pressed = rux::components::TaskCard::new(task.display_title(), &key)
                     .todos(task.todo_done_count.max(0) as u32, task.todo_count.max(0) as u32)
                     .assignee(who)
                     .action(action, &label)
@@ -570,6 +571,7 @@ mod tests {
             jira_url: None,
             jira_status: None,
             jira_issue_type: None,
+            machine: None,
             created_at: String::new(),
             updated_at: String::new(),
             todo_count: 0,

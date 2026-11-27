@@ -92,6 +92,7 @@ pub fn task_of(full: &tasks_client::FullTask) -> Task {
         jira_url: None,
         jira_status: None,
         jira_issue_type: None,
+        machine: task.machine.clone(),
         created_at: task.created_at.clone(),
         updated_at: full.updated_at.clone(),
         // A ticket from the summary has no todos or comments, only their counts (task-2879). A ticket read in full
