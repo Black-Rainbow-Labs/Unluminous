@@ -206,7 +206,7 @@ pub fn show(
                         rux::components::TaskCard::height_of(
                             ui.painter(),
                             scale,
-                            task.display_title(),
+                            &task.card_title(),
                             card_width,
                         )
                     })
@@ -349,8 +349,8 @@ pub fn show(
                     Assignee::Human => rux::components::Assignee::Person,
                     _ => rux::components::Assignee::Agent(agent),
                 };
-                let key = task.card_key();
-                let pressed = rux::components::TaskCard::new(task.display_title(), &key)
+                let title = task.card_title();
+                let pressed = rux::components::TaskCard::new(&title, &task.key)
                     .todos(task.todo_done_count.max(0) as u32, task.todo_count.max(0) as u32)
                     .assignee(who)
                     .action(action, &label)

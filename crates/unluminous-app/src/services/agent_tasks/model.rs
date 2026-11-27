@@ -374,13 +374,14 @@ impl Task {
         }
     }
 
-    /// The key as the card shows it: `task-2933 · Mac` for a ticket the board runs on the Mac (task-2932), so it is
-    /// not mistaken for one this PC will start, and the key alone otherwise.
-    pub fn card_key(&self) -> String {
+    /// The title as the card shows it: `Mac · <title>` for a ticket the board runs on the Mac (task-2932), so it is
+    /// not mistaken for one this PC will start, and the title alone otherwise. The label goes in front of the title
+    /// because the card cuts the end of a long title or key with an ellipsis, and the start is always drawn.
+    pub fn card_title(&self) -> String {
         match self.machine.as_deref().map(str::trim) {
-            Some("macbook-pro") => format!("{} \u{00B7} Mac", self.key),
-            Some(other) if !other.is_empty() => format!("{} \u{00B7} {other}", self.key),
-            _ => self.key.clone(),
+            Some("macbook-pro") => format!("Mac \u{00B7} {}", self.display_title()),
+            Some(other) if !other.is_empty() => format!("{other} \u{00B7} {}", self.display_title()),
+            _ => self.display_title().to_owned(),
         }
     }
 
@@ -513,13 +514,14 @@ mod tests {
     }
 
     #[test]
-    fn a_card_on_the_mac_says_so_and_one_on_the_pc_shows_its_key_alone() {
+    fn a_card_on_the_mac_says_so_and_one_on_the_pc_shows_its_title_alone() {
         let mut task = Task::for_tests("task-2933");
-        assert_eq!(task.card_key(), "task-2933");
+        task.title = "Install the phone app".to_owned();
+        assert_eq!(task.card_title(), "Install the phone app");
         task.machine = Some("macbook-pro".to_owned());
-        assert_eq!(task.card_key(), "task-2933 \u{00B7} Mac");
+        assert_eq!(task.card_title(), "Mac \u{00B7} Install the phone app");
         task.machine = Some(String::new());
-        assert_eq!(task.card_key(), "task-2933", "an empty machine is the PC");
+        assert_eq!(task.card_title(), "Install the phone app", "an empty machine is the PC");
     }
 
     #[test]
