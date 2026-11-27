@@ -466,8 +466,8 @@ fn the_board_can_be_read_and_changed_entirely_from_the_command_line() {
         .collect();
     assert_eq!(
         lanes,
-        ["new", "qa_failed", "in_progress", "agent_done"],
-        "four lanes, in drawn order"
+        ["new", "qa_failed", "in_progress", "agent_done", "wait", "github"],
+        "six lanes, in drawn order, the same as the web board"
     );
 
     let made = did(&mut harness, "plugins run agent-tasks new-task Rewrite the importer");
